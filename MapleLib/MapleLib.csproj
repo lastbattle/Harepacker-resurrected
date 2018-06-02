@@ -1,0 +1,200 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.21022</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{28AAB36D-942E-4476-A000-0E9DE380F390}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>MapleLib</RootNamespace>
+    <AssemblyName>MapleLib</AssemblyName>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <FileUpgradeFlags>
+    </FileUpgradeFlags>
+    <OldToolsVersion>3.5</OldToolsVersion>
+    <UpgradeBackupLocation />
+    <TargetFrameworkProfile>
+    </TargetFrameworkProfile>
+    <PublishUrl>publish\</PublishUrl>
+    <Install>true</Install>
+    <InstallFrom>Disk</InstallFrom>
+    <UpdateEnabled>false</UpdateEnabled>
+    <UpdateMode>Foreground</UpdateMode>
+    <UpdateInterval>7</UpdateInterval>
+    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
+    <UpdatePeriodically>false</UpdatePeriodically>
+    <UpdateRequired>false</UpdateRequired>
+    <MapFileExtensions>true</MapFileExtensions>
+    <ApplicationRevision>0</ApplicationRevision>
+    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
+    <IsWebBootstrapper>false</IsWebBootstrapper>
+    <UseApplicationTrust>false</UseApplicationTrust>
+    <BootstrapperEnabled>true</BootstrapperEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x86'">
+    <PlatformTarget>x86</PlatformTarget>
+    <OutputPath>$(SolutionDir)$(Configuration)\$(Platform)\</OutputPath>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <DefineConstants>DEBUG;TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x86'">
+    <PlatformTarget>x86</PlatformTarget>
+    <OutputPath>$(SolutionDir)$(Configuration)\$(Platform)\</OutputPath>
+    <DefineConstants>TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>$(SolutionDir)$(Configuration)\$(Platform)\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x64</PlatformTarget>
+    <CodeAnalysisLogFile>bin\x86\Debug\MapleLib.dll.CodeAnalysisLog.xml</CodeAnalysisLogFile>
+    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
+    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
+    <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
+    <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>$(SolutionDir)$(Configuration)\$(Platform)\</OutputPath>
+    <DefineConstants>TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <PlatformTarget>x64</PlatformTarget>
+    <CodeAnalysisLogFile>bin\x86\Release\MapleLib.dll.CodeAnalysisLog.xml</CodeAnalysisLogFile>
+    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
+    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
+    <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
+    <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE;UOLRES</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="NAudio, Version=1.7.3.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NAudio.1.7.3\lib\net35\NAudio.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.XML" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Helpers\ErrorLogger.cs" />
+    <Compile Include="WzDataReader.cs" />
+    <Compile Include="WzLib\Util\WzMutableKey.cs" />
+    <Compile Include="WzLib\WzExtended.cs" />
+    <Compile Include="MapleCryptoLib\AESEncryption.cs" />
+    <Compile Include="MapleCryptoLib\CryptoConstants.cs" />
+    <Compile Include="MapleCryptoLib\MapleCrypto.cs" />
+    <Compile Include="MapleCryptoLib\MapleCustomEncryption.cs" />
+    <Compile Include="PacketLib\AbstractPacket.cs" />
+    <Compile Include="PacketLib\Acceptor.cs" />
+    <Compile Include="PacketLib\Connector.cs" />
+    <Compile Include="PacketLib\HexEncoding.cs" />
+    <Compile Include="PacketLib\Monitor.cs" />
+    <Compile Include="PacketLib\PacketReader.cs" />
+    <Compile Include="PacketLib\PacketWriter.cs" />
+    <Compile Include="PacketLib\Session.cs" />
+    <Compile Include="PacketLib\SessionType.cs" />
+    <Compile Include="PacketLib\SocketInfo.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WzLib\WzImageProperty.cs" />
+    <Compile Include="WzLib\WzImageResource.cs" />
+    <Compile Include="WzLib\WzObject.cs" />
+    <Compile Include="WzLib\Util\WzBinaryReader.cs" />
+    <Compile Include="WzLib\Util\WzBinaryWriter.cs" />
+    <Compile Include="WzLib\Util\WzKeyGenerator.cs" />
+    <Compile Include="WzLib\Util\WzTool.cs" />
+    <Compile Include="WzLib\Util\XmlUtil.cs" />
+    <Compile Include="WzLib\WzDirectory.cs" />
+    <Compile Include="WzLib\WzFile.cs" />
+    <Compile Include="WzLib\WzHeader.cs" />
+    <Compile Include="WzLib\WzImage.cs" />
+    <Compile Include="WzLib\WzListFile.cs" />
+    <Compile Include="WzLib\WzMapleVersion.cs" />
+    <Compile Include="WzLib\WzObjectType.cs" />
+    <Compile Include="WzLib\WzProperties\WzFloatProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzCanvasProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzIntProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzConvexProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzDoubleProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzLongProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzNullProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzPngProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzSoundProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzStringProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzSubProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzShortProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzUOLProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzVectorProperty.cs" />
+    <Compile Include="WzLib\IPropertyContainer.cs" />
+    <Compile Include="WzLib\WzPropertyType.cs" />
+    <Compile Include="WzLib\WzSerializer.cs" />
+    <Compile Include="WzLib\WzSettings.cs" />
+    <Compile Include="WzLib\WzStructure\Data\Data.cs" />
+    <Compile Include="WzLib\WzStructure\Data\Enums.cs" />
+    <Compile Include="WzLib\WzStructure\Foothold.cs" />
+    <Compile Include="WzLib\WzStructure\InfoTool.cs" />
+    <Compile Include="WzLib\WzStructure\MapInfo.cs" />
+    <Compile Include="WzLib\WzStructure\MapleBool.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
+      <Install>false</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
+      <Visible>False</Visible>
+      <ProductName>.NET Framework 3.5 SP1</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+    <BootstrapperPackage Include="Microsoft.Windows.Installer.3.1">
+      <Visible>False</Visible>
+      <ProductName>Windows Installer 3.1</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

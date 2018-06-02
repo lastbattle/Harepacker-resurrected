@@ -1,0 +1,12 @@
+[submodule "MapleLib"]
+	path = MapleLib
+	url = https://github.com/haha01haha01/MapleLib.git
+[submodule "libapng"]
+	path = libapng
+	url = https://github.com/haha01haha01/libapng.git
+[submodule "dockpanelsuite"]
+	path = dockpanelsuite
+	url = https://github.com/dockpanelsuite/dockpanelsuite.git
+[submodule "NAudio"]
+	path = NAudio
+	url = https://github.com/naudio/NAudio.git

@@ -1,0 +1,112 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=windows-1255"/>
+	<title></title>
+	<meta name="generator" content="LibreOffice 4.3.5.2 (Windows)"/>
+	<meta name="created" content="00:00:00"/>
+	<meta name="changed" content="2015-07-10T18:38:11.513000000"/>
+	<meta name="Originator" content="Microsoft Word 12"/>
+	<meta name="ProgId" content="Word.Document"/>
+	<style type="text/css">
+		p { color: #000000 }
+		a:link { color: #0000ff }
+		a:visited { color: #800080 }
+	</style>
+</head>
+<body lang="en-US" text="#000000" link="#0000ff" vlink="#800080" dir="ltr" style="background: transparent">
+<p style="margin-bottom: 0.08in"><font size="5" style="font-size: 20pt"><u><b>Help
+File</b></u></font></p>
+<p style="margin-bottom: 0.08in">1.&nbsp;&nbsp; <font size="5" style="font-size: 18pt">Disclaimer<br></font><font size="3" style="font-size: 12pt">This</font>
+<font size="3" style="font-size: 12pt">program and all libraries
+included with it are provided free of charge and for educational and
+testing purposes only. You may not use any of this program or any
+files included with it to commit any action which is illegal in the
+United States or where you reside.</font></p>
+<p style="margin-bottom: 0.08in"><font size="3" style="font-size: 12pt">This
+program is licensed under the Mozilla Public License (MPL), with some
+parts under different licenses, includeing the GNU General Public
+License (GPL), Microsoft Public License (Ms-PL) and MIT License. See
+the source code repository and the relevant LICENSE files in it for
+details. </font>
+</p>
+<p style="margin-bottom: 0.08in">2.&nbsp;&nbsp; <font size="5" style="font-size: 18pt">HaRepacker</font><br><font size="3" style="font-size: 12pt"><u>A.
+System Requirements: <br></u></font><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40773">.<font size="3" style="font-size: 12pt">NET
+Framework </font><font size="3" style="font-size: 12pt">4</font><font size="3" style="font-size: 12pt">.5.</font><font size="3" style="font-size: 12pt">1</font></a><font size="3" style="font-size: 12pt"><br></font><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40784">Visual
+C++ Redistributable Packages for Visual Studio 2013</a><font size="3" style="font-size: 12pt"><br><br></font><font size="3" style="font-size: 12pt"><u>B.Shortcut
+Keys:<br></u></font><font size="3" style="font-size: 12pt">Delete &ndash;
+delete all currently selected nodes<br>Ctrl+C\Ctrl+V &ndash;
+copy\paste<br>Ctrl+F &ndash; show the search bar<br><br></font><font size="3" style="font-size: 12pt"><u>C.
+WZ Serialization (aka dumping &amp; importing):<br></u></font><font size="3" style="font-size: 12pt">HaRepacker
+4 provides a few different methods for serializing WZ data. Most of
+them can also be deserialized (returned to WZ data form).
+Additionally, most methods can be performed either on the selected
+nodes or on a group of not-yet-loaded files. When using the second
+option, it is important to make sure the file is NOT loaded into
+HaRepacker yet.<br><br>Serialization methods:<br>* </font><font size="3" style="font-size: 12pt"><u>XML
+&ndash;&gt; Private server XML:</u></font> <font size="3" style="font-size: 12pt">Separate
+XML files intended to </font><font size="3" style="font-size: 12pt"><b>be
+used inside an OdinMS based server&rsquo;s WZ directory</b></font><font size="3" style="font-size: 12pt">.
+It can only serialize WZ files, directories or images. WZ directories
+and files turn into actual directories, while WZ images turn into XML
+files. This type of XML </font><font size="3" style="font-size: 12pt"><b>cannot
+be deserialized</b></font> <font size="3" style="font-size: 12pt">back
+to WZ form (aka imported)<br><br>* </font><font size="3" style="font-size: 12pt"><u>XML
+&ndash;&gt; Classic:</u></font> <font size="3" style="font-size: 12pt">This
+serialization method works exactly like the previous one, but it
+includes png and sound data in the XML and therefore </font><font size="3" style="font-size: 12pt"><b>can
+be deserialized</b></font><font size="3" style="font-size: 12pt">.
+Since this type of XML has all the information the previous one has,
+it </font><font size="3" style="font-size: 12pt"><b>can also be used
+inside a server&rsquo;s WZ directory</b></font> <font size="3" style="font-size: 12pt">(however,
+this is not a recommended practice because this type of XMLs take a
+lot of space).<br><br>* </font><font size="3" style="font-size: 12pt"><u>XML
+&ndash;&gt; New:</u></font> <font size="3" style="font-size: 12pt">This
+is the new type of serialization into XML, which was only partially
+available in the previous versions. This serialization method </font><font size="3" style="font-size: 12pt"><b>only
+works with HaRepacker</b></font> <font size="3" style="font-size: 12pt">and
+is intended purely for information storage. This serialization method
+will </font><font size="3" style="font-size: 12pt"><b>export any
+amount of WZ properties, images or directories into a single XML
+file</b></font><font size="3" style="font-size: 12pt">. The only data
+it cannot serialize is List.wz data. This type of XML </font><font size="3" style="font-size: 12pt"><b>can
+be deserialized.<br><br></b></font><font size="3" style="font-size: 12pt">*
+</font><font size="3" style="font-size: 12pt"><u>PNG\MP3:</u></font>
+<font size="3" style="font-size: 12pt">Dumps only the PNG and MP3
+data to disk. WZ directories and images turn into real directories,
+and all PNGs and MP3 files are saved to their image&rsquo;s
+directory. </font><font size="3" style="font-size: 12pt"><b>Cannot be
+deserialized</b></font><font size="3" style="font-size: 12pt">.<br><br>*
+</font><font size="3" style="font-size: 12pt"><u>IMG Files:</u></font>
+<font size="3" style="font-size: 12pt">Dumps the WZ images into *.img
+files. This method can only serialize WZ files, directories and
+images, </font><font size="3" style="font-size: 12pt"><b>can be
+deserialized </b></font><font size="3" style="font-size: 12pt">and
+is&nbsp; </font><font size="3" style="font-size: 12pt"><b>the
+recommended method of dumping and storing information </b></font><font size="3" style="font-size: 12pt">as
+it is the fastest, most compact and most memory efficient
+serialization method. When an IMG file is deserialized, the file is
+left open and </font><font size="3" style="font-size: 12pt"><b>cannot
+be</b></font> <font size="3" style="font-size: 12pt"><b>moved,</b></font>
+<font size="3" style="font-size: 12pt"><b>changed, renamed or deleted</b></font>
+<font size="3" style="font-size: 12pt">until the WZ file holding the
+image is closed.</font></p>
+<p style="margin-bottom: 0.08in">3.&nbsp;&nbsp; <font size="5" style="font-size: 18pt">HaCreator</font><br><font size="3" style="font-size: 12pt"><u>A.
+System Requirements: <br><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40773">.NET
+Framework </a></u></font><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40773"><font size="3" style="font-size: 12pt"><u>4</u></font><font size="3" style="font-size: 12pt"><u>.5.</u></font><font size="3" style="font-size: 12pt"><u>1</u></font></a><font size="3" style="font-size: 12pt"><u><br><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40784">Visual
+C++ Redistributable Packages for Visual Studio 2013</a></u></font><font size="3" style="font-size: 12pt"><br><br></font><font size="3" style="font-size: 12pt"><u>B.Shortcut
+Keys:<br></u></font><font size="3" style="font-size: 12pt">Left mouse
+button &ndash; select objects (either from map or from the objects
+panel)<br>Right mouse button &ndash; release selected objects (while
+adding items from the objects panel), show the menu (when used on
+existing objects), edit map options (when used on the map tab)<br>Double
+click &ndash; new foothold anchor (while adding footholds), show
+instance editor (when used on existing objects)<br>Escape &ndash;
+deselect everything<br>Arrow Keys &ndash; </font><font size="3" style="font-size: 12pt">move</font><font size="3" style="font-size: 12pt">
+selected items<br>Ctrl+F &ndash; flip item<br>Ctrl+A &ndash; select
+all<br>Ctrl+Z\Y &ndash; undo\redo<br>Numpad +\- &ndash;
+increase\decrease Z value<br></font><font size="3" style="font-size: 12pt">Ctrl+C\V
+&ndash; Copy\Paste<br>Ctrl+S &ndash; Save to HAM file<br>Ctrl+O &ndash;
+Open another map</font></p>
+</body>
+</html>

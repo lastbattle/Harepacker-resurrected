@@ -1,0 +1,45 @@
+﻿<Window x:Class="WPFColorPickerLib.ColorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:WPFColorPickerLib"
+        Icon="Images/ColorSwatchSquare1.png"
+        Title="Pick Color"
+        Height="410"
+        Width="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip" ShowActivated="False" MinHeight="410" MinWidth="520">
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="40"/>
+    </Grid.RowDefinitions>
+
+    <local:ColorPicker x:Name="colorPicker"
+                       Margin="0,2,-12,30"
+                       Grid.Row="0"
+                       Grid.RowSpan="2"
+                       TabIndex="2"/>
+
+    <StackPanel Grid.Row="1"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal"
+                Margin="5" >
+      <Button x:Name="btnOK"
+              Content="OK"
+              Click="btnOK_Click"
+              IsDefault="True"
+              Width="60"
+              Height="25"
+              Margin="10,0,0,0"
+              TabIndex="0"/>
+      <Button x:Name="btnCancel"
+              Content="Cancel"
+              Click="btnCancel_Click"
+              IsCancel="True"
+              Height="25"
+              Width="60"
+              Margin="10,0,10,0"
+              TabIndex="1"/>
+    </StackPanel>
+  </Grid>
+</Window>

@@ -1,0 +1,187 @@
+﻿<UserControl x:Class="HaCreator.GUI.HaRibbon"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:cc="clr-namespace:HaCreator.CustomControls"
+             xmlns:ns="clr-namespace:HaCreator.GUI"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib">
+    <Grid>
+        <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Height="140" Focusable="False">
+            <Ribbon.CommandBindings>
+                <CommandBinding Command="ns:HaRibbon.New" CanExecute="AlwaysExecute" Executed="New_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Open" CanExecute="AlwaysExecute" Executed="Open_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Save" CanExecute="AlwaysExecute" Executed="Save_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Repack" CanExecute="AlwaysExecute" Executed="Repack_Executed" />
+                <CommandBinding Command="ns:HaRibbon.About" CanExecute="AlwaysExecute" Executed="About_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Help" CanExecute="AlwaysExecute" Executed="Help_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Settings" CanExecute="AlwaysExecute" Executed="Settings_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Exit" CanExecute="AlwaysExecute" Executed="Exit_Executed" />
+                <CommandBinding Command="ns:HaRibbon.ViewBoxes"  CanExecute="AlwaysExecute" Executed="ViewBoxes_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Minimap"  CanExecute="AlwaysExecute" Executed="Minimap_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Parallax"  CanExecute="AlwaysExecute" Executed="Parallax_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Finalize"  CanExecute="AlwaysExecute" Executed="Finalize_Executed" />
+                <CommandBinding Command="ns:HaRibbon.AllLayerView"  CanExecute="AlwaysExecute" Executed="AllLayerView_Executed" />
+                <CommandBinding Command="ns:HaRibbon.MapSim"  CanExecute="AlwaysExecute" Executed="MapSim_Executed" />
+                <CommandBinding Command="ns:HaRibbon.RegenMinimap"  CanExecute="HasMinimap" Executed="RegenMinimap_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Snapping"  CanExecute="AlwaysExecute" Executed="Snapping_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Random"  CanExecute="AlwaysExecute" Executed="Random_Executed" />
+                <CommandBinding Command="ns:HaRibbon.InfoMode"  CanExecute="AlwaysExecute" Executed="InfoMode_Executed" />
+                <CommandBinding Command="ns:HaRibbon.HaRepacker"  CanExecute="AlwaysExecute" Executed="HaRepacker_Executed" />
+                <CommandBinding Command="ns:HaRibbon.LayerUp"  CanExecute="AlwaysExecute" Executed="LayerUp_Executed" />
+                <CommandBinding Command="ns:HaRibbon.LayerDown"  CanExecute="AlwaysExecute" Executed="LayerDown_Executed" />
+                <CommandBinding Command="ns:HaRibbon.AllPlatformView"  CanExecute="AlwaysExecute" Executed="AllPlatformView_Executed" />
+                <CommandBinding Command="ns:HaRibbon.PlatformUp"  CanExecute="AlwaysExecute" Executed="PlatformUp_Executed" />
+                <CommandBinding Command="ns:HaRibbon.PlatformDown"  CanExecute="AlwaysExecute" Executed="PlatformDown_Executed" />
+                <CommandBinding Command="ns:HaRibbon.NewPlatform"  CanExecute="AlwaysExecute" Executed="NewPlatform_Executed" />
+                <CommandBinding Command="ns:HaRibbon.UserObjs"  CanExecute="AlwaysExecute" Executed="UserObjs_Executed" />
+                <CommandBinding Command="ns:HaRibbon.Export"  CanExecute="AlwaysExecute" Executed="Export_Executed" />
+            </Ribbon.CommandBindings>
+
+            <Ribbon.ApplicationMenu>
+                <RibbonApplicationMenu KeyTip="M" Focusable="False">
+                    <RibbonApplicationMenuItem x:Name="newBtn" Header="New..." Command="ns:HaRibbon.New" ImageSource="pack://application:,,,/HaCreator;component/Images/new_icon.png" KeyTip="N" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="openBtn" Header="Open..." Command="ns:HaRibbon.Open" ImageSource="pack://application:,,,/HaCreator;component/Images/Folder.png" KeyTip="O" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="exportBtn" Header="Save..." Command="ns:HaRibbon.Export" ImageSource="pack://application:,,,/HaCreator;component/Images/Save.png" KeyTip="S" Focusable="False"/>
+                    <RibbonSeparator/>
+                    <RibbonApplicationMenuItem x:Name="saveBtn" Header="Save to WZ..." Command="ns:HaRibbon.Save" ImageSource="pack://application:,,,/HaCreator;component/Images/export-icon.png" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="repackBtn" Header="Repack WZ Files..." Command="ns:HaRibbon.Repack" ImageSource="pack://application:,,,/HaCreator;component/Images/wz.ico" Focusable="False"/>
+                    <RibbonSeparator/>
+                    <RibbonApplicationMenuItem x:Name="hrBtn" Header="Open HaRepacker" Command="ns:HaRibbon.HaRepacker" ImageSource="pack://application:,,,/HaCreator;component/Images/HaLogo32.png" Focusable="False"/>
+                    <RibbonSeparator/>
+                    <RibbonApplicationMenuItem x:Name="aboutBtn" Header="About" Command="ns:HaRibbon.About" ImageSource="pack://application:,,,/HaCreator;component/Images/About.png" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="helpBtn" Header="Help" Command="ns:HaRibbon.Help" ImageSource="pack://application:,,,/HaCreator;component/Images/help_icon.png" KeyTip="H" Focusable="False"/>
+
+                    <RibbonApplicationMenu.FooterPaneContent>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <RibbonButton Label="Settings"  Command="ns:HaRibbon.Settings" SmallImageSource="pack://application:,,,/HaCreator;component/Images/Settings.png" Grid.Column="0" Focusable="False"/>
+                            <RibbonButton Label="Exit" Command="ns:HaRibbon.Exit" SmallImageSource="pack://application:,,,/HaCreator;component/Images/Exit.png" Grid.Column="1" Focusable="False" />
+                        </Grid>
+                    </RibbonApplicationMenu.FooterPaneContent>
+
+                </RibbonApplicationMenu>
+            </Ribbon.ApplicationMenu>
+
+            <RibbonTab x:Name="viewTab" Header="View" KeyTip="V" Focusable="False">
+                <RibbonGroup x:Name="MapObj" Header="Map Objects">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="70" />
+                            <ColumnDefinition Width="70" />
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="20" />
+                            <RowDefinition Height="20" />
+                            <RowDefinition Height="20" />
+                        </Grid.RowDefinitions>
+                        <CheckBox x:Name="tilesCheck" Content="Tiles" Grid.Column="0" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="objsCheck" Content="Objects" Grid.Column="0" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="npcsCheck" Content="NPCs" Grid.Column="0" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="mobsCheck" Content="Mobs" Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="reactCheck" Content="Reactors" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="portalCheck" Content="Portals" Grid.Column="1" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="fhCheck" Content="Footholds" Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="ropeCheck" Content="Ropes" Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="chairCheck" Content="Chairs" Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="tooltipCheck" Content="Tooltips" Grid.Column="3" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="bgCheck" Content="Backgrounds" Grid.Column="3" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <CheckBox x:Name="miscCheck" Content="Other" Grid.Column="3" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        <cc:CheckboxButton x:Name="allFullCheck" Content="All Objects" Grid.Column="4" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="True" Clicked="allFullCheck_Click" Focusable="False"/>
+                        <cc:CheckboxButton x:Name="allHalfCheck" Content="All Objects" Grid.Column="4" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="{x:Null}" Clicked="allHalfCheck_Click" Focusable="False"/>
+                        <cc:CheckboxButton x:Name="allClearCheck" Content="All Objects" Grid.Column="4" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="False" Clicked="allClearCheck_Click" Focusable="False"/>
+                    </Grid>
+                </RibbonGroup>
+                <RibbonGroup x:Name="Layers" Header="Layers">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <cc:HaList x:Name="layerBox" Grid.Column="0" Width="100" Height="65" SelectionChanged="layerBox_SelectionChanged" Focusable="False" />
+                        <Grid Grid.Column="1" VerticalAlignment="Center">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <CheckBox x:Name="layerCheckbox" Grid.Row="1" Content="Show All" HorizontalAlignment="Center" VerticalAlignment="Center" Command="ns:HaRibbon.AllLayerView" Focusable="False" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <RibbonButton x:Name="layerUpBtn" SmallImageSource="pack://application:,,,/HaCreator;component/Images/arrow_up.png" Command="ns:HaRibbon.LayerUp" Grid.Column="0" Focusable="False"/>
+                                <RibbonButton x:Name="layerDownBtn" SmallImageSource="pack://application:,,,/HaCreator;component/Images/arrow_down.png" Command="ns:HaRibbon.LayerDown" Grid.Column="1" Focusable="False"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </RibbonGroup>
+                <RibbonGroup x:Name="Platforms" Header="Platforms" Focusable="False">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <cc:HaList x:Name="platformBox" Grid.Column="0" Width="50" Height="65" SelectionChanged="platformBox_SelectionChanged" />
+                        <Grid Grid.Column="1" VerticalAlignment="Center">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <CheckBox x:Name="platformCheckbox" Grid.Row="1" Content="Show All" HorizontalAlignment="Center" VerticalAlignment="Center" Command="ns:HaRibbon.AllPlatformView" Focusable="False" />
+                            <Grid Grid.Row="2" HorizontalAlignment="Center">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <RibbonButton x:Name="platformUpBtn" SmallImageSource="pack://application:,,,/HaCreator;component/Images/arrow_up.png" Command="ns:HaRibbon.PlatformUp" Grid.Column="0" Focusable="False"/>
+                                <RibbonButton x:Name="platformDownBtn" SmallImageSource="pack://application:,,,/HaCreator;component/Images/arrow_down.png" Command="ns:HaRibbon.PlatformDown" Grid.Column="1" Focusable="False"/>
+                            </Grid>
+                        </Grid>
+                        <RibbonButton x:Name="newPlatformBtn" Label="New Platform" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Grid.Column="2" Command="ns:HaRibbon.NewPlatform"/>
+                    </Grid>
+                </RibbonGroup>
+            </RibbonTab>
+            <RibbonTab x:Name="toolsTab" Header="Tools" KeyTip="T">
+                <RibbonGroup x:Name="Tools" Header="Tools">
+                    <RibbonButton Label="Settings" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Command="ns:HaRibbon.Settings" Focusable="False"/>
+                    <RibbonButton Label="Map Simulation" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Play.png" Command="ns:HaRibbon.MapSim" Focusable="False"/>
+                    <RibbonButton Label="Manage User Objects" LargeImageSource="pack://application:,,,/HaCreator;component/Images/UserObjs.png" Command="ns:HaRibbon.UserObjs" Focusable="False"/>
+                </RibbonGroup>
+                <RibbonGroup x:Name="Options" Header="Options">
+                    <RibbonToggleButton x:Name="minimapBtn" Label="Show Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Minimap.png" Command="ns:HaRibbon.Minimap" Focusable="False"/>
+                    <RibbonToggleButton x:Name="parallaxBtn" Label="Parallax BGs" LargeImageSource="pack://application:,,,/HaCreator;component/Images/diagram_parallax.png" Command="ns:HaRibbon.Parallax" Focusable="False"/>
+                    <RibbonToggleButton x:Name="snapBtn" Label="Snapping" LargeImageSource="pack://application:,,,/HaCreator;component/Images/magnet_32.png" Command="ns:HaRibbon.Snapping" Focusable="False"/>
+                    <RibbonToggleButton x:Name="randomBtn" Label="Random Tiles" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Untitled1.png" Command="ns:HaRibbon.Random" Focusable="False"/>
+                    <RibbonToggleButton x:Name="infomodeBtn" Label="Info Mode" LargeImageSource="pack://application:,,,/HaCreator;component/Images/About.png" Command="ns:HaRibbon.InfoMode" Focusable="False"/>
+                </RibbonGroup>
+                <RibbonGroup x:Name="Saving" Header="Saving">
+                    <RibbonButton Label="Regenerate Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/RegenMinimap.png" Command="ns:HaRibbon.RegenMinimap" Focusable="False"/>
+                    <RibbonButton Label="Finalize Footholds" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Foothold.png" Command="ns:HaRibbon.Finalize" Focusable="False"/>
+                </RibbonGroup>
+            </RibbonTab>
+            <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
+                <RibbonGroup x:Name="mouseVirt" Header="Mouse Virtual">
+                    <RibbonTwoLineText Text="Virtual&#x0a;" />
+                    <RibbonTwoLineText x:Name="virtualPos" Text="mousepos" />
+                </RibbonGroup>
+                <RibbonGroup x:Name="mousePhys" Header="Mouse Physical">
+                    <RibbonTwoLineText Text="Physical&#x0a;" />
+                    <RibbonTwoLineText x:Name="physicalPos" Text="mousepos" />
+                </RibbonGroup>
+                <RibbonGroup x:Name="itemSel" Header="Selected Item">
+                    <RibbonTwoLineText x:Name="itemDesc" Text="itemdesc" />
+                </RibbonGroup>
+            </RibbonTab>
+        </Ribbon>
+    </Grid>
+</UserControl>

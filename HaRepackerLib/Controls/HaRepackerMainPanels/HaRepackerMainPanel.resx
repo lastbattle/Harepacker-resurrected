@@ -1,0 +1,723 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="vectorPanel.TabIndex" type="System.Int32, mscorlib">
+    <value>6</value>
+  </data>
+  <data name="&gt;&gt;MainDockPanel.Type" xml:space="preserve">
+    <value>WeifenLuo.WinFormsUI.Docking.DockPanel, WeifenLuo.WinFormsUI.Docking, Version=2.5.0.36910, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;findStrip.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStrip, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;DataTree.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel1</value>
+  </data>
+  <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+  <data name="btnFindAll.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
+    <value>Magenta</value>
+  </data>
+  <data name="&gt;&gt;findStrip.Name" xml:space="preserve">
+    <value>findStrip</value>
+  </data>
+  <data name="&gt;&gt;btnFindNext.Name" xml:space="preserve">
+    <value>btnFindNext</value>
+  </data>
+  <data name="btnOptions.Image" type="System.Drawing.Bitmap, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+    <value>
+        iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8
+        YQUAAAAJcEhZcwAADrwAAA68AZW8ckkAAAIDSURBVDhPpZLrS5NhGMb3j4SWh0oRQVExD4gonkDpg4hG
+        YKxG6WBogkMZKgPNCEVJFBGdGETEvgwyO9DJE5syZw3PIlPEE9pgBCLZ5XvdMB8Ew8gXbl54nuf63dd9
+        0OGSnwCahxbPRNPAPMw9Xpg6ZmF46kZZ0xSKzJPIrhpDWsVnpBhGkKx3nAX8Pv7z1zg8OoY/cITdn4fw
+        bf/C0kYAN3Ma/w3gWfZL5kzTKBxjWyK2DftwI9tyMYCZKXbNHaD91bLYJrDXsYbrWfUKwJrPE9M2M1Oc
+        VzOOpHI7Jr376Hi9ogHqFIANO0/MmmmbmSmm9a8ze+I4MrNWAdjtoJgWcx+PSzg166yZZ8xM8XvXDix9
+        c4jIqFYAjoriBV9AhEPv1mH/sonogha0afbZMMZz+yreTGyhpusHwtNNCsA5U1zS4BLxzJIfg299qO32
+        Ir7UJtZfftyATqeT+8o2D8JSjQrAJblrncYL7ZJ2+bfaFnC/1S1NjL3diRat7qrO7wLRP3HjWsojBeCo
+        mDEo5mNjuweFGvjWg2EBhCbpkW78htSHHwRyNdmgAFzPEee2iFkzayy2OLXzT4gr6UdUnlXrullsxxQ+
+        kx0g8BTA3aZlButjSTyjODq/WcQcW/B/Je4OQhLvKQDnzN1mp0nnkvAhR8VuMzNrpm1mpjgkoVwB/v8D
+        TgDQASA1MVpwzwAAAABJRU5ErkJggg==
+</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel1.Type" xml:space="preserve">
+    <value>System.Windows.Forms.SplitterPanel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;findBox.Name" xml:space="preserve">
+    <value>findBox</value>
+  </data>
+  <data name="saveImageButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;btnOptions.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="mp3Player.Location" type="System.Drawing.Point, System.Drawing">
+    <value>45, 16</value>
+  </data>
+  <data name="&gt;&gt;DataTree.Name" xml:space="preserve">
+    <value>DataTree</value>
+  </data>
+  <data name="&gt;&gt;findBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripTextBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="btnOptions.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
+    <value>Magenta</value>
+  </data>
+  <data name="applyChangesButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="statusStrip.Text" xml:space="preserve">
+    <value>statusStrip1</value>
+  </data>
+  <data name="&gt;&gt;pictureBoxPanel.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Name" xml:space="preserve">
+    <value>textPropBox</value>
+  </data>
+  <data name="vectorPanel.Size" type="System.Drawing.Size, System.Drawing">
+    <value>90, 53</value>
+  </data>
+  <data name="btnRestart.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
+    <value>Magenta</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Type" xml:space="preserve">
+    <value>HaRepackerLib.ChangableTextbox, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="MainSplitContainer.Size" type="System.Drawing.Size, System.Drawing">
+    <value>657, 330</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="btnFindNext.Size" type="System.Drawing.Size, System.Drawing">
+    <value>51, 22</value>
+  </data>
+  <data name="&gt;&gt;vectorPanel.Name" xml:space="preserve">
+    <value>vectorPanel</value>
+  </data>
+  <data name="&gt;&gt;mp3Player.ZOrder" xml:space="preserve">
+    <value>7</value>
+  </data>
+  <data name="saveSoundButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="pictureBoxPanel.AutoScroll" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.ZOrder" xml:space="preserve">
+    <value>3</value>
+  </data>
+  <data name="&gt;&gt;changeSoundButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="findStrip.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="btnFindNext.Text" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="pictureBoxPanel.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="canvasPropBox.SizeMode" type="System.Windows.Forms.PictureBoxSizeMode, System.Windows.Forms">
+    <value>AutoSize</value>
+  </data>
+  <data name="&gt;&gt;btnClose.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="mp3Player.MinimumSize" type="System.Drawing.Size, System.Drawing">
+    <value>310, 86</value>
+  </data>
+  <data name="MainSplitContainer.Location" type="System.Drawing.Point, System.Drawing">
+    <value>3, 3</value>
+  </data>
+  <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
+    <value>6, 13</value>
+  </data>
+  <data name="&gt;&gt;btnFindNext.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="saveSoundButton.TabIndex" type="System.Int32, mscorlib">
+    <value>12</value>
+  </data>
+  <data name="&gt;&gt;changeImageButton.ZOrder" xml:space="preserve">
+    <value>3</value>
+  </data>
+  <data name="vectorPanel.MaximumSize" type="System.Drawing.Size, System.Drawing">
+    <value>90, 53</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel2.Parent" xml:space="preserve">
+    <value>MainSplitContainer</value>
+  </data>
+  <data name="&gt;&gt;pictureBoxPanel.ZOrder" xml:space="preserve">
+    <value>9</value>
+  </data>
+  <data name="changeSoundButton.TabIndex" type="System.Int32, mscorlib">
+    <value>10</value>
+  </data>
+  <data name="MainDockPanel.Size" type="System.Drawing.Size, System.Drawing">
+    <value>225, 56</value>
+  </data>
+  <data name="&gt;&gt;btnRestart.Name" xml:space="preserve">
+    <value>btnRestart</value>
+  </data>
+  <data name="&gt;&gt;findStrip.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;DataTree.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="changeSoundButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="btnFindAll.Text" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="&gt;&gt;saveImageButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="textPropBox.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="saveImageButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>17, 218</value>
+  </data>
+  <data name="&gt;&gt;changeSoundButton.ZOrder" xml:space="preserve">
+    <value>2</value>
+  </data>
+  <data name="&gt;&gt;mainProgressBar.Name" xml:space="preserve">
+    <value>mainProgressBar</value>
+  </data>
+  <data name="&gt;&gt;vectorPanel.Type" xml:space="preserve">
+    <value>HaRepackerLib.XYPanel, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="changeSoundButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>71, 240</value>
+  </data>
+  <data name="changeImageButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>71, 138</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.ZOrder" xml:space="preserve">
+    <value>8</value>
+  </data>
+  <data name="MainSplitContainer.SplitterDistance" type="System.Int32, mscorlib">
+    <value>218</value>
+  </data>
+  <data name="changeSoundButton.Text" xml:space="preserve">
+    <value>Change Sound...</value>
+  </data>
+  <data name="&gt;&gt;statusStrip.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;$this.Name" xml:space="preserve">
+    <value>HaRepackerMainPanel</value>
+  </data>
+  <data name="btnOptions.Text" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="findStrip.Text" xml:space="preserve">
+    <value>toolStrip1</value>
+  </data>
+  <data name="nameBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>3, 83</value>
+  </data>
+  <data name="pictureBoxPanel.Location" type="System.Drawing.Point, System.Drawing">
+    <value>195, 108</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel1.Parent" xml:space="preserve">
+    <value>MainSplitContainer</value>
+  </data>
+  <data name="vectorPanel.MinimumSize" type="System.Drawing.Size, System.Drawing">
+    <value>90, 53</value>
+  </data>
+  <data name="mp3Player.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;selectionLabel.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripStatusLabel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="changeImageButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="mp3Player.MaximumSize" type="System.Drawing.Size, System.Drawing">
+    <value>310, 86</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel2.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="nameBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>306, 20</value>
+  </data>
+  <data name="canvasPropBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>7, 26</value>
+  </data>
+  <data name="btnClose.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
+    <value>Magenta</value>
+  </data>
+  <data name="MainDockPanel.Location" type="System.Drawing.Point, System.Drawing">
+    <value>135, 349</value>
+  </data>
+  <data name="selectionLabel.Text" xml:space="preserve">
+    <value>Selection Type: None</value>
+  </data>
+  <data name="findStrip.Location" type="System.Drawing.Point, System.Drawing">
+    <value>0, 409</value>
+  </data>
+  <data name="&gt;&gt;saveSoundButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;vectorPanel.ZOrder" xml:space="preserve">
+    <value>6</value>
+  </data>
+  <data name="DataTree.TabIndex" type="System.Int32, mscorlib">
+    <value>1</value>
+  </data>
+  <data name="&gt;&gt;pictureBoxPanel.Name" xml:space="preserve">
+    <value>pictureBoxPanel</value>
+  </data>
+  <data name="&gt;&gt;canvasPropBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.PictureBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
+    <value>
+        AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAAAAAAAQAgAAAAAAAAAL
+</value>
+  </data>
+  <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
+    <value>108, 193</value>
+  </data>
+  <data name="vectorPanel.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;btnFindAll.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="statusStrip.Location" type="System.Drawing.Point, System.Drawing">
+    <value>0, 434</value>
+  </data>
+  <data name="&gt;&gt;secondaryProgressBar.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripProgressBar, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.TextBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;btnOptions.Name" xml:space="preserve">
+    <value>btnOptions</value>
+  </data>
+  <data name="statusStrip.TabIndex" type="System.Int32, mscorlib">
+    <value>1</value>
+  </data>
+  <data name="saveImageButton.Text" xml:space="preserve">
+    <value>Save Image...</value>
+  </data>
+  <data name="nameBox.TabIndex" type="System.Int32, mscorlib">
+    <value>7</value>
+  </data>
+  <data name="&gt;&gt;saveSoundButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="textPropBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>144, 124</value>
+  </data>
+  <data name="findStrip.Size" type="System.Drawing.Size, System.Drawing">
+    <value>663, 25</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel1.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;pictureBoxPanel.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Panel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;btnClose.Name" xml:space="preserve">
+    <value>btnClose</value>
+  </data>
+  <data name="&gt;&gt;changeSoundButton.Name" xml:space="preserve">
+    <value>changeSoundButton</value>
+  </data>
+  <data name="canvasPropBox.TabIndex" type="System.Int32, mscorlib">
+    <value>0</value>
+  </data>
+  <data name="mp3Player.TabIndex" type="System.Int32, mscorlib">
+    <value>3</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Type" xml:space="preserve">
+    <value>System.Windows.Forms.SplitContainer, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;secondaryProgressBar.Name" xml:space="preserve">
+    <value>secondaryProgressBar</value>
+  </data>
+  <data name="&gt;&gt;changeImageButton.Name" xml:space="preserve">
+    <value>changeImageButton</value>
+  </data>
+  <data name="btnRestart.Size" type="System.Drawing.Size, System.Drawing">
+    <value>23, 22</value>
+  </data>
+  <data name="findBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 25</value>
+  </data>
+  <data name="&gt;&gt;canvasPropBox.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="$this.Size" type="System.Drawing.Size, System.Drawing">
+    <value>663, 456</value>
+  </data>
+  <data name="MainSplitContainer.TabIndex" type="System.Int32, mscorlib">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;changeImageButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="btnOptions.Size" type="System.Drawing.Size, System.Drawing">
+    <value>53, 22</value>
+  </data>
+  <data name="&gt;&gt;mp3Player.Type" xml:space="preserve">
+    <value>HaRepackerLib.Controls.SoundPlayer, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;changeSoundButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;MainDockPanel.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="&gt;&gt;saveImageButton.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="applyChangesButton.TabIndex" type="System.Int32, mscorlib">
+    <value>8</value>
+  </data>
+  <data name="saveSoundButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="btnFindNext.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
+    <value>Magenta</value>
+  </data>
+  <data name="saveSoundButton.Text" xml:space="preserve">
+    <value>Save Sound...</value>
+  </data>
+  <data name="&gt;&gt;$this.Type" xml:space="preserve">
+    <value>System.Windows.Forms.UserControl, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Name" xml:space="preserve">
+    <value>nameBox</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Name" xml:space="preserve">
+    <value>applyChangesButton</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.ZOrder" xml:space="preserve">
+    <value>4</value>
+  </data>
+  <data name="&gt;&gt;mp3Player.Name" xml:space="preserve">
+    <value>mp3Player</value>
+  </data>
+  <data name="secondaryProgressBar.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 16</value>
+  </data>
+  <data name="applyChangesButton.Text" xml:space="preserve">
+    <value>Apply Changed Value</value>
+  </data>
+  <data name="&gt;&gt;statusStrip.Name" xml:space="preserve">
+    <value>statusStrip</value>
+  </data>
+  <data name="findStrip.TabIndex" type="System.Int32, mscorlib">
+    <value>2</value>
+  </data>
+  <data name="&gt;&gt;selectionLabel.Name" xml:space="preserve">
+    <value>selectionLabel</value>
+  </data>
+  <data name="saveSoundButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>45, 178</value>
+  </data>
+  <data name="&gt;&gt;canvasPropBox.Parent" xml:space="preserve">
+    <value>pictureBoxPanel</value>
+  </data>
+  <data name="btnClose.Text" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="changeImageButton.Text" xml:space="preserve">
+    <value>Change Image...</value>
+  </data>
+  <data name="textPropBox.TabIndex" type="System.Int32, mscorlib">
+    <value>2</value>
+  </data>
+  <data name="changeImageButton.TabIndex" type="System.Int32, mscorlib">
+    <value>9</value>
+  </data>
+  <data name="changeImageButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="saveImageButton.TabIndex" type="System.Int32, mscorlib">
+    <value>11</value>
+  </data>
+  <data name="canvasPropBox.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="mainProgressBar.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 16</value>
+  </data>
+  <data name="&gt;&gt;btnRestart.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="applyChangesButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;saveSoundButton.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;statusStrip.ZOrder" xml:space="preserve">
+    <value>2</value>
+  </data>
+  <data name="findBox.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Microsoft Sans Serif, 8.25pt</value>
+  </data>
+  <data name="MainDockPanel.TabIndex" type="System.Int32, mscorlib">
+    <value>3</value>
+  </data>
+  <data name="DataTree.Location" type="System.Drawing.Point, System.Drawing">
+    <value>53, 59</value>
+  </data>
+  <data name="changeSoundButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel2.Name" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;findStrip.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="&gt;&gt;MainDockPanel.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="btnRestart.Text" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="&gt;&gt;mainProgressBar.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripProgressBar, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;MainDockPanel.Name" xml:space="preserve">
+    <value>MainDockPanel</value>
+  </data>
+  <data name="&gt;&gt;nameBox.ZOrder" xml:space="preserve">
+    <value>5</value>
+  </data>
+  <data name="&gt;&gt;btnFindAll.Name" xml:space="preserve">
+    <value>btnFindAll</value>
+  </data>
+  <data name="applyChangesButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>3, 269</value>
+  </data>
+  <data name="saveImageButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="&gt;&gt;canvasPropBox.Name" xml:space="preserve">
+    <value>canvasPropBox</value>
+  </data>
+  <data name="&gt;&gt;vectorPanel.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="vectorPanel.Location" type="System.Drawing.Point, System.Drawing">
+    <value>71, 91</value>
+  </data>
+  <data name="btnFindAll.Size" type="System.Drawing.Size, System.Drawing">
+    <value>41, 22</value>
+  </data>
+  <data name="btnClose.Size" type="System.Drawing.Size, System.Drawing">
+    <value>23, 22</value>
+  </data>
+  <data name="pictureBoxPanel.TabIndex" type="System.Int32, mscorlib">
+    <value>1</value>
+  </data>
+  <data name="&gt;&gt;statusStrip.Type" xml:space="preserve">
+    <value>System.Windows.Forms.StatusStrip, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;saveSoundButton.Name" xml:space="preserve">
+    <value>saveSoundButton</value>
+  </data>
+  <data name="mp3Player.Size" type="System.Drawing.Size, System.Drawing">
+    <value>310, 86</value>
+  </data>
+  <data name="statusStrip.Size" type="System.Drawing.Size, System.Drawing">
+    <value>663, 22</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel1.Name" xml:space="preserve">
+    <value>MainSplitContainer.Panel1</value>
+  </data>
+  <data name="&gt;&gt;changeImageButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="canvasPropBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>189, 118</value>
+  </data>
+  <data name="textPropBox.Multiline" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="textPropBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>45, 150</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Panel2.Type" xml:space="preserve">
+    <value>System.Windows.Forms.SplitterPanel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;mp3Player.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="findStrip.Dock" type="System.Windows.Forms.DockStyle, System.Windows.Forms">
+    <value>Bottom</value>
+  </data>
+  <data name="&gt;&gt;saveImageButton.Name" xml:space="preserve">
+    <value>saveImageButton</value>
+  </data>
+  <data name="selectionLabel.Size" type="System.Drawing.Size, System.Drawing">
+    <value>119, 17</value>
+  </data>
+  <data name="&gt;&gt;MainSplitContainer.Name" xml:space="preserve">
+    <value>MainSplitContainer</value>
+  </data>
+  <data name="pictureBoxPanel.Size" type="System.Drawing.Size, System.Drawing">
+    <value>199, 176</value>
+  </data>
+  <data name="&gt;&gt;saveImageButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;DataTree.Type" xml:space="preserve">
+    <value>TreeViewMS.TreeViewMS, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <metadata name="findStrip.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>223, 17</value>
+  </metadata>
+  <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+    <value>True</value>
+  </metadata>
+  <metadata name="statusStrip.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>114, 17</value>
+  </metadata>
+</root>
