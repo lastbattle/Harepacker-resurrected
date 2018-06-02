@@ -9,6 +9,7 @@ HaSuite is a collection of tools for MapleStory.
 
 ## To run HaSuite, you need 
  - Microsoft .NET 4.6.1 
+ - Microsoft Visual Studio 2017
  - Visual C++ Redistributable 2014 +
 
 ------------------------------
@@ -30,6 +31,13 @@ Fork it, create pull request!
 This is purely community driven and at my time, please dont expect me to fix things for you immediately.
 If there are any bugs, describe it clearly.
 
+
+### Credits
+ - haha01haha
+ - Koolk
+ - Diamondo25
+ - LastBattle
+ - and many others that contributed too! 
 
 License
 ----
