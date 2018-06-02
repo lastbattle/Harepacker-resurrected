@@ -3,6 +3,8 @@
 
 HaSuite is a collection of tools for MapleStory.
 
+[![N|Solid](https://preview.ibb.co/gyQVnd/Untitled.png)](https://nodesource.com/products/nsolid)
+
 ## To build HaSuite, you need 
  - at least Visual Studio 2017 (.NET 4.6.1 and Visual C++ Runtimes 2014+). 
  - You must build it in AnyCPU mode, otherwise you will have to copy apng32.dll/apng64.dll from the AnyCPU build directory to the correct path.
