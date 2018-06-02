@@ -37,6 +37,7 @@ If there are any bugs, describe it clearly.
  - Koolk
  - Diamondo25
  - LastBattle
+ - Novak
  - and many others that contributed too! 
 
 License
