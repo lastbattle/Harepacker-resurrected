@@ -204,16 +204,25 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         {
             if (DataTree.SelectedNode != null && DataTree.SelectedNode.Tag is WzImage && DataTree.SelectedNode.Nodes.Count == 0)
             {
-                if (!((WzImage)DataTree.SelectedNode.Tag).Parsed)
-                    ((WzImage)DataTree.SelectedNode.Tag).ParseImage();
-                ((WzNode)DataTree.SelectedNode).Reparse();
-                DataTree.SelectedNode.Expand();
+                ParseOnDataTreeSelectedItem(((WzNode)DataTree.SelectedNode));
             }
         }
-        #endregion
 
-        #region Exported Fields
-        public UndoRedoManager UndoRedoMan { get { return undoRedoMan; } }
+        /// <summary>
+        /// Parse the data tree selected item on double clicking, or copy pasting into it.
+        /// </summary>
+        /// <param name="selectedNode"></param>
+        private static void ParseOnDataTreeSelectedItem(WzNode selectedNode)
+        {
+            if (!((WzImage) selectedNode.Tag).Parsed)
+                ((WzImage) selectedNode.Tag).ParseImage();
+            selectedNode.Reparse();
+            selectedNode.Expand();
+        }
+    #endregion
+
+    #region Exported Fields
+    public UndoRedoManager UndoRedoMan { get { return undoRedoMan; } }
         #endregion
 
         /// <summary>
@@ -466,6 +475,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else
             {
+                MapleLib.Helpers.ErrorLogger.Log(MapleLib.Helpers.ErrorLevel.MissingFeature, "The current WZ object type cannot be cloned " + obj.ToString() + " " + obj.FullPath);
                 return null;
             }
         }
@@ -504,7 +514,12 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             noToAll = false;
             WzNode parent = (WzNode)DataTree.SelectedNode;
             WzObject parentObj = (WzObject)parent.Tag;
-            if (parentObj is WzFile) parentObj = ((WzFile)parentObj).WzDirectory;
+
+            if (parent != null && parent.Tag is WzImage && parent.Nodes.Count == 0)
+                ParseOnDataTreeSelectedItem(parent);
+
+            if (parentObj is WzFile)
+                parentObj = ((WzFile)parentObj).WzDirectory;
 
             foreach (WzObject obj in clipboard)
             {
