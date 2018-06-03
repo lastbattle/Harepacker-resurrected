@@ -384,12 +384,19 @@ namespace HaRepacker.GUI
         private void RunWzFilesExtraction(object param)
         {
             ChangeApplicationState(false);
+
             string[] wzFilesToDump = (string[])((object[])param)[0];
             string baseDir = (string)((object[])param)[1];
             WzMapleVersion version = (WzMapleVersion)((object[])param)[2];
             IWzFileSerializer serializer = (IWzFileSerializer)((object[])param)[3];
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, wzFilesToDump.Length, true, true);
+
+            if (!Directory.Exists(baseDir))
+            {
+                Directory.CreateDirectory(baseDir);
+            }
+
             foreach (string wzpath in wzFilesToDump)
             {
                 if (WzTool.IsListFile(wzpath))

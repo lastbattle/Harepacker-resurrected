@@ -440,13 +440,15 @@ namespace MapleLib.WzLib.Serialization
             bool parsed = img.Parsed || img.Changed;
             if (!parsed) img.ParseImage();
             curr++;
-            TextWriter tw = new StreamWriter(path);
-            tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
-            tw.Write("<imgdir name=\"" + XmlUtil.SanitizeText(img.Name) + "\">" + lineBreak);
-            foreach (WzImageProperty property in img.WzProperties)
-                WritePropertyToXML(tw, indent, property);
-            tw.Write("</imgdir>" + lineBreak);
-            tw.Close();
+
+            using (TextWriter tw = new StreamWriter(File.Create(path)))
+            {
+                tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
+                tw.Write("<imgdir name=\"" + XmlUtil.SanitizeText(img.Name) + "\">" + lineBreak);
+                foreach (WzImageProperty property in img.WzProperties)
+                    WritePropertyToXML(tw, indent, property);
+                tw.Write("</imgdir>" + lineBreak);
+            }
 
             if (!parsed)
                 img.UnparseImage();
