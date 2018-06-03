@@ -533,11 +533,11 @@ namespace MapleLib.WzLib.WzProperties
                         for (int i = 0; i < 4; i++)
                         {
                             SetPixel(pixel,
-                                x + i,
-                                y + j,
-                                width,
-                                colorTable[colorIdxTable[j * 4 + i]],
-                                alphaTable[j * 4 + i]);
+                                           x + i,
+                                           y + j,
+                                           width,
+                                           colorTable[colorIdxTable[j * 4 + i]],
+                                           alphaTable[alphaIdxTable[j * 4 + i]]);
                         }
                     }
                 }
