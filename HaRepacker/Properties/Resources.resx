@@ -374,4 +374,7 @@ Click "Yes" to download the new version.</value>
   <data name="MainErrorImportingWzImageFile" xml:space="preserve">
     <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
   </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+  </data>
 </root>

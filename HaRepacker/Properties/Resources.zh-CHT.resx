@@ -268,6 +268,9 @@
   <data name="MainUpdateTitle" xml:space="preserve">
     <value>新版本</value>
   </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+  </data>
   <data name="Mp3Filter" xml:space="preserve">
     <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
   </data>

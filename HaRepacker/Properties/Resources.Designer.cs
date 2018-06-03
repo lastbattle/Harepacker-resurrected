@@ -626,6 +626,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Export directory not found. Please specify it under Tools -&gt; Options.
+        /// </summary>
+        internal static string MainWzExportError {
+            get {
+                return ResourceManager.GetString("MainWzExportError", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         internal static System.Drawing.Bitmap map {

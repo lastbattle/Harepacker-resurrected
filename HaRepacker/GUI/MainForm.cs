@@ -539,9 +539,16 @@ namespace HaRepacker.GUI
         private void rawDataToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog() { Title = HaRepacker.Properties.Resources.SelectWz, Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter), Multiselect = true };
-            if (dialog.ShowDialog() != DialogResult.OK) return;
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
+
             string outPath = GetOutputDirectory();
-            if (outPath == "") return;
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             WzPngMp3Serializer serializer = new WzPngMp3Serializer();
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
@@ -552,9 +559,16 @@ namespace HaRepacker.GUI
         private void imgToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog() { Title = HaRepacker.Properties.Resources.SelectWz, Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter), Multiselect = true };
-            if (dialog.ShowDialog() != DialogResult.OK) return;
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
+
             string outPath = GetOutputDirectory();
-            if (outPath == "") return;
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             WzImgSerializer serializer = new WzImgSerializer();
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
@@ -565,7 +579,12 @@ namespace HaRepacker.GUI
         private void imgToolStripMenuItem1_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
-            if (outPath == "") return;
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
@@ -583,7 +602,12 @@ namespace HaRepacker.GUI
         private void pNGsToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
-            if (outPath == "") return;
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
             List<WzObject> objs = new List<WzObject>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
                 if (node.Tag is WzObject)
@@ -598,8 +622,11 @@ namespace HaRepacker.GUI
         private void privateServerToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
-            if (outPath == "")
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
 
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
@@ -619,8 +646,12 @@ namespace HaRepacker.GUI
         private void classicToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
-            if (outPath == "")
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
+            }
+
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
@@ -639,8 +670,14 @@ namespace HaRepacker.GUI
 
         private void newToolStripMenuItem1_Click(object sender, EventArgs e)
         {
-            SaveFileDialog dialog = new SaveFileDialog() { Title = HaRepacker.Properties.Resources.SelectOutXml, Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter) };
-            if (dialog.ShowDialog() != DialogResult.OK) return;
+            SaveFileDialog dialog = new SaveFileDialog() {
+                Title = HaRepacker.Properties.Resources.SelectOutXml,
+                Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter)
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
+
             List<WzObject> objs = new List<WzObject>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
                 if (node.Tag is WzObject)
