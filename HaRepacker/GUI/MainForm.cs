@@ -242,12 +242,14 @@ namespace HaRepacker.GUI
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            using (OpenFileDialog dialog = new OpenFileDialog() {
+            using (OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWz,
                 Filter = string.Format("{0}|*.wz",
                 HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true
-            }) {
+            })
+            {
 
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -632,8 +634,14 @@ namespace HaRepacker.GUI
             List<WzImage> imgs = new List<WzImage>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
-                if (node.Tag is WzDirectory) dirs.Add((WzDirectory)node.Tag);
-                else if (node.Tag is WzImage) imgs.Add((WzImage)node.Tag);
+                if (node.Tag is WzDirectory)
+                    dirs.Add((WzDirectory)node.Tag);
+                else if (node.Tag is WzImage)
+                    imgs.Add((WzImage)node.Tag);
+                else if (node.Tag is WzFile)
+                {
+                    dirs.Add(((WzFile)node.Tag).WzDirectory);
+                }
             }
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, false);
             threadDone = false;
@@ -660,6 +668,10 @@ namespace HaRepacker.GUI
                     dirs.Add((WzDirectory)node.Tag);
                 else if (node.Tag is WzImage)
                     imgs.Add((WzImage)node.Tag);
+                else if (node.Tag is WzFile)
+                {
+                    dirs.Add(((WzFile)node.Tag).WzDirectory);
+                }
             }
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, true);
             threadDone = false;
@@ -670,7 +682,8 @@ namespace HaRepacker.GUI
 
         private void newToolStripMenuItem1_Click(object sender, EventArgs e)
         {
-            SaveFileDialog dialog = new SaveFileDialog() {
+            SaveFileDialog dialog = new SaveFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectOutXml,
                 Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter)
             };
@@ -680,8 +693,12 @@ namespace HaRepacker.GUI
 
             List<WzObject> objs = new List<WzObject>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
+            {
                 if (node.Tag is WzObject)
+                {
                     objs.Add((WzObject)node.Tag);
+                }
+            }
             WzNewXmlSerializer serializer = new WzNewXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType);
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzObjExtraction));
@@ -1027,7 +1044,7 @@ namespace HaRepacker.GUI
                         if (!successfullyParsedImage)
                         {
                             MessageBox.Show(
-                                string.Format(HaRepacker.Properties.Resources.MainErrorImportingWzImageFile, file), 
+                                string.Format(HaRepacker.Properties.Resources.MainErrorImportingWzImageFile, file),
                                 HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                             continue;
                         }
@@ -1065,7 +1082,8 @@ namespace HaRepacker.GUI
             if (!(wzFile is WzFile))
                 return;
 
-            OpenFileDialog dialog = new OpenFileDialog() {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWzImg,
                 Filter = string.Format("{0}|*.img", HaRepacker.Properties.Resources.WzImgFilter),
                 Multiselect = true
@@ -1086,7 +1104,7 @@ namespace HaRepacker.GUI
 
             runningThread = new Thread(new ParameterizedThreadStart(WzImporterThread));
             runningThread.Start(
-                new object[] 
+                new object[]
                 {
                     deserializer, dialog.FileNames, MainPanel.DataTree.SelectedNode, iv
                 });
