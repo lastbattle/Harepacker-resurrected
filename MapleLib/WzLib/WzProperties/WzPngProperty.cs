@@ -117,15 +117,6 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
-        [Obsolete("To enable more control over memory usage, this property was superseded by the GetCompressedBytes method and will be removed in the future")]
-        public byte[] CompressedBytes
-        {
-            get
-            {
-                return GetCompressedBytes(false);
-            }
-        }
-
         /// <summary>
         /// Creates a blank WzPngProperty
         /// </summary>
