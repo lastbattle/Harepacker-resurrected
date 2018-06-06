@@ -241,26 +241,41 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         /// <param name="e"></param>
         private void saveImageButton_Click(object sender, EventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty)) 
+            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty))
             {
                 return;
             }
 
             Bitmap bmp;
+            WzCanvasProperty wzCanvasPropertyObjLocation = null;
+
             if (DataTree.SelectedNode.Tag is WzCanvasProperty)
-            {
-                bmp = ((WzCanvasProperty)DataTree.SelectedNode.Tag).PngProperty.GetPNG(false);
-            }
+                wzCanvasPropertyObjLocation = ((WzCanvasProperty)DataTree.SelectedNode.Tag);
             else
             {
                 WzObject linkValue = ((WzUOLProperty)DataTree.SelectedNode.Tag).LinkValue;
                 if (linkValue is WzCanvasProperty)
                 {
-                    bmp = ((WzCanvasProperty)linkValue).PngProperty.GetPNG(false);
+                    wzCanvasPropertyObjLocation = ((WzCanvasProperty)linkValue);
                 }
                 else
                     return;
             }
+            if (wzCanvasPropertyObjLocation != null)
+            {
+                if (wzCanvasPropertyObjLocation.HaveInlinkProperty()) // Check for inlink objects
+                {
+                    WzImageProperty foundCanvas = wzCanvasPropertyObjLocation.GetInlinkWzCanvasProperty();
+                    if (foundCanvas is WzCanvasProperty)
+                    {
+                        wzCanvasPropertyObjLocation = (WzCanvasProperty)foundCanvas;
+                    }
+                }
+                bmp = wzCanvasPropertyObjLocation.PngProperty.GetPNG(false);
+            }
+            else
+                return; // oops, we're fucked lulz
+
             SaveFileDialog dialog = new SaveFileDialog() { Title = "Select where to save the image...", Filter = "Portable Network Grpahics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif" };
             if (dialog.ShowDialog() != DialogResult.OK) return;
             switch (dialog.FilterIndex)
@@ -412,6 +427,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     Warning.Error(Properties.Resources.MainImageLoadError);
                     return;
                 }
+                //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
                 WzCanvasProperty selectedWzCanvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
                 if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
@@ -421,13 +437,22 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
                     WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
 
-                    childInlinkNode.Remove();
+                    // Add undo actions
+                    //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
+                    childInlinkNode.Delete(); // Delete '_inlink' node
                 }
+                else
+                {
 
+                }
                 selectedWzCanvas.PngProperty.SetPNG(bmp);
 
+                // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
                 canvasPropBox.Image = bmp;
+
+                // Add undo actions
+                //UndoRedoMan.AddUndoBatch(actions);
             }
         }
 
