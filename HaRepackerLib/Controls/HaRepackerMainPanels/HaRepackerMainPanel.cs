@@ -110,7 +110,16 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 pictureBoxPanel.Visible = true;
                 textPropBox.Visible = false;
                 mp3Player.Visible = false;
-                canvasPropBox.Image = obj.GetBitmap();
+
+                WzCanvasProperty canvas = (WzCanvasProperty)obj;
+                if (canvas.HaveInlinkProperty())
+                {
+                    Image img = canvas.GetInlinkWzCanvasProperty()?.GetBitmap();
+                    canvasPropBox.Image = img;
+                }
+                else
+                    canvasPropBox.Image = obj.GetBitmap();
+
                 vectorPanel.Visible = false;
                 applyChangesButton.Visible = false;
                 changeImageButton.Visible = true;

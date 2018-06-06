@@ -202,10 +202,51 @@ namespace MapleLib.WzLib.WzProperties
 		/// The png image for this canvas property
 		/// </summary>
 		public WzPngProperty PngProperty { get { return imageProp; } set { imageProp = value; } }
-		/// <summary>
-		/// Creates a blank WzCanvasProperty
-		/// </summary>
-		public WzCanvasProperty() { }
+
+        /// <summary>
+        /// Gets whether this WzCanvasProperty contains an '_inlink' for modern maplestory version. v150++
+        /// </summary>
+        /// <returns></returns>
+        public bool HaveInlinkProperty()
+        {
+            return this["_inlink"] != null;
+        }
+        /// <summary>
+        /// Gets the '_inlink' WzCanvasProperty of this.
+        /// 
+        /// '_inlink' is not implemented as part of WzCanvasProperty as I dont want to override existing Wz structure. 
+        /// It will be handled via HaRepackerMainPanel instead.
+        /// </summary>
+        /// <returns></returns>
+        public WzImageProperty GetInlinkWzCanvasProperty()
+        {
+            if (!HaveInlinkProperty())
+                return null;
+
+            string _inlink = ((WzStringProperty)this["_inlink"])?.Value; // could get nexon'd here. In case they place an _inlink that's not WzStringProperty
+            if (_inlink == null)
+                return null;
+
+            WzObject currentWzObj = this; // first object to work with
+            while ((currentWzObj = currentWzObj.Parent) != null)
+            {
+                if (!(currentWzObj is WzImage))  // keep looping if its not a WzImage
+                    continue;
+
+                WzImage wzImageParent = (WzImage)currentWzObj;
+                WzImageProperty foundProperty = wzImageParent.GetFromPath(_inlink);
+                if (foundProperty != null && foundProperty is WzImageProperty)
+                {
+                    return (WzImageProperty)foundProperty;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Creates a blank WzCanvasProperty
+        /// </summary>
+        public WzCanvasProperty() { }
 		/// <summary>
 		/// Creates a WzCanvasProperty with the specified name
 		/// </summary>
