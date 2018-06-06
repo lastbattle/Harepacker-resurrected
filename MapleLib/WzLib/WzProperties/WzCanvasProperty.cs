@@ -27,8 +27,16 @@ namespace MapleLib.WzLib.WzProperties
 	/// </summary>
     public class WzCanvasProperty : WzExtended, IPropertyContainer
 	{
-		#region Fields
-		internal List<WzImageProperty> properties = new List<WzImageProperty>();
+        #region Constants
+        /// <summary>
+        /// The propertyname used for inlink
+        /// </summary>
+        public const string InlinkPropertyName = "_inlink";
+
+        #endregion
+
+        #region Fields
+        internal List<WzImageProperty> properties = new List<WzImageProperty>();
 		internal WzPngProperty imageProp;
 		internal string name;
 		internal WzObject parent;

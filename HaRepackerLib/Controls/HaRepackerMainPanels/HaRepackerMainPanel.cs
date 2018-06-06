@@ -391,6 +391,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
+        /// <summary>
+        /// Changing the image of WzCanvasProperty
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void changeImageButton_Click(object sender, EventArgs e)
         {
             if (DataTree.SelectedNode.Tag is WzCanvasProperty)
@@ -407,11 +412,23 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     Warning.Error(Properties.Resources.MainImageLoadError);
                     return;
                 }
-                ((WzCanvasProperty)DataTree.SelectedNode.Tag).PngProperty.SetPNG(bmp);
-                ((WzCanvasProperty)DataTree.SelectedNode.Tag).ParentImage.Changed = true;
+
+                WzCanvasProperty selectedWzCanvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
+                if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
+                {
+                    selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
+
+                    WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
+                    WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
+
+                    childInlinkNode.Remove();
+                }
+
+                selectedWzCanvas.PngProperty.SetPNG(bmp);
+
+                selectedWzCanvas.ParentImage.Changed = true;
                 canvasPropBox.Image = bmp;
             }
-
         }
 
         private void changeSoundButton_Click(object sender, EventArgs e)
