@@ -165,7 +165,7 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to BMS\GMS\MSEA.
+        ///   Looks up a localized string similar to BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리.
         /// </summary>
         internal static string EncTypeNone {
             get {

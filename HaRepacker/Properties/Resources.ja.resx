@@ -117,57 +117,8 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="page_edit" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_edit.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="map" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\map.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="information" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\information.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="lightning" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\lightning.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_white" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_white.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="find" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\find.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="arrow_refresh" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\arrow_refresh1.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="disk" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\disk.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="delete" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\delete.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="cog" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\cog.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="help" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\help.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  <data name="ApngFilter" xml:space="preserve">
+    <value>Animated Portable Network Graphics (*.png)</value>
   </data>
   <data name="EditFoothold" xml:space="preserve">
     <value>Foothold</value>
@@ -178,24 +129,14 @@
   <data name="EditSP" xml:space="preserve">
     <value>Mob spawnpoint</value>
   </data>
-  <data name="FHMapperInvalidInput" xml:space="preserve">
-    <value>Input was invalid.
-Please provide valid values before confirming.</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>Warning</value>
-  </data>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>Animated Portable Network Graphics (*.png)</value>
-  </data>
   <data name="EncTypeGMS" xml:space="preserve">
-    <value>GMS (old)</value>
+    <value>Global MapleStory (旧) </value>
   </data>
   <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA (old)</value>
+    <value>MSEA (旧)</value>
   </data>
   <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리</value>
+    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
   </data>
   <data name="EnterValidInput" xml:space="preserve">
     <value>Please enter valid input</value>
@@ -203,12 +144,14 @@ Please provide valid values before confirming.</value>
   <data name="Error" xml:space="preserve">
     <value>Error</value>
   </data>
+  <data name="FHMapperInvalidInput" xml:space="preserve">
+    <value>Input was invalid.</value>
+  </data>
   <data name="FHSettingsForceValue" xml:space="preserve">
     <value>force value</value>
   </data>
   <data name="FHSettingsInvalidMessage" xml:space="preserve">
-    <value>The {0} was invalid.
-Please make sure all values are valid before confirming.</value>
+    <value>The {0} was invalid.</value>
   </data>
   <data name="FHSettingsNextValue" xml:space="preserve">
     <value>next value</value>
@@ -227,6 +170,12 @@ Please make sure all values are valid before confirming.</value>
   </data>
   <data name="ImagesFilter" xml:space="preserve">
     <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
+    <value>Select the WZ encryption used:</value>
+  </data>
+  <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
+    <value>WZ Encryption</value>
   </data>
   <data name="MainAddCanvas" xml:space="preserve">
     <value>Add canvas</value>
@@ -288,6 +237,9 @@ Please make sure all values are valid before confirming.</value>
   <data name="MainCouldntOpenWZ" xml:space="preserve">
     <value>Could not open WZ file "{0}"</value>
   </data>
+  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
+    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
+  </data>
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>Help could not be shown because the help file ({0}) was not found</value>
   </data>
@@ -307,12 +259,13 @@ Please make sure all values are valid before confirming.</value>
     <value>Are you sure you want to unload all files?</value>
   </data>
   <data name="MainUpdateAvailable" xml:space="preserve">
-    <value>{0}
-
-Click "Yes" to download the new version.</value>
+    <value>{0}</value>
   </data>
   <data name="MainUpdateTitle" xml:space="preserve">
     <value>New Version</value>
+  </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
   </data>
   <data name="Mp3Filter" xml:space="preserve">
     <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
@@ -356,6 +309,18 @@ Click "Yes" to download the new version.</value>
   <data name="SelectXml" xml:space="preserve">
     <value>Select the XML files</value>
   </data>
+  <data name="String" xml:space="preserve">
+    <value>Please provide valid values before confirming.</value>
+  </data>
+  <data name="String1" xml:space="preserve">
+    <value>Please make sure all values are valid before confirming.</value>
+  </data>
+  <data name="String11" xml:space="preserve">
+    <value />
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
   <data name="WzFilter" xml:space="preserve">
     <value>WZ File (*.wz)</value>
   </data>
@@ -364,17 +329,5 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="XmlFilter" xml:space="preserve">
     <value>eXtended Markup Language (*.xml)</value>
-  </data>
-  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
-    <value>Select the WZ encryption used:</value>
-  </data>
-  <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
-    <value>WZ Encryption</value>
-  </data>
-  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
-  </data>
-  <data name="MainWzExportError" xml:space="preserve">
-    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
   </data>
 </root>

@@ -136,7 +136,7 @@
     <value>新楓之谷/冒险岛Online/메이플스토리/MapleSEA(旧)</value>
   </data>
   <data name="EncTypeNone" xml:space="preserve">
-    <value>MapleStory/MapleSEA/メイプルストーリー</value>
+    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
   </data>
   <data name="EnterValidInput" xml:space="preserve">
     <value>请输入有效的內容</value>
@@ -239,7 +239,7 @@
     <value>无法打开開WZ文件 "{0}"</value>
   </data>
   <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
+    <value>导入{0} .img文件时出错。 你确定你选择了正确的WZ加密吗？</value>
   </data>
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>无法显示帮助, 因为找不到帮助文件({0})</value>
@@ -268,7 +268,7 @@
     <value>新版本</value>
   </data>
   <data name="MainWzExportError" xml:space="preserve">
-    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+    <value>导出目录未找到。 请在工具 - &gt;选项下指定它</value>
   </data>
   <data name="Mp3Filter" xml:space="preserve">
     <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
@@ -319,7 +319,7 @@
     <value>WZ文件 (*.wz)</value>
   </data>
   <data name="WzImgFilter" xml:space="preserve">
-    <value>WZ Image Files (*.img)</value>
+    <value>WZ 图像文件 (*.img)</value>
   </data>
   <data name="XmlFilter" xml:space="preserve">
     <value>eXtended Markup Language (*.xml)</value>

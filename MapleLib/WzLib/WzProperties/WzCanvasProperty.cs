@@ -231,7 +231,7 @@ namespace MapleLib.WzLib.WzProperties
             if (!HaveInlinkProperty())
                 return null;
 
-            string _inlink = ((WzStringProperty)this["_inlink"])?.Value; // could get nexon'd here. In case they place an _inlink that's not WzStringProperty
+            string _inlink = ((WzStringProperty)this[InlinkPropertyName])?.Value; // could get nexon'd here. In case they place an _inlink that's not WzStringProperty
             if (_inlink == null)
                 return null;
 

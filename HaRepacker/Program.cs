@@ -5,7 +5,6 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using HaRepackerLib;
@@ -14,8 +13,6 @@ using Microsoft.Win32;
 using System.Threading;
 using MapleLib.WzLib;
 using System.IO.Pipes;
-using System.Text;
-using System.Security.Permissions;
 using System.IO;
 using System.Security.Principal;
 using System.Globalization;
@@ -40,26 +37,37 @@ namespace HaRepacker
 
             CultureInfo ci = GetMainCulture(CultureInfo.CurrentCulture);
             Properties.Resources.Culture = ci;
+
             Thread.CurrentThread.CurrentCulture = ci;
             Thread.CurrentThread.CurrentUICulture = ci;
 
-            string wzToLoad = null;
-            if (args.Length > 0)
-                wzToLoad = args[0];
+            CultureInfo.CurrentCulture = ci;
+            CultureInfo.CurrentUICulture = ci;
+            CultureInfo.DefaultThreadCurrentCulture = ci;
+            CultureInfo.DefaultThreadCurrentUICulture = ci;
+
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
             bool firstRun = PrepareApplication(true);
+            string wzToLoad = null;
+            if (args.Length > 0)
+                wzToLoad = args[0];
             Application.Run(new MainForm(wzToLoad, true, firstRun));
             EndApplication(true, true);
         }
 
         private static CultureInfo GetMainCulture(CultureInfo ci)
         {
-            if (!ci.Name.Contains('-'))
+            if (!ci.Name.Contains("-"))
                 return ci;
             switch (ci.Name.Split("-".ToCharArray())[0])
             {
+                case "ko":
+                    return new CultureInfo("ko");
+                case "ja":
+                    return new CultureInfo("ja");
                 case "en":
                     return new CultureInfo("en");
                 case "zh":
@@ -72,7 +80,7 @@ namespace HaRepacker
             }
         }
 
-        private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e) 
+        private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             new ThreadExceptionDialog((Exception)e.ExceptionObject).ShowDialog();
             Environment.Exit(-1);
