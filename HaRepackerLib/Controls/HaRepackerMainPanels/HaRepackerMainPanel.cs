@@ -112,9 +112,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 mp3Player.Visible = false;
 
                 WzCanvasProperty canvas = (WzCanvasProperty)obj;
-                if (canvas.HaveInlinkProperty())
+                if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
                 {
-                    Image img = canvas.GetInlinkWzCanvasProperty()?.GetBitmap();
+                    Image img = canvas.GetLinkedWzCanvasProperty()?.GetBitmap();
                     canvasPropBox.Image = img;
                 }
                 else
@@ -263,9 +263,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             if (wzCanvasPropertyObjLocation != null)
             {
-                if (wzCanvasPropertyObjLocation.HaveInlinkProperty()) // Check for inlink objects
+                if (wzCanvasPropertyObjLocation.HaveInlinkProperty() || wzCanvasPropertyObjLocation.HaveOutlinkProperty()) // Check for inlink objects
                 {
-                    WzImageProperty foundCanvas = wzCanvasPropertyObjLocation.GetInlinkWzCanvasProperty();
+                    WzImageProperty foundCanvas = wzCanvasPropertyObjLocation.GetLinkedWzCanvasProperty();
                     if (foundCanvas is WzCanvasProperty)
                     {
                         wzCanvasPropertyObjLocation = (WzCanvasProperty)foundCanvas;
@@ -440,6 +440,16 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
                     childInlinkNode.Delete(); // Delete '_inlink' node
+                }
+                else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
+                {
+                    selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
+
+                    WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
+                    WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.OutlinkPropertyName);
+
+                    // Add undo actions
+                    //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
                 }
                 else
                 {
