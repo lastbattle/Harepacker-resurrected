@@ -789,18 +789,40 @@ namespace HaRepacker.GUI
             ((WzNode)MainPanel.DataTree.SelectedNode).AddObject(new WzFloatProperty(name, (float)d), MainPanel.UndoRedoMan);
         }
 
+
+        /// <summary>
+        /// Add new canvas toolstrip
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void wzCanvasPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string name;
-            Bitmap bmp;
+            List<Bitmap> bitmaps = new List<Bitmap>();
             if (!(MainPanel.DataTree.SelectedNode.Tag is IPropertyContainer))
             {
                 Warning.Error(HaRepacker.Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!BitmapInputBox.Show(HaRepacker.Properties.Resources.MainAddCanvas, out name, out bmp))
+            else if (!BitmapInputBox.Show(HaRepacker.Properties.Resources.MainAddCanvas, out name, out bitmaps))
                 return;
-            ((WzNode)MainPanel.DataTree.SelectedNode).AddObject(new WzCanvasProperty(name) { PngProperty = new WzPngProperty() { PNG = bmp } }, MainPanel.UndoRedoMan);
+
+            WzNode wzNode = ((WzNode)MainPanel.DataTree.SelectedNode);
+
+            int i = 0;
+            foreach (Bitmap bmp in bitmaps)
+            {
+                WzCanvasProperty canvas = new WzCanvasProperty(bitmaps.Count == 1 ? name : (name + i));
+                WzPngProperty pngProperty = new WzPngProperty();
+                pngProperty.SetPNG(bmp);
+                canvas.PngProperty = pngProperty;
+
+                WzNode newInsertedNode = wzNode.AddObject(canvas, MainPanel.UndoRedoMan);
+                // Add an additional WzVectorProperty with X Y of 0,0
+                newInsertedNode.AddObject(new WzVectorProperty(name, new WzIntProperty("X", 0), new WzIntProperty("Y", 0)), MainPanel.UndoRedoMan);
+
+                i++;
+            }
         }
 
         private void wzCompressedIntPropertyToolStripMenuItem_Click(object sender, EventArgs e)

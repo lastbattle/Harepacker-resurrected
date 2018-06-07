@@ -151,21 +151,34 @@ namespace HaRepacker
                         nodes[0].AddObject(new WzFloatProperty(name, (float)val), undoMan);
                 }));
             AddCanvas = new ToolStripMenuItem("Canvas", null, new EventHandler(
-                delegate(object sender, EventArgs e)
+                delegate (object sender, EventArgs e)
                 {
                     WzNode[] nodes = GetNodes(sender);
-                    if (nodes.Length != 1) {
+                    if (nodes.Length != 1)
+                    {
                         MessageBox.Show("Please select only ONE node");
                         return;
                     }
 
-                    string name; Bitmap bmp;
-                    if (BitmapInputBox.Show("Add Canvas", out name, out bmp))
+                    string name;
+                    List<Bitmap> bitmaps = new List<Bitmap>();
+                    if (BitmapInputBox.Show("Add Canvas", out name, out bitmaps))
                     {
-                        WzCanvasProperty prop = new WzCanvasProperty(name);
-                        prop.PngProperty = new WzPngProperty();
-                        prop.PngProperty.SetPNG(bmp);
-                        nodes[0].AddObject(new WzCanvasProperty(name), undoMan);
+                        int i = 0;
+                        foreach (Bitmap bmp in bitmaps)
+                        {
+                            string addName = bitmaps.Count() == 1 ? name : (name + i);
+
+                            WzCanvasProperty prop = new WzCanvasProperty(addName);
+                            prop.PngProperty = new WzPngProperty();
+                            prop.PngProperty.SetPNG(bmp);
+
+                            WzNode newInsertedNode = nodes[0].AddObject(prop, undoMan);
+                            // Add an additional WzVector
+                            newInsertedNode.AddObject(new WzVectorProperty(name, new WzIntProperty("X", 0), new WzIntProperty("Y", 0)), undoMan);
+
+                            i++;
+                        }
                     }
                 }));
             AddInt = new ToolStripMenuItem("Int", null, new EventHandler(

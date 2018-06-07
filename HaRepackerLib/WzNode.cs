@@ -145,7 +145,13 @@ namespace HaRepackerLib
             }
         }
 
-        public bool AddObject(WzObject obj, UndoRedoManager undoRedoMan)
+        /// <summary>
+        /// Adds a WzObject to the WzNode and returns the newly created WzNode
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <param name="undoRedoMan"></param>
+        /// <returns></returns>
+        public WzNode AddObject(WzObject obj, UndoRedoManager undoRedoMan)
         {
             if (CanNodeBeInserted(this, obj.Name))
             {
@@ -158,18 +164,18 @@ namespace HaRepackerLib
                         ((WzImageProperty)node.Tag).ParentImage.Changed = true;
                     undoRedoMan.AddUndoBatch(new System.Collections.Generic.List<UndoRedoAction> { UndoRedoManager.ObjectAdded(this, node) });
                     node.EnsureVisible();
-                    return true;
+                    return node;
                 }
                 else
                 {
                     Warning.Error("Could not insert property, make sure all types are correct");
-                    return false;
+                    return null;
                 }
             }
             else
             {
                 MessageBox.Show("Cannot insert object \"" + obj.Name + "\" because an object with the same name already exists. Skipping.", "Skipping Object", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return false;
+                return null;
             }
         }
 
