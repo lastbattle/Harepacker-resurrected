@@ -267,7 +267,7 @@ namespace MapleLib.WzLib
 		/// </summary>
 		/// <param name="wzReader">The BinaryReader that is currently reading the wz file</param>
         /// <returns>bool Parse status</returns>
-        public bool ParseImage(bool parseEverything)
+        public bool ParseImage(bool parseEverything = false)
         {
             if (Parsed)
             {
@@ -301,30 +301,6 @@ namespace MapleLib.WzLib
         public void MarkWzImageAsParsed()
         {
             Parsed = true;
-        }
-
-        /// <summary>
-		/// Parses the image from the wz filetod
-		/// </summary>
-		/// <param name="wzReader">The BinaryReader that is currently reading the wz file</param>
-		public void ParseImage()
-        {
-            if (Parsed)
-                return;
-            else if (Changed)
-            {
-                Parsed = true;
-                return;
-            }
-
-            this.parseEverything = false;
-            long originalPos = reader.BaseStream.Position;
-            reader.BaseStream.Position = offset;
-            byte b = reader.ReadByte();
-            if (b != WzImageHeaderByte || reader.ReadString() != "Property" || reader.ReadUInt16() != 0)
-                return;
-            properties.AddRange(WzImageProperty.ParsePropertyList(offset, reader, this, this));
-            parsed = true;
         }
 
         public byte[] DataBlock
