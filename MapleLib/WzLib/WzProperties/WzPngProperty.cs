@@ -278,7 +278,6 @@ namespace MapleLib.WzLib.WzProperties
         {
             DeflateStream zlib;
             int uncompressedSize = 0;
-            int x = 0, y = 0, b = 0, g = 0;
             Bitmap bmp = null;
             BitmapData bmpData;
             WzImage imgParent = ParentImage;
@@ -310,7 +309,7 @@ namespace MapleLib.WzLib.WzProperties
                 zlib = new DeflateStream(dataStream, CompressionMode.Decompress);
             }
 
-            System.Diagnostics.Debug.WriteLine("nPixFormat {0}, this.nMagLevel {1}", nPixFormat, this.nMagLevel);
+            // System.Diagnostics.Debug.WriteLine("nPixFormat {0}, this.nMagLevel {1}", nPixFormat, this.nMagLevel);
             switch (nPixFormat + this.nMagLevel)
             {
                 case 1:
@@ -319,20 +318,28 @@ namespace MapleLib.WzLib.WzProperties
                     uncompressedSize = width * height * 2;
                     decBuf = new byte[uncompressedSize];
                     zlib.Read(decBuf, 0, uncompressedSize);
-                    byte[] argb = new Byte[uncompressedSize * 2];
+
+                    byte[] argb = new Byte[uncompressedSize * 2]; // argb
                     for (int i = 0; i < uncompressedSize; i++)
                     {
-                        b = decBuf[i] & 0x0F;
-                        b |= (b << 4);
+                        int low = decBuf[i] & 0x0F;
+                        int high = decBuf[i] & 0xF0;
 
-                        g = decBuf[i] & 0xF0;
-                        g |= (g >> 4);
-
-                        argb[i * 2] = (byte)b;
-                        argb[i * 2 + 1] = (byte)g;
+                        argb[i * 2] = (byte)(low | (byte)(low << 4));
+                        argb[i * 2 + 1] = (byte)(high | (high >> 4));
                     }
                     Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
                     bmp.UnlockBits(bmpData);
+
+                    /*  for (int row = 0; row < height; row++)
+                      {
+                          for (int col = 0; col < width; col++)
+                          {
+                              Color curPixel = bmp.GetPixel(col, row); // 4 bytes 
+
+                              System.Diagnostics.Debug.WriteLine(curPixel.A + ", " + curPixel.R + ", " + curPixel.G + ", " + curPixel.B);
+                          }
+                      }*/
                     break;
 
                 case 2:
@@ -421,6 +428,9 @@ namespace MapleLib.WzLib.WzProperties
                     decBuf = new byte[uncompressedSize];
                     zlib.Read(decBuf, 0, uncompressedSize);
                     byte iB = 0;
+                    int x = 0;
+                    int y = 0;
+
                     for (int i = 0; i < uncompressedSize; i++)
                     {
                         for (byte j = 0; j < 8; j++)
@@ -428,7 +438,11 @@ namespace MapleLib.WzLib.WzProperties
                             iB = Convert.ToByte(((decBuf[i] & (0x01 << (7 - j))) >> (7 - j)) * 0xFF);
                             for (int k = 0; k < 16; k++)
                             {
-                                if (x == width) { x = 0; y++; }
+                                if (x == width)
+                                {
+                                    x = 0;
+                                    y++;
+                                }
                                 bmp.SetPixel(x, y, Color.FromArgb(0xFF, iB, iB, iB));
                                 x++;
                             }
@@ -485,6 +499,41 @@ namespace MapleLib.WzLib.WzProperties
             // http://forum.ragezone.com/f921/release-harepacker-resurrected-1149521/
             switch (nPixFormat + nMagLevel)
             {
+                case 1:
+                    {
+                        byte[] buf = new byte[bmp.Width * bmp.Height * 2];
+                        int curPos = 0;
+
+                        for (int row = 0; row < height; row++)
+                        {
+                            for (int col = 0; col < width; col++)
+                            {
+                                Color curPixel = bmp.GetPixel(col, row); // 4 bytes argb
+
+                                int B = (curPixel.B >> 4) & 0x0F;
+                                int G = (curPixel.G << 4) & 0xF0;
+                                int R = (curPixel.R >> 4) & 0x0F;
+                                int A = (curPixel.A << 4) & 0xF0; // confirmed
+
+                                int compressedBuf1 = 0;
+                                compressedBuf1 |= B;
+                                compressedBuf1 |= G;
+
+                                int compressedBuf2 = 0;
+                                compressedBuf2 |= R;
+                                compressedBuf2 |= A;
+
+                                // 1 byte for every argb
+                                buf[curPos] = (byte)compressedBuf1;
+                                buf[curPos + 1] = (byte)compressedBuf2;
+
+                                curPos += 2; // BG
+                            }
+                        }
+                        compressedBytes = Compress(buf);
+                        break;
+                    }
+                case 2:
                 default: // defaults to pixel format 2. Unsupported for now.
                     {
                         byte[] buf = new byte[bmp.Width * bmp.Height * 4];
@@ -492,17 +541,17 @@ namespace MapleLib.WzLib.WzProperties
                         this.nMagLevel = 0;
 
                         int curPos = 0;
-                        for (int i = 0; i < height; i++)
+                        for (int row = 0; row < height; row++)
                         {
-                            for (int j = 0; j < width; j++)
+                            for (int col = 0; col < width; col++)
                             {
-                                Color curPixel = bmp.GetPixel(j, i); // 4 bytes argb
+                                Color curPixel = bmp.GetPixel(col, row); // 4 bytes 
                                 buf[curPos] = curPixel.B;
                                 buf[curPos + 1] = curPixel.G;
                                 buf[curPos + 2] = curPixel.R;
                                 buf[curPos + 3] = curPixel.A;
 
-                                curPos += 4; // argb
+                                curPos += 4; // ARGB
                             }
                         }
                         compressedBytes = Compress(buf);
