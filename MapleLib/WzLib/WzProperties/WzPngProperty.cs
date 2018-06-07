@@ -30,7 +30,7 @@ namespace MapleLib.WzLib.WzProperties
     public class WzPngProperty : WzImageProperty
     {
         #region Fields
-        internal int width, height, format, format2;
+        internal int width, height, nPixFormat, nMagLevel;
         internal byte[] compressedBytes;
         internal Bitmap png;
         internal WzObject parent;
@@ -94,15 +94,46 @@ namespace MapleLib.WzLib.WzProperties
         /// <summary>
         /// The width of the bitmap
         /// </summary>
-        public int Width { get { return width; } set { width = value; } }
+        public int Width
+        {
+            get
+            {
+                return width;
+            }
+            private set
+            {
+                width = value;
+            }
+        }
         /// <summary>
         /// The height of the bitmap
         /// </summary>
-        public int Height { get { return height; } set { height = value; } }
+        public int Height
+        {
+            get
+            {
+                return height;
+            }
+            private set
+            {
+                height = value;
+            }
+        }
         /// <summary>
         /// The format of the bitmap
         /// </summary>
-        public int Format { get { return format + format2; } set { format = value; format2 = 0; } }
+        public int sFormat
+        {
+            get
+            {
+                return nPixFormat + nMagLevel;
+            }
+            set
+            {
+                nPixFormat = value;
+                nMagLevel = 0;
+            }
+        }
 
         public bool ListWzUsed { get { return listWzUsed; } set { if (value != listWzUsed) { listWzUsed = value; CompressPng(GetPNG(false)); } } }
         /// <summary>
@@ -125,11 +156,19 @@ namespace MapleLib.WzLib.WzProperties
         {
             this.wzReader = reader;
 
-            // Read compressed bytes
+            // Width Height
             width = reader.ReadCompressedInt();
             height = reader.ReadCompressedInt();
-            format = reader.ReadCompressedInt();
-            format2 = reader.ReadByte();
+            if (this.width >= 0x10000 || this.height >= 0x10000) // copy pasta eric <3
+            {
+                throw new ArgumentException(string.Format("Invalid WzPngProperty in Wz. Width: {0}, Height: {1}", width, height));
+            }
+
+            // Image format
+            nPixFormat = reader.ReadCompressedInt();
+            nMagLevel = reader.ReadByte();
+
+            // Other crap
             reader.BaseStream.Position += 4;
             offs = reader.BaseStream.Position;
             int len = reader.ReadInt32() - 1;
@@ -203,33 +242,38 @@ namespace MapleLib.WzLib.WzProperties
 
         internal byte[] Decompress(byte[] compressedBuffer, int decompressedSize)
         {
-            MemoryStream memStream = new MemoryStream();
-            memStream.Write(compressedBuffer, 2, compressedBuffer.Length - 2);
-            byte[] buffer = new byte[decompressedSize];
-            memStream.Position = 0;
-            DeflateStream zip = new DeflateStream(memStream, CompressionMode.Decompress);
-            zip.Read(buffer, 0, buffer.Length);
-            zip.Close();
-            zip.Dispose();
-            memStream.Close();
-            memStream.Dispose();
-            return buffer;
+            using (MemoryStream memStream = new MemoryStream())
+            {
+                memStream.Write(compressedBuffer, 2, compressedBuffer.Length - 2);
+                byte[] buffer = new byte[decompressedSize];
+                memStream.Position = 0;
+
+                using (DeflateStream zip = new DeflateStream(memStream, CompressionMode.Decompress))
+                {
+                    zip.Read(buffer, 0, buffer.Length);
+                }
+                return buffer;
+            }
         }
+
         internal byte[] Compress(byte[] decompressedBuffer)
         {
-            MemoryStream memStream = new MemoryStream();
-            DeflateStream zip = new DeflateStream(memStream, CompressionMode.Compress, true);
-            zip.Write(decompressedBuffer, 0, decompressedBuffer.Length);
-            zip.Close();
-            memStream.Position = 0;
-            byte[] buffer = new byte[memStream.Length + 2];
-            memStream.Read(buffer, 2, buffer.Length - 2);
-            memStream.Close();
-            memStream.Dispose();
-            zip.Dispose();
-            System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
-            return buffer;
+            using (MemoryStream memStream = new MemoryStream())
+            {
+                using (DeflateStream zip = new DeflateStream(memStream, CompressionMode.Compress, true))
+                {
+                    zip.Write(decompressedBuffer, 0, decompressedBuffer.Length);
+                    zip.Close();
+                }
+                memStream.Position = 0;
+                byte[] buffer = new byte[memStream.Length + 2];
+                memStream.Read(buffer, 2, buffer.Length - 2);
+
+                System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
+                return buffer;
+            }
         }
+
         internal void ParsePng()
         {
             DeflateStream zlib;
@@ -266,7 +310,8 @@ namespace MapleLib.WzLib.WzProperties
                 zlib = new DeflateStream(dataStream, CompressionMode.Decompress);
             }
 
-            switch (format + format2)
+            System.Diagnostics.Debug.WriteLine("nPixFormat {0}, this.nMagLevel {1}", nPixFormat, this.nMagLevel);
+            switch (nPixFormat + this.nMagLevel)
             {
                 case 1:
                     bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
@@ -277,8 +322,14 @@ namespace MapleLib.WzLib.WzProperties
                     byte[] argb = new Byte[uncompressedSize * 2];
                     for (int i = 0; i < uncompressedSize; i++)
                     {
-                        b = decBuf[i] & 0x0F; b |= (b << 4); argb[i * 2] = (byte)b;
-                        g = decBuf[i] & 0xF0; g |= (g >> 4); argb[i * 2 + 1] = (byte)g;
+                        b = decBuf[i] & 0x0F;
+                        b |= (b << 4);
+
+                        g = decBuf[i] & 0xF0;
+                        g |= (g >> 4);
+
+                        argb[i * 2] = (byte)b;
+                        argb[i * 2 + 1] = (byte)g;
                     }
                     Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
                     bmp.UnlockBits(bmpData);
@@ -409,35 +460,60 @@ namespace MapleLib.WzLib.WzProperties
                     break;
 
                 default:
-                    Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format {0} {1}", format, format2));
+                    Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format. nPixFormat: {0}, nMagLevel: {1}", this.nPixFormat, this.nMagLevel));
                     break;
             }
             png = bmp;
         }
+        #endregion
+
+        #region Cast Values
+
+        public override Bitmap GetBitmap()
+        {
+            return GetPNG(false);
+        }
+        #endregion
+
+        #region DXT format compressor
         internal void CompressPng(Bitmap bmp)
         {
-            byte[] buf = new byte[bmp.Width * bmp.Height * 8];
-            format = 2;
-            format2 = 0;
-            width = bmp.Width;
-            height = bmp.Height;
+            this.width = bmp.Width;
+            this.height = bmp.Height;
 
-            int curPos = 0;
-            for (int i = 0; i < height; i++)
-                for (int j = 0; j < width; j++)
-                {
-                    Color curPixel = bmp.GetPixel(j, i);
-                    buf[curPos] = curPixel.B;
-                    buf[curPos + 1] = curPixel.G;
-                    buf[curPos + 2] = curPixel.R;
-                    buf[curPos + 3] = curPixel.A;
-                    curPos += 4;
-                }
-            compressedBytes = Compress(buf);
+            // https://github.com/eaxvac/Harepacker-resurrected 
+            // http://forum.ragezone.com/f921/release-harepacker-resurrected-1149521/
+            switch (nPixFormat + nMagLevel)
+            {
+                default: // defaults to pixel format 2. Unsupported for now.
+                    {
+                        byte[] buf = new byte[bmp.Width * bmp.Height * 4];
+                        this.nPixFormat = 2;
+                        this.nMagLevel = 0;
+
+                        int curPos = 0;
+                        for (int i = 0; i < height; i++)
+                        {
+                            for (int j = 0; j < width; j++)
+                            {
+                                Color curPixel = bmp.GetPixel(j, i); // 4 bytes argb
+                                buf[curPos] = curPixel.B;
+                                buf[curPos + 1] = curPixel.G;
+                                buf[curPos + 2] = curPixel.R;
+                                buf[curPos + 3] = curPixel.A;
+
+                                curPos += 4; // argb
+                            }
+                        }
+                        compressedBytes = Compress(buf);
+                        break;
+                    }
+            }
+
             if (listWzUsed)
             {
                 MemoryStream memStream = new MemoryStream();
-                WzBinaryWriter writer = new WzBinaryWriter(memStream, WzTool.GetIvByMapleVersion(WzMapleVersion.GMS));
+                WzBinaryWriter writer = new WzBinaryWriter(memStream, ((WzDirectory)parent).WzIv);
                 writer.Write(2);
                 for (int i = 0; i < 2; i++)
                 {
@@ -449,14 +525,6 @@ namespace MapleLib.WzLib.WzProperties
                 compressedBytes = memStream.GetBuffer();
                 writer.Close();
             }
-        }
-        #endregion
-
-        #region Cast Values
-
-        public override Bitmap GetBitmap()
-        {
-            return GetPNG(false);
         }
         #endregion
 
@@ -493,7 +561,6 @@ namespace MapleLib.WzLib.WzProperties
                     }
                 }
             }
-
             return pixel;
         }
 
