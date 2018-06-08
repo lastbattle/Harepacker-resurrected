@@ -26,6 +26,7 @@ using System.Globalization;
 using System.Xml;
 using System.Drawing;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MapleLib.WzLib.Serialization
 {
@@ -221,50 +222,65 @@ namespace MapleLib.WzLib.Serialization
         public NoBase64DataException(string message) : base(message) { }
         public NoBase64DataException(string message, System.Exception inner) : base(message, inner) { }
         protected NoBase64DataException(System.Runtime.Serialization.SerializationInfo info,
-            System.Runtime.Serialization.StreamingContext context) { }
+            System.Runtime.Serialization.StreamingContext context)
+        { }
     }
 
     public class WzImgSerializer : ProgressingWzSerializer, IWzImageSerializer
     {
-        private byte[] serializeImageInternal(WzImage img)
-        {
-            MemoryStream stream = new MemoryStream();
-            WzBinaryWriter wzWriter = new WzBinaryWriter(stream, ((WzDirectory)img.parent).WzIv);
-            img.SaveImage(wzWriter);
-            byte[] result = stream.ToArray();
-            wzWriter.Close();
-            return result;
-        }
-
-        private void serializeImageInternal(WzImage img, string outPath)
-        {
-            FileStream stream = File.Create(outPath);
-            WzBinaryWriter wzWriter = new WzBinaryWriter(stream, ((WzDirectory)img.parent).WzIv);
-            img.SaveImage(wzWriter);
-            wzWriter.Close();
-        }
 
         public byte[] SerializeImage(WzImage img)
         {
             total = 1; curr = 0;
-            return serializeImageInternal(img);
+
+            using (MemoryStream stream = new MemoryStream())
+            {
+                using (WzBinaryWriter wzWriter = new WzBinaryWriter(stream, ((WzDirectory)img.parent).WzIv))
+                {
+                    img.SaveImage(wzWriter);
+                    byte[] result = stream.ToArray();
+
+                    return result;
+                }
+            }
         }
 
         public void SerializeImage(WzImage img, string outPath)
         {
             total = 1; curr = 0;
-            if (Path.GetExtension(outPath) != ".img") outPath += ".img";
-            serializeImageInternal(img, outPath);
+            if (Path.GetExtension(outPath) != ".img")
+            {
+                outPath += ".img";
+            }
+            using (FileStream stream = File.Create(outPath))
+            {
+                using (WzBinaryWriter wzWriter = new WzBinaryWriter(stream, ((WzDirectory)img.parent).WzIv))
+                {
+                    img.SaveImage(wzWriter);
+                }
+            }
         }
 
         public void SerializeDirectory(WzDirectory dir, string outPath)
         {
             total = dir.CountImages();
             curr = 0;
-            if (!Directory.Exists(outPath)) WzXmlSerializer.createDirSafe(ref outPath);
-            if (outPath.Substring(outPath.Length -1, 1) != @"\") outPath += @"\";
-            foreach (WzDirectory subdir in dir.WzDirectories) SerializeDirectory(subdir, outPath + subdir.Name + @"\");
-            foreach (WzImage img in dir.WzImages) SerializeImage(img, outPath + img.Name);
+            if (!Directory.Exists(outPath))
+                WzXmlSerializer.createDirSafe(ref outPath);
+
+            if (outPath.Substring(outPath.Length - 1, 1) != @"\")
+            {
+                outPath += @"\";
+            }
+
+            foreach (WzDirectory subdir in dir.WzDirectories)
+            {
+                SerializeDirectory(subdir, outPath + subdir.Name + @"\");
+            }
+            foreach (WzImage img in dir.WzImages)
+            {
+                SerializeImage(img, outPath + img.Name);
+            }
         }
 
         public void SerializeFile(WzFile f, string outPath)
@@ -329,7 +345,8 @@ namespace MapleLib.WzLib.Serialization
                 successfullyParsedImage = img.ParseImage(true);
                 img.Changed = true;
                 wzReader.Close();
-            } else
+            }
+            else
             {
                 successfullyParsedImage = true;
             }
@@ -349,7 +366,7 @@ namespace MapleLib.WzLib.Serialization
             total = 0; curr = 0;
             this.outPath = outPath;
             if (!Directory.Exists(outPath)) WzXmlSerializer.createDirSafe(ref outPath);
-            if (outPath.Substring(outPath.Length - 1,1) != @"\") outPath += @"\";
+            if (outPath.Substring(outPath.Length - 1, 1) != @"\") outPath += @"\";
             total = CalculateTotal(obj);
             ExportRecursion(obj, outPath);
             /*foreach (WzImage img in imagesToUnparse)
@@ -438,8 +455,10 @@ namespace MapleLib.WzLib.Serialization
         private void exportXmlInternal(WzImage img, string path)
         {
             bool parsed = img.Parsed || img.Changed;
-            if (!parsed) img.ParseImage();
+            if (!parsed)
+                img.ParseImage();
             curr++;
+
 
             using (TextWriter tw = new StreamWriter(File.Create(path)))
             {
@@ -456,12 +475,20 @@ namespace MapleLib.WzLib.Serialization
 
         private void exportDirXmlInternal(WzDirectory dir, string path)
         {
-            if (!Directory.Exists(path)) createDirSafe(ref path);
-            if (path.Substring(path.Length - 1) != @"\") path += @"\";
+            if (!Directory.Exists(path))
+                createDirSafe(ref path);
+
+            if (path.Substring(path.Length - 1) != @"\")
+                path += @"\";
+
             foreach (WzDirectory subdir in dir.WzDirectories)
+            {
                 exportDirXmlInternal(subdir, path + subdir.name + @"\");
+            }
             foreach (WzImage subimg in dir.WzImages)
+            {
                 exportXmlInternal(subimg, path + subimg.Name + ".xml");
+            }
         }
 
         public void SerializeImage(WzImage img, string path)
@@ -639,7 +666,7 @@ namespace MapleLib.WzLib.Serialization
                     foreach (XmlElement subelement in element)
                         sub.AddProperty(ParsePropertyFromXMLElement(subelement));
                     return sub;
-                
+
                 case "canvas":
                     WzCanvasProperty canvas = new WzCanvasProperty(element.GetAttribute("name"));
                     if (!element.HasAttribute("basedata")) throw new NoBase64DataException("no base64 data in canvas element with name " + canvas.Name);
@@ -649,27 +676,27 @@ namespace MapleLib.WzLib.Serialization
                     foreach (XmlElement subelement in element)
                         canvas.AddProperty(ParsePropertyFromXMLElement(subelement));
                     return canvas;
-                
+
                 case "int":
                     WzIntProperty compressedInt = new WzIntProperty(element.GetAttribute("name"), int.Parse(element.GetAttribute("value"), formattingInfo));
                     return compressedInt;
-                
+
                 case "double":
                     WzDoubleProperty doubleProp = new WzDoubleProperty(element.GetAttribute("name"), double.Parse(element.GetAttribute("value"), formattingInfo));
                     return doubleProp;
-                
+
                 case "null":
                     WzNullProperty nullProp = new WzNullProperty(element.GetAttribute("name"));
                     return nullProp;
-                
+
                 case "sound":
                     if (!element.HasAttribute("basedata") || !element.HasAttribute("basehead") || !element.HasAttribute("length")) throw new NoBase64DataException("no base64 data in sound element with name " + element.GetAttribute("name"));
                     WzSoundProperty sound = new WzSoundProperty(element.GetAttribute("name"),
-                        int.Parse(element.GetAttribute("length")), 
-                        Convert.FromBase64String(element.GetAttribute("basehead")), 
+                        int.Parse(element.GetAttribute("length")),
+                        Convert.FromBase64String(element.GetAttribute("basehead")),
                         Convert.FromBase64String(element.GetAttribute("basedata")));
                     return sound;
-                
+
                 case "string":
                     WzStringProperty stringProp = new WzStringProperty(element.GetAttribute("name"), element.GetAttribute("value"));
                     return stringProp;

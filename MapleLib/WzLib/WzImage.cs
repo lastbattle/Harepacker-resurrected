@@ -278,19 +278,24 @@ namespace MapleLib.WzLib
                 Parsed = true;
                 return true;
             }
-            this.parseEverything = parseEverything;
-            long originalPos = reader.BaseStream.Position;
-            reader.BaseStream.Position = offset;
 
-            byte b = reader.ReadByte();
-            string prop = reader.ReadString();
-            ushort val = reader.ReadUInt16();
+            lock (reader) // for multi threaded XMLWZ export. 
+            {
+                this.parseEverything = parseEverything;
+                long originalPos = reader.BaseStream.Position;
+                reader.BaseStream.Position = offset;
 
-            if (b != WzImageHeaderByte || prop != "Property" || val != 0)
-                return false;
+                byte b = reader.ReadByte();
+                string prop = reader.ReadString();
+                ushort val = reader.ReadUInt16();
 
-            properties.AddRange(WzImageProperty.ParsePropertyList(offset, reader, this, this));
-            parsed = true;
+                if (b != WzImageHeaderByte || prop != "Property" || val != 0)
+                    return false;
+
+                properties.AddRange(WzImageProperty.ParsePropertyList(offset, reader, this, this));
+
+                parsed = true;
+            }
             return true;
         }
 
