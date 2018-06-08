@@ -482,10 +482,22 @@ namespace HaRepacker.GUI
 
         private void xMLToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            OpenFileDialog dialog = new OpenFileDialog() { Title = HaRepacker.Properties.Resources.SelectWz, Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter), Multiselect = true };
-            if (dialog.ShowDialog() != DialogResult.OK) return;
-            FolderBrowserDialog folderDialog = new FolderBrowserDialog() { Description = HaRepacker.Properties.Resources.SelectOutDir };
-            if (folderDialog.ShowDialog() != DialogResult.OK) return;
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
+                Title = HaRepacker.Properties.Resources.SelectWz,
+                Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter),
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
+            FolderBrowserDialog folderDialog = new FolderBrowserDialog()
+            {
+                Description = HaRepacker.Properties.Resources.SelectOutDir
+            };
+            if (folderDialog.ShowDialog() != DialogResult.OK)
+                return;
+
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, false);
             threadDone = false;
             new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start((object)new object[] { dialog.FileNames, folderDialog.SelectedPath, encryptionBox.SelectedIndex, serializer });
@@ -535,7 +547,7 @@ namespace HaRepacker.GUI
         {
             return UserSettings.DefaultXmlFolder == "" ?
                 SavedFolderBrowser.Show(HaRepacker.Properties.Resources.SelectOutDir)
-                : UserSettings.DefaultXmlFolder + "\\WzSaved";
+                : UserSettings.DefaultXmlFolder;
         }
 
         private void rawDataToolStripMenuItem_Click(object sender, EventArgs e)
@@ -612,8 +624,13 @@ namespace HaRepacker.GUI
 
             List<WzObject> objs = new List<WzObject>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
+            {
                 if (node.Tag is WzObject)
+                {
                     objs.Add((WzObject)node.Tag);
+                }
+            }
+
             WzPngMp3Serializer serializer = new WzPngMp3Serializer();
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzObjExtraction));
