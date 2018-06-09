@@ -38,8 +38,8 @@
             // 
             // encryptionBox
             // 
-            resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.FormattingEnabled = true;
+            resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
             // 
             // saveButton
@@ -74,6 +74,7 @@
             this.Controls.Add(this.versionBox);
             this.Controls.Add(this.saveButton);
             this.Controls.Add(this.encryptionBox);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "SaveForm";
             this.Load += new System.EventHandler(this.SaveForm_Load);
             this.ResumeLayout(false);

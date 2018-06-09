@@ -77,12 +77,12 @@
             // 
             // lineBreakBox
             // 
-            resources.ApplyResources(this.lineBreakBox, "lineBreakBox");
             this.lineBreakBox.FormattingEnabled = true;
             this.lineBreakBox.Items.AddRange(new object[] {
             resources.GetString("lineBreakBox.Items"),
             resources.GetString("lineBreakBox.Items1"),
             resources.GetString("lineBreakBox.Items2")});
+            resources.ApplyResources(this.lineBreakBox, "lineBreakBox");
             this.lineBreakBox.Name = "lineBreakBox";
             // 
             // label2
@@ -144,6 +144,7 @@
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.sortBox);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "OptionsForm";
             this.ResumeLayout(false);
             this.PerformLayout();

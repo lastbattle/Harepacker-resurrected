@@ -19,7 +19,10 @@ namespace HaRepackerLib
     public class WzMp3Streamer
     {
         private Stream byteStream;
+
         private Mp3FileReader mpegStream;
+        private WaveFileReader waveFileStream;
+
         private WaveOut wavePlayer;
         private WzSoundProperty sound;
         private bool repeat;
@@ -29,17 +32,30 @@ namespace HaRepackerLib
             this.repeat = repeat;
             this.sound = sound;
             byteStream = new MemoryStream(sound.GetBytes(false));
-            mpegStream = new Mp3FileReader(byteStream);
+
             wavePlayer = new WaveOut(WaveCallbackInfo.FunctionCallback());
-            wavePlayer.Init(mpegStream);
+            try
+            {
+                mpegStream = new Mp3FileReader(byteStream);
+                wavePlayer.Init(mpegStream);
+            }
+            catch (System.InvalidOperationException)
+            {
+                waveFileStream = new WaveFileReader(byteStream);
+                wavePlayer.Init(waveFileStream);
+            }
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
         }
 
         void wavePlayer_PlaybackStopped(object sender, StoppedEventArgs e)
         {
- 	        if (repeat && !disposed)
+            if (repeat && !disposed)
             {
-                mpegStream.Seek(0, SeekOrigin.Begin);
+                if (mpegStream != null)
+                    mpegStream.Seek(0, SeekOrigin.Begin);
+                else
+                    waveFileStream.Seek(0, SeekOrigin.Begin);
+
                 wavePlayer.Pause();
                 wavePlayer.Play();
             }
@@ -54,7 +70,16 @@ namespace HaRepackerLib
         {
             disposed = true;
             wavePlayer.Dispose();
-            mpegStream.Dispose();
+            if (mpegStream != null)
+            {
+                mpegStream.Dispose();
+                mpegStream = null;
+            }
+            if (waveFileStream != null)
+            {
+                waveFileStream.Dispose();
+                waveFileStream = null;
+            }
             byteStream.Dispose();
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -85,11 +110,19 @@ namespace HaRepackerLib
         {
             get
             {
-                return (int)(mpegStream.Position / mpegStream.WaveFormat.AverageBytesPerSecond);
+                if (mpegStream != null)
+                    return (int)(mpegStream.Position / mpegStream.WaveFormat.AverageBytesPerSecond);
+                else if (waveFileStream != null)
+                    return (int)(waveFileStream.Position / waveFileStream.WaveFormat.AverageBytesPerSecond);
+
+                return 0;
             }
             set
             {
-                mpegStream.Seek(value * mpegStream.WaveFormat.AverageBytesPerSecond, SeekOrigin.Begin);
+                if (mpegStream != null)
+                    mpegStream.Seek(value * mpegStream.WaveFormat.AverageBytesPerSecond, SeekOrigin.Begin);
+                else if (waveFileStream != null)
+                    waveFileStream.Seek(value * waveFileStream.WaveFormat.AverageBytesPerSecond, SeekOrigin.Begin);
             }
         }
     }
