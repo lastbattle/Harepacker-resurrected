@@ -48,7 +48,21 @@ namespace HaRepacker.GUI.Interaction
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            if (nameBox.Text != null && nameBox.Text != "" && pathBox.Text != null && pathBox.Text != "" && pictureBox.Image != null)
+            string filePath = pathBox.Text;
+            string fileName = nameBox.Text;
+
+            bool validated = false;
+
+            // Validate input
+            if (nameBox.Text != null && pathBox.Text != null && pathBox.Text != "" && pictureBox.Image != null)
+            {
+                if ((fileName == string.Empty && IsPathGIF(filePath)) || fileName != string.Empty) // only allow string empty name if its a GIF. [Frames of file name 0, 1, 2, 3, 4, 5]
+                {
+                    validated = true;
+                }
+            }
+
+            if (validated)
             {
                 nameResult = nameBox.Text;
 
@@ -71,7 +85,8 @@ namespace HaRepacker.GUI.Interaction
         {
             OpenFileDialog dialog = new OpenFileDialog()
             {
-                Title = HaRepacker.Properties.Resources.SelectImage, Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepacker.Properties.Resources.ImagesFilter)
+                Title = HaRepacker.Properties.Resources.SelectImage,
+                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepacker.Properties.Resources.ImagesFilter)
             };
             if (dialog.ShowDialog() == DialogResult.OK)
             {
@@ -94,7 +109,7 @@ namespace HaRepacker.GUI.Interaction
                 pictureBox.Image = Image.FromFile(FilePath);
 
 
-                if (FilePath.ToLower().EndsWith("gif"))
+                if (IsPathGIF(FilePath))
                 {
                     using (Stream imageStreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read))
                     {
@@ -104,7 +119,8 @@ namespace HaRepacker.GUI.Interaction
                             bmpResult.Add(BitmapFromSource(src));
                         }
                     }
-                } else
+                }
+                else
                 {
                     bmpResult.Add((Bitmap)pictureBox.Image);
                 }
@@ -115,6 +131,11 @@ namespace HaRepacker.GUI.Interaction
             }
         }
 
+        /// <summary>
+        /// Converts a BitmapSource object to Bitmap
+        /// </summary>
+        /// <param name="bitmapsource"></param>
+        /// <returns></returns>
         private static Bitmap BitmapFromSource(BitmapSource bitmapsource)
         {
             Bitmap bitmap;
@@ -126,6 +147,16 @@ namespace HaRepacker.GUI.Interaction
                 bitmap = new Bitmap(outStream);
             }
             return bitmap;
+        }
+
+        /// <summary>
+        /// Is the file path specified a GIF
+        /// </summary>
+        /// <param name="filePath"></param>
+        /// <returns></returns>
+        private static bool IsPathGIF(string filePath)
+        {
+            return filePath.ToLower().EndsWith("gif");
         }
     }
 }
