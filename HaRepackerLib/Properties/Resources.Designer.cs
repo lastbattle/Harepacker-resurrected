@@ -10,9 +10,8 @@
 
 namespace HaRepackerLib.Properties {
     using System;
-    using System.Threading;
-
-
+    
+    
     /// <summary>
     ///   A strongly-typed resource class, for looking up localized strings, etc.
     /// </summary>
@@ -27,7 +26,7 @@ namespace HaRepackerLib.Properties {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
-        private static global::System.Globalization.CultureInfo resourceCulture = Thread.CurrentThread.CurrentCulture;
+        private static global::System.Globalization.CultureInfo resourceCulture;
         
         [global::System.Diagnostics.CodeAnalysis.SuppressMessageAttribute("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
         internal Resources() {
@@ -130,6 +129,15 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Please enter valid input.
+        /// </summary>
+        internal static string EnterValidInput {
+            get {
+                return ResourceManager.GetString("EnterValidInput", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Error.
         /// </summary>
         internal static string Error {
@@ -145,6 +153,150 @@ namespace HaRepackerLib.Properties {
             get {
                 object obj = ResourceManager.GetObject("find", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Images (*.jpg;*.bmp;*.png;*.gif;*.tiff).
+        /// </summary>
+        internal static string ImagesFilter {
+            get {
+                return ResourceManager.GetString("ImagesFilter", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add canvas.
+        /// </summary>
+        internal static string MainAddCanvas {
+            get {
+                return ResourceManager.GetString("MainAddCanvas", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add convex.
+        /// </summary>
+        internal static string MainAddConvex {
+            get {
+                return ResourceManager.GetString("MainAddConvex", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add directory.
+        /// </summary>
+        internal static string MainAddDir {
+            get {
+                return ResourceManager.GetString("MainAddDir", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add double.
+        /// </summary>
+        internal static string MainAddDouble {
+            get {
+                return ResourceManager.GetString("MainAddDouble", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add float.
+        /// </summary>
+        internal static string MainAddFloat {
+            get {
+                return ResourceManager.GetString("MainAddFloat", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add image.
+        /// </summary>
+        internal static string MainAddImg {
+            get {
+                return ResourceManager.GetString("MainAddImg", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add int.
+        /// </summary>
+        internal static string MainAddInt {
+            get {
+                return ResourceManager.GetString("MainAddInt", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add link.
+        /// </summary>
+        internal static string MainAddLink {
+            get {
+                return ResourceManager.GetString("MainAddLink", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add null.
+        /// </summary>
+        internal static string MainAddNull {
+            get {
+                return ResourceManager.GetString("MainAddNull", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add short.
+        /// </summary>
+        internal static string MainAddShort {
+            get {
+                return ResourceManager.GetString("MainAddShort", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add sound.
+        /// </summary>
+        internal static string MainAddSound {
+            get {
+                return ResourceManager.GetString("MainAddSound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add string.
+        /// </summary>
+        internal static string MainAddString {
+            get {
+                return ResourceManager.GetString("MainAddString", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add sub.
+        /// </summary>
+        internal static string MainAddSub {
+            get {
+                return ResourceManager.GetString("MainAddSub", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Add vector.
+        /// </summary>
+        internal static string MainAddVec {
+            get {
+                return ResourceManager.GetString("MainAddVec", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Cannot insert selected object into this type of wz node..
+        /// </summary>
+        internal static string MainCannotInsertToNode {
+            get {
+                return ResourceManager.GetString("MainCannotInsertToNode", resourceCulture);
             }
         }
         
@@ -221,6 +373,15 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to MPEG-1 Audio Layer 3 (*.mp3).
+        /// </summary>
+        internal static string Mp3Filter {
+            get {
+                return ResourceManager.GetString("Mp3Filter", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         internal static System.Drawing.Bitmap Pause {
@@ -260,11 +421,29 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Select the image.
+        /// </summary>
+        internal static string SelectImage {
+            get {
+                return ResourceManager.GetString("SelectImage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Selection Type: {0}.
         /// </summary>
         internal static string SelectionType {
             get {
                 return ResourceManager.GetString("SelectionType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Select MP3 File.
+        /// </summary>
+        internal static string SelectMp3 {
+            get {
+                return ResourceManager.GetString("SelectMp3", resourceCulture);
             }
         }
         

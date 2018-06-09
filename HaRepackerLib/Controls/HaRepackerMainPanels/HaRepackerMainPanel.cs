@@ -12,6 +12,8 @@ using MapleLib.WzLib.WzProperties;
 using System.Collections.Generic;
 using System.Drawing.Imaging;
 using WeifenLuo.WinFormsUI.Docking;
+using System.Threading;
+using HaRepacker.GUI.Interaction;
 
 namespace HaRepackerLib.Controls.HaRepackerMainPanels
 {
@@ -126,7 +128,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = true;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
-            } 
+            }
             else if (obj is WzUOLProperty)
             {
                 nameBox.Visible = true;
@@ -148,7 +150,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     saveImageButton.Visible = true;
 
                     textPropBox.Size = new Size(textPropBox.Size.Width, 50);
-                } else
+                }
+                else
                 {
 
                     canvasPropBox.Visible = false;
@@ -223,15 +226,15 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         /// <param name="selectedNode"></param>
         private static void ParseOnDataTreeSelectedItem(WzNode selectedNode)
         {
-            if (!((WzImage) selectedNode.Tag).Parsed)
-                ((WzImage) selectedNode.Tag).ParseImage();
+            if (!((WzImage)selectedNode.Tag).Parsed)
+                ((WzImage)selectedNode.Tag).ParseImage();
             selectedNode.Reparse();
             selectedNode.Expand();
         }
-    #endregion
+        #endregion
 
-    #region Exported Fields
-    public UndoRedoManager UndoRedoMan { get { return undoRedoMan; } }
+        #region Exported Fields
+        public UndoRedoManager UndoRedoMan { get { return undoRedoMan; } }
         #endregion
 
         /// <summary>
@@ -327,7 +330,272 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         }
 
-        public void PromotRemoveSelectedTreeNodes()
+        #region Image directory add
+        /// <summary>
+        /// WzDirectory
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzDirectoryToSelectedNode(TreeNode target)
+        {
+            if (!(target.Tag is WzDirectory) && !(target.Tag is WzFile))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            string name;
+            if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddDir, out name))
+                return;
+
+            ((WzNode)target).AddObject(new WzDirectory(name), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzDirectory
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzImageToSelectedNode(TreeNode target)
+        {
+            string name;
+            if (!(target.Tag is WzDirectory) && !(target.Tag is WzFile))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddImg, out name))
+                return;
+            ((WzNode)target).AddObject(new WzImage(name) { Changed = true }, UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzByteProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzByteFloatToSelectedNode(TreeNode target)
+        {
+            string name;
+            double? d;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!FloatingPointInputBox.Show(HaRepackerLib.Properties.Resources.MainAddFloat, out name, out d))
+                return;
+            ((WzNode)target).AddObject(new WzFloatProperty(name, (float)d), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzCanvasProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzCanvasToSelectedNode(TreeNode target)
+        {
+            string name;
+            List<Bitmap> bitmaps = new List<Bitmap>();
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!BitmapInputBox.Show(HaRepackerLib.Properties.Resources.MainAddCanvas, out name, out bitmaps))
+                return;
+
+            WzNode wzNode = ((WzNode)target);
+
+            int i = 0;
+            foreach (Bitmap bmp in bitmaps)
+            {
+                WzCanvasProperty canvas = new WzCanvasProperty(bitmaps.Count == 1 ? name : (name + i));
+                WzPngProperty pngProperty = new WzPngProperty();
+                pngProperty.SetPNG(bmp);
+                canvas.PngProperty = pngProperty;
+
+                WzNode newInsertedNode = wzNode.AddObject(canvas, UndoRedoMan);
+                // Add an additional WzVectorProperty with X Y of 0,0
+                newInsertedNode.AddObject(new WzVectorProperty(name, new WzIntProperty("X", 0), new WzIntProperty("Y", 0)), UndoRedoMan);
+
+                i++;
+            }
+        }
+
+        /// <summary>
+        /// WzCompressedInt
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzCompressedIntToSelectedNode(TreeNode target)
+        {
+            string name;
+            int? value;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!IntInputBox.Show(HaRepackerLib.Properties.Resources.MainAddInt, out name, out value))
+                return;
+            ((WzNode)target).AddObject(new WzIntProperty(name, (int)value), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzConvexProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzConvexPropertyToSelectedNode(TreeNode target)
+        {
+            string name;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddConvex, out name))
+                return;
+            ((WzNode)target).AddObject(new WzConvexProperty(name), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzNullProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzDoublePropertyToSelectedNode(TreeNode target)
+        {
+            string name;
+            double? d;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!FloatingPointInputBox.Show(HaRepackerLib.Properties.Resources.MainAddDouble, out name, out d))
+                return;
+            ((WzNode)target).AddObject(new WzDoubleProperty(name, (double)d), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzNullProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzNullPropertyToSelectedNode(TreeNode target)
+        {
+            string name;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddNull, out name))
+                return;
+            ((WzNode)target).AddObject(new WzNullProperty(name), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzSoundProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzSoundPropertyToSelectedNode(TreeNode target)
+        {
+            string name;
+            string path;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!SoundInputBox.Show(HaRepackerLib.Properties.Resources.MainAddSound, out name, out path))
+                return;
+            ((WzNode)target).AddObject(new WzSoundProperty(name, path), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzStringProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzStringPropertyToSelectedIndex(TreeNode target)
+        {
+            string name;
+            string value;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameValueInputBox.Show(HaRepackerLib.Properties.Resources.MainAddString, out name, out value))
+                return;
+            ((WzNode)target).AddObject(new WzStringProperty(name, value), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzSubProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzSubPropertyToSelectedIndex(TreeNode target)
+        {
+            string name;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddSub, out name))
+                return;
+            ((WzNode)target).AddObject(new WzSubProperty(name), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzUnsignedShortProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzUnsignedShortPropertyToSelectedIndex(TreeNode target)
+        {
+            string name;
+            int? value;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!IntInputBox.Show(HaRepackerLib.Properties.Resources.MainAddShort, out name, out value))
+                return;
+            ((WzNode)target).AddObject(new WzShortProperty(name, (short)value), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzUOLProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzUOLPropertyToSelectedIndex(TreeNode target)
+        {
+            string name;
+            string value;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameValueInputBox.Show(HaRepackerLib.Properties.Resources.MainAddLink, out name, out value))
+                return;
+            ((WzNode)target).AddObject(new WzUOLProperty(name, value), UndoRedoMan);
+        }
+
+        /// <summary>
+        /// WzVectorProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzVectorPropertyToSelectedIndex(TreeNode target)
+        {
+            string name;
+            Point? pt;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!VectorInputBox.Show(HaRepackerLib.Properties.Resources.MainAddVec, out name, out pt))
+                return;
+            ((WzNode)target).AddObject(new WzVectorProperty(name, new WzIntProperty("X", ((Point)pt).X), new WzIntProperty("Y", ((Point)pt).Y)), UndoRedoMan);
+        }
+
+        public void PromptRemoveSelectedTreeNodes()
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmRemove))
             {
@@ -347,6 +615,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 }
             UndoRedoMan.AddUndoBatch(actions);
         }
+        #endregion
 
         private void applyChangesButton_Click(object sender, EventArgs e)
         {
@@ -549,7 +818,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             foreach (WzNode node in DataTree.SelectedNodes)
             {
                 WzObject wzObj = (WzObject)node.Tag;// CloneWzObject((WzObject)node.Tag);
-            
+
             }
         }
 
@@ -557,6 +826,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmCopy))
                 return;
+
             clipboard.Clear();
             foreach (WzNode node in DataTree.SelectedNodes)
             {
@@ -577,7 +847,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             WzObject parentObj = (WzObject)parent.Tag;
 
             if (parent != null && parent.Tag is WzImage && parent.Nodes.Count == 0)
+            {
                 ParseOnDataTreeSelectedItem(parent);
+            }
 
             if (parentObj is WzFile)
                 parentObj = ((WzFile)parentObj).WzDirectory;
@@ -620,7 +892,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     e.Handled = true;
                     e.SuppressKeyPress = true;
 
-                    PromotRemoveSelectedTreeNodes();
+                    PromptRemoveSelectedTreeNodes();
                     break;
             }
             if (ctrl)
@@ -819,11 +1091,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 dsr.searchResultsBox.Items.Add(result);
             dsr.Show(MainDockPanel);
             dsr.DockState = DockState.DockBottom;
-//            searchResults.AutoHide = false;
-//            searchResults.Visible = true;
-//            searchResultsContainer.Visible = true;
-//            dockSite8.Visible = true;
-//            panelDockContainer1.Visible = true;
+            //            searchResults.AutoHide = false;
+            //            searchResults.Visible = true;
+            //            searchResultsContainer.Visible = true;
+            //            dockSite8.Visible = true;
+            //            panelDockContainer1.Visible = true;
             findBox.Focus();
         }
 
@@ -860,9 +1132,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private WzNode GetNodeByName(TreeNodeCollection collection, string name)
         {
-            foreach (WzNode node in collection) 
-                if (node.Text == name) 
-                    return node; 
+            foreach (WzNode node in collection)
+                if (node.Text == name)
+                    return node;
             return null;
         }
 

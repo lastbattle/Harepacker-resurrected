@@ -71,7 +71,7 @@ namespace HaRepacker.GUI.Interaction
             }
             else
             {
-                MessageBox.Show(HaRepacker.Properties.Resources.EnterValidInput, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(HaRepackerLib.Properties.Resources.EnterValidInput, HaRepackerLib.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -85,8 +85,8 @@ namespace HaRepacker.GUI.Interaction
         {
             OpenFileDialog dialog = new OpenFileDialog()
             {
-                Title = HaRepacker.Properties.Resources.SelectImage,
-                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepacker.Properties.Resources.ImagesFilter)
+                Title = HaRepackerLib.Properties.Resources.SelectImage,
+                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepackerLib.Properties.Resources.ImagesFilter)
             };
             if (dialog.ShowDialog() == DialogResult.OK)
             {

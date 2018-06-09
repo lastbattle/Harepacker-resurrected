@@ -190,4 +190,64 @@
   <data name="Warning" xml:space="preserve">
     <value>Warning</value>
   </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>Add canvas</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>Add convex</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>Add directory</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>Add double</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>Add float</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>Add image</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>Add int</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>Add link</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>Add null</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>Add short</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>Add sound</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>Add string</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>Add sub</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>Add vector</value>
+  </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>Cannot insert selected object into this type of wz node.</value>
+  </data>
+  <data name="EnterValidInput" xml:space="preserve">
+    <value>Please enter valid input</value>
+  </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="SelectImage" xml:space="preserve">
+    <value>Select the image</value>
+  </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
+  </data>
+  <data name="SelectMp3" xml:space="preserve">
+    <value>Select MP3 File</value>
+  </data>
 </root>

@@ -9,21 +9,21 @@ using System.Windows.Forms;
 
 namespace HaRepacker.GUI.Interaction
 {
-    public partial class IntInputBox : Form
+    public partial class SoundInputBox : Form
     {
-        public static bool Show(string title, out string name, out int? integer)
+        public static bool Show(string title, out string name, out string path)
         {
-            IntInputBox form = new IntInputBox(title);
+            SoundInputBox form = new SoundInputBox(title);
             bool result = form.ShowDialog() == DialogResult.OK;
             name = form.nameResult;
-            integer = form.intResult;
+            path = form.soundResult;
             return result;
         }
 
         private string nameResult = null;
-        private int? intResult = null;
+        private string soundResult = null;
 
-        public IntInputBox(string title)
+        public SoundInputBox(string title)
         {
             InitializeComponent();
             DialogResult = DialogResult.Cancel;
@@ -38,20 +38,26 @@ namespace HaRepacker.GUI.Interaction
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            if (nameBox.Text != "" && nameBox.Text != null)
+            if (pathBox.Text != "" && pathBox.Text != null && nameBox.Text != "" && nameBox.Text != null && System.IO.File.Exists(pathBox.Text))
             {
                 nameResult = nameBox.Text;
-                intResult = valueBox.Value;
+                soundResult = pathBox.Text;
                 DialogResult = DialogResult.OK;
                 Close();
             }
-            else MessageBox.Show(HaRepacker.Properties.Resources.EnterValidInput, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else MessageBox.Show(HaRepackerLib.Properties.Resources.EnterValidInput, HaRepackerLib.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void cancelButton_Click(object sender, EventArgs e)
         {
             DialogResult = DialogResult.Cancel;
             Close();
+        }
+
+        private void browseButton_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog dialog = new OpenFileDialog { Title = HaRepackerLib.Properties.Resources.SelectMp3, Filter = string.Format("{0}|*.mp3", HaRepackerLib.Properties.Resources.Mp3Filter) };
+            if (dialog.ShowDialog() == DialogResult.OK) pathBox.Text = dialog.FileName;
         }
     }
 }

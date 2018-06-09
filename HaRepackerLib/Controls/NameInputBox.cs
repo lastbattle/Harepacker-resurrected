@@ -9,21 +9,19 @@ using System.Windows.Forms;
 
 namespace HaRepacker.GUI.Interaction
 {
-    public partial class NameValueInputBox : Form
+    public partial class NameInputBox : Form
     {
-        public static bool Show(string title, out string name, out string value)
+        public static bool Show(string title, out string name)
         {
-            NameValueInputBox form = new NameValueInputBox(title);
+            NameInputBox form = new NameInputBox(title);
             bool result = form.ShowDialog() == DialogResult.OK;
             name = form.nameResult;
-            value = form.valResult;
             return result;
         }
 
         private string nameResult = null;
-        private string valResult = null;
 
-        public NameValueInputBox(string title)
+        public NameInputBox(string title)
         {
             InitializeComponent();
             DialogResult = DialogResult.Cancel;
@@ -38,14 +36,13 @@ namespace HaRepacker.GUI.Interaction
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            if (resultBox.Text != "" && resultBox.Text != null && valueBox.Text != "" && valueBox.Text != null)
+            if (nameBox.Text != "" && nameBox.Text != null)
             {
-                nameResult = resultBox.Text;
-                valResult = valueBox.Text;
+                nameResult = nameBox.Text;
                 DialogResult = DialogResult.OK;
                 Close();
             }
-            else MessageBox.Show(HaRepacker.Properties.Resources.EnterValidInput, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else MessageBox.Show(HaRepackerLib.Properties.Resources.EnterValidInput, HaRepackerLib.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void cancelButton_Click(object sender, EventArgs e)

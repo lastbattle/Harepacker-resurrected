@@ -9,19 +9,21 @@ using System.Windows.Forms;
 
 namespace HaRepacker.GUI.Interaction
 {
-    public partial class NameInputBox : Form
+    public partial class FloatingPointInputBox : Form
     {
-        public static bool Show(string title, out string name)
+        public static bool Show(string title, out string name, out double? value)
         {
-            NameInputBox form = new NameInputBox(title);
+            FloatingPointInputBox form = new FloatingPointInputBox(title);
             bool result = form.ShowDialog() == DialogResult.OK;
             name = form.nameResult;
+            value = form.doubleResult;
             return result;
         }
 
         private string nameResult = null;
+        private double? doubleResult = null;
 
-        public NameInputBox(string title)
+        public FloatingPointInputBox(string title)
         {
             InitializeComponent();
             DialogResult = DialogResult.Cancel;
@@ -39,10 +41,11 @@ namespace HaRepacker.GUI.Interaction
             if (nameBox.Text != "" && nameBox.Text != null)
             {
                 nameResult = nameBox.Text;
+                doubleResult =  valueBox.Value;
                 DialogResult = DialogResult.OK;
                 Close();
             }
-            else MessageBox.Show(HaRepacker.Properties.Resources.EnterValidInput, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else MessageBox.Show(HaRepackerLib.Properties.Resources.EnterValidInput, HaRepackerLib.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private void cancelButton_Click(object sender, EventArgs e)

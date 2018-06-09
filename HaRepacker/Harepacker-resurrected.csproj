@@ -132,7 +132,6 @@
       <HintPath>..\packages\ExpressionEvaluator.2.0.4.0\lib\net40\ExpressionEvaluator.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="PresentationCore" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
@@ -193,48 +192,6 @@
     </Compile>
     <Compile Include="GUI\Interaction\WzMapleVersionInputBox.Designer.cs">
       <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\BitmapInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\BitmapInputBox.Designer.cs">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\FloatingPointInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\FloatingPointInputBox.Designer.cs">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\IntInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\IntInputBox.Designer.cs">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\NameInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\NameInputBox.Designer.cs">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\NameValueInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\NameValueInputBox.Designer.cs">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\SoundInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\SoundInputBox.Designer.cs">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\VectorInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\VectorInputBox.Designer.cs">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\ListEditor.cs">
       <SubType>Form</SubType>
@@ -343,76 +300,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.zh-CHT.resx">
       <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\BitmapInputBox.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\BitmapInputBox.zh-CHS.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\BitmapInputBox.zh-CHT.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\FloatingPointInputBox.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\FloatingPointInputBox.zh-CHS.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\FloatingPointInputBox.zh-CHT.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\IntInputBox.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\IntInputBox.zh-CHS.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\IntInputBox.zh-CHT.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameInputBox.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameInputBox.zh-CHS.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameInputBox.zh-CHT.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameValueInputBox.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameValueInputBox.zh-CHS.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\NameValueInputBox.zh-CHT.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\SoundInputBox.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\SoundInputBox.zh-CHS.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\SoundInputBox.zh-CHT.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\VectorInputBox.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\VectorInputBox.zh-CHS.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\VectorInputBox.zh-CHT.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\ListEditor.resx">
       <DependentUpon>ListEditor.cs</DependentUpon>
