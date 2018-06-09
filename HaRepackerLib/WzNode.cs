@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Collections;
+using System.Drawing;
 
 namespace HaRepackerLib
 {
@@ -17,9 +18,16 @@ namespace HaRepackerLib
         public delegate ContextMenuStrip ContextMenuBuilderDelegate(WzNode node, WzObject obj);
         public static ContextMenuBuilderDelegate ContextMenuBuilder = null;
 
-        public WzNode(WzObject SourceObject)
+        private bool isWzObjectAddedManually = false;
+        public static Color NewObjectForeColor = Color.Red;
+
+        public WzNode(WzObject SourceObject, bool isWzObjectAddedManually = false)
             : base(SourceObject.Name)
         {
+            this.isWzObjectAddedManually = isWzObjectAddedManually;
+            if (isWzObjectAddedManually)
+                ForeColor = NewObjectForeColor;
+
             ParseChilds(SourceObject);
         }
 
@@ -52,8 +60,18 @@ namespace HaRepackerLib
         public void Delete()
         {
             Remove();
-            if (Tag is WzImageProperty) ((WzImageProperty)Tag).ParentImage.Changed = true;
+            if (Tag is WzImageProperty)
+                ((WzImageProperty)Tag).ParentImage.Changed = true;
             ((WzObject)Tag).Remove();
+        }
+
+        public bool IsWzObjectAddedManually
+        {
+            get
+            {
+                return isWzObjectAddedManually;
+            }
+            private set { }
         }
 
         public bool CanHaveChilds
@@ -70,7 +88,7 @@ namespace HaRepackerLib
         public static WzNode GetChildNode(WzNode parentNode, string name)
         {
             foreach (WzNode node in parentNode.Nodes)
-                if (node.Text == name) 
+                if (node.Text == name)
                     return node;
             return null;
         }
@@ -158,10 +176,12 @@ namespace HaRepackerLib
                 TryParseImage();
                 if (addObjInternal(obj))
                 {
-                    WzNode node = new WzNode(obj);
+                    WzNode node = new WzNode(obj, true);
                     Nodes.Add(node);
                     if (node.Tag is WzImageProperty)
+                    {
                         ((WzImageProperty)node.Tag).ParentImage.Changed = true;
+                    }
                     undoRedoMan.AddUndoBatch(new System.Collections.Generic.List<UndoRedoAction> { UndoRedoManager.ObjectAdded(this, node) });
                     node.EnsureVisible();
                     return node;
