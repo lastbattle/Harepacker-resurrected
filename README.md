@@ -3,7 +3,7 @@
 
 HaSuite is a collection of tools for MapleStory.
 
-[![N|Solid](https://preview.ibb.co/gyQVnd/Untitled.png)](https://github.com/eaxvac/Harepacker-resurrected)
+[![N|Solid](https://user-images.githubusercontent.com/4586194/41190431-cd2d7146-6c10-11e8-90ac-b5d5a6fdaeb3.png)](https://github.com/eaxvac/Harepacker-resurrected)
 
 ## To build HaSuite, you need 
  - at least Visual Studio 2017 (.NET 4.6.1 and Visual C++ Runtimes 2014+). 
@@ -15,15 +15,6 @@ HaSuite is a collection of tools for MapleStory.
  - Visual C++ Redistributable 2014 +
 
 ------------------------------
-
-### New Features!
-
-  - Create, open and save Data.wz hotfix file
-  - Display WzUOLProperty as image
-  - Fixed issues copy and pasting .img between different Wz encryptions
-  - Fixed an issue with deleting multiple Wz TreeNodes via ContextMenu
-  - Opening new .png WzUOLProperty format in modern MapleStory wz files (v160++)
-  - and many other fixes!
 
 ### Development
 
