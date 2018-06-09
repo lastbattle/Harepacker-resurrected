@@ -213,4 +213,7 @@
   <data name="ImagesFilter" xml:space="preserve">
     <value>圖片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>門戶類型：{0}</value>
+  </data>
 </root>

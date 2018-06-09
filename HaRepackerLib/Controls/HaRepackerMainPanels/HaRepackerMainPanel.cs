@@ -90,6 +90,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             mp3Player.SoundProperty = null;
             nameBox.Text = obj is WzFile ? ((WzFile)obj).Header.Copyright : obj.Name;
             nameBox.ButtonEnabled = false;
+            toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
 
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
@@ -128,7 +129,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = true;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
-            }
+            } 
             else if (obj is WzUOLProperty)
             {
                 nameBox.Visible = true;
@@ -150,8 +151,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     saveImageButton.Visible = true;
 
                     textPropBox.Size = new Size(textPropBox.Size.Width, 50);
-                }
-                else
+                } else
                 {
 
                     canvasPropBox.Visible = false;
@@ -190,6 +190,24 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = false;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
+
+                if (obj is WzStringProperty)
+                {
+                    WzStringProperty stringObj = (WzStringProperty)obj;
+
+                    // Portal type name display
+                    if (stringObj.Name == "pn") // "pn" = portal name
+                    {
+                        if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
+                        {
+                            toolStripStatusLabel_additionalInfo.Text = 
+                                string.Format(Properties.Resources.MainAdditionalInfo_PortalType,  MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
+                        } else
+                        {
+                            toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
+                        }
+                    }
+                }
             }
             else if (obj is WzVectorProperty)
             {
@@ -244,7 +262,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         /// <param name="e"></param>
         private void saveImageButton_Click(object sender, EventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty))
+            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty)) 
             {
                 return;
             }
@@ -709,8 +727,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
                     childInlinkNode.Delete(); // Delete '_inlink' node
-                }
-                else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
+                } else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
 
@@ -725,7 +742,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
                 }
                 selectedWzCanvas.PngProperty.SetPNG(bmp);
-
+ 
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
                 canvasPropBox.Image = bmp;
@@ -818,7 +835,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             foreach (WzNode node in DataTree.SelectedNodes)
             {
                 WzObject wzObj = (WzObject)node.Tag;// CloneWzObject((WzObject)node.Tag);
-
+            
             }
         }
 
@@ -1091,11 +1108,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 dsr.searchResultsBox.Items.Add(result);
             dsr.Show(MainDockPanel);
             dsr.DockState = DockState.DockBottom;
-            //            searchResults.AutoHide = false;
-            //            searchResults.Visible = true;
-            //            searchResultsContainer.Visible = true;
-            //            dockSite8.Visible = true;
-            //            panelDockContainer1.Visible = true;
+//            searchResults.AutoHide = false;
+//            searchResults.Visible = true;
+//            searchResultsContainer.Visible = true;
+//            dockSite8.Visible = true;
+//            panelDockContainer1.Visible = true;
             findBox.Focus();
         }
 
@@ -1132,9 +1149,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private WzNode GetNodeByName(TreeNodeCollection collection, string name)
         {
-            foreach (WzNode node in collection)
-                if (node.Text == name)
-                    return node;
+            foreach (WzNode node in collection) 
+                if (node.Text == name) 
+                    return node; 
             return null;
         }
 

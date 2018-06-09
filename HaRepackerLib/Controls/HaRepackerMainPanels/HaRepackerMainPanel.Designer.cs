@@ -54,6 +54,7 @@
             this.btnClose = new System.Windows.Forms.ToolStripButton();
             this.btnOptions = new System.Windows.Forms.ToolStripButton();
             this.MainDockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
+            this.toolStripStatusLabel_additionalInfo = new System.Windows.Forms.ToolStripStatusLabel();
             ((System.ComponentModel.ISupportInitialize)(this.MainSplitContainer)).BeginInit();
             this.MainSplitContainer.Panel1.SuspendLayout();
             this.MainSplitContainer.Panel2.SuspendLayout();
@@ -174,7 +175,8 @@
             this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.selectionLabel,
             this.mainProgressBar,
-            this.secondaryProgressBar});
+            this.secondaryProgressBar,
+            this.toolStripStatusLabel_additionalInfo});
             resources.ApplyResources(this.statusStrip, "statusStrip");
             this.statusStrip.Name = "statusStrip";
             // 
@@ -259,6 +261,12 @@
             resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
             this.MainDockPanel.Name = "MainDockPanel";
             // 
+            // toolStripStatusLabel_additionalInfo
+            // 
+            this.toolStripStatusLabel_additionalInfo.Margin = new System.Windows.Forms.Padding(200, 3, 0, 2);
+            this.toolStripStatusLabel_additionalInfo.Name = "toolStripStatusLabel_additionalInfo";
+            resources.ApplyResources(this.toolStripStatusLabel_additionalInfo, "toolStripStatusLabel_additionalInfo");
+            // 
             // HaRepackerMainPanel
             // 
             resources.ApplyResources(this, "$this");
@@ -312,5 +320,6 @@
         public System.Windows.Forms.ToolStrip findStrip;
         public TreeViewMS.TreeViewMS DataTree;
         private WeifenLuo.WinFormsUI.Docking.DockPanel MainDockPanel;
+        private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel_additionalInfo;
     }
 }

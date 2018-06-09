@@ -229,6 +229,15 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Portal Type: {0}.
+        /// </summary>
+        internal static string MainAdditionalInfo_PortalType {
+            get {
+                return ResourceManager.GetString("MainAdditionalInfo_PortalType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Add link.
         /// </summary>
         internal static string MainAddLink {

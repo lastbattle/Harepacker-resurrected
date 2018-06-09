@@ -137,7 +137,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAAEAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAAIAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -552,6 +552,12 @@
   <data name="secondaryProgressBar.Size" type="System.Drawing.Size, System.Drawing">
     <value>150, 25</value>
   </data>
+  <data name="toolStripStatusLabel_additionalInfo.Size" type="System.Drawing.Size, System.Drawing">
+    <value>19, 26</value>
+  </data>
+  <data name="toolStripStatusLabel_additionalInfo.Text" xml:space="preserve">
+    <value>-</value>
+  </data>
   <data name="statusStrip.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 671</value>
   </data>
@@ -770,6 +776,12 @@
   </data>
   <data name="&gt;&gt;btnOptions.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Name" xml:space="preserve">
+    <value>toolStripStatusLabel_additionalInfo</value>
+  </data>
+  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripStatusLabel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>HaRepackerMainPanel</value>

@@ -250,4 +250,7 @@
   <data name="SelectMp3" xml:space="preserve">
     <value>Select MP3 File</value>
   </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>포털 유형 : {0}</value>
+  </data>
 </root>
