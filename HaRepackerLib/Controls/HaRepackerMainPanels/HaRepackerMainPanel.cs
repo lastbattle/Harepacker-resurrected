@@ -17,7 +17,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 {
     public partial class HaRepackerMainPanel : UserControl
     {
-        private List<WzObject> clipboard = new List<WzObject>();
+        private static List<WzObject> clipboard = new List<WzObject>();
         private UndoRedoManager undoRedoMan;
 
         public HaRepackerMainPanel()

@@ -90,8 +90,13 @@
             this.aboutToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.debugToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.AbortButton = new System.Windows.Forms.Button();
-            this.MainPanel = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
+            this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
+            this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
+            this.button_addTab = new System.Windows.Forms.Button();
             this.mainMenu.SuspendLayout();
+            this.tabControl_MainPanels.SuspendLayout();
+            this.tabPage1.SuspendLayout();
             this.SuspendLayout();
             // 
             // mainMenu
@@ -135,23 +140,20 @@
             // 
             // saveToolStripMenuItem
             // 
-            this.saveToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.disk;
-            this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
             resources.ApplyResources(this.saveToolStripMenuItem, "saveToolStripMenuItem");
+            this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
             this.saveToolStripMenuItem.Click += new System.EventHandler(this.saveToolStripMenuItem_Click);
             // 
             // unloadAllToolStripMenuItem
             // 
-            this.unloadAllToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.delete;
-            this.unloadAllToolStripMenuItem.Name = "unloadAllToolStripMenuItem";
             resources.ApplyResources(this.unloadAllToolStripMenuItem, "unloadAllToolStripMenuItem");
+            this.unloadAllToolStripMenuItem.Name = "unloadAllToolStripMenuItem";
             this.unloadAllToolStripMenuItem.Click += new System.EventHandler(this.unloadAllToolStripMenuItem_Click);
             // 
             // reloadAllToolStripMenuItem
             // 
-            this.reloadAllToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.arrow_refresh;
-            this.reloadAllToolStripMenuItem.Name = "reloadAllToolStripMenuItem";
             resources.ApplyResources(this.reloadAllToolStripMenuItem, "reloadAllToolStripMenuItem");
+            this.reloadAllToolStripMenuItem.Name = "reloadAllToolStripMenuItem";
             this.reloadAllToolStripMenuItem.Click += new System.EventHandler(this.reloadAllToolStripMenuItem_Click);
             // 
             // editToolStripMenuItem
@@ -184,9 +186,8 @@
             this.wzUnsignedShortPropertyToolStripMenuItem,
             this.wzUolPropertyToolStripMenuItem,
             this.wzVectorPropertyToolStripMenuItem});
-            this.addToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.add;
-            this.addToolStripMenuItem.Name = "addToolStripMenuItem";
             resources.ApplyResources(this.addToolStripMenuItem, "addToolStripMenuItem");
+            this.addToolStripMenuItem.Name = "addToolStripMenuItem";
             // 
             // wzDirectoryToolStripMenuItem
             // 
@@ -279,9 +280,8 @@
             // 
             // removeToolStripMenuItem
             // 
-            this.removeToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.delete;
-            this.removeToolStripMenuItem.Name = "removeToolStripMenuItem";
             resources.ApplyResources(this.removeToolStripMenuItem, "removeToolStripMenuItem");
+            this.removeToolStripMenuItem.Name = "removeToolStripMenuItem";
             this.removeToolStripMenuItem.Click += new System.EventHandler(this.removeToolStripMenuItem_Click);
             // 
             // undoToolStripMenuItem
@@ -433,9 +433,8 @@
             // 
             // searchToolStripMenuItem
             // 
-            this.searchToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.find;
-            this.searchToolStripMenuItem.Name = "searchToolStripMenuItem";
             resources.ApplyResources(this.searchToolStripMenuItem, "searchToolStripMenuItem");
+            this.searchToolStripMenuItem.Name = "searchToolStripMenuItem";
             this.searchToolStripMenuItem.Click += new System.EventHandler(this.searchToolStripMenuItem_Click);
             // 
             // copyToolStripMenuItem
@@ -534,18 +533,43 @@
             this.AbortButton.UseVisualStyleBackColor = true;
             this.AbortButton.Click += new System.EventHandler(this.AbortButton_Click);
             // 
-            // MainPanel
+            // tabControl_MainPanels
             // 
-            this.MainPanel.BackColor = System.Drawing.SystemColors.ButtonHighlight;
-            resources.ApplyResources(this.MainPanel, "MainPanel");
-            this.MainPanel.Name = "MainPanel";
+            resources.ApplyResources(this.tabControl_MainPanels, "tabControl_MainPanels");
+            this.tabControl_MainPanels.Controls.Add(this.tabPage1);
+            this.tabControl_MainPanels.Name = "tabControl_MainPanels";
+            this.tabControl_MainPanels.SelectedIndex = 0;
+            this.tabControl_MainPanels.SelectedIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
+            this.tabControl_MainPanels.TabIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
+            this.tabControl_MainPanels.TabStopChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
+            // 
+            // tabPage1
+            // 
+            this.tabPage1.Controls.Add(this.haRepackerMainPanel1);
+            resources.ApplyResources(this.tabPage1, "tabPage1");
+            this.tabPage1.Name = "tabPage1";
+            this.tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // haRepackerMainPanel1
+            // 
+            resources.ApplyResources(this.haRepackerMainPanel1, "haRepackerMainPanel1");
+            this.haRepackerMainPanel1.Name = "haRepackerMainPanel1";
+            // 
+            // button_addTab
+            // 
+            resources.ApplyResources(this.button_addTab, "button_addTab");
+            this.button_addTab.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.button_addTab.Name = "button_addTab";
+            this.button_addTab.UseVisualStyleBackColor = true;
+            this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
             // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.button_addTab);
+            this.Controls.Add(this.tabControl_MainPanels);
             this.Controls.Add(this.AbortButton);
-            this.Controls.Add(this.MainPanel);
             this.Controls.Add(this.mainMenu);
             this.MainMenuStrip = this.mainMenu;
             this.Name = "MainForm";
@@ -554,14 +578,14 @@
             this.SizeChanged += new System.EventHandler(this.MainForm_SizeChanged);
             this.mainMenu.ResumeLayout(false);
             this.mainMenu.PerformLayout();
+            this.tabControl_MainPanels.ResumeLayout(false);
+            this.tabPage1.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
         }
 
         #endregion
-
-        private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel MainPanel;
         private System.Windows.Forms.MenuStrip mainMenu;
         private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newToolStripMenuItem;
@@ -623,6 +647,10 @@
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem wzKeyMenuItem;
         private System.Windows.Forms.ToolStripTextBox zoomTextBox;
+        private System.Windows.Forms.TabControl tabControl_MainPanels;
+        private System.Windows.Forms.TabPage tabPage1;
+        private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
+        private System.Windows.Forms.Button button_addTab;
     }
 }
 
