@@ -82,9 +82,29 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap arrow_left {
+            get {
+                object obj = ResourceManager.GetObject("arrow_left", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap arrow_refresh {
             get {
                 object obj = ResourceManager.GetObject("arrow_refresh", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap arrow_right {
+            get {
+                object obj = ResourceManager.GetObject("arrow_right", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -156,7 +176,7 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to MSEA (old).
+        ///   Looks up a localized string similar to MSEA/Taiwan (old).
         /// </summary>
         internal static string EncTypeMSEA {
             get {
@@ -312,15 +332,6 @@ namespace HaRepacker.Properties {
             get {
                 object obj = ResourceManager.GetObject("help", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Images (*.jpg;*.bmp;*.png;*.gif;*.tiff).
-        /// </summary>
-        internal static string ImagesFilter {
-            get {
-                return ResourceManager.GetString("ImagesFilter", resourceCulture);
             }
         }
         
@@ -510,15 +521,6 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to MPEG-1 Audio Layer 3 (*.mp3).
-        /// </summary>
-        internal static string Mp3Filter {
-            get {
-                return ResourceManager.GetString("Mp3Filter", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Indent must be above 0.
         /// </summary>
         internal static string OptionsIndentError {
@@ -568,6 +570,26 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap Pause {
+            get {
+                object obj = ResourceManager.GetObject("Pause", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        internal static System.Drawing.Bitmap play {
+            get {
+                object obj = ResourceManager.GetObject("play", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Could not load settings file, make sure it is not in use. If it is not, delete it and try again..
         /// </summary>
         internal static string ProgramLoadSettingsError {
@@ -591,24 +613,6 @@ namespace HaRepacker.Properties {
         internal static string SelectDefaultXmlFolder {
             get {
                 return ResourceManager.GetString("SelectDefaultXmlFolder", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Select the image.
-        /// </summary>
-        internal static string SelectImage {
-            get {
-                return ResourceManager.GetString("SelectImage", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Select MP3 File.
-        /// </summary>
-        internal static string SelectMp3 {
-            get {
-                return ResourceManager.GetString("SelectMp3", resourceCulture);
             }
         }
         

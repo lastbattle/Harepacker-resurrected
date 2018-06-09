@@ -132,50 +132,8 @@
   <data name="ImagesFilter" xml:space="preserve">
     <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
-  <data name="MainAddCanvas" xml:space="preserve">
-    <value>Add canvas</value>
-  </data>
-  <data name="MainAddConvex" xml:space="preserve">
-    <value>Add convex</value>
-  </data>
-  <data name="MainAddDir" xml:space="preserve">
-    <value>Add directory</value>
-  </data>
-  <data name="MainAddDouble" xml:space="preserve">
-    <value>Add double</value>
-  </data>
-  <data name="MainAddFloat" xml:space="preserve">
-    <value>Add float</value>
-  </data>
-  <data name="MainAddImg" xml:space="preserve">
-    <value>Add image</value>
-  </data>
-  <data name="MainAddInt" xml:space="preserve">
-    <value>Add int</value>
-  </data>
-  <data name="MainAddLink" xml:space="preserve">
-    <value>Add link</value>
-  </data>
-  <data name="MainAddNull" xml:space="preserve">
-    <value>Add null</value>
-  </data>
-  <data name="MainAddShort" xml:space="preserve">
-    <value>Add short</value>
-  </data>
-  <data name="MainAddSound" xml:space="preserve">
-    <value>Add sound</value>
-  </data>
-  <data name="MainAddString" xml:space="preserve">
-    <value>Add string</value>
-  </data>
-  <data name="MainAddSub" xml:space="preserve">
-    <value>Add sub</value>
-  </data>
-  <data name="MainAddVec" xml:space="preserve">
-    <value>Add vector</value>
-  </data>
   <data name="MainCannotInsertToNode" xml:space="preserve">
-    <value>Cannot insert selected object into this type of wz node.</value>
+    <value>无法插入这个类型到选中的wz节点</value>
   </data>
   <data name="MainConfirmCopy" xml:space="preserve">
     <value>要将WZ节点复制到剪切板吗? (警告 - 如果选择的节点较多会花比较多时间)</value>
@@ -207,16 +165,61 @@
   <data name="ReplaceConfirm" xml:space="preserve">
     <value>节点"{0}"已存在, 你想取代它吗?</value>
   </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>Select the image</value>
-  </data>
   <data name="SelectionType" xml:space="preserve">
     <value>选中类型: {0}</value>
   </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>Select MP3 File</value>
-  </data>
   <data name="Warning" xml:space="preserve">
     <value>警告</value>
+  </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>新增图片</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>新增convex</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>新增目录</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>新增双精度浮点数</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>新增浮点数</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>新增IMG</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>新增整數</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>新增连接路径</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>新增空值</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>新增无符号短整数</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>新增音乐</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>新增文本</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>新增子目录</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>新增坐标</value>
+  </data>
+  <data name="ImagesFilter1" xml:space="preserve">
+    <value>图片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="SelectImage" xml:space="preserve">
+    <value>选择图片</value>
+  </data>
+  <data name="SelectMp3" xml:space="preserve">
+    <value>选择MP3文件</value>
   </data>
 </root>

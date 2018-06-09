@@ -133,7 +133,7 @@
     <value>GMS (늙은)</value>
   </data>
   <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA (늙은)</value>
+    <value>MSEA/Taiwan (늙은)</value>
   </data>
   <data name="EncTypeNone" xml:space="preserve">
     <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
@@ -167,9 +167,6 @@
   </data>
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y value</value>
-  </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>Select the WZ encryption used:</value>
@@ -222,9 +219,6 @@
   <data name="MainAnimationFail" xml:space="preserve">
     <value>This item is not an animation.</value>
   </data>
-  <data name="MainCannotInsertToNode" xml:space="preserve">
-    <value>Cannot insert selected object into this type of wz node.</value>
-  </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>Are you sure you want to abort the current operation?</value>
   </data>
@@ -267,9 +261,6 @@
   <data name="MainWzExportError" xml:space="preserve">
     <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
   </data>
-  <data name="Mp3Filter" xml:space="preserve">
-    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
-  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
   </data>
@@ -281,12 +272,6 @@
   </data>
   <data name="SelectDefaultXmlFolder" xml:space="preserve">
     <value>Select default XML folder</value>
-  </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>Select the image</value>
-  </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>Select MP3 File</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>Select where to save the animation</value>
@@ -308,12 +293,6 @@
   </data>
   <data name="SelectXml" xml:space="preserve">
     <value>Select the XML files</value>
-  </data>
-  <data name="String" xml:space="preserve">
-    <value>Please provide valid values before confirming.</value>
-  </data>
-  <data name="String1" xml:space="preserve">
-    <value>Please make sure all values are valid before confirming.</value>
   </data>
   <data name="Warning" xml:space="preserve">
     <value>Warning</value>

@@ -192,7 +192,7 @@ Please provide valid values before confirming.</value>
     <value>GMS (old)</value>
   </data>
   <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA (old)</value>
+    <value>MSEA/Taiwan (old)</value>
   </data>
   <data name="EncTypeNone" xml:space="preserve">
     <value>BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리</value>
@@ -224,9 +224,6 @@ Please make sure all values are valid before confirming.</value>
   </data>
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y value</value>
-  </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>This item is not an animation.</value>
@@ -269,9 +266,6 @@ Click "Yes" to download the new version.</value>
   <data name="MainUpdateTitle" xml:space="preserve">
     <value>New Version</value>
   </data>
-  <data name="Mp3Filter" xml:space="preserve">
-    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
-  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
   </data>
@@ -283,12 +277,6 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="SelectDefaultXmlFolder" xml:space="preserve">
     <value>Select default XML folder</value>
-  </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>Select the image</value>
-  </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>Select MP3 File</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>Select where to save the animation</value>
@@ -331,5 +319,17 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="MainWzExportError" xml:space="preserve">
     <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+  </data>
+  <data name="arrow_left" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_left.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="arrow_right" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_right.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Pause" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Pause.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="play" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\play.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
 </root>

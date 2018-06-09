@@ -25,7 +25,6 @@ using System.Text;
 using System.Diagnostics;
 using HaRepackerLib.Controls;
 using System.IO.Pipes;
-using WzDumper;
 using HaRepacker.WindowsAPIImports;
 using HaRepackerLib.Controls.HaRepackerMainPanels;
 using System.Linq;

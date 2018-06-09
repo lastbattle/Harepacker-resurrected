@@ -117,9 +117,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>Animated Portable Network Graphics (*.png)</value>
-  </data>
   <data name="EditFoothold" xml:space="preserve">
     <value>立足處</value>
   </data>
@@ -170,62 +167,14 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y值</value>
   </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>圖片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
-  </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>Select the WZ encryption used:</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ Encryption</value>
   </data>
-  <data name="MainAddCanvas" xml:space="preserve">
-    <value>新增圖片</value>
-  </data>
-  <data name="MainAddConvex" xml:space="preserve">
-    <value>新增convex</value>
-  </data>
-  <data name="MainAddDir" xml:space="preserve">
-    <value>新增目錄</value>
-  </data>
-  <data name="MainAddDouble" xml:space="preserve">
-    <value>新增雙精度浮點數</value>
-  </data>
-  <data name="MainAddFloat" xml:space="preserve">
-    <value>新增浮點數</value>
-  </data>
-  <data name="MainAddImg" xml:space="preserve">
-    <value>新增IMG</value>
-  </data>
-  <data name="MainAddInt" xml:space="preserve">
-    <value>新增整數</value>
-  </data>
-  <data name="MainAddLink" xml:space="preserve">
-    <value>新增連結路徑</value>
-  </data>
-  <data name="MainAddNull" xml:space="preserve">
-    <value>新增空值</value>
-  </data>
-  <data name="MainAddShort" xml:space="preserve">
-    <value>新增無符號短整數</value>
-  </data>
-  <data name="MainAddSound" xml:space="preserve">
-    <value>新增音樂</value>
-  </data>
-  <data name="MainAddString" xml:space="preserve">
-    <value>新增文本</value>
-  </data>
-  <data name="MainAddSub" xml:space="preserve">
-    <value>新增子目錄</value>
-  </data>
-  <data name="MainAddVec" xml:space="preserve">
-    <value>新增坐標</value>
-  </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>這個項目不是動畫</value>
-  </data>
-  <data name="MainCannotInsertToNode" xml:space="preserve">
-    <value>無法插入這個類型到選中的wz節點</value>
   </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>你確定你想終止當前操作?</value>
@@ -271,9 +220,6 @@
   <data name="MainWzExportError" xml:space="preserve">
     <value>導出目錄未找到。 請在工具 - &gt;選項下指定它</value>
   </data>
-  <data name="Mp3Filter" xml:space="preserve">
-    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
-  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>縮進必須大於或等於0</value>
   </data>
@@ -285,12 +231,6 @@
   </data>
   <data name="SelectDefaultXmlFolder" xml:space="preserve">
     <value>選擇默認XML資料夾</value>
-  </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>選擇圖片</value>
-  </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>選擇MP3檔案</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>選擇動畫路徑</value>
