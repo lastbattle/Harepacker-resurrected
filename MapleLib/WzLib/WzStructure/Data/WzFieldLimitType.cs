@@ -25,9 +25,6 @@ namespace MapleLib.WzLib.WzStructure.Data
         Unable_To_Use_Wedding_Invitation_Item = 13, // CField::IsUnableToUseWeddingInvitationItem = CField *this 
         Unable_To_Use_Cash_Weather = 14, // CField::IsUnableToUseCashWeatherItem = CField *this 
         Unable_To_Use_Pet = 15, // CField::IsUnableToUsePet = CField *this 
-        Unknown2 = 13,
-        Unknown3 = 14,
-        Unknown4 = 15,
         Unknown5 = 16,
         Unable_To_Fall_Down = 17, // CField::IsUnableToFallDown = CField *this 
         Unable_To_Summon_NPC = 18, // CField::IsUnaUnableToUseAntiMacroItembleToSummonNPC = CField *this 
