@@ -1003,18 +1003,30 @@ namespace HaRepacker.GUI
 
         private void xMLToolStripMenuItem2_Click(object sender, EventArgs e)
         {
-            if (MainPanel.DataTree.SelectedNode == null || (!(MainPanel.DataTree.SelectedNode.Tag is WzDirectory) && !(MainPanel.DataTree.SelectedNode.Tag is WzFile) && !(MainPanel.DataTree.SelectedNode.Tag is IPropertyContainer))) return;
+            if (MainPanel.DataTree.SelectedNode == null || (!(MainPanel.DataTree.SelectedNode.Tag is WzDirectory) && !(MainPanel.DataTree.SelectedNode.Tag is WzFile) && !(MainPanel.DataTree.SelectedNode.Tag is IPropertyContainer)))
+                return;
             WzFile wzFile = ((WzObject)MainPanel.DataTree.SelectedNode.Tag).WzFileParent;
-            if (!(wzFile is WzFile)) return;
-            OpenFileDialog dialog = new OpenFileDialog() { Title = HaRepacker.Properties.Resources.SelectXml, Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter), Multiselect = true };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            if (!(wzFile is WzFile))
+                return;
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
+                Title = HaRepacker.Properties.Resources.SelectXml,
+                Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter),
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
             WzXmlDeserializer deserializer = new WzXmlDeserializer(true, WzTool.GetIvByMapleVersion(wzFile.MapleVersion));
             yesToAll = false;
             noToAll = false;
             threadDone = false;
 
             runningThread = new Thread(new ParameterizedThreadStart(WzImporterThread));
-            runningThread.Start(new object[] { deserializer, dialog.FileNames, MainPanel.DataTree.SelectedNode, null });
+            runningThread.Start(new object[]
+            {
+                deserializer, dialog.FileNames, MainPanel.DataTree.SelectedNode, null
+            });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(deserializer);
         }
 
@@ -1119,7 +1131,7 @@ namespace HaRepacker.GUI
                 {
                     if (((obj is WzDirectory || obj is WzImage) && parentObj is WzDirectory) || (obj is WzImageProperty && parentObj is IPropertyContainer))
                     {
-                        WzNode node = new WzNode(obj);
+                        WzNode node = new WzNode(obj, true);
                         InsertWzNodeThreadSafe(node, parent);
                     }
                 }
