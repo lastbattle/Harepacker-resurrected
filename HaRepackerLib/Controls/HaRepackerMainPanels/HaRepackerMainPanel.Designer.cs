@@ -71,12 +71,10 @@
             // 
             // MainSplitContainer.Panel1
             // 
-            resources.ApplyResources(this.MainSplitContainer.Panel1, "MainSplitContainer.Panel1");
             this.MainSplitContainer.Panel1.Controls.Add(this.DataTree);
             // 
             // MainSplitContainer.Panel2
             // 
-            resources.ApplyResources(this.MainSplitContainer.Panel2, "MainSplitContainer.Panel2");
             this.MainSplitContainer.Panel2.Controls.Add(this.saveSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeSoundButton);
@@ -135,8 +133,8 @@
             // 
             // nameBox
             // 
-            resources.ApplyResources(this.nameBox, "nameBox");
             this.nameBox.ButtonEnabled = false;
+            resources.ApplyResources(this.nameBox, "nameBox");
             this.nameBox.Name = "nameBox";
             this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
             // 
@@ -172,31 +170,33 @@
             // 
             // statusStrip
             // 
-            resources.ApplyResources(this.statusStrip, "statusStrip");
+            this.statusStrip.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.selectionLabel,
             this.mainProgressBar,
             this.secondaryProgressBar});
+            resources.ApplyResources(this.statusStrip, "statusStrip");
             this.statusStrip.Name = "statusStrip";
             // 
             // selectionLabel
             // 
-            resources.ApplyResources(this.selectionLabel, "selectionLabel");
             this.selectionLabel.Name = "selectionLabel";
+            resources.ApplyResources(this.selectionLabel, "selectionLabel");
             // 
             // mainProgressBar
             // 
-            resources.ApplyResources(this.mainProgressBar, "mainProgressBar");
             this.mainProgressBar.Name = "mainProgressBar";
+            resources.ApplyResources(this.mainProgressBar, "mainProgressBar");
             // 
             // secondaryProgressBar
             // 
-            resources.ApplyResources(this.secondaryProgressBar, "secondaryProgressBar");
             this.secondaryProgressBar.Name = "secondaryProgressBar";
+            resources.ApplyResources(this.secondaryProgressBar, "secondaryProgressBar");
             // 
             // findStrip
             // 
             resources.ApplyResources(this.findStrip, "findStrip");
+            this.findStrip.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.findStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.btnFindAll,
             this.btnFindNext,
@@ -209,15 +209,15 @@
             // 
             // btnFindAll
             // 
-            resources.ApplyResources(this.btnFindAll, "btnFindAll");
             this.btnFindAll.Image = global::HaRepackerLib.Properties.Resources.find;
+            resources.ApplyResources(this.btnFindAll, "btnFindAll");
             this.btnFindAll.Name = "btnFindAll";
             this.btnFindAll.Click += new System.EventHandler(this.btnFindAll_Click);
             // 
             // btnFindNext
             // 
-            resources.ApplyResources(this.btnFindNext, "btnFindNext");
             this.btnFindNext.Image = global::HaRepackerLib.Properties.Resources.arrow_right;
+            resources.ApplyResources(this.btnFindNext, "btnFindNext");
             this.btnFindNext.Name = "btnFindNext";
             this.btnFindNext.Click += new System.EventHandler(this.btnFindNext_Click);
             // 
@@ -231,33 +231,32 @@
             // 
             // btnRestart
             // 
-            resources.ApplyResources(this.btnRestart, "btnRestart");
             this.btnRestart.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
             this.btnRestart.Image = global::HaRepackerLib.Properties.Resources.undo;
+            resources.ApplyResources(this.btnRestart, "btnRestart");
             this.btnRestart.Name = "btnRestart";
             this.btnRestart.Click += new System.EventHandler(this.btnRestart_Click);
             // 
             // btnClose
             // 
-            resources.ApplyResources(this.btnClose, "btnClose");
             this.btnClose.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
             this.btnClose.Image = global::HaRepackerLib.Properties.Resources.red_x1;
+            resources.ApplyResources(this.btnClose, "btnClose");
             this.btnClose.Name = "btnClose";
             this.btnClose.Click += new System.EventHandler(this.btnClose_Click);
             // 
             // btnOptions
             // 
-            resources.ApplyResources(this.btnOptions, "btnOptions");
             this.btnOptions.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            resources.ApplyResources(this.btnOptions, "btnOptions");
             this.btnOptions.Name = "btnOptions";
             this.btnOptions.Click += new System.EventHandler(this.btnOptions_Click);
             // 
             // MainDockPanel
             // 
-            resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
-            this.MainDockPanel.ActiveAutoHideContent = null;
             this.MainDockPanel.DockBackColor = System.Drawing.SystemColors.Control;
             this.MainDockPanel.DocumentStyle = WeifenLuo.WinFormsUI.Docking.DocumentStyle.DockingWindow;
+            resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
             this.MainDockPanel.Name = "MainDockPanel";
             // 
             // HaRepackerMainPanel

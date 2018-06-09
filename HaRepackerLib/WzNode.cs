@@ -154,9 +154,12 @@ namespace HaRepackerLib
             }
         }
 
+        /// <summary>
+        /// Try parsing the WzImage if it have not been loaded
+        /// </summary>
         private void TryParseImage()
         {
-            if (Tag is WzImage && !((WzImage)Tag).Parsed)
+            if (Tag is WzImage)
             {
                 ((WzImage)Tag).ParseImage();
                 Reparse();
