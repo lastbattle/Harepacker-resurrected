@@ -137,7 +137,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAAIAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAABEAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -171,6 +171,9 @@
   <data name="&gt;&gt;MainSplitContainer.Panel1.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
+  <data name="saveSoundButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="saveSoundButton.Location" type="System.Drawing.Point, System.Drawing">
     <value>68, 274</value>
   </data>
@@ -200,6 +203,9 @@
   </data>
   <data name="&gt;&gt;saveSoundButton.ZOrder" xml:space="preserve">
     <value>0</value>
+  </data>
+  <data name="saveImageButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="saveImageButton.Location" type="System.Drawing.Point, System.Drawing">
     <value>26, 335</value>
@@ -231,6 +237,9 @@
   <data name="&gt;&gt;saveImageButton.ZOrder" xml:space="preserve">
     <value>1</value>
   </data>
+  <data name="changeSoundButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="changeSoundButton.Location" type="System.Drawing.Point, System.Drawing">
     <value>106, 369</value>
   </data>
@@ -261,6 +270,9 @@
   <data name="&gt;&gt;changeSoundButton.ZOrder" xml:space="preserve">
     <value>2</value>
   </data>
+  <data name="changeImageButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="changeImageButton.Location" type="System.Drawing.Point, System.Drawing">
     <value>106, 212</value>
   </data>
@@ -290,6 +302,9 @@
   </data>
   <data name="&gt;&gt;changeImageButton.ZOrder" xml:space="preserve">
     <value>3</value>
+  </data>
+  <data name="applyChangesButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="applyChangesButton.Location" type="System.Drawing.Point, System.Drawing">
     <value>4, 414</value>
@@ -322,7 +337,7 @@
     <value>4</value>
   </data>
   <data name="nameBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>4, 128</value>
+    <value>26, 98</value>
   </data>
   <data name="nameBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>6, 8, 6, 8</value>
@@ -379,7 +394,7 @@
     <value>6</value>
   </data>
   <data name="mp3Player.Location" type="System.Drawing.Point, System.Drawing">
-    <value>68, 25</value>
+    <value>134, 0</value>
   </data>
   <data name="mp3Player.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>6, 8, 6, 8</value>
@@ -444,6 +459,9 @@
   <data name="pictureBoxPanel.AutoScroll" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
+  <data name="canvasPropBox.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="canvasPropBox.Location" type="System.Drawing.Point, System.Drawing">
     <value>10, 40</value>
   </data>
@@ -500,6 +518,42 @@
   </data>
   <data name="&gt;&gt;pictureBoxPanel.ZOrder" xml:space="preserve">
     <value>9</value>
+  </data>
+  <data name="listView_fieldLimitType.Alignment" type="System.Windows.Forms.ListViewAlignment, System.Windows.Forms">
+    <value>Default</value>
+  </data>
+  <data name="listView_fieldLimitType.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
+    <value>Top, Bottom, Left, Right</value>
+  </data>
+  <data name="listView_fieldLimitType.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 10pt</value>
+  </data>
+  <data name="listView_fieldLimitType.LabelWrap" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="listView_fieldLimitType.Location" type="System.Drawing.Point, System.Drawing">
+    <value>0, 80</value>
+  </data>
+  <data name="listView_fieldLimitType.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
+    <value>0, 0, 0, 10</value>
+  </data>
+  <data name="listView_fieldLimitType.Size" type="System.Drawing.Size, System.Drawing">
+    <value>647, 428</value>
+  </data>
+  <data name="listView_fieldLimitType.TabIndex" type="System.Int32, mscorlib">
+    <value>13</value>
+  </data>
+  <data name="&gt;&gt;listView_fieldLimitType.Name" xml:space="preserve">
+    <value>listView_fieldLimitType</value>
+  </data>
+  <data name="&gt;&gt;listView_fieldLimitType.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ListView, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;listView_fieldLimitType.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;listView_fieldLimitType.ZOrder" xml:space="preserve">
+    <value>10</value>
   </data>
   <data name="&gt;&gt;MainSplitContainer.Panel2.Name" xml:space="preserve">
     <value>MainSplitContainer.Panel2</value>
@@ -741,6 +795,12 @@
   <data name="&gt;&gt;secondaryProgressBar.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripProgressBar, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Name" xml:space="preserve">
+    <value>toolStripStatusLabel_additionalInfo</value>
+  </data>
+  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripStatusLabel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="&gt;&gt;btnFindAll.Name" xml:space="preserve">
     <value>btnFindAll</value>
   </data>
@@ -776,12 +836,6 @@
   </data>
   <data name="&gt;&gt;btnOptions.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Name" xml:space="preserve">
-    <value>toolStripStatusLabel_additionalInfo</value>
-  </data>
-  <data name="&gt;&gt;toolStripStatusLabel_additionalInfo.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripStatusLabel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>HaRepackerMainPanel</value>

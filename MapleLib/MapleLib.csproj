@@ -164,6 +164,7 @@
     <Compile Include="WzLib\WzSettings.cs" />
     <Compile Include="WzLib\WzStructure\Data\Data.cs" />
     <Compile Include="WzLib\WzStructure\Data\Enums.cs" />
+    <Compile Include="WzLib\WzStructure\Data\WzFieldLimitType.cs" />
     <Compile Include="WzLib\WzStructure\Foothold.cs" />
     <Compile Include="WzLib\WzStructure\InfoTool.cs" />
     <Compile Include="WzLib\WzStructure\MapInfo.cs" />
