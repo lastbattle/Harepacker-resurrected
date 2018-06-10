@@ -564,6 +564,25 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
+
+        /// <summary>
+        /// WzLongProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzLongToSelectedNode(TreeNode target)
+        {
+            string name;
+            long? value;
+            if (!(target.Tag is IPropertyContainer))
+            {
+                Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!LongInputBox.Show(HaRepackerLib.Properties.Resources.MainAddInt, out name, out value))
+                return;
+            ((WzNode)target).AddObject(new WzLongProperty(name, (long)value), UndoRedoMan);
+        }
+
         /// <summary>
         /// WzCompressedInt
         /// </summary>

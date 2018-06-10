@@ -19,7 +19,7 @@ using MapleLib.WzLib.Util;
 
 namespace MapleLib.WzLib.WzProperties
 {
-    class WzLongProperty : WzImageProperty
+    public class WzLongProperty : WzImageProperty
     {
         #region Fields
         internal string name;

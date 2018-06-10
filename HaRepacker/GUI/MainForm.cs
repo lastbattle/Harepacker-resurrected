@@ -928,6 +928,16 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
+        /// WzLongProperty
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void wzLongPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MainPanel.AddWzLongToSelectedNode(MainPanel.DataTree.SelectedNode);
+        }
+
+        /// <summary>
         /// Add WzIntProperty
         /// </summary>
         /// <param name="sender"></param>

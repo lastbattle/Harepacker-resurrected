@@ -138,6 +138,12 @@
     <Compile Include="Controls\IntInputBox.Designer.cs">
       <DependentUpon>IntInputBox.cs</DependentUpon>
     </Compile>
+    <Compile Include="Controls\LongInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\LongInputBox.designer.cs">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </Compile>
     <Compile Include="Controls\NameInputBox.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -272,6 +278,15 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\IntInputBox.zh-CHT.resx">
       <DependentUpon>IntInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\LongInputBox.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\LongInputBox.zh-CHS.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\LongInputBox.zh-CHT.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\NameInputBox.resx">
       <DependentUpon>NameInputBox.cs</DependentUpon>

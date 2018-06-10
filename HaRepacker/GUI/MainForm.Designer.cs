@@ -94,6 +94,7 @@
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -176,6 +177,7 @@
             this.toolStripSeparator1,
             this.wzByteFloatPropertyToolStripMenuItem,
             this.wzCanvasPropertyToolStripMenuItem,
+            this.wzLongPropertyToolStripMenuItem,
             this.wzCompressedIntPropertyToolStripMenuItem,
             this.wzConvexPropertyToolStripMenuItem,
             this.wzDoublePropertyToolStripMenuItem,
@@ -563,6 +565,12 @@
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
             // 
+            // wzLongPropertyToolStripMenuItem
+            // 
+            this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
+            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
+            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -651,6 +659,7 @@
         private System.Windows.Forms.TabPage tabPage1;
         private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
+        private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
     }
 }
 

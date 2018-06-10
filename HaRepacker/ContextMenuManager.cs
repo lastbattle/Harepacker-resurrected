@@ -43,6 +43,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddDirectory;
         private ToolStripMenuItem AddByteFloat;
         private ToolStripMenuItem AddCanvas;
+        private ToolStripMenuItem AddLong;
         private ToolStripMenuItem AddInt;
         private ToolStripMenuItem AddConvex;
         private ToolStripMenuItem AddDouble;
@@ -160,6 +161,17 @@ namespace HaRepacker
                     }
 
                     haRepackerMainPanel.AddWzCanvasToSelectedNode(nodes[0]);
+                }));
+            AddLong = new ToolStripMenuItem("Long", null, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    WzNode[] nodes = GetNodes(sender);
+                    if (nodes.Length != 1)
+                    {
+                        MessageBox.Show("Please select only ONE node");
+                        return;
+                    }
+                    haRepackerMainPanel.AddWzLongToSelectedNode(nodes[0]);
                 }));
             AddInt = new ToolStripMenuItem("Int", null, new EventHandler(
                 delegate (object sender, EventArgs e)
@@ -282,7 +294,7 @@ namespace HaRepacker
 
             AddConvexSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddVector);
             AddDirsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddDirectory, AddImage);
-            AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddCanvas, AddConvex, AddDouble, AddByteFloat, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
+            AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
 
             WzFileMenu = new ContextMenuStrip();
             WzFileMenu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, SaveFile, Unload, Reload });
