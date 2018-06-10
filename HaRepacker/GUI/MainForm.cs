@@ -337,7 +337,7 @@ namespace HaRepacker.GUI
                             foreach (string filePath_Others in otherMapWzFiles)
                             {
                                 if (filePath_Others != filePath &&
-                                    filePath_Others.EndsWith("Map001.wz") && filePath_Others.EndsWith("Map2.wz")) // damn, ugly hack to only whitelist those that Nexon uses. but someone could be saving as say Map_bak.wz in their folder.
+                                    (filePath_Others.EndsWith("Map001.wz") || filePath_Others.EndsWith("Map2.wz"))) // damn, ugly hack to only whitelist those that Nexon uses. but someone could be saving as say Map_bak.wz in their folder.
                                 {
                                     Program.WzMan.LoadWzFile(filePath_Others, MapleVersionEncryptionSelected, MainPanel);
                                 }
