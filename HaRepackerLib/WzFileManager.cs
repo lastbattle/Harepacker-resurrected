@@ -27,6 +27,15 @@ namespace HaRepackerLib
         {
         }
 
+        public IReadOnlyCollection<WzFile> WzFileListReadOnly
+        {
+            get
+            {
+                return wzFiles.AsReadOnly();
+            }
+            set { }
+        }
+
         private bool OpenWzFile(string path, WzMapleVersion encVersion, short version, out WzFile file)
         {
             try
@@ -85,6 +94,12 @@ namespace HaRepackerLib
 
         }
 
+        /// <summary>
+        /// Load a WZ file from path
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="panel"></param>
+        /// <returns></returns>
         public WzFile LoadWzFile(string path, HaRepackerMainPanel panel)
         {
             short fileVersion = -1;
@@ -92,11 +107,27 @@ namespace HaRepackerLib
             return LoadWzFile(path, WzTool.DetectMapleVersion(path, out fileVersion), fileVersion, panel);
         }
 
+        /// <summary>
+        /// Load a WZ file from path
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="encVersion"></param>
+        /// <param name="panel"></param>
+        /// <returns></returns>
         public WzFile LoadWzFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel)
         {
             return LoadWzFile(path, encVersion, (short)-1, panel);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="otherWzFileToLoadAt"></param>
+        /// <param name="path"></param>
+        /// <param name="encVersion"></param>
+        /// <param name="version"></param>
+        /// <param name="panel"></param>
+        /// <returns></returns>
         private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, HaRepackerMainPanel panel)
         {
             WzFile newFile;
@@ -135,7 +166,8 @@ namespace HaRepackerLib
 
         public void UnloadAll()
         {
-            while (wzFiles.Count > 0) UnloadWzFile(wzFiles[0]);
+            while (wzFiles.Count > 0)
+                UnloadWzFile(wzFiles[0]);
         }
 
         public void Terminate()

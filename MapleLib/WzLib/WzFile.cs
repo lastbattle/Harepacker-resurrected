@@ -547,11 +547,22 @@ namespace MapleLib.WzLib
             return objList;
         }
 
-        public WzObject GetObjectFromPath(string path)
+        /// <summary>
+        /// Get WZ objects from path
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="lookupOtherOpenedWzFile"></param>
+        /// <returns></returns>
+        public WzObject GetObjectFromPath(string path, bool checkFirstDirectoryName = true)
         {
             string[] seperatedPath = path.Split("/".ToCharArray());
-            if (seperatedPath[0].ToLower() != wzDir.name.ToLower() && seperatedPath[0].ToLower() != wzDir.name.Substring(0, wzDir.name.Length - 3).ToLower())
-                return null;
+
+            if (checkFirstDirectoryName)
+            {
+                if (seperatedPath[0].ToLower() != wzDir.name.ToLower() && seperatedPath[0].ToLower() != wzDir.name.Substring(0, wzDir.name.Length - 3).ToLower())
+                    return null;
+            }
+
             if (seperatedPath.Length == 1)
                 return WzDirectory;
             WzObject curObj = WzDirectory;
@@ -598,6 +609,23 @@ namespace MapleLib.WzLib
                 return null;
             }
             return curObj;
+        }
+
+        /// <summary>
+        /// Get WZ object from multiple loaded WZ files in memory
+        /// </summary>
+        /// <param name="path"></param>
+        /// <param name="wzFiles"></param>
+        /// <returns></returns>
+        public static WzObject GetObjectFromMultipleWzFilePath(string path, IReadOnlyCollection<WzFile> wzFiles)
+        {
+            foreach (WzFile file in wzFiles)
+            {
+                WzObject obj = file.GetObjectFromPath(path, false);
+                if (obj != null)
+                    return obj;
+            }
+            return null;
         }
 
         internal bool strMatch(string strWildCard, string strCompare)

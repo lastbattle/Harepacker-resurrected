@@ -308,7 +308,7 @@ namespace HaRepacker.GUI
                 Title = HaRepacker.Properties.Resources.SelectWz,
                 Filter = string.Format("{0}|*.wz",
                 HaRepacker.Properties.Resources.WzFilter),
-                Multiselect = true
+                Multiselect = true,
             })
             {
 
@@ -316,19 +316,45 @@ namespace HaRepacker.GUI
                     return;
 
                 WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
-                foreach (string name in dialog.FileNames)
+                foreach (string filePath in dialog.FileNames)
                 {
-                    if (WzTool.IsDataWzFile(name))
+                    if (WzTool.IsDataWzFile(filePath))
                     {
-                        WzImage img = Program.WzMan.LoadDataWzHotfixFile(name, MapleVersionEncryptionSelected, MainPanel);
+                        WzImage img = Program.WzMan.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
                     }
-                    else if (WzTool.IsListFile(name))
+                    else if (WzTool.IsListFile(filePath))
                     {
-                        new ListEditor(name, MapleVersionEncryptionSelected).Show();
+                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
                     }
                     else
                     {
-                        WzFile f = Program.WzMan.LoadWzFile(name, MapleVersionEncryptionSelected, MainPanel);
+                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel);
+
+                        // Now pre-load the other part of Map.wz
+                        if (filePath.ToLower().EndsWith("map.wz"))
+                        {
+                            string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Map*.wz");
+                            foreach (string filePath_Others in otherMapWzFiles)
+                            {
+                                if (filePath_Others != filePath &&
+                                    filePath_Others.EndsWith("Map001.wz") && filePath_Others.EndsWith("Map2.wz")) // damn, ugly hack to only whitelist those that Nexon uses. but someone could be saving as say Map_bak.wz in their folder.
+                                {
+                                    Program.WzMan.LoadWzFile(filePath_Others, MapleVersionEncryptionSelected, MainPanel);
+                                }
+                            }
+                        }
+                        else if (filePath.ToLower().EndsWith("mob.wz"))  // Now pre-load the other part of Mob.wz
+                        {
+                            string[] otherMobWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Mob*.wz");
+                            foreach (string filePath_Others in otherMobWzFiles)
+                            {
+                                if (filePath_Others != filePath &&
+                                    filePath_Others.EndsWith("Mob2.wz"))
+                                {
+                                    Program.WzMan.LoadWzFile(filePath_Others, MapleVersionEncryptionSelected, MainPanel);
+                                }
+                            }
+                        }
                     }
                 }
             }

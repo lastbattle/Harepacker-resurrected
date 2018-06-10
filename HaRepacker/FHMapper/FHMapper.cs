@@ -195,7 +195,10 @@ namespace HaRepacker.FHMapper
                             int y = ((WzIntProperty)obj["y"]).Value + center.Y;
                             WzVectorProperty origin;
                             WzPngProperty png;
-                            WzImageProperty objData = (WzImageProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0");
+
+                            string imgObjPath = wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0";
+
+                            WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, Program.WzMan.WzFileListReadOnly);
                             tryagain:
                             if (objData is WzCanvasProperty)
                             {
@@ -251,8 +254,8 @@ namespace HaRepacker.FHMapper
                     string tileSetName = ((WzStringProperty)((WzSubProperty)((WzSubProperty)img[i.ToString()])["info"])["tS"]).Value;
 
                     // Browse to the tileset
-
-                    WzImage tileSet = (WzImage)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Tile/" + tileSetName + ".img");
+                    string tilePath = wzFile.WzDirectory.Name + "/Tile/" + tileSetName + ".img";
+                    WzImage tileSet = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(tilePath, Program.WzMan.WzFileListReadOnly);
                     if (!tileSet.Parsed)
                         tileSet.ParseImage();
 
