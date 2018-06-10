@@ -31,13 +31,13 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaRepackerMainPanel));
             this.MainSplitContainer = new System.Windows.Forms.SplitContainer();
             this.DataTree = new TreeViewMS.TreeViewMS();
+            this.vectorPanel = new HaRepackerLib.XYPanel();
             this.saveSoundButton = new System.Windows.Forms.Button();
             this.saveImageButton = new System.Windows.Forms.Button();
             this.changeSoundButton = new System.Windows.Forms.Button();
             this.changeImageButton = new System.Windows.Forms.Button();
             this.applyChangesButton = new System.Windows.Forms.Button();
             this.nameBox = new HaRepackerLib.ChangableTextbox();
-            this.vectorPanel = new HaRepackerLib.XYPanel();
             this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             this.textPropBox = new System.Windows.Forms.TextBox();
             this.pictureBoxPanel = new System.Windows.Forms.Panel();
@@ -74,16 +74,17 @@
             // MainSplitContainer.Panel1
             // 
             this.MainSplitContainer.Panel1.Controls.Add(this.DataTree);
+            resources.ApplyResources(this.MainSplitContainer.Panel1, "MainSplitContainer.Panel1");
             // 
             // MainSplitContainer.Panel2
             // 
+            this.MainSplitContainer.Panel2.Controls.Add(this.vectorPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.applyChangesButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.nameBox);
-            this.MainSplitContainer.Panel2.Controls.Add(this.vectorPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.mp3Player);
             this.MainSplitContainer.Panel2.Controls.Add(this.textPropBox);
             this.MainSplitContainer.Panel2.Controls.Add(this.pictureBoxPanel);
@@ -98,6 +99,13 @@
             this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
             this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
             this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            // 
+            // vectorPanel
+            // 
+            resources.ApplyResources(this.vectorPanel, "vectorPanel");
+            this.vectorPanel.Name = "vectorPanel";
+            this.vectorPanel.X = 0;
+            this.vectorPanel.Y = 0;
             // 
             // saveSoundButton
             // 
@@ -140,13 +148,6 @@
             resources.ApplyResources(this.nameBox, "nameBox");
             this.nameBox.Name = "nameBox";
             this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
-            // 
-            // vectorPanel
-            // 
-            resources.ApplyResources(this.vectorPanel, "vectorPanel");
-            this.vectorPanel.Name = "vectorPanel";
-            this.vectorPanel.X = 0;
-            this.vectorPanel.Y = 0;
             // 
             // mp3Player
             // 
@@ -322,7 +323,6 @@
         public System.Windows.Forms.ToolStripProgressBar secondaryProgressBar;
         public System.Windows.Forms.ToolStripProgressBar mainProgressBar;
         private ChangableTextbox nameBox;
-        private XYPanel vectorPanel;
         private System.Windows.Forms.Button saveImageButton;
         private System.Windows.Forms.Button changeSoundButton;
         private System.Windows.Forms.Button changeImageButton;
@@ -339,5 +339,6 @@
         private WeifenLuo.WinFormsUI.Docking.DockPanel MainDockPanel;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel_additionalInfo;
         private System.Windows.Forms.ListView listView_fieldLimitType;
+        private XYPanel vectorPanel;
     }
 }
