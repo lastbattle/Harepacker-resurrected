@@ -63,7 +63,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
                     i_index++;
                 }
-                for (int i = i_index; i < i_index + 20; i++) // add 50 dummy values, we really dont have the field properties of future MS versions :( 
+                for (int i = i_index; i < i_index + 50; i++) // add 50 dummy values, we really dont have the field properties of future MS versions :( 
                 {
                     ListViewItem item1 = new ListViewItem(string.Format("{0} - UNKNOWN", (i).ToString()));
                     item1.Tag = i;

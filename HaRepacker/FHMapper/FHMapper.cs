@@ -25,7 +25,7 @@ namespace HaRepacker.FHMapper
 
         // Fonts
         private static Font FONT_DISPLAY_MAPID = new Font("Segoe UI", 20);
-        private static Font FONT_DISPLAY_MINIMAP_NOT_AVAILABLE = new Font("Segoe UI",18);
+        private static Font FONT_DISPLAY_MINIMAP_NOT_AVAILABLE = new Font("Segoe UI", 18);
         private static Font FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD = new Font("Segoe UI", 8);
 
         public FHMapper(HaRepackerMainPanel MainPanel)
@@ -43,41 +43,47 @@ namespace HaRepacker.FHMapper
             List<Portals.Portal> Ps = new List<Portals.Portal>();
             Size bmpSize;
             Point center;
+
+            WzSubProperty miniMapSubProperty = ((WzSubProperty)img["miniMap"]);
+
             try
             {
-                bmpSize = new Size(((WzIntProperty)((WzSubProperty)img["miniMap"])["width"]).Value, ((WzIntProperty)((WzSubProperty)img["miniMap"])["height"]).Value);
-                center = new Point(((WzIntProperty)((WzSubProperty)img["miniMap"])["centerX"]).Value, ((WzIntProperty)((WzSubProperty)img["miniMap"])["centerY"]).Value);
+                bmpSize = new Size(((WzIntProperty)miniMapSubProperty["width"]).Value, ((WzIntProperty)miniMapSubProperty["height"]).Value);
+                center = new Point(((WzIntProperty)miniMapSubProperty["centerX"]).Value, ((WzIntProperty)miniMapSubProperty["centerY"]).Value);
             }
-            catch (KeyNotFoundException)
+            catch (Exception exp)
             {
-                try
+                if (exp is KeyNotFoundException || exp is NullReferenceException)
                 {
-                    bmpSize = new Size(((WzIntProperty)((WzSubProperty)img["info"])["VRRight"]).Value - ((WzIntProperty)((WzSubProperty)img["info"])["VRLeft"]).Value, ((WzIntProperty)((WzSubProperty)img["info"])["VRBottom"]).Value - ((WzIntProperty)((WzSubProperty)img["info"])["VRTop"]).Value);
-                    center = new Point(((WzIntProperty)((WzSubProperty)img["info"])["VRRight"]).Value, ((WzIntProperty)((WzSubProperty)img["info"])["VRBottom"]).Value);
-                    //center = new Point(0, 0);
+                    try
+                    {
+                        WzSubProperty infoSubProperty = ((WzSubProperty)img["info"]);
+
+                        bmpSize = new Size(((WzIntProperty)infoSubProperty["VRRight"]).Value - ((WzIntProperty)infoSubProperty["VRLeft"]).Value, ((WzIntProperty)infoSubProperty["VRBottom"]).Value - ((WzIntProperty)infoSubProperty["VRTop"]).Value);
+                        center = new Point(((WzIntProperty)infoSubProperty["VRRight"]).Value, ((WzIntProperty)infoSubProperty["VRBottom"]).Value);
+                    }
+                    catch
+                    {
+                        return;
+                    }
                 }
-                catch
-                {
+                else
                     return;
-                }
             }
-            catch
-            {
-                return;
-            }
+
             Bitmap mapRender = new Bitmap(bmpSize.Width, bmpSize.Height + 10);
             using (Graphics drawBuf = Graphics.FromImage(mapRender))
             {
                 //drawBuf.FillRectangle(new SolidBrush(Color.CornflowerBlue), 0, 0, bmpSize.Width, bmpSize.Height);
                 drawBuf.DrawString("Map " + img.Name.Substring(0, img.Name.Length - 4), FONT_DISPLAY_MAPID, new SolidBrush(Color.Black), new PointF(10, 10));
-                try
-                {
-                    drawBuf.DrawImage(((WzCanvasProperty)((WzSubProperty)img["miniMap"])["canvas"]).PngProperty.GetPNG(false), 10, 45);
-                }
-                catch (KeyNotFoundException)
+
+                if (miniMapSubProperty != null)
+                    drawBuf.DrawImage(((WzCanvasProperty)miniMapSubProperty["canvas"]).PngProperty.GetPNG(false), 10, 45);
+                else
                 {
                     drawBuf.DrawString("Minimap not availible", FONT_DISPLAY_MINIMAP_NOT_AVAILABLE, new SolidBrush(Color.Black), new PointF(10, 45));
                 }
+
                 WzSubProperty ps = (WzSubProperty)img["portal"];
                 foreach (WzSubProperty p in ps.WzProperties)
                 {
@@ -190,7 +196,7 @@ namespace HaRepacker.FHMapper
                             WzVectorProperty origin;
                             WzPngProperty png;
                             WzImageProperty objData = (WzImageProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0");
-                        tryagain:
+                            tryagain:
                             if (objData is WzCanvasProperty)
                             {
                                 png = ((WzCanvasProperty)objData).PngProperty;
