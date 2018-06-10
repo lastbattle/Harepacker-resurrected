@@ -13,6 +13,7 @@ using System.Windows.Forms;
 using HaRepackerLib.Controls;
 using System.Security.Cryptography;
 using HaRepackerLib.Controls.HaRepackerMainPanels;
+using System.Diagnostics;
 
 namespace HaRepacker.FHMapper
 {
@@ -116,23 +117,72 @@ namespace HaRepacker.FHMapper
                     foreach (WzSubProperty sp in SPs.WzProperties)
                     {
                         Color MSPColor = Color.ForestGreen;
-                        if (((WzStringProperty)sp["type"]).Value == "m")// Only mobs (NPC = "n")
+
+                        switch (((WzStringProperty)sp["type"]).Value)
                         {
-                            int x = ((WzIntProperty)sp["x"]).Value + center.X - 15;
-                            int y = ((WzIntProperty)sp["y"]).Value + center.Y - 15;
-                            drawBuf.FillRectangle(new SolidBrush(Color.FromArgb(95, MSPColor.R, MSPColor.G, MSPColor.B)), x, y, 30, 30);
-                            drawBuf.DrawRectangle(new Pen(Color.Black, 1F), x, y, 30, 30);
-                            drawBuf.DrawString(sp.Name, FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x + 7, y + 7.3F);
-                            SpawnPoint.Spawnpoint MSP = new SpawnPoint.Spawnpoint();
-                            MSP.Shape = new Rectangle(x, y, 30, 30);
-                            MSP.Data = sp;
-                            MSPs.Add(MSP);
+                            case "m": // monster
+                                {
+                                    int monsterId = int.Parse(((WzStringProperty)sp["id"]).GetString());
+
+                                    int x = ((WzIntProperty)sp["x"]).Value + center.X;
+                                    int y = ((WzIntProperty)sp["y"]).Value + center.Y;
+                                    int x_text = x - 15;
+                                    int y_text = y - 15;
+
+                                    SpawnPoint.Spawnpoint MSP = new SpawnPoint.Spawnpoint();
+                                    MSP.Shape = new Rectangle(x_text, y_text, 30, 30);
+                                    MSP.Data = sp;
+                                    MSPs.Add(MSP);
+
+
+                                    // Render monster image
+                                    string monsterStrId = monsterId < 1000000 ? ("0" + monsterId) : monsterId.ToString();
+
+                                    WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(string.Format("Mob.wz/{0}.img/info/link", monsterStrId), Program.WzMan.WzFileListReadOnly);
+                                    if (linkInfo != null)
+                                    {
+                                        monsterId = int.Parse(linkInfo.GetString());
+                                        monsterStrId = monsterId < 1000000 ? ("0" + monsterId) : monsterId.ToString();
+                                    }
+                                    WzCanvasProperty mobImage = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(string.Format("Mob.wz/{0}.img/stand/0", monsterStrId), Program.WzMan.WzFileListReadOnly);
+                                    if (mobImage != null)
+                                    {
+                                        WzVectorProperty originXY = (WzVectorProperty)mobImage["origin"];
+                                        PointF renderXY;
+                                        if (originXY != null)
+                                            renderXY = new PointF(x - originXY.Pos.X, y - originXY.Pos.Y);
+                                        else
+                                            renderXY = new PointF(x, y);
+
+                                        WzImageProperty linkedCanvas = mobImage.GetLinkedWzCanvasProperty();
+                                        if (linkedCanvas != null)
+                                            drawBuf.DrawImage(linkedCanvas.GetBitmap(), renderXY);
+                                        else
+                                            drawBuf.DrawImage(mobImage.GetBitmap(), renderXY);
+                                    }
+                                    else
+                                    {
+                                        drawBuf.FillRectangle(new SolidBrush(Color.FromArgb(95, MSPColor.R, MSPColor.G, MSPColor.B)), x_text, y_text, 30, 30);
+                                        drawBuf.DrawRectangle(new Pen(Color.Black, 1F), x_text, y_text, 30, 30);
+                                    }
+                                    // Get monster name
+                                    WzStringProperty stringName = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(string.Format("String.wz/Mob.img/{0}/name", monsterId), Program.WzMan.WzFileListReadOnly);
+
+                                    drawBuf.DrawString(string.Format("SP: {0}, Name: {1}, ID: {2}", sp.Name, stringName != null ? stringName.GetString() : string.Empty, monsterId), FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x_text + 7, y_text + 7.3F);
+                                    break;
+                                }
+                            case "n": // NPC
+                                {
+                                    break;
+                                }
                         }
                     }
                 }
-                catch
+                catch (Exception exp)
                 {
+                    Debug.WriteLine(exp.ToString());
                 }
+
                 WzSubProperty fhs = (WzSubProperty)img["foothold"];
                 foreach (WzImageProperty fhspl0 in fhs.WzProperties)
                 {
@@ -170,14 +220,12 @@ namespace HaRepacker.FHMapper
                     }
                 }
             }
-
             mapRender.Save("Renders\\" + img.Name.Substring(0, img.Name.Length - 4) + "\\" + img.Name.Substring(0, img.Name.Length - 4) + "_footholdRender.bmp");
 
             Bitmap tileRender = new Bitmap(bmpSize.Width, bmpSize.Height);
 
             using (Graphics tileBuf = Graphics.FromImage(tileRender))
             {
-
                 for (int i = 0; i < 7; i++)
                 {
                     // The below code was commented out because it was creating problems when loading certain maps. When debugging it would throw an exception at line 469.
@@ -210,25 +258,29 @@ namespace HaRepacker.FHMapper
                                 WzObject currProp = objData.Parent;
                                 foreach (string directive in ((WzUOLProperty)objData).Value.Split("/".ToCharArray()))
                                 {
-                                    if (directive == "..") currProp = currProp.Parent;
+                                    if (directive == "..")
+                                        currProp = currProp.Parent;
                                     else
                                     {
-                                        switch (currProp.GetType().Name)
+                                        if (currProp.GetType() == typeof(WzSubProperty))
                                         {
-                                            case "WzSubProperty":
-                                                currProp = ((WzSubProperty)currProp)[directive];
-                                                break;
-                                            case "WzCanvasProperty":
-                                                currProp = ((WzCanvasProperty)currProp)[directive];
-                                                break;
-                                            case "WzImage":
-                                                currProp = ((WzImage)currProp)[directive];
-                                                break;
-                                            case "WzConvexProperty":
-                                                currProp = ((WzConvexProperty)currProp)[directive];
-                                                break;
-                                            default:
-                                                throw new Exception("UOL error at map renderer");
+                                            currProp = ((WzSubProperty)currProp)[directive];
+                                        }
+                                        else if (currProp.GetType() == typeof(WzCanvasProperty))
+                                        {
+                                            currProp = ((WzCanvasProperty)currProp)[directive];
+                                        }
+                                        else if (currProp.GetType() == typeof(WzImage))
+                                        {
+                                            currProp = ((WzImage)currProp)[directive];
+                                        }
+                                        else if (currProp.GetType() == typeof(WzConvexProperty))
+                                        {
+                                            currProp = ((WzConvexProperty)currProp)[directive];
+                                        }
+                                        else
+                                        {
+                                            throw new Exception("UOL error at map renderer");
                                         }
                                     }
                                 }
@@ -242,11 +294,9 @@ namespace HaRepacker.FHMapper
                         }
                     }
                     if (((WzSubProperty)((WzSubProperty)img[i.ToString()])["info"]).WzProperties.Count == 0)
-
                         continue;
 
                     if (((WzSubProperty)((WzSubProperty)img[i.ToString()])["tile"]).WzProperties.Count == 0)
-
                         continue;
 
                     // Ok, we have some tiles and a tileset
@@ -261,17 +311,12 @@ namespace HaRepacker.FHMapper
 
                     foreach (WzSubProperty tile in ((WzSubProperty)((WzSubProperty)img[i.ToString()])["tile"]).WzProperties)
                     {
-
                         //WzSubProperty tile = (WzSubProperty)te.ExtendedProperty;
 
                         int x = ((WzIntProperty)tile["x"]).Value + center.X;
-
                         int y = ((WzIntProperty)tile["y"]).Value + center.Y;
-
                         string tilePackName = ((WzStringProperty)tile["u"]).Value;
-
                         string tileID = ((WzIntProperty)tile["no"]).Value.ToString();
-
                         Point origin = new Point(((WzVectorProperty)((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID])["origin"]).X.Value, ((WzVectorProperty)((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID])["origin"]).Y.Value);
 
                         tileBuf.DrawImage(((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID]).PngProperty.GetPNG(false), x - origin.X, y - origin.Y);
@@ -288,11 +333,8 @@ namespace HaRepacker.FHMapper
 
             using (Graphics fullBuf = Graphics.FromImage(fullBmp))
             {
-
                 fullBuf.FillRectangle(new SolidBrush(Color.CornflowerBlue), 0, 0, bmpSize.Width, bmpSize.Height + 10);
-
                 fullBuf.DrawImage(tileRender, 0, 0);
-
                 fullBuf.DrawImage(mapRender, 0, 0);
 
             }
