@@ -341,7 +341,7 @@ namespace MapleLib.WzLib
                     ParseImage();
                 WzSubProperty imgProp = new WzSubProperty();
                 long startPos = writer.BaseStream.Position;
-                imgProp.AddProperties(WzProperties);
+                imgProp.AddPropertiesForWzImageDumping(WzProperties);
                 imgProp.WriteValue(writer);
                 writer.StringCache.Clear();
                 size = (int)(writer.BaseStream.Position - startPos);

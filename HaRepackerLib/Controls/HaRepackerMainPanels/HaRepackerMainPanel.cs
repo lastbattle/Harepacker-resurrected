@@ -767,7 +767,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         {
             if (DataTree.SelectedNode == null) return;
             WzObject obj = (WzObject)DataTree.SelectedNode.Tag;
-            if (obj is WzImageProperty) ((WzImageProperty)obj).ParentImage.Changed = true;
+            if (obj is WzImageProperty)
+                ((WzImageProperty)obj).ParentImage.Changed = true;
             if (obj is WzVectorProperty)
             {
                 ((WzVectorProperty)obj).X.Value = vectorPanel.X;

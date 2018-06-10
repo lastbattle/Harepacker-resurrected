@@ -173,7 +173,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// <param name="prop">The property to add</param>
 		public void AddProperty(WzImageProperty prop)
 		{
-            prop.Parent = this;
+            prop.Parent = this; // dont set new parent if we're dumping.. x_X
             properties.Add(prop);
 		}
 		public void AddProperties(List<WzImageProperty> props)
@@ -182,8 +182,20 @@ namespace MapleLib.WzLib.WzProperties
 			{
 				AddProperty(prop);
 			}
-		}
-        public void RemoveProperty(WzImageProperty prop)
+        }
+        /// <summary>
+        /// Add properties into this WzSubProperties for wz dumping
+        /// </summary>
+        /// <param name="props"></param>
+        public void AddPropertiesForWzImageDumping(List<WzImageProperty> props)
+        {
+            foreach (WzImageProperty prop in props)
+            {
+                properties.Add(prop);
+            }
+        }
+
+public void RemoveProperty(WzImageProperty prop)
 		{
             prop.Parent = null;
             properties.Remove(prop);
