@@ -514,6 +514,11 @@ namespace HaRepacker.GUI
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, dirsToDump.Count + imgsToDump.Count, true, true);
 
+            if (!Directory.Exists(baseDir))
+            {
+                Directory.CreateDirectory(baseDir);
+            }
+
             foreach (WzImage img in imgsToDump)
             {
                 serializer.SerializeImage(img, Path.Combine(baseDir, img.Name));
@@ -701,8 +706,14 @@ namespace HaRepacker.GUI
             List<WzImage> imgs = new List<WzImage>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
-                if (node.Tag is WzDirectory) dirs.Add((WzDirectory)node.Tag);
-                else if (node.Tag is WzImage) imgs.Add((WzImage)node.Tag);
+                if (node.Tag is WzDirectory)
+                {
+                    dirs.Add((WzDirectory)node.Tag);
+                }
+                else if (node.Tag is WzImage)
+                {
+                    imgs.Add((WzImage)node.Tag);
+                }
             }
             WzImgSerializer serializer = new WzImgSerializer();
             threadDone = false;
