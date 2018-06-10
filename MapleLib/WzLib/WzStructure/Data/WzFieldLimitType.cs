@@ -21,16 +21,16 @@ namespace MapleLib.WzLib.WzStructure.Data
         Unable_To_Use_Taming_Mob = 9, //  CField::IsUnableToUseTamingMob = CField *this 
         Unable_To_Consume_Stat_Change_Item = 10, // CField::IsUnableToConsumeStatChangeItem = CField *this 
         Unable_To_Change_Party_Boss = 11, // CField::IsUnableToChangePartyBoss = CField *this 
-        Unknown1 = 12,
+        No_Monster_Capacity_Limit = 12, // TO BE CONFIRMED
         Unable_To_Use_Wedding_Invitation_Item = 13, // CField::IsUnableToUseWeddingInvitationItem = CField *this 
         Unable_To_Use_Cash_Weather = 14, // CField::IsUnableToUseCashWeatherItem = CField *this 
         Unable_To_Use_Pet = 15, // CField::IsUnableToUsePet = CField *this 
-        Unknown5 = 16,
+        Unable_To_Use_AntiMacro_Item = 16, // TO BE CONFIRMED
         Unable_To_Fall_Down = 17, // CField::IsUnableToFallDown = CField *this 
         Unable_To_Summon_NPC = 18, // CField::IsUnaUnableToUseAntiMacroItembleToSummonNPC = CField *this 
-        Unknown6 = 19,
+        No_EXP_Decrease = 19, // TO BE CONFIRMED
         No_Damage_On_Falling = 20, // CField::IsNoDamageOnFalling = CField *this 
-        Unknown7 = 21,
+        Parcel_Open_Limit = 21, // TO BE CONFIRMED
         Drop_Limit = 22, // CField::IsDropLimit = CField *this 
         Unable_To_Use_Rocket_Boost = 23, // CField::IsUnableToUseRocketBoost = CField *this
         Unknown8 = 24,
