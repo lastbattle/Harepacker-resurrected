@@ -134,23 +134,47 @@ namespace HaRepacker.FHMapper
                     //WzSubProperty p = (WzSubProperty)p10.ExtendedProperty;
                     int x = ((WzIntProperty)p["x"]).Value + center.X;
                     int y = ((WzIntProperty)p["y"]).Value + center.Y;
-                    int type = ((WzIntProperty)p["pt"]).Value;
+                    int pt = ((WzIntProperty)p["pt"]).Value;
+                    string pn = ((WzStringProperty)p["pn"]).ReadString(string.Empty);
+                    int tm = ((WzIntProperty)p["tm"]).ReadValue(999999999);
 
                     Color pColor = Color.Red;
-                    if (type == 0)
+                    if (pt == 0)
                         pColor = Color.Orange;
-                    else if (type == 2 || type == 7)//Normal
+                    else if (pt == 2 || pt == 7)//Normal
                         pColor = Color.Blue;
-                    else if (type == 3)//Auto-enter
+                    else if (pt == 3)//Auto-enter
                         pColor = Color.Magenta;
-                    else if (type == 1 || type == 8)
+                    else if (pt == 1 || pt == 8)
                         pColor = Color.BlueViolet;
                     else
                         pColor = Color.IndianRed;
 
-                    drawBuf.FillRectangle(new SolidBrush(Color.FromArgb(95, pColor.R, pColor.G, pColor.B)), x - 20, y - 20, 40, 40);
-                    drawBuf.DrawRectangle(new Pen(Color.Black, 1F), x - 20, y - 20, 40, 40);
-                    drawBuf.DrawString(p.Name, FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x - 8, y - 7.7F);
+                    // Draw portal preview image
+                    bool drewPortalImg = false;
+                    if (pn != string.Empty || pt == 2)
+                    {
+                        string portalEditorImage = wzFile.WzDirectory.Name + "/MapHelper.img/portal/editor/" + (pt == 2 ? "pv" : pn);
+                        WzCanvasProperty portalEditorCanvas = (WzCanvasProperty)wzFile.GetObjectFromPath(portalEditorImage);
+                        if (portalEditorCanvas != null)
+                        {
+                            drewPortalImg = true;
+
+                            WzVectorProperty originPos = (WzVectorProperty)portalEditorCanvas["origin"];
+                            if (originPos != null)
+                                drawBuf.DrawImage(portalEditorCanvas.GetBitmap(), x - originPos.X.Value, y - originPos.Y.Value);
+                            else
+                                drawBuf.DrawImage(portalEditorCanvas.GetBitmap(), x, y);
+                        }
+                    }
+                    if (!drewPortalImg)
+                    {
+                        drawBuf.FillRectangle(new SolidBrush(Color.FromArgb(95, pColor.R, pColor.G, pColor.B)), x - 20, y - 20, 40, 40);
+                        drawBuf.DrawRectangle(new Pen(Color.Black, 1F), x - 20, y - 20, 40, 40);
+                    }
+
+                    // Draw portal name
+                    drawBuf.DrawString("Portal: " + p.Name, FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x - 8, y - 7.7F);
 
                     Portals.Portal portal = new Portals.Portal();
                     portal.Shape = new Rectangle(x - 20, y - 20, 40, 40);
@@ -176,7 +200,7 @@ namespace HaRepacker.FHMapper
                                 int y = ((WzIntProperty)sp["y"]).Value + center.Y;
                                 int x_text = x - 15;
                                 int y_text = y - 15;
-                                bool facingRight = ((WzIntProperty)sp["f"]).ReadValue(0) == 0; // This value is optional. If its not stated in the WZ, its assumed to be 0
+                                bool facingLeft = ((WzIntProperty)sp["f"]).ReadValue(0) == 0; // This value is optional. If its not stated in the WZ, its assumed to be 0
 
                                 SpawnPoint.Spawnpoint MSP = new SpawnPoint.Spawnpoint();
                                 MSP.Shape = new Rectangle(x_text, y_text, 30, 30);
@@ -227,7 +251,7 @@ namespace HaRepacker.FHMapper
                                     else
                                         renderMobbitmap = lifeImg.GetBitmap();
 
-                                    if (!facingRight)
+                                    if (!facingLeft)
                                         renderMobbitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
 
                                     drawBuf.DrawImage(renderMobbitmap, renderXY);
@@ -317,7 +341,7 @@ namespace HaRepacker.FHMapper
                         int cx = ((WzIntProperty)bgItem["cx"]).Value;
                         int cy = ((WzIntProperty)bgItem["cy"]).Value;
                         int a = ((WzIntProperty)bgItem["a"]).Value;
-                        bool facingRight = ((WzIntProperty)bgItem["f"]).ReadValue(0) == 0;
+                        bool facingLeft = ((WzIntProperty)bgItem["f"]).ReadValue(0) == 0;
 
                         if (bS == string.Empty)
                             continue;
@@ -335,7 +359,7 @@ namespace HaRepacker.FHMapper
                             else
                                 drawImage = wzBgCanvas.GetBitmap();
 
-                            if (!facingRight)
+                            if (!facingLeft)
                                 drawImage.RotateFlip(RotateFlipType.RotateNoneFlipX);
 
                             tileBuf.DrawImage(drawImage, renderXY);
