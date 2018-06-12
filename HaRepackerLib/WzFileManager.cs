@@ -61,10 +61,13 @@ namespace HaRepackerLib
 
         public void UnloadWzFile(WzFile file)
         {
-            ((WzNode)file.HRTag).Delete();
             lock (wzFiles)
             {
-                wzFiles.Remove(file);
+                if (wzFiles.Contains(file)) // check again within scope
+                {
+                    ((WzNode)file.HRTag).Delete();
+                    wzFiles.Remove(file);
+                }
             }
         }
 
@@ -197,22 +200,24 @@ namespace HaRepackerLib
         public void ReloadAll(HaRepackerMainPanel panel)
         {
             Dispatcher currentThread = Dispatcher.CurrentDispatcher;
+            IReadOnlyCollection<WzFile> wzFileListCopy = this.WzFileListReadOnly;
 
-            lock (wzFiles)
+            Parallel.ForEach(wzFiles, file =>
             {
-                Parallel.ForEach(wzFiles, file =>
-                {
-                    ReloadWzFile(file, panel, currentThread);
-                });
-            }
+                ReloadWzFile(file, panel, currentThread);
+            });
         }
 
         public void UnloadAll()
         {
-            lock (wzFiles)
+            IReadOnlyCollection<WzFile> wzFileListCopy = this.WzFileListReadOnly;
+
+            foreach (WzFile file in wzFileListCopy)
             {
-                while (wzFiles.Count > 0)
-                    UnloadWzFile(wzFiles[0]);
+                if (wzFiles.Contains(file)) // check again.
+                {
+                    UnloadWzFile(file);
+                }
             }
         }
 
