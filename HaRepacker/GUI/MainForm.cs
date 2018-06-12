@@ -293,8 +293,9 @@ namespace HaRepacker.GUI
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
                         
-            InputBox inputBox = new InputBox("Tab", "Enter name tab");
-            inputBox.tab(tabControl_MainPanels, tabPage);
+            InputBox inputBox = new InputBox("Tab", "Enter name tab", "addTab");
+            inputBox.tabControl = tabControl_MainPanels;
+            inputBox.tabPage = tabPage;            
             inputBox.Show();
 
         }
@@ -1344,5 +1345,12 @@ namespace HaRepacker.GUI
             MessageBox.Show("Copied to your clipboard! " + Environment.NewLine + sb.ToString());
         }
         #endregion
+
+        private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
+        {
+            InputBox inputBox = new InputBox("Tab Name: " + tabControl_MainPanels.SelectedTab.Text, "Write new tab name", "renameTab");
+            inputBox.tabControl = tabControl_MainPanels;
+            inputBox.Show();
+        }
     }
 }

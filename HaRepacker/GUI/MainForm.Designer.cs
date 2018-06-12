@@ -43,6 +43,7 @@
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.wzByteFloatPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzCanvasPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzCompressedIntPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzConvexPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzDoublePropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -94,7 +95,6 @@
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
-            this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -219,6 +219,12 @@
             this.wzCanvasPropertyToolStripMenuItem.Name = "wzCanvasPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzCanvasPropertyToolStripMenuItem, "wzCanvasPropertyToolStripMenuItem");
             this.wzCanvasPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzCanvasPropertyToolStripMenuItem_Click);
+            // 
+            // wzLongPropertyToolStripMenuItem
+            // 
+            this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
+            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
             // 
             // wzCompressedIntPropertyToolStripMenuItem
             // 
@@ -544,6 +550,7 @@
             this.tabControl_MainPanels.SelectedIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.TabIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.TabStopChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
+            this.tabControl_MainPanels.DoubleClick += new System.EventHandler(this.tabControl_MainPanels_DoubleClick);
             // 
             // tabPage1
             // 
@@ -564,12 +571,6 @@
             this.button_addTab.Name = "button_addTab";
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
-            // 
-            // wzLongPropertyToolStripMenuItem
-            // 
-            this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
-            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
             // 
             // MainForm
             // 

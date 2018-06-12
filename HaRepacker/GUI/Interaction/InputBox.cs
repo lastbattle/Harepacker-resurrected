@@ -13,16 +13,17 @@ namespace HaRepacker.GUI.Interaction
     public partial class InputBox : Form
     {
         private string title = "Title";
-        private string text = "Text";
-        private string input = "";
+        private string text = "Text";        
         public byte length;
-        private TabControl tabControl;
-        private TabPage tabPage;
+        public string type;
+        public TabControl tabControl { get; set; }
+        public TabPage tabPage { get; set; }
 
-        public InputBox(string title, string text, byte length = 25)
+        public InputBox(string title, string text, string type, byte length = 25)
         {
             this.title = title;
             this.text = text;
+            this.type = type;
             this.length = length;
             InitializeComponent();
             btn_done.Enabled = false;
@@ -36,21 +37,8 @@ namespace HaRepacker.GUI.Interaction
         }     
 
         private void btn_cancel_Click(object sender, EventArgs e)
-        {
-            this.input = "";
+        {            
             Close();
-        }
-
-        public void tab(TabControl tabControl, TabPage tabPage)
-        {
-            this.tabControl = tabControl;
-            this.tabPage = tabPage;
-        }
-
-        private void addTab()
-        {
-            this.tabPage.Text = this.input;
-            this.tabControl.TabPages.Add(this.tabPage);            
         }
 
         private void btn_done_Click(object sender, EventArgs e)
@@ -68,8 +56,19 @@ namespace HaRepacker.GUI.Interaction
             }
             if (status)
             {
-                this.input = txt_input.Text;
-                this.addTab();
+                switch (type)
+                {
+                    case "addTab":
+                        this.tabPage.Text = txt_input.Text;
+                        this.tabControl.TabPages.Add(this.tabPage);
+                        break;
+                    case "renameTab":
+                        tabControl.SelectedTab.Text = txt_input.Text;
+                        break;
+                    default:
+                        MessageBox.Show("Type not valid", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        break;
+                }   
                 Close();
             }
             
