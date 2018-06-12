@@ -94,8 +94,8 @@ namespace Footholds
             // 
             // CancelBtn
             // 
-            resources.ApplyResources(this.CancelBtn, "CancelBtn");
             this.CancelBtn.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            resources.ApplyResources(this.CancelBtn, "CancelBtn");
             this.CancelBtn.Name = "CancelBtn";
             this.CancelBtn.UseVisualStyleBackColor = true;
             this.CancelBtn.Click += new System.EventHandler(this.CancelBtn_Click);
@@ -140,6 +140,7 @@ namespace Footholds
             this.Controls.Add(this.PrevLbl);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "Edit";
