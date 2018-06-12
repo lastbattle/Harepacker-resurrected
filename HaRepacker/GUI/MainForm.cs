@@ -287,13 +287,16 @@ namespace HaRepacker.GUI
             };
             tabPage.Controls.Add(new HaRepackerMainPanel()
             {
-                Padding = new Padding(0, 0, 0, 0),
+                Padding = new Padding(0, 0, 0, 0),                
                 Margin = new Padding(0, 0, 0, 0),
                 Size = new Size(1492, 884),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
+                        
+            InputBox inputBox = new InputBox("Tab", "Enter name tab");
+            inputBox.Show();            
+            inputBox.tab(tabControl_MainPanels, tabPage);
 
-            tabControl_MainPanels.TabPages.Add(tabPage);
         }
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
