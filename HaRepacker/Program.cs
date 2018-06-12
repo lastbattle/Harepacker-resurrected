@@ -5,7 +5,6 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
-using System.Linq;
 using System.Windows.Forms;
 using HaRepackerLib;
 using HaRepacker.GUI;
@@ -27,6 +26,7 @@ namespace HaRepacker
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
         public const string pipeName = "HaRepacker";
+
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
@@ -35,6 +35,7 @@ namespace HaRepacker
         {
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
+            // Localisation
             CultureInfo ci = GetMainCulture(CultureInfo.CurrentCulture);
             Properties.Resources.Culture = ci;
 
@@ -46,10 +47,15 @@ namespace HaRepacker
             CultureInfo.DefaultThreadCurrentCulture = ci;
             CultureInfo.DefaultThreadCurrentUICulture = ci;
 
+            // Threads
+            ThreadPool.SetMaxThreads(Environment.ProcessorCount, Environment.ProcessorCount); // This includes hyper-threading(Intel)/SMT (AMD) count.
+
+            // App
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
+            // Parameters
             bool firstRun = PrepareApplication(true);
             string wzToLoad = null;
             if (args.Length > 0)

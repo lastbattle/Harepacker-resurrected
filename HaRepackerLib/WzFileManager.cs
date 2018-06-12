@@ -16,6 +16,7 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using HaRepackerLib.Controls;
 using HaRepackerLib.Controls.HaRepackerMainPanels;
+using System.Windows.Threading;
 
 namespace HaRepackerLib
 {
@@ -41,7 +42,10 @@ namespace HaRepackerLib
             try
             {
                 WzFile f = new WzFile(path, version, encVersion);
-                wzFiles.Add(f);
+                lock (wzFiles)
+                {
+                    wzFiles.Add(f);
+                }
                 f.ParseWzFile();
                 file = f;
                 return true;
@@ -57,7 +61,10 @@ namespace HaRepackerLib
         public void UnloadWzFile(WzFile file)
         {
             ((WzNode)file.HRTag).Delete();
-            wzFiles.Remove(file);
+            lock (wzFiles)
+            {
+                wzFiles.Remove(file);
+            }
         }
 
         public void ReloadWzFile(WzFile file, HaRepackerMainPanel panel)
@@ -65,8 +72,7 @@ namespace HaRepackerLib
             WzMapleVersion encVersion = file.MapleVersion;
             string path = file.FilePath;
             short version = ((WzFile)file).Version;
-            ((WzNode)file.HRTag).Delete();
-            wzFiles.Remove(file);
+            UnloadWzFile(file);
             LoadWzFile(path, encVersion, (short)-1, panel);
         }
 
@@ -114,9 +120,9 @@ namespace HaRepackerLib
         /// <param name="encVersion"></param>
         /// <param name="panel"></param>
         /// <returns></returns>
-        public WzFile LoadWzFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel)
+        public WzFile LoadWzFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
         {
-            return LoadWzFile(path, encVersion, (short)-1, panel);
+            return LoadWzFile(path, encVersion, (short)-1, panel, currentDispatcher);
         }
 
         /// <summary>
@@ -128,15 +134,25 @@ namespace HaRepackerLib
         /// <param name="version"></param>
         /// <param name="panel"></param>
         /// <returns></returns>
-        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, HaRepackerMainPanel panel)
+        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
         {
             WzFile newFile;
             if (!OpenWzFile(path, encVersion, version, out newFile))
                 return null;
             WzNode node = new WzNode(newFile);
-            panel.DataTree.Nodes.Add(node);
-            if (UserSettings.Sort)
+
+            // execute in main thread
+            if (currentDispatcher != null)
             {
+                currentDispatcher.BeginInvoke((Action)(() =>
+                {
+                    panel.DataTree.Nodes.Add(node);
+                    SortNodesRecursively(node);
+                }));
+            }
+            else
+            {
+                panel.DataTree.Nodes.Add(node);
                 SortNodesRecursively(node);
             }
             return newFile;
@@ -144,30 +160,38 @@ namespace HaRepackerLib
 
         public void InsertWzFileUnsafe(WzFile f, HaRepackerMainPanel panel)
         {
-            wzFiles.Add(f);
+            lock (wzFiles)
+            {
+                wzFiles.Add(f);
+            }
             WzNode node = new WzNode(f);
             panel.DataTree.Nodes.Add(node);
-            if (UserSettings.Sort)
-            {
-                SortNodesRecursively(node);
-            }
+
+            SortNodesRecursively(node);
         }
 
         private void SortNodesRecursively(WzNode parent)
         {
-            parent.TreeView.Sort();
+            if (UserSettings.Sort)
+                parent.TreeView.Sort();
         }
 
         public void ReloadAll(HaRepackerMainPanel panel)
         {
-            for (int i = 0; i < wzFiles.Count; i++)
-                ReloadWzFile(wzFiles[i], panel);
+            lock (wzFiles)
+            {
+                for (int i = 0; i < wzFiles.Count; i++)
+                    ReloadWzFile(wzFiles[i], panel);
+            }
         }
 
         public void UnloadAll()
         {
-            while (wzFiles.Count > 0)
-                UnloadWzFile(wzFiles[0]);
+            lock (wzFiles)
+            {
+                while (wzFiles.Count > 0)
+                    UnloadWzFile(wzFiles[0]);
+            }
         }
 
         public void Terminate()
