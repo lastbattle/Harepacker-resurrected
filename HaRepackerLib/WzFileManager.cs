@@ -17,6 +17,7 @@ using MapleLib.WzLib.Util;
 using HaRepackerLib.Controls;
 using HaRepackerLib.Controls.HaRepackerMainPanels;
 using System.Windows.Threading;
+using System.Threading.Tasks;
 
 namespace HaRepackerLib
 {
@@ -67,13 +68,28 @@ namespace HaRepackerLib
             }
         }
 
-        public void ReloadWzFile(WzFile file, HaRepackerMainPanel panel)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="file"></param>
+        /// <param name="panel"></param>
+        /// <param name="currentDispatcher"></param>
+        public void ReloadWzFile(WzFile file, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
         {
             WzMapleVersion encVersion = file.MapleVersion;
             string path = file.FilePath;
             short version = ((WzFile)file).Version;
-            UnloadWzFile(file);
-            LoadWzFile(path, encVersion, (short)-1, panel);
+            if (currentDispatcher != null)
+            {
+                currentDispatcher.BeginInvoke((Action)(() =>
+                {
+                    UnloadWzFile(file);
+                }));
+            }
+            else
+                UnloadWzFile(file);
+
+            LoadWzFile(path, encVersion, (short)-1, panel, currentDispatcher);
         }
 
         /// <summary>
@@ -119,6 +135,7 @@ namespace HaRepackerLib
         /// <param name="path"></param>
         /// <param name="encVersion"></param>
         /// <param name="panel"></param>
+        /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
         public WzFile LoadWzFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
         {
@@ -133,6 +150,7 @@ namespace HaRepackerLib
         /// <param name="encVersion"></param>
         /// <param name="version"></param>
         /// <param name="panel"></param>
+        /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
         private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
         {
@@ -178,10 +196,14 @@ namespace HaRepackerLib
 
         public void ReloadAll(HaRepackerMainPanel panel)
         {
+            Dispatcher currentThread = Dispatcher.CurrentDispatcher;
+
             lock (wzFiles)
             {
-                for (int i = 0; i < wzFiles.Count; i++)
-                    ReloadWzFile(wzFiles[i], panel);
+                Parallel.ForEach(wzFiles, file =>
+                {
+                    ReloadWzFile(file, panel, currentThread);
+                });
             }
         }
 
