@@ -14,15 +14,19 @@ namespace HaRepacker.GUI.Interaction
     {
         private string title = "Title";
         private string text = "Text";
-        private string input = "0";
+        private string input = "";
+        public byte length;
         private TabControl tabControl;
         private TabPage tabPage;
 
-        public InputBox(string title, string text)
+        public InputBox(string title, string text, byte length = 25)
         {
             this.title = title;
             this.text = text;
+            this.length = length;
             InitializeComponent();
+            btn_done.Enabled = false;
+            txt_input.MaxLength = length;
         }
 
         private void InputBox_Load(object sender, EventArgs e)
@@ -33,7 +37,7 @@ namespace HaRepacker.GUI.Interaction
 
         private void btn_cancel_Click(object sender, EventArgs e)
         {
-            this.input = "0";
+            this.input = "";
             Close();
         }
 
@@ -45,23 +49,21 @@ namespace HaRepacker.GUI.Interaction
 
         private void addTab()
         {
-            if (this.input == "0") return;
             this.tabPage.Text = this.input;
-            this.tabControl.TabPages.Add(this.tabPage);
-            return;
+            this.tabControl.TabPages.Add(this.tabPage);            
         }
 
         private void btn_done_Click(object sender, EventArgs e)
-        {
+        {            
             bool status = true;
             if (txt_input.Text == "")
             {
-                lb_text.Text += ": error, complete field...";
+                lb_error.Text = "Error, complete field...";
                 status = false;
             }
-            if (txt_input.Text.Length >= 35)
+            if (txt_input.Text.Length > length)
             {
-                lb_text.Text += ": error, max character 35";
+                lb_error.Text = "Error, max character " + length;
                 status = false;
             }
             if (status)
@@ -71,6 +73,17 @@ namespace HaRepacker.GUI.Interaction
                 Close();
             }
             
+        }
+
+        private void txt_input_TextChanged(object sender, EventArgs e)
+        {
+            if(txt_input.Text.Length > 0)
+            {
+                btn_done.Enabled = true;
+            }else
+            {
+                btn_done.Enabled = false;
+            }
         }
     }
 }

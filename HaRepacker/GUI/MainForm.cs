@@ -294,8 +294,8 @@ namespace HaRepacker.GUI
             });
                         
             InputBox inputBox = new InputBox("Tab", "Enter name tab");
-            inputBox.Show();            
             inputBox.tab(tabControl_MainPanels, tabPage);
+            inputBox.Show();
 
         }
 

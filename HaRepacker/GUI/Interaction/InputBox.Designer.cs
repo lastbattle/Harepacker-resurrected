@@ -34,6 +34,10 @@
             this.btn_cancel = new System.Windows.Forms.Button();
             this.txt_input = new System.Windows.Forms.TextBox();
             this.lb_text = new System.Windows.Forms.Label();
+            this.panel2 = new System.Windows.Forms.Panel();
+            this.panel3 = new System.Windows.Forms.Panel();
+            this.panel4 = new System.Windows.Forms.Panel();
+            this.lb_error = new System.Windows.Forms.Label();
             this.panel1.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -94,6 +98,7 @@
             this.txt_input.Name = "txt_input";
             this.txt_input.Size = new System.Drawing.Size(326, 20);
             this.txt_input.TabIndex = 3;
+            this.txt_input.TextChanged += new System.EventHandler(this.txt_input_TextChanged);
             // 
             // lb_text
             // 
@@ -104,11 +109,51 @@
             this.lb_text.TabIndex = 4;
             this.lb_text.Text = "text";
             // 
+            // panel2
+            // 
+            this.panel2.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.panel2.Dock = System.Windows.Forms.DockStyle.Left;
+            this.panel2.Location = new System.Drawing.Point(0, 30);
+            this.panel2.Name = "panel2";
+            this.panel2.Size = new System.Drawing.Size(2, 120);
+            this.panel2.TabIndex = 5;
+            // 
+            // panel3
+            // 
+            this.panel3.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.panel3.Dock = System.Windows.Forms.DockStyle.Right;
+            this.panel3.Location = new System.Drawing.Point(348, 30);
+            this.panel3.Name = "panel3";
+            this.panel3.Size = new System.Drawing.Size(2, 120);
+            this.panel3.TabIndex = 6;
+            // 
+            // panel4
+            // 
+            this.panel4.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.panel4.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.panel4.Location = new System.Drawing.Point(2, 148);
+            this.panel4.Name = "panel4";
+            this.panel4.Size = new System.Drawing.Size(346, 2);
+            this.panel4.TabIndex = 7;
+            // 
+            // lb_error
+            // 
+            this.lb_error.AutoSize = true;
+            this.lb_error.ForeColor = System.Drawing.Color.Red;
+            this.lb_error.Location = new System.Drawing.Point(12, 96);
+            this.lb_error.Name = "lb_error";
+            this.lb_error.Size = new System.Drawing.Size(0, 13);
+            this.lb_error.TabIndex = 8;
+            // 
             // InputBox
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(350, 150);
+            this.Controls.Add(this.lb_error);
+            this.Controls.Add(this.panel4);
+            this.Controls.Add(this.panel3);
+            this.Controls.Add(this.panel2);
             this.Controls.Add(this.lb_text);
             this.Controls.Add(this.txt_input);
             this.Controls.Add(this.btn_cancel);
@@ -134,5 +179,9 @@
         private System.Windows.Forms.Label lb_title;
         private System.Windows.Forms.TextBox txt_input;
         private System.Windows.Forms.Label lb_text;
+        private System.Windows.Forms.Panel panel2;
+        private System.Windows.Forms.Panel panel3;
+        private System.Windows.Forms.Panel panel4;
+        private System.Windows.Forms.Label lb_error;
     }
 }
