@@ -590,6 +590,7 @@
             this.tabControl_MainPanels.TabIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.TabStopChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.DoubleClick += new System.EventHandler(this.tabControl_MainPanels_DoubleClick);
+            this.tabControl_MainPanels.KeyUp += new System.Windows.Forms.KeyEventHandler(this.tabControl_MainPanels_KeyUp);
             // 
             // tabPage1
             // 

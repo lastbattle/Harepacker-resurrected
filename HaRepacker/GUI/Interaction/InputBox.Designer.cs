@@ -73,7 +73,7 @@
             this.btn_done.Location = new System.Drawing.Point(182, 115);
             this.btn_done.Name = "btn_done";
             this.btn_done.Size = new System.Drawing.Size(75, 23);
-            this.btn_done.TabIndex = 1;
+            this.btn_done.TabIndex = 2;
             this.btn_done.Text = "Done";
             this.btn_done.UseVisualStyleBackColor = false;
             this.btn_done.Click += new System.EventHandler(this.btn_done_Click);
@@ -88,7 +88,7 @@
             this.btn_cancel.Location = new System.Drawing.Point(263, 115);
             this.btn_cancel.Name = "btn_cancel";
             this.btn_cancel.Size = new System.Drawing.Size(75, 23);
-            this.btn_cancel.TabIndex = 2;
+            this.btn_cancel.TabIndex = 3;
             this.btn_cancel.Text = "Cancel";
             this.btn_cancel.UseVisualStyleBackColor = false;
             this.btn_cancel.Click += new System.EventHandler(this.btn_cancel_Click);
@@ -98,8 +98,9 @@
             this.txt_input.Location = new System.Drawing.Point(12, 73);
             this.txt_input.Name = "txt_input";
             this.txt_input.Size = new System.Drawing.Size(326, 20);
-            this.txt_input.TabIndex = 3;
+            this.txt_input.TabIndex = 1;
             this.txt_input.TextChanged += new System.EventHandler(this.txt_input_TextChanged);
+            this.txt_input.KeyUp += new System.Windows.Forms.KeyEventHandler(this.txt_input_KeyUp);
             // 
             // lb_text
             // 

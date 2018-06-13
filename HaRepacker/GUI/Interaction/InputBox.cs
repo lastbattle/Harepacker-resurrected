@@ -27,22 +27,22 @@ namespace HaRepacker.GUI.Interaction
             this.length = length;
             InitializeComponent();
             btn_done.Enabled = false;
-            txt_input.MaxLength = length;
+            txt_input.MaxLength = length;            
         }
 
         private void InputBox_Load(object sender, EventArgs e)
         {
             lb_title.Text = this.title;
             lb_text.Text = this.text;
+            //txt_input.Focus();
         }     
 
         private void btn_cancel_Click(object sender, EventArgs e)
         {            
             Close();
         }
-
-        private void btn_done_Click(object sender, EventArgs e)
-        {            
+        private void done()
+        {
             bool status = true;
             if (txt_input.Text == "")
             {
@@ -68,10 +68,15 @@ namespace HaRepacker.GUI.Interaction
                     default:
                         MessageBox.Show("Type not valid", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         break;
-                }   
+                }
                 Close();
+                this.tabControl.Focus();
             }
-            
+        }
+
+        private void btn_done_Click(object sender, EventArgs e)
+        {
+            done();            
         }
 
         private void txt_input_TextChanged(object sender, EventArgs e)
@@ -85,6 +90,12 @@ namespace HaRepacker.GUI.Interaction
             }
         }
         private int posX = 0, posY = 0;
+
+        private void txt_input_KeyUp(object sender, KeyEventArgs e)
+        {
+            //if (e.KeyCode == Keys.Escape) Close();
+            //if (e.KeyCode == Keys.Enter) done();
+        }
 
         private void panel1_MouseMove(object sender, MouseEventArgs e)
         {

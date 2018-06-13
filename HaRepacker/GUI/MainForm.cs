@@ -114,7 +114,9 @@ namespace HaRepacker.GUI
                 encryptionBox.SelectedIndex = (int)encVersion;
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
-            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);            
+            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);
+
+            tabControl_MainPanels.Focus();
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -297,7 +299,7 @@ namespace HaRepacker.GUI
             InputBox inputBox = new InputBox("Tab", "Enter name tab", "addTab");
             inputBox.tabControl = tabControl_MainPanels;
             inputBox.tabPage = tabPage;
-            inputBox.Show();
+            inputBox.ShowDialog();
         }
 
         private void button_addTab_Click(object sender, EventArgs e)
@@ -1275,7 +1277,7 @@ namespace HaRepacker.GUI
         {
             InputBox inputBox = new InputBox("Tab Name: " + tabControl_MainPanels.SelectedTab.Text, "Write new tab name", "renameTab");
             inputBox.tabControl = tabControl_MainPanels;
-            inputBox.Show();
+            inputBox.ShowDialog();
         }
 
         private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
@@ -1308,6 +1310,58 @@ namespace HaRepacker.GUI
                     break;
                 case DialogResult.No:
                     break;
+            }
+        }
+
+        private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
+        {
+            if(e.Control && e.KeyCode == Keys.T) addTab();
+            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
+
+            if (e.Control)
+            {
+                switch (e.KeyCode)
+                {
+                    case Keys.NumPad1:
+                        tabControl_MainPanels.SelectTab(0);
+                        break;
+                    case Keys.NumPad2:
+                        if (countTabs < 2) return;
+                        tabControl_MainPanels.SelectTab(1);
+                        break;
+                    case Keys.NumPad3:
+                        if (countTabs < 3) return;
+                        tabControl_MainPanels.SelectTab(2);
+                        break;
+                    case Keys.NumPad4:
+                        if (countTabs < 4) return;
+                        tabControl_MainPanels.SelectTab(3);
+                        break;
+                    case Keys.NumPad5:
+                        if (countTabs < 5) return;
+                        tabControl_MainPanels.SelectTab(4);
+                        break;
+                    case Keys.NumPad6:
+                        if (countTabs < 6) return;
+                        tabControl_MainPanels.SelectTab(5);
+                        break;
+                    case Keys.NumPad7:
+                        if (countTabs < 7) return;
+                        tabControl_MainPanels.SelectTab(6);
+                        break;
+                    case Keys.NumPad8:
+                        if (countTabs < 8) return;
+                        tabControl_MainPanels.SelectTab(7);
+                        break;
+                    case Keys.NumPad9:
+                        if (countTabs < 9) return;
+                        tabControl_MainPanels.SelectTab(8);
+                        break;
+                    case Keys.NumPad0:
+                        if (countTabs < 10) return;
+                        tabControl_MainPanels.SelectTab(9);
+                        break;
+                }
             }
         }
 
