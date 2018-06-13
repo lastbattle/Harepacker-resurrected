@@ -84,5 +84,20 @@ namespace HaRepacker.GUI.Interaction
                 btn_done.Enabled = false;
             }
         }
+        private int posX = 0, posY = 0;
+
+        private void panel1_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left)
+            {
+                posX = e.X;
+                posY = e.Y;
+            }else
+            {
+                Left = Left + (e.X - posX);
+                Top = Top + (e.Y - posY);
+            }
+            
+        }
     }
 }

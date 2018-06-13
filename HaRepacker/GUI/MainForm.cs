@@ -61,7 +61,7 @@ namespace HaRepacker.GUI
             }
         }
 
-        private HaRepackerMainPanel MainPanel = null;
+        private HaRepackerMainPanel MainPanel = null;        
 
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
         {
@@ -114,7 +114,7 @@ namespace HaRepacker.GUI
                 encryptionBox.SelectedIndex = (int)encVersion;
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
-            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);
+            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);            
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -271,7 +271,8 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_addTab_Click(object sender, EventArgs e)
+
+        private void addTab()
         {
             if (tabControl_MainPanels.TabCount > 10)
             {
@@ -287,17 +288,21 @@ namespace HaRepacker.GUI
             };
             tabPage.Controls.Add(new HaRepackerMainPanel()
             {
-                Padding = new Padding(0, 0, 0, 0),                
+                Padding = new Padding(0, 0, 0, 0),
                 Margin = new Padding(0, 0, 0, 0),
                 Size = new Size(1492, 884),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
-                        
+
             InputBox inputBox = new InputBox("Tab", "Enter name tab", "addTab");
             inputBox.tabControl = tabControl_MainPanels;
-            inputBox.tabPage = tabPage;            
+            inputBox.tabPage = tabPage;
             inputBox.Show();
+        }
 
+        private void button_addTab_Click(object sender, EventArgs e)
+        {
+            addTab();
         }
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -1254,6 +1259,58 @@ namespace HaRepacker.GUI
             MainPanel.DoPaste();
         }
 
+        private void enabledDeleteToolStripMenuItem()
+        {
+            if (tabControl_MainPanels.TabCount <= 1)
+            {
+                deleteToolStripMenuItem.Enabled = false;
+            }
+            else
+            {
+                deleteToolStripMenuItem.Enabled = true;
+            }
+        }
+
+        private void renameTab()
+        {
+            InputBox inputBox = new InputBox("Tab Name: " + tabControl_MainPanels.SelectedTab.Text, "Write new tab name", "renameTab");
+            inputBox.tabControl = tabControl_MainPanels;
+            inputBox.Show();
+        }
+
+        private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
+        {
+            renameTab();
+        }
+
+        private void renameToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            renameTab();
+        }
+
+        private void addTabToolStripMenuItem_Click(object sender, EventArgs e)
+        {            
+            addTab();            
+        }
+
+        private void deleteToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (tabControl_MainPanels.TabCount <= 1) {
+                MessageBox.Show("Can not delete the only existing tab", "Error Delete Tab", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            DialogResult dr = MessageBox.Show("Do you really want to delete \"" +  tabControl_MainPanels.SelectedTab.Text +"\"?", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            switch (dr)
+            {
+                case DialogResult.Yes:
+                    tabControl_MainPanels.TabPages.Remove(tabControl_MainPanels.SelectedTab);                    
+                    break;
+                case DialogResult.No:
+                    break;
+            }
+        }
+
         #region Remove WZ Image resource
         /// <summary>
         /// Remove all WZ image resource to optimize for botting purposes
@@ -1345,12 +1402,6 @@ namespace HaRepacker.GUI
             MessageBox.Show("Copied to your clipboard! " + Environment.NewLine + sb.ToString());
         }
         #endregion
-
-        private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
-        {
-            InputBox inputBox = new InputBox("Tab Name: " + tabControl_MainPanels.SelectedTab.Text, "Write new tab name", "renameTab");
-            inputBox.tabControl = tabControl_MainPanels;
-            inputBox.Show();
-        }
+        
     }
 }

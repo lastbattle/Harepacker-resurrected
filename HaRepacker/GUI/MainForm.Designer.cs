@@ -59,6 +59,11 @@
             this.redoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.expandAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.collapseAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
+            this.tabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.addTabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.renameToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.deleteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportFilesToXMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -165,7 +170,9 @@
             this.undoToolStripMenuItem,
             this.redoToolStripMenuItem,
             this.expandAllToolStripMenuItem,
-            this.collapseAllToolStripMenuItem});
+            this.collapseAllToolStripMenuItem,
+            this.toolStripSeparator2,
+            this.tabToolStripMenuItem});
             this.editToolStripMenuItem.Name = "editToolStripMenuItem";
             resources.ApplyResources(this.editToolStripMenuItem, "editToolStripMenuItem");
             // 
@@ -313,6 +320,38 @@
             this.collapseAllToolStripMenuItem.Name = "collapseAllToolStripMenuItem";
             resources.ApplyResources(this.collapseAllToolStripMenuItem, "collapseAllToolStripMenuItem");
             this.collapseAllToolStripMenuItem.Click += new System.EventHandler(this.collapseAllToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator2
+            // 
+            this.toolStripSeparator2.Name = "toolStripSeparator2";
+            resources.ApplyResources(this.toolStripSeparator2, "toolStripSeparator2");
+            // 
+            // tabToolStripMenuItem
+            // 
+            this.tabToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.addTabToolStripMenuItem,
+            this.renameToolStripMenuItem,
+            this.deleteToolStripMenuItem});
+            this.tabToolStripMenuItem.Name = "tabToolStripMenuItem";
+            resources.ApplyResources(this.tabToolStripMenuItem, "tabToolStripMenuItem");
+            // 
+            // addTabToolStripMenuItem
+            // 
+            this.addTabToolStripMenuItem.Name = "addTabToolStripMenuItem";
+            resources.ApplyResources(this.addTabToolStripMenuItem, "addTabToolStripMenuItem");
+            this.addTabToolStripMenuItem.Click += new System.EventHandler(this.addTabToolStripMenuItem_Click);
+            // 
+            // renameToolStripMenuItem
+            // 
+            this.renameToolStripMenuItem.Name = "renameToolStripMenuItem";
+            resources.ApplyResources(this.renameToolStripMenuItem, "renameToolStripMenuItem");
+            this.renameToolStripMenuItem.Click += new System.EventHandler(this.renameToolStripMenuItem_Click);
+            // 
+            // deleteToolStripMenuItem
+            // 
+            this.deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
+            resources.ApplyResources(this.deleteToolStripMenuItem, "deleteToolStripMenuItem");
+            this.deleteToolStripMenuItem.Click += new System.EventHandler(this.deleteToolStripMenuItem_Click);
             // 
             // toolsToolStripMenuItem
             // 
@@ -661,6 +700,11 @@
         private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
+        private System.Windows.Forms.ToolStripMenuItem tabToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem addTabToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem renameToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem deleteToolStripMenuItem;
     }
 }
 
