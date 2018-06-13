@@ -311,8 +311,7 @@ namespace HaRepacker.GUI
         {
             ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
         }
-
-        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        private void openWz()
         {
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
@@ -369,6 +368,10 @@ namespace HaRepacker.GUI
                     }
                 }
             }
+        }
+        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            openWz();
         }
 
         private void unloadAllToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1316,6 +1319,7 @@ namespace HaRepacker.GUI
         private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
         {
             if(e.Control && e.KeyCode == Keys.T) addTab();
+            if (e.Control && e.KeyCode == Keys.O) openWz();
             byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
 
             if (e.Control)
