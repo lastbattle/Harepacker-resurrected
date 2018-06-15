@@ -33,9 +33,9 @@ namespace MapleLib.WzLib.WzStructure.Data
         Parcel_Open_Limit = 21, // TO BE CONFIRMED
         Drop_Limit = 22, // CField::IsDropLimit = CField *this 
         Unable_To_Use_Rocket_Boost = 23, // CField::IsUnableToUseRocketBoost = CField *this
-        Unknown8 = 24,
+        No_Item_Option_Limit = 24, // TO BE CONFIRMED
         No_Quest_Alert = 25, // CField::IsNoQuestAlert = CField *this 
-        Unknown9 = 26,
+        No_Android = 26, // TO BE CONFIRMED
         Auto_Expand_Minimap = 27, // CField::IsAutoExpandMinimap = CField *this 
         Move_Skill_Only = 28, // CField::IsMoveSkillOnly = CField *this 
     }
