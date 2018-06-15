@@ -35,6 +35,61 @@ namespace HaRepacker.FHMapper
             this.MainPanel = MainPanel;
         }
 
+        #region Renders
+        public Bitmap RenderMinimap(Size bmpSize, WzFile wzFile, WzImage img, string mapIdName, WzSubProperty miniMapSubProperty)
+        {
+            Bitmap minimapRender = new Bitmap(400, 200);
+            using (Graphics drawBuf = Graphics.FromImage(minimapRender))
+            {
+                // Draw map mark
+                WzStringProperty mapMark = ((WzStringProperty)img["info"]["mapMark"]);
+                if (mapMark != null)
+                {
+                    string mapMarkPath = wzFile.WzDirectory.Name + "/MapHelper.img/mark/" + mapMark.GetString();
+                    WzCanvasProperty mapMarkCanvas = (WzCanvasProperty)wzFile.GetObjectFromPath(mapMarkPath);
+
+                    if (mapMarkCanvas != null && mapMark.ToString() != "None") // Doesnt have to render mapmark if its not available. Actual client does not crash
+                    {
+                        drawBuf.DrawImage(mapMarkCanvas.GetLinkedWzCanvasBitmap(), 10, 10);
+                    }
+                }
+                // Get map name
+                string mapName = string.Empty;
+                string streetName = string.Empty;
+
+                string mapNameStringPath = "String.wz/Map.img";
+                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, Program.WzMan.WzFileListReadOnly);
+                foreach (WzSubProperty subAreaImgProp in mapNameImages.WzProperties)
+                {
+                    foreach (WzSubProperty mapImg in subAreaImgProp.WzProperties)
+                    {
+                        if (mapImg.Name == mapIdName)
+                        {
+                            mapName = mapImg["mapName"].ReadString(string.Empty);
+                            streetName = mapImg["streetName"].ReadString(string.Empty);
+                            break;
+                        }
+                    }
+                }
+
+                // Draw map name and ID
+                //drawBuf.FillRectangle(new SolidBrush(Color.CornflowerBlue), 0, 0, bmpSize.Width, bmpSize.Height);
+                drawBuf.DrawString(string.Format("[{0}] {1}", mapIdName, streetName), FONT_DISPLAY_MAPID, new SolidBrush(Color.Black), new PointF(60, 10));
+                drawBuf.DrawString(mapName, FONT_DISPLAY_MAPID, new SolidBrush(Color.Black), new PointF(60, 30));
+
+                // Draw mini map
+                if (miniMapSubProperty != null)
+                    drawBuf.DrawImage(((WzCanvasProperty)miniMapSubProperty["canvas"]).PngProperty.GetPNG(false), 10, 80);
+                else
+                {
+                    drawBuf.DrawString("Minimap not availible", FONT_DISPLAY_MINIMAP_NOT_AVAILABLE, new SolidBrush(Color.Black), new PointF(10, 45));
+                }
+            }
+            minimapRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_miniMapRender.bmp");
+            return minimapRender;
+        }
+        #endregion
+
         public void SaveMap(WzImage img, double zoom)
         {
             string mapIdName = img.Name.Substring(0, img.Name.Length - 4);
@@ -75,56 +130,10 @@ namespace HaRepacker.FHMapper
                     return;
             }
 
-            Bitmap minimapRender = new Bitmap(bmpSize.Width, bmpSize.Height + 10);
-            using (Graphics drawBuf = Graphics.FromImage(minimapRender))
-            {
-                // Draw map mark
-                WzStringProperty mapMark = ((WzStringProperty)img["info"]["mapMark"]);
-                if (mapMark != null)
-                {
-                    string mapMarkPath = wzFile.WzDirectory.Name + "/MapHelper.img/mark/" + mapMark.GetString();
-                    WzCanvasProperty mapMarkCanvas = (WzCanvasProperty)wzFile.GetObjectFromPath(mapMarkPath);
+            // Render minimap
+            Bitmap minimapRender = RenderMinimap(bmpSize, wzFile, img, mapIdName, miniMapSubProperty);
 
-                    if (mapMarkCanvas != null && mapMark.ToString() != "None") // Doesnt have to render mapmark if its not available. Actual client does not crash
-                    {
-                        drawBuf.DrawImage(mapMarkCanvas.GetBitmap(), 10, 10);
-                    }
-                }
-                // Get map name
-                string mapName = string.Empty;
-                string streetName = string.Empty;
-
-                string mapNameStringPath = "String.wz/Map.img";
-                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, Program.WzMan.WzFileListReadOnly);
-                foreach (WzSubProperty subAreaImgProp in mapNameImages.WzProperties)
-                {
-                    foreach (WzSubProperty mapImg in subAreaImgProp.WzProperties)
-                    {
-                        if (mapImg.Name == mapIdName)
-                        {
-                            mapName = mapImg["mapName"].ReadString(string.Empty);
-                            streetName = mapImg["streetName"].ReadString(string.Empty);
-                            break;
-                        }
-                    }
-                }
-
-                // Draw map name and ID
-                //drawBuf.FillRectangle(new SolidBrush(Color.CornflowerBlue), 0, 0, bmpSize.Width, bmpSize.Height);
-                drawBuf.DrawString(string.Format("[{0}] {1}", mapIdName, streetName), FONT_DISPLAY_MAPID, new SolidBrush(Color.Black), new PointF(60, 10));
-                drawBuf.DrawString(mapName, FONT_DISPLAY_MAPID, new SolidBrush(Color.Black), new PointF(60, 30));
-
-                // Draw mini map
-                if (miniMapSubProperty != null)
-                    drawBuf.DrawImage(((WzCanvasProperty)miniMapSubProperty["canvas"]).PngProperty.GetPNG(false), 10, 80);
-                else
-                {
-                    drawBuf.DrawString("Minimap not availible", FONT_DISPLAY_MINIMAP_NOT_AVAILABLE, new SolidBrush(Color.Black), new PointF(10, 45));
-                }
-            }
-            minimapRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_miniMapRender.bmp");
-
-
+            // Render map
             Bitmap mapRender = new Bitmap(bmpSize.Width, bmpSize.Height);
             using (Graphics drawBuf = Graphics.FromImage(mapRender))
             {
@@ -160,11 +169,8 @@ namespace HaRepacker.FHMapper
                         {
                             drewPortalImg = true;
 
-                            WzVectorProperty originPos = (WzVectorProperty)portalEditorCanvas["origin"];
-                            if (originPos != null)
-                                drawBuf.DrawImage(portalEditorCanvas.GetBitmap(), x - originPos.X.Value, y - originPos.Y.Value);
-                            else
-                                drawBuf.DrawImage(portalEditorCanvas.GetBitmap(), x, y);
+                            PointF canvasOriginPosition = portalEditorCanvas.GetCanvasVectorPosition();
+                            drawBuf.DrawImage(portalEditorCanvas.GetLinkedWzCanvasBitmap(), x - canvasOriginPosition.X, y - canvasOriginPosition.Y);
                         }
                     }
                     if (!drewPortalImg)
@@ -237,19 +243,10 @@ namespace HaRepacker.FHMapper
                                 WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzMan.WzFileListReadOnly);
                                 if (lifeImg != null)
                                 {
-                                    WzVectorProperty originXY = (WzVectorProperty)lifeImg["origin"];
-                                    PointF renderXY;
-                                    if (originXY != null)
-                                        renderXY = new PointF(x - originXY.Pos.X, y - originXY.Pos.Y);
-                                    else
-                                        renderXY = new PointF(x, y);
+                                    PointF canvasOriginPosition = lifeImg.GetCanvasVectorPosition();
+                                    PointF renderXY = new PointF(x - canvasOriginPosition.X, y - canvasOriginPosition.Y);
 
-                                    WzImageProperty linkedCanvas = lifeImg.GetLinkedWzCanvasProperty();
-                                    Bitmap renderMobbitmap;
-                                    if (linkedCanvas != null)
-                                        renderMobbitmap = linkedCanvas.GetBitmap();
-                                    else
-                                        renderMobbitmap = lifeImg.GetBitmap();
+                                    Bitmap renderMobbitmap = lifeImg.GetLinkedWzCanvasBitmap();
 
                                     if (!facingLeft)
                                         renderMobbitmap.RotateFlip(RotateFlipType.RotateNoneFlipX);
@@ -350,14 +347,10 @@ namespace HaRepacker.FHMapper
                         WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzMan.WzFileListReadOnly);
                         if (wzBgCanvas != null)
                         {
-                            PointF renderXY = new PointF(x + center.X, y + center.Y);
+                            PointF canvasOriginPosition = wzBgCanvas.GetCanvasVectorPosition();
+                            PointF renderXY = new PointF(x + canvasOriginPosition.X + center.X, y + canvasOriginPosition.X + center.Y);
 
-                            WzImageProperty linkedCanvas = wzBgCanvas.GetLinkedWzCanvasProperty();
-                            Bitmap drawImage;
-                            if (linkedCanvas != null)
-                                drawImage = linkedCanvas.GetBitmap();
-                            else
-                                drawImage = wzBgCanvas.GetBitmap();
+                            Bitmap drawImage = wzBgCanvas.GetLinkedWzCanvasBitmap();
 
                             if (!facingLeft)
                                 drawImage.RotateFlip(RotateFlipType.RotateNoneFlipX);

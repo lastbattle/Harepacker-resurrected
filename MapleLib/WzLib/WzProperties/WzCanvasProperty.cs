@@ -33,6 +33,7 @@ namespace MapleLib.WzLib.WzProperties
         /// </summary>
         public const string InlinkPropertyName = "_inlink";
         public const string OutlinkPropertyName = "_outlink";
+        public const string OriginPropertyName = "origin";
         #endregion
 
         #region Fields
@@ -209,6 +210,20 @@ namespace MapleLib.WzLib.WzProperties
 
         #region Custom Members
         /// <summary>
+        /// Gets the 'origin' vector position of the Canvas
+        /// If not available, it defaults to xy of 0, 0
+        /// </summary>
+        /// <returns></returns>
+        public PointF GetCanvasVectorPosition()
+        {
+            WzVectorProperty originPos = (WzVectorProperty)this[OriginPropertyName];
+            if (originPos != null)
+                return new PointF(originPos.X.Value, originPos.Y.Value);
+
+            return new PointF(0, 0);
+        }
+
+        /// <summary>
         /// Gets whether this WzCanvasProperty contains an '_inlink' for modern maplestory version. v150++
         /// </summary>
         /// <returns></returns>
@@ -232,11 +247,8 @@ namespace MapleLib.WzLib.WzProperties
         /// It will be handled via HaRepackerMainPanel instead.
         /// </summary>
         /// <returns></returns>
-        public WzImageProperty GetLinkedWzCanvasProperty()
+        public Bitmap GetLinkedWzCanvasBitmap()
         {
-            if (!HaveInlinkProperty() && !HaveOutlinkProperty())
-                return null;
-
             string _inlink = ((WzStringProperty)this[InlinkPropertyName])?.Value; // could get nexon'd here. In case they place an _inlink that's not WzStringProperty
             string _outlink = ((WzStringProperty)this[OutlinkPropertyName])?.Value; // could get nexon'd here. In case they place an _outlink that's not WzStringProperty
 
@@ -252,7 +264,7 @@ namespace MapleLib.WzLib.WzProperties
                     WzImageProperty foundProperty = wzImageParent.GetFromPath(_inlink);
                     if (foundProperty != null && foundProperty is WzImageProperty)
                     {
-                        return (WzImageProperty)foundProperty;
+                        return ((WzImageProperty)foundProperty).GetBitmap();
                     }
                 }
             }
@@ -261,7 +273,6 @@ namespace MapleLib.WzLib.WzProperties
                 WzObject currentWzObj = this; // first object to work with
                 while ((currentWzObj = currentWzObj.Parent) != null)
                 {
-                    System.Diagnostics.Debug.WriteLine(currentWzObj.ToString());
                     if (!(currentWzObj is WzDirectory))  // keep looping if its not a WzImage
                         continue;
 
@@ -269,11 +280,11 @@ namespace MapleLib.WzLib.WzProperties
                     WzObject foundProperty = wzFileParent.GetObjectFromPath(_outlink);
                     if (foundProperty != null && foundProperty is WzImageProperty)
                     {
-                        return (WzImageProperty)foundProperty;
+                        return ((WzImageProperty)foundProperty).GetBitmap();
                     }
                 }
             }
-            return null;
+            return this.GetBitmap();
         }
 
         /// <summary>
