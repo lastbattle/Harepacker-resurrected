@@ -111,27 +111,35 @@ namespace HaRepacker.GUI
                     string tmpFilePath = dialog.FileName + ".tmp";
                     string targetFilePath = dialog.FileName;
 
-                    using (FileStream oldfs = File.Open(tmpFilePath, FileMode.OpenOrCreate))
-                    {
-                        using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
-                        {
-                            wzImg.SaveImage(wzWriter, true); // Write to temp folder
-                        }
-                    }
+                    bool error_noAdminPriviledge = false;
                     try
                     {
-                        File.Copy(tmpFilePath, targetFilePath, true);
-                        File.Delete(tmpFilePath);
+                        using (FileStream oldfs = File.Open(tmpFilePath, FileMode.OpenOrCreate))
+                        {
+                            using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
+                            {
+                                wzImg.SaveImage(wzWriter, true); // Write to temp folder
+                            }
+                        }
+                        try
+                        {
+                            File.Copy(tmpFilePath, targetFilePath, true);
+                            File.Delete(tmpFilePath);
+                        }
+                        catch (Exception exp)
+                        {
+                            Debug.WriteLine(exp); // nvm, dont show to user
+                        }
+                        wzNode.Delete();
                     }
-                    catch (Exception exp)
+                    catch (UnauthorizedAccessException)
                     {
-                        Debug.WriteLine(exp); // nvm, dont show to user
+                        error_noAdminPriviledge = true;
                     }
-                    wzNode.Delete();
 
                     // Reload the new file
                     WzImage img = Program.WzMan.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected, panel);
-                    if (img == null)
+                    if (img == null || error_noAdminPriviledge)
                     {
                         MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
                     }
