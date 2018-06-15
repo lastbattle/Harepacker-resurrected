@@ -191,6 +191,9 @@
   <data name="MainErrorImportingWzImageFile" xml:space="preserve">
     <value>導入{0} .img文件時出錯。 你確定你選擇了正確的WZ加密嗎？</value>
   </data>
+  <data name="MainFileOpenFail" xml:space="preserve">
+    <value>Unable to open/save to the specified file path. Please run as an Administrator instead.</value>
+  </data>
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>無法顯示幫助, 因為找不到幫助檔案({0})</value>
   </data>

@@ -234,6 +234,9 @@
   <data name="MainErrorImportingWzImageFile" xml:space="preserve">
     <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
   </data>
+  <data name="MainFileOpenFail" xml:space="preserve">
+    <value>Unable to open/save to the specified file path. Please run as an Administrator instead.</value>
+  </data>
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>Help could not be shown because the help file ({0}) was not found</value>
   </data>

@@ -322,6 +322,8 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
+                bool errorOpeningFile_Admin = false;
+
                 List<string> wzfilePathsToLoad = new List<string>();
 
                 WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
@@ -330,6 +332,12 @@ namespace HaRepacker.GUI
                     if (WzTool.IsDataWzFile(filePath))
                     {
                         WzImage img = Program.WzMan.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
+
+                        if (img == null)
+                        {
+                            errorOpeningFile_Admin = true;
+                            break;
+                        }
                     }
                     else if (WzTool.IsListFile(filePath))
                     {
@@ -372,7 +380,17 @@ namespace HaRepacker.GUI
                 Parallel.ForEach(wzfilePathsToLoad, filePath =>
                 {
                     WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
+                    if (f == null)
+                    {
+                        errorOpeningFile_Admin = true;
+                    }
                 });
+
+                // error opening one of the files
+                if (errorOpeningFile_Admin)
+                {
+                    MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                }
             }
         }
 

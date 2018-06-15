@@ -131,6 +131,10 @@ namespace HaRepacker.GUI
 
                     // Reload the new file
                     WzImage img = Program.WzMan.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected, panel);
+                    if (img == null)
+                    {
+                        MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                    }
                 }
             }
             Close();

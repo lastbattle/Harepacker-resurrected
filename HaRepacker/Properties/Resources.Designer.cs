@@ -428,6 +428,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Unable to open/save to the specified file path. Please run as an Administrator instead..
+        /// </summary>
+        internal static string MainFileOpenFail {
+            get {
+                return ResourceManager.GetString("MainFileOpenFail", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Help could not be shown because the help file ({0}) was not found.
         /// </summary>
         internal static string MainHelpOpenFail {
