@@ -193,6 +193,12 @@
     <Compile Include="GUI\Interaction\InputBox.Designer.cs">
       <DependentUpon>InputBox.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Interaction\LoadBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Interaction\LoadBox.Designer.cs">
+      <DependentUpon>LoadBox.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\Interaction\WzMapleVersionInputBox.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -299,6 +305,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\InputBox.resx">
       <DependentUpon>InputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Interaction\LoadBox.resx">
+      <DependentUpon>LoadBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.resx">
       <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
@@ -426,6 +435,8 @@
     <Content Include="Resources\arrow_left.png" />
     <None Include="Resources\arrow_refresh.png" />
     <Content Include="Resources\arrow_right.png" />
+    <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
+    <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />
     <Content Include="Resources\play.png" />
   </ItemGroup>

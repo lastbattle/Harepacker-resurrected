@@ -115,7 +115,7 @@ namespace HaRepacker.GUI
                     {
                         using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
                         {
-                            wzImg.SaveImage(wzWriter, true); // Write to temp folder
+                            wzImg.SaveImage(wzWriter, true); // Write to temp folder                            
                         }
                     }
                     try

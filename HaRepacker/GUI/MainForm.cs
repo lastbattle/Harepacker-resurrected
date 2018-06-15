@@ -311,6 +311,7 @@ namespace HaRepacker.GUI
         {
             ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
         }
+
         private void openWz()
         {
             using (OpenFileDialog dialog = new OpenFileDialog()
@@ -324,7 +325,7 @@ namespace HaRepacker.GUI
 
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
-
+                
                 WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
                 foreach (string filePath in dialog.FileNames)
                 {
@@ -366,12 +367,12 @@ namespace HaRepacker.GUI
                             }
                         }
                     }
-                }
+                }                
             }
         }
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            openWz();
+            openWz();            
         }
 
         private void unloadAllToolStripMenuItem_Click(object sender, EventArgs e)
