@@ -210,7 +210,7 @@ namespace HaRepackerLib
 
         public void UnloadAll()
         {
-            IReadOnlyCollection<WzFile> wzFileListCopy = this.WzFileListReadOnly;
+            IReadOnlyCollection<WzFile> wzFileListCopy = new List<WzFile>(this.WzFileListReadOnly);
 
             foreach (WzFile file in wzFileListCopy)
             {
