@@ -85,8 +85,7 @@ namespace HaRepacker.GUI.Interaction
         {
             OpenFileDialog dialog = new OpenFileDialog()
             {
-                Title = HaRepackerLib.Properties.Resources.SelectImage,
-                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepackerLib.Properties.Resources.ImagesFilter)
+                Title = HaRepackerLib.Properties.Resources.SelectImage, Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepackerLib.Properties.Resources.ImagesFilter)
             };
             if (dialog.ShowDialog() == DialogResult.OK)
             {
@@ -119,8 +118,7 @@ namespace HaRepacker.GUI.Interaction
                             bmpResult.Add(BitmapFromSource(src));
                         }
                     }
-                }
-                else
+                } else
                 {
                     bmpResult.Add((Bitmap)pictureBox.Image);
                 }

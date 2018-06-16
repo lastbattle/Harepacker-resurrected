@@ -140,7 +140,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAABsAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAABoAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -184,7 +184,7 @@
     <value>Segoe UI, 8pt</value>
   </data>
   <data name="vectorPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>19, 20</value>
+    <value>20, 20</value>
   </data>
   <data name="vectorPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>0, 0, 0, 0</value>
@@ -565,7 +565,7 @@
     <value>0, 0, 0, 10</value>
   </data>
   <data name="listView_fieldLimitType.Size" type="System.Drawing.Size, System.Drawing">
-    <value>637, 428</value>
+    <value>639, 428</value>
   </data>
   <data name="listView_fieldLimitType.TabIndex" type="System.Int32, mscorlib">
     <value>13</value>

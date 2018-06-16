@@ -44,13 +44,13 @@
             // 
             // containerPanel
             // 
-            resources.ApplyResources(this.containerPanel, "containerPanel");
             this.containerPanel.Controls.Add(this.LoopBox);
             this.containerPanel.Controls.Add(this.TimeBar);
             this.containerPanel.Controls.Add(this.CurrentPositionLabel);
             this.containerPanel.Controls.Add(this.LengthLabel);
             this.containerPanel.Controls.Add(this.PauseButton);
             this.containerPanel.Controls.Add(this.PlayButton);
+            resources.ApplyResources(this.containerPanel, "containerPanel");
             this.containerPanel.Name = "containerPanel";
             // 
             // LoopBox
@@ -80,8 +80,8 @@
             // 
             // PauseButton
             // 
-            resources.ApplyResources(this.PauseButton, "PauseButton");
             this.PauseButton.FlatAppearance.BorderSize = 0;
+            resources.ApplyResources(this.PauseButton, "PauseButton");
             this.PauseButton.Image = global::HaRepackerLib.Properties.Resources.Pause;
             this.PauseButton.Name = "PauseButton";
             this.PauseButton.UseVisualStyleBackColor = true;
@@ -89,9 +89,9 @@
             // 
             // PlayButton
             // 
-            resources.ApplyResources(this.PlayButton, "PlayButton");
             this.PlayButton.BackColor = System.Drawing.SystemColors.Control;
             this.PlayButton.FlatAppearance.BorderSize = 0;
+            resources.ApplyResources(this.PlayButton, "PlayButton");
             this.PlayButton.Image = global::HaRepackerLib.Properties.Resources.Play;
             this.PlayButton.Name = "PlayButton";
             this.PlayButton.UseVisualStyleBackColor = false;

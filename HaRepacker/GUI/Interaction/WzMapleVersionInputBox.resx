@@ -119,14 +119,14 @@
   </resheader>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 187</value>
+    <value>18, 196</value>
   </data>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="okButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>
   </data>
   <data name="okButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>219, 38</value>
+    <value>219, 40</value>
   </data>
   <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="okButton.TabIndex" type="System.Int32, mscorlib">
@@ -148,13 +148,13 @@
     <value>3</value>
   </data>
   <data name="cancelButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>245, 187</value>
+    <value>245, 196</value>
   </data>
   <data name="cancelButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>
   </data>
   <data name="cancelButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>221, 38</value>
+    <value>221, 40</value>
   </data>
   <data name="cancelButton.TabIndex" type="System.Int32, mscorlib">
     <value>4</value>
@@ -184,7 +184,7 @@
     <value>4, 0, 4, 0</value>
   </data>
   <data name="label_wzEncrytionType.Size" type="System.Drawing.Size, System.Drawing">
-    <value>290, 20</value>
+    <value>294, 21</value>
   </data>
   <data name="label_wzEncrytionType.TabIndex" type="System.Int32, mscorlib">
     <value>4</value>
@@ -208,7 +208,7 @@
     <value>3, 3</value>
   </data>
   <data name="comboBox_wzEncryptionType.Size" type="System.Drawing.Size, System.Drawing">
-    <value>441, 28</value>
+    <value>441, 29</value>
   </data>
   <data name="comboBox_wzEncryptionType.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -226,10 +226,10 @@
     <value>0</value>
   </data>
   <data name="panel1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 32</value>
+    <value>18, 34</value>
   </data>
   <data name="panel1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>447, 147</value>
+    <value>447, 154</value>
   </data>
   <data name="panel1.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -250,10 +250,13 @@
     <value>True</value>
   </metadata>
   <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>9, 20</value>
+    <value>9, 21</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>477, 239</value>
+    <value>477, 251</value>
+  </data>
+  <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
   </data>
   <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>

@@ -117,121 +117,71 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
-  <data name="button1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 113</value>
-  </data>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="button1.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+  <data name="arrow_right" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_right.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="button1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>493, 42</value>
+  <data name="Play" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Play.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="button1.TabIndex" type="System.Int32, mscorlib">
-    <value>0</value>
+  <data name="arrow_refresh" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_refresh.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="button1.Text" xml:space="preserve">
-    <value>OK</value>
+  <data name="disk" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\disk.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="&gt;&gt;button1.Name" xml:space="preserve">
-    <value>button1</value>
+  <data name="Pause" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Pause.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="&gt;&gt;button1.Type" xml:space="preserve">
-    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="delete" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\delete.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="&gt;&gt;button1.Parent" xml:space="preserve">
-    <value>$this</value>
+  <data name="add" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="&gt;&gt;button1.ZOrder" xml:space="preserve">
-    <value>2</value>
+  <data name="find" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\find.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="autoUpdate.AutoSize" type="System.Boolean, mscorlib">
-    <value>True</value>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox.</value>
   </data>
-  <data name="autoUpdate.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 57</value>
+  <data name="AnimError" xml:space="preserve">
+    <value>Error at animation builder, frame {0}</value>
   </data>
-  <data name="autoUpdate.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+  <data name="Error" xml:space="preserve">
+    <value>Error</value>
   </data>
-  <data name="autoUpdate.Size" type="System.Drawing.Size, System.Drawing">
-    <value>450, 25</value>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>Copy WZ nodes to clipboard? (warning - can take a lot of time if many nodes are selected)</value>
   </data>
-  <data name="autoUpdate.TabIndex" type="System.Int32, mscorlib">
-    <value>15</value>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>Paste WZ nodes from clipboard? (warning - can take a lot of time if many nodes are pasted)</value>
   </data>
-  <data name="autoUpdate.Text" xml:space="preserve">
-    <value>Periodically check for updates (requires internet connection)</value>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>Are you sure you want to remove this node?</value>
   </data>
-  <data name="&gt;&gt;autoUpdate.Name" xml:space="preserve">
-    <value>autoUpdate</value>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>Could not convert "{0}" to the required type</value>
   </data>
-  <data name="&gt;&gt;autoUpdate.Type" xml:space="preserve">
-    <value>System.Windows.Forms.CheckBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>You can't copy directories because they require too much memory</value>
   </data>
-  <data name="&gt;&gt;autoUpdate.Parent" xml:space="preserve">
-    <value>$this</value>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>Could not load image</value>
   </data>
-  <data name="&gt;&gt;autoUpdate.ZOrder" xml:space="preserve">
-    <value>0</value>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>A node with that name already exists. Please choose a different name</value>
   </data>
-  <data name="autoAssociateBox.AutoSize" type="System.Boolean, mscorlib">
-    <value>True</value>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>Reached the end of the tree</value>
   </data>
-  <data name="autoAssociateBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 19</value>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>The node "{0}" already exists. Do you want it to be replaced?</value>
   </data>
-  <data name="autoAssociateBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+  <data name="SelectionType" xml:space="preserve">
+    <value>Selection Type: {0}</value>
   </data>
-  <data name="autoAssociateBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>379, 25</value>
-  </data>
-  <data name="autoAssociateBox.TabIndex" type="System.Int32, mscorlib">
-    <value>14</value>
-  </data>
-  <data name="autoAssociateBox.Text" xml:space="preserve">
-    <value>Automatically associate WZ files with HaRepacker</value>
-  </data>
-  <data name="&gt;&gt;autoAssociateBox.Name" xml:space="preserve">
-    <value>autoAssociateBox</value>
-  </data>
-  <data name="&gt;&gt;autoAssociateBox.Type" xml:space="preserve">
-    <value>System.Windows.Forms.CheckBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;autoAssociateBox.Parent" xml:space="preserve">
-    <value>$this</value>
-  </data>
-  <data name="&gt;&gt;autoAssociateBox.ZOrder" xml:space="preserve">
-    <value>1</value>
-  </data>
-  <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>9, 21</value>
-  </data>
-  <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>494, 155</value>
-  </data>
-  <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
-  </data>
-  <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
-  </data>
-  <data name="$this.StartPosition" type="System.Windows.Forms.FormStartPosition, System.Windows.Forms">
-    <value>CenterScreen</value>
-  </data>
-  <data name="$this.Text" xml:space="preserve">
-    <value>First Run</value>
-  </data>
-  <data name="&gt;&gt;$this.Name" xml:space="preserve">
-    <value>FirstRunForm</value>
-  </data>
-  <data name="&gt;&gt;$this.Type" xml:space="preserve">
-    <value>System.Windows.Forms.Form, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="Warning" xml:space="preserve">
+    <value>Warning</value>
   </data>
 </root>

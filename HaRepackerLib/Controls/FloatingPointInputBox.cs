@@ -41,7 +41,7 @@ namespace HaRepacker.GUI.Interaction
             if (nameBox.Text != "" && nameBox.Text != null)
             {
                 nameResult = nameBox.Text;
-                doubleResult =  valueBox.Value;
+                doubleResult = valueBox.Value;
                 DialogResult = DialogResult.OK;
                 Close();
             }

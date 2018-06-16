@@ -131,8 +131,7 @@ namespace HaRepacker.GUI
                             Debug.WriteLine(exp); // nvm, dont show to user
                         }
                         wzNode.Delete();
-                    }
-                    catch (UnauthorizedAccessException)
+                    } catch (UnauthorizedAccessException)
                     {
                         error_noAdminPriviledge = true;
                     }
