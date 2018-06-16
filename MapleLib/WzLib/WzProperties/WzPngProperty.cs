@@ -21,6 +21,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using MapleLib.WzLib.Util;
+using System.Runtime.CompilerServices;
 
 namespace MapleLib.WzLib.WzProperties
 {
@@ -30,7 +31,7 @@ namespace MapleLib.WzLib.WzProperties
     public class WzPngProperty : WzImageProperty
     {
         #region Fields
-        internal int width, height, nPixFormat, nMagLevel;
+        internal int width, height, nPixFormat = 1, nMagLevel;
         internal byte[] compressedBytes;
         internal Bitmap png;
         internal WzObject parent;
@@ -331,15 +332,6 @@ namespace MapleLib.WzLib.WzProperties
                     Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
                     bmp.UnlockBits(bmpData);
 
-                    /*  for (int row = 0; row < height; row++)
-                      {
-                          for (int col = 0; col < width; col++)
-                          {
-                              Color curPixel = bmp.GetPixel(col, row); // 4 bytes 
-
-                              System.Diagnostics.Debug.WriteLine(curPixel.A + ", " + curPixel.R + ", " + curPixel.G + ", " + curPixel.B);
-                          }
-                      }*/
                     break;
 
                 case 2:
@@ -504,6 +496,7 @@ namespace MapleLib.WzLib.WzProperties
                         byte[] buf = new byte[bmp.Width * bmp.Height * 2];
                         int curPos = 0;
 
+                        long ticksNow = DateTime.Now.Ticks;
                         for (int row = 0; row < height; row++)
                         {
                             for (int col = 0; col < width; col++)
@@ -515,17 +508,9 @@ namespace MapleLib.WzLib.WzProperties
                                 int R = (curPixel.R >> 4) & 0x0F;
                                 int A = (curPixel.A << 4) & 0xF0; // confirmed
 
-                                int compressedBuf1 = 0;
-                                compressedBuf1 |= B;
-                                compressedBuf1 |= G;
-
-                                int compressedBuf2 = 0;
-                                compressedBuf2 |= R;
-                                compressedBuf2 |= A;
-
                                 // 1 byte for every argb
-                                buf[curPos] = (byte)compressedBuf1;
-                                buf[curPos + 1] = (byte)compressedBuf2;
+                                buf[curPos] = (byte)(B | G);
+                                buf[curPos + 1] = (byte)(R | A);
 
                                 curPos += 2; // BG
                             }
@@ -578,6 +563,7 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region DXT Format Parser
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static byte[] GetPixelDataDXT3(byte[] rawData, int width, int height)
         {
             byte[] pixel = new byte[width * height * 4];
@@ -613,6 +599,7 @@ namespace MapleLib.WzLib.WzProperties
             return pixel;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static byte[] GetPixelDataDXT5(byte[] rawData, int width, int height)
         {
             byte[] pixel = new byte[width * height * 4];
@@ -653,6 +640,7 @@ namespace MapleLib.WzLib.WzProperties
             return pixel;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void SetPixel(byte[] pixelData, int x, int y, int width, Color color, byte alpha)
         {
             int offset = (y * width + x) * 4;
@@ -662,6 +650,7 @@ namespace MapleLib.WzLib.WzProperties
             pixelData[offset + 3] = alpha;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandColorTable(Color[] color, ushort u0, ushort u1)
         {
             color[0] = RGB565ToColor(u0);
@@ -670,6 +659,7 @@ namespace MapleLib.WzLib.WzProperties
             color[3] = System.Drawing.Color.FromArgb(0xff, (color[0].R + color[1].R * 2 + 1) / 3, (color[0].G + color[1].G * 2 + 1) / 3, (color[0].B + color[1].B * 2 + 1) / 3);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandColorIndexTable(int[] colorIndex, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 4, offset++)
@@ -681,6 +671,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaTable(byte[] alpha, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 2, offset++)
@@ -694,6 +685,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaTableDXT5(byte[] alpha, byte a0, byte a1)
         {
             alpha[0] = a0;
@@ -716,6 +708,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaIndexTableDXT5(int[] alphaIndex, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 8, offset += 3)
@@ -731,6 +724,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Color RGB565ToColor(ushort val)
         {
             const int rgb565_mask_r = 0xf800;
