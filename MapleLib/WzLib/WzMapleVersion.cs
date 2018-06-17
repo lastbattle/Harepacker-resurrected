@@ -21,13 +21,13 @@ using System.Text;
 
 namespace MapleLib.WzLib
 {
-	public enum WzMapleVersion
-	{
-		GMS,
-		EMS,
-		BMS,
-		CLASSIC,
-		GENERATE,
-        GETFROMZLZ
-	}
+    public enum WzMapleVersion
+    {
+        GMS = 0,
+        EMS = 1,
+        BMS = 2,
+        CLASSIC = 3,
+        GENERATE = 4,
+        GETFROMZLZ = 5
+    }
 }

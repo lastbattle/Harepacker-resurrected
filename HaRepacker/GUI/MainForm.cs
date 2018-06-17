@@ -321,13 +321,14 @@ namespace HaRepacker.GUI
                     return;
 
                 bool errorOpeningFile_Admin = false;
-
                 List<string> wzfilePathsToLoad = new List<string>();
 
                 WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
                 foreach (string filePath in dialog.FileNames)
                 {
-                    if (WzTool.IsDataWzFile(filePath))
+                    string filePathLowerCase = filePath.ToLower();
+
+                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
                     {
                         WzImage img = Program.WzMan.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
                         if (img == null)
@@ -344,7 +345,7 @@ namespace HaRepacker.GUI
                     {
                         wzfilePathsToLoad.Add(filePath); // add to list, so we can load it concurrently
 
-                        if (filePath.ToLower().EndsWith("map.wz"))
+                        if (filePathLowerCase.EndsWith("map.wz"))
                         {
                             string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Map*.wz");
                             foreach (string filePath_Others in otherMapWzFiles)
@@ -356,7 +357,7 @@ namespace HaRepacker.GUI
                                 }
                             }
                         }
-                        else if (filePath.ToLower().EndsWith("mob.wz"))  // Now pre-load the other part of Mob.wz
+                        else if (filePathLowerCase.EndsWith("mob.wz"))  // Now pre-load the other part of Mob.wz
                         {
                             string[] otherMobWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Mob*.wz");
                             foreach (string filePath_Others in otherMobWzFiles)
@@ -930,8 +931,14 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void toolStripMenuItem_searchWzStrings_Click(object sender, EventArgs e)
         {
-            WzStringSearchForm form = new WzStringSearchForm();
-            form.Show();
+            // Map name load
+            string loadedWzVersion;
+            WzStringSearchFormDataCache dataCache = new WzStringSearchFormDataCache();
+            if (dataCache.OpenBaseWZFile(out loadedWzVersion))
+            {
+                WzStringSearchForm form = new WzStringSearchForm(dataCache, loadedWzVersion);
+                form.Show();
+            }
         }
         #endregion
 

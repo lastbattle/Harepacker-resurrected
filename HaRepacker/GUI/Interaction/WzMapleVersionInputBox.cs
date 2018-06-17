@@ -27,9 +27,6 @@ namespace HaRepacker.GUI.Interaction
             return result;
         }
 
-        private string nameResult = null;
-        private Bitmap bmpResult = null;
-
         public WzMapleVersionInputBox(string title)
         {
             InitializeComponent();

@@ -183,11 +183,6 @@ namespace MapleLib.WzLib
                 Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "[Error] Path is null");
                 return;
             }
-            if (this.path.EndsWith("Data.wz"))
-            {
-                Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "[Error] Data.wz is detected, skipping.");
-                return;
-            }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
 

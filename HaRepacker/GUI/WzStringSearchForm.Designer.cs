@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(WzStringSearchForm));
             this.label_itemname = new System.Windows.Forms.TextBox();
             this.label_itemdesc = new System.Windows.Forms.TextBox();
             this.label5 = new System.Windows.Forms.Label();
@@ -53,7 +54,7 @@
             // 
             this.label_itemname.BackColor = System.Drawing.SystemColors.Control;
             this.label_itemname.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.label_itemname.ForeColor = System.Drawing.Color.DarkRed;
+            this.label_itemname.ForeColor = System.Drawing.Color.Black;
             this.label_itemname.Location = new System.Drawing.Point(2, 346);
             this.label_itemname.Multiline = true;
             this.label_itemname.Name = "label_itemname";
@@ -264,7 +265,7 @@
             this.Controls.Add(this.checkBox_searchsetup);
             this.Controls.Add(this.checkBox_searchNPC);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Name = "WzStringSearchForm";
             this.Text = "WZ String searcher";
             this.ResumeLayout(false);

@@ -182,12 +182,14 @@ namespace MapleLib.WzLib.Util
         /// </summary>
         /// <param name="path"></param>
         /// <returns></returns>
-        public static bool IsDataWzFile(string path)
+        public static bool IsDataWzHotfixFile(string path)
         {
             bool result = false;
             using (BinaryReader reader = new BinaryReader(File.OpenRead(path)))
             {
-                result = reader.ReadByte() == WzImage.WzImageHeaderByte; // check the first byte. It should be 0x73 that represends a WzImage
+                byte firstByte = reader.ReadByte();
+
+                result = firstByte == WzImage.WzImageHeaderByte; // check the first byte. It should be 0x73 that represends a WzImage
                 reader.Close();
             }
 

@@ -30,42 +30,20 @@ namespace HaRepacker.GUI
 {
     public partial class WzStringSearchForm : Form
     {
-        private bool IsLoading = false;
-
-
         // WZ Searcher
         public static Dictionary<int, KeyValuePair<string, string>>
             HexJumpList = new Dictionary<int, KeyValuePair<string, string>>();
         public static Dictionary<int, int> JumpList_Map = new Dictionary<int, int>();
         private WzStringSearchFormDataCache WzDataCache = new WzStringSearchFormDataCache();
 
+        private string loadedWzVersion;
 
-        public WzStringSearchForm()
+        public WzStringSearchForm(WzStringSearchFormDataCache WzDataCache, string loadedWzVersion)
         {
             InitializeComponent();
 
-            // Event handler
-            this.Load += new EventHandler(Form1_Load);
-        }
-
-        /// <summary>
-        /// When this form is loaded upon page navigation
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        void Form1_Load(object sender, EventArgs e)
-        {
-            IsLoading = true; // flag
-
-            // Map name load
-            string LoadedVersion; 
-            if (!WzDataCache.OpenBaseWZFile(out LoadedVersion))
-            {
-                // loading WZ cancelled. Disable features that requires it.
-                textBox_itemidFind.Enabled = false;
-            }
-
-            IsLoading = false;
+            this.WzDataCache = WzDataCache;
+            this.loadedWzVersion = loadedWzVersion;
         }
 
         #region Wz data ID searcher
@@ -201,10 +179,6 @@ namespace HaRepacker.GUI
                 }
             }
         }
-        #endregion
-
-        #region Data Cache
-
         #endregion
     }
 }
