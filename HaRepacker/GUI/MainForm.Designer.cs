@@ -95,6 +95,7 @@
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.toolStripMenuItem_searchWzStrings = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -461,7 +462,8 @@
             // 
             this.extrasToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fHMappingToolStripMenuItem,
-            this.animateToolStripMenuItem});
+            this.animateToolStripMenuItem,
+            this.toolStripMenuItem_searchWzStrings});
             this.extrasToolStripMenuItem.Name = "extrasToolStripMenuItem";
             resources.ApplyResources(this.extrasToolStripMenuItem, "extrasToolStripMenuItem");
             // 
@@ -569,6 +571,12 @@
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
             // 
+            // toolStripMenuItem_searchWzStrings
+            // 
+            this.toolStripMenuItem_searchWzStrings.Name = "toolStripMenuItem_searchWzStrings";
+            resources.ApplyResources(this.toolStripMenuItem_searchWzStrings, "toolStripMenuItem_searchWzStrings");
+            this.toolStripMenuItem_searchWzStrings.Click += new System.EventHandler(this.toolStripMenuItem_searchWzStrings_Click);
+            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -658,6 +666,7 @@
         private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
     }
 }
 

@@ -96,8 +96,8 @@ namespace Footholds
             // 
             // CancelBtn
             // 
-            resources.ApplyResources(this.CancelBtn, "CancelBtn");
             this.CancelBtn.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            resources.ApplyResources(this.CancelBtn, "CancelBtn");
             this.CancelBtn.Name = "CancelBtn";
             this.CancelBtn.UseVisualStyleBackColor = true;
             // 

@@ -110,6 +110,7 @@
     <Reference Include="System.XML" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Helpers\ByteUtils.cs" />
     <Compile Include="Helpers\ErrorLogger.cs" />
     <Compile Include="WzDataReader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />

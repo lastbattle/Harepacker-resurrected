@@ -541,16 +541,22 @@
     <value>1</value>
   </data>
   <data name="fHMappingToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>195, 30</value>
+    <value>238, 30</value>
   </data>
   <data name="fHMappingToolStripMenuItem.Text" xml:space="preserve">
     <value>FH Mapping</value>
   </data>
   <data name="animateToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>195, 30</value>
+    <value>238, 30</value>
   </data>
   <data name="animateToolStripMenuItem.Text" xml:space="preserve">
     <value>Animate</value>
+  </data>
+  <data name="toolStripMenuItem_searchWzStrings.Size" type="System.Drawing.Size, System.Drawing">
+    <value>238, 30</value>
+  </data>
+  <data name="toolStripMenuItem_searchWzStrings.Text" xml:space="preserve">
+    <value>Search WZ strings</value>
   </data>
   <data name="extrasToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 31</value>
@@ -2448,7 +2454,7 @@
     <value>4, 5, 4, 5</value>
   </data>
   <data name="$this.Text" xml:space="preserve">
-    <value>NoxRepacker ~ Fork of HaRepacker ;)</value>
+    <value>Harepacker resurrected ~ Fork of HaRepacker ;)</value>
   </data>
   <data name="&gt;&gt;fileToolStripMenuItem.Name" xml:space="preserve">
     <value>fileToolStripMenuItem</value>
@@ -2808,6 +2814,12 @@
     <value>debugToolStripMenuItem</value>
   </data>
   <data name="&gt;&gt;debugToolStripMenuItem.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;toolStripMenuItem_searchWzStrings.Name" xml:space="preserve">
+    <value>toolStripMenuItem_searchWzStrings</value>
+  </data>
+  <data name="&gt;&gt;toolStripMenuItem_searchWzStrings.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">

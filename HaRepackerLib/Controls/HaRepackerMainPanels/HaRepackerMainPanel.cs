@@ -962,18 +962,6 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
-        /// <summary>
-        ///  Remove all WZ image resource to optimize for botting purposes
-        /// </summary>
-        public void DoRemoveImageResource()
-        {
-            foreach (WzNode node in DataTree.SelectedNodes)
-            {
-                WzObject wzObj = (WzObject)node.Tag;// CloneWzObject((WzObject)node.Tag);
-            
-            }
-        }
-
         public void DoCopy()
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmCopy))

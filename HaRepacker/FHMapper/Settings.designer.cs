@@ -68,16 +68,15 @@ namespace HaRepacker
             // 
             // SettingsTab
             // 
-            resources.ApplyResources(this.SettingsTab, "SettingsTab");
             this.SettingsTab.Controls.Add(this.FootholdTPage);
             this.SettingsTab.Controls.Add(this.PortalTPage);
             this.SettingsTab.Controls.Add(this.GeneralTPage);
+            resources.ApplyResources(this.SettingsTab, "SettingsTab");
             this.SettingsTab.Name = "SettingsTab";
             this.SettingsTab.SelectedIndex = 0;
             // 
             // FootholdTPage
             // 
-            resources.ApplyResources(this.FootholdTPage, "FootholdTPage");
             this.FootholdTPage.Controls.Add(this.ForceCBox);
             this.FootholdTPage.Controls.Add(this.ForceTBox);
             this.FootholdTPage.Controls.Add(this.label3);
@@ -87,6 +86,7 @@ namespace HaRepacker
             this.FootholdTPage.Controls.Add(this.label2);
             this.FootholdTPage.Controls.Add(this.PrevTBox);
             this.FootholdTPage.Controls.Add(this.label1);
+            resources.ApplyResources(this.FootholdTPage, "FootholdTPage");
             this.FootholdTPage.Name = "FootholdTPage";
             this.FootholdTPage.UseVisualStyleBackColor = true;
             // 
@@ -143,7 +143,6 @@ namespace HaRepacker
             // 
             // PortalTPage
             // 
-            resources.ApplyResources(this.PortalTPage, "PortalTPage");
             this.PortalTPage.Controls.Add(this.TypeCBox);
             this.PortalTPage.Controls.Add(this.YCBox);
             this.PortalTPage.Controls.Add(this.XCBox);
@@ -153,6 +152,7 @@ namespace HaRepacker
             this.PortalTPage.Controls.Add(this.XTBox);
             this.PortalTPage.Controls.Add(this.label5);
             this.PortalTPage.Controls.Add(this.label4);
+            resources.ApplyResources(this.PortalTPage, "PortalTPage");
             this.PortalTPage.Name = "PortalTPage";
             this.PortalTPage.UseVisualStyleBackColor = true;
             // 
@@ -209,7 +209,6 @@ namespace HaRepacker
             // 
             // GeneralTPage
             // 
-            resources.ApplyResources(this.GeneralTPage, "GeneralTPage");
             this.GeneralTPage.Controls.Add(this.SizeCBox);
             this.GeneralTPage.Controls.Add(this.SizeTBox);
             this.GeneralTPage.Controls.Add(this.label8);
@@ -217,6 +216,7 @@ namespace HaRepacker
             this.GeneralTPage.Controls.Add(this.OpenFileBtn);
             this.GeneralTPage.Controls.Add(this.FilepathTBox);
             this.GeneralTPage.Controls.Add(this.label7);
+            resources.ApplyResources(this.GeneralTPage, "GeneralTPage");
             this.GeneralTPage.Name = "GeneralTPage";
             this.GeneralTPage.UseVisualStyleBackColor = true;
             // 

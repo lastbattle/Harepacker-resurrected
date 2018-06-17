@@ -879,6 +879,7 @@ namespace HaRepacker.GUI
             }
         }
 
+        #region Extras
         private bool ValidAnimation(WzObject prop)
         {
             if (!(prop is WzSubProperty))
@@ -921,6 +922,18 @@ namespace HaRepacker.GUI
                 AnimationBuilder.ExtractAnimation((WzSubProperty)MainPanel.DataTree.SelectedNode.Tag, dialog.FileName, UserSettings.UseApngIncompatibilityFrame);
             }
         }
+
+        /// <summary>
+        /// Wz string searcher tool
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void toolStripMenuItem_searchWzStrings_Click(object sender, EventArgs e)
+        {
+            WzStringSearchForm form = new WzStringSearchForm();
+            form.Show();
+        }
+        #endregion
 
         #region Image directory add
         /// <summary>
@@ -1283,18 +1296,6 @@ namespace HaRepacker.GUI
         {
             MainPanel.DoPaste();
         }
-
-        #region Remove WZ Image resource
-        /// <summary>
-        /// Remove all WZ image resource to optimize for botting purposes
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void toolStripMenuItem_RemoveImageResource_Click(object sender, EventArgs e)
-        {
-            MainPanel.DoRemoveImageResource();
-        }
-        #endregion
 
         #region GetWZKey
         private void wzKeyMenuItem_Click(object sender, EventArgs e)
