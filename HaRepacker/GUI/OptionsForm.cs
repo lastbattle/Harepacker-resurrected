@@ -24,6 +24,7 @@ namespace HaRepacker.GUI
             sortBox.Checked = UserSettings.Sort;
             apngIncompEnable.Checked = UserSettings.UseApngIncompatibilityFrame;
             autoAssociateBox.Checked = UserSettings.AutoAssociate;
+            devImgSequences.Checked = UserSettings.devImgSequences;
             if (UserSettings.DefaultXmlFolder != "") 
             { 
                 defXmlFolderEnable.Checked = true; 
@@ -52,6 +53,7 @@ namespace HaRepacker.GUI
             UserSettings.Indentation = indentBox.Value;
             UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
             UserSettings.AutoUpdate = autoUpdate.Checked;
+            UserSettings.devImgSequences = devImgSequences.Checked;
             Program.SettingsManager.Save();
             Close();
         }

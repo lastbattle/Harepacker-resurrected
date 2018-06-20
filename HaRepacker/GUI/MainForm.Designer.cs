@@ -98,8 +98,8 @@
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -541,6 +541,7 @@
             // 
             // encryptionBox
             // 
+            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.encryptionBox.DropDownWidth = 400;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
@@ -599,11 +600,6 @@
             this.tabPage1.Name = "tabPage1";
             this.tabPage1.UseVisualStyleBackColor = true;
             // 
-            // haRepackerMainPanel1
-            // 
-            resources.ApplyResources(this.haRepackerMainPanel1, "haRepackerMainPanel1");
-            this.haRepackerMainPanel1.Name = "haRepackerMainPanel1";
-            // 
             // button_addTab
             // 
             resources.ApplyResources(this.button_addTab, "button_addTab");
@@ -611,6 +607,11 @@
             this.button_addTab.Name = "button_addTab";
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
+            // 
+            // haRepackerMainPanel1
+            // 
+            resources.ApplyResources(this.haRepackerMainPanel1, "haRepackerMainPanel1");
+            this.haRepackerMainPanel1.Name = "haRepackerMainPanel1";
             // 
             // MainForm
             // 

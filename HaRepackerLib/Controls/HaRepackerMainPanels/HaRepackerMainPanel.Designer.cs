@@ -28,19 +28,22 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaRepackerMainPanel));
             this.MainSplitContainer = new System.Windows.Forms.SplitContainer();
-            this.DataTree = new TreeViewMS.TreeViewMS();
-            this.vectorPanel = new HaRepackerLib.XYPanel();
+            this.cartesianPlane_checkBox = new System.Windows.Forms.CheckBox();
+            this.nextLoopTime_label = new System.Windows.Forms.Label();
+            this.nextLoopTime_comboBox = new System.Windows.Forms.ComboBox();
+            this.textPropBox = new System.Windows.Forms.TextBox();
+            this.selectedNodesImgAnimateButton = new System.Windows.Forms.Button();
             this.saveSoundButton = new System.Windows.Forms.Button();
             this.saveImageButton = new System.Windows.Forms.Button();
             this.changeSoundButton = new System.Windows.Forms.Button();
             this.changeImageButton = new System.Windows.Forms.Button();
             this.applyChangesButton = new System.Windows.Forms.Button();
-            this.nameBox = new HaRepackerLib.ChangableTextbox();
-            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
-            this.textPropBox = new System.Windows.Forms.TextBox();
             this.pictureBoxPanel = new System.Windows.Forms.Panel();
+            this.cartesianPlaneX = new System.Windows.Forms.Panel();
+            this.cartesianPlaneY = new System.Windows.Forms.Panel();
             this.canvasPropBox = new System.Windows.Forms.PictureBox();
             this.listView_fieldLimitType = new System.Windows.Forms.ListView();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
@@ -56,6 +59,11 @@
             this.btnClose = new System.Windows.Forms.ToolStripButton();
             this.btnOptions = new System.Windows.Forms.ToolStripButton();
             this.MainDockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
+            this.timerImgSequence = new System.Windows.Forms.Timer(this.components);
+            this.DataTree = new TreeViewMS.TreeViewMS();
+            this.nameBox = new HaRepackerLib.ChangableTextbox();
+            this.vectorPanel = new HaRepackerLib.XYPanel();
+            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             ((System.ComponentModel.ISupportInitialize)(this.MainSplitContainer)).BeginInit();
             this.MainSplitContainer.Panel1.SuspendLayout();
             this.MainSplitContainer.Panel2.SuspendLayout();
@@ -78,34 +86,62 @@
             // 
             // MainSplitContainer.Panel2
             // 
+            this.MainSplitContainer.Panel2.Controls.Add(this.cartesianPlane_checkBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.nextLoopTime_label);
+            this.MainSplitContainer.Panel2.Controls.Add(this.nameBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.nextLoopTime_comboBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.textPropBox);
             this.MainSplitContainer.Panel2.Controls.Add(this.vectorPanel);
+            this.MainSplitContainer.Panel2.Controls.Add(this.selectedNodesImgAnimateButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.applyChangesButton);
-            this.MainSplitContainer.Panel2.Controls.Add(this.nameBox);
             this.MainSplitContainer.Panel2.Controls.Add(this.mp3Player);
-            this.MainSplitContainer.Panel2.Controls.Add(this.textPropBox);
             this.MainSplitContainer.Panel2.Controls.Add(this.pictureBoxPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.listView_fieldLimitType);
             this.MainSplitContainer.SplitterMoved += new System.Windows.Forms.SplitterEventHandler(this.MainSplitContainer_SplitterMoved);
             // 
-            // DataTree
+            // cartesianPlane_checkBox
             // 
-            resources.ApplyResources(this.DataTree, "DataTree");
-            this.DataTree.Name = "DataTree";
-            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
-            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
-            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
-            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            resources.ApplyResources(this.cartesianPlane_checkBox, "cartesianPlane_checkBox");
+            this.cartesianPlane_checkBox.Checked = true;
+            this.cartesianPlane_checkBox.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.cartesianPlane_checkBox.Name = "cartesianPlane_checkBox";
+            this.cartesianPlane_checkBox.UseVisualStyleBackColor = true;
+            this.cartesianPlane_checkBox.CheckedChanged += new System.EventHandler(this.cartesianPlane_checkBox_CheckedChanged);
             // 
-            // vectorPanel
+            // nextLoopTime_label
             // 
-            resources.ApplyResources(this.vectorPanel, "vectorPanel");
-            this.vectorPanel.Name = "vectorPanel";
-            this.vectorPanel.X = 0;
-            this.vectorPanel.Y = 0;
+            resources.ApplyResources(this.nextLoopTime_label, "nextLoopTime_label");
+            this.nextLoopTime_label.Name = "nextLoopTime_label";
+            // 
+            // nextLoopTime_comboBox
+            // 
+            this.nextLoopTime_comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.nextLoopTime_comboBox, "nextLoopTime_comboBox");
+            this.nextLoopTime_comboBox.FormattingEnabled = true;
+            this.nextLoopTime_comboBox.Items.AddRange(new object[] {
+            resources.GetString("nextLoopTime_comboBox.Items"),
+            resources.GetString("nextLoopTime_comboBox.Items1"),
+            resources.GetString("nextLoopTime_comboBox.Items2"),
+            resources.GetString("nextLoopTime_comboBox.Items3"),
+            resources.GetString("nextLoopTime_comboBox.Items4")});
+            this.nextLoopTime_comboBox.Name = "nextLoopTime_comboBox";
+            this.nextLoopTime_comboBox.SelectedIndexChanged += new System.EventHandler(this.nextLoopTime_comboBox_SelectedIndexChanged);
+            // 
+            // textPropBox
+            // 
+            resources.ApplyResources(this.textPropBox, "textPropBox");
+            this.textPropBox.Name = "textPropBox";
+            // 
+            // selectedNodesImgAnimateButton
+            // 
+            resources.ApplyResources(this.selectedNodesImgAnimateButton, "selectedNodesImgAnimateButton");
+            this.selectedNodesImgAnimateButton.Name = "selectedNodesImgAnimateButton";
+            this.selectedNodesImgAnimateButton.UseVisualStyleBackColor = true;
+            this.selectedNodesImgAnimateButton.Click += new System.EventHandler(this.selectedNodesImgAnimateButton_Click);
             // 
             // saveSoundButton
             // 
@@ -142,29 +178,26 @@
             this.applyChangesButton.UseVisualStyleBackColor = true;
             this.applyChangesButton.Click += new System.EventHandler(this.applyChangesButton_Click);
             // 
-            // nameBox
-            // 
-            this.nameBox.ButtonEnabled = false;
-            resources.ApplyResources(this.nameBox, "nameBox");
-            this.nameBox.Name = "nameBox";
-            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
-            // 
-            // mp3Player
-            // 
-            resources.ApplyResources(this.mp3Player, "mp3Player");
-            this.mp3Player.Name = "mp3Player";
-            this.mp3Player.SoundProperty = null;
-            // 
-            // textPropBox
-            // 
-            resources.ApplyResources(this.textPropBox, "textPropBox");
-            this.textPropBox.Name = "textPropBox";
-            // 
             // pictureBoxPanel
             // 
             resources.ApplyResources(this.pictureBoxPanel, "pictureBoxPanel");
+            this.pictureBoxPanel.BackColor = System.Drawing.SystemColors.Control;
+            this.pictureBoxPanel.Controls.Add(this.cartesianPlaneX);
+            this.pictureBoxPanel.Controls.Add(this.cartesianPlaneY);
             this.pictureBoxPanel.Controls.Add(this.canvasPropBox);
             this.pictureBoxPanel.Name = "pictureBoxPanel";
+            // 
+            // cartesianPlaneX
+            // 
+            this.cartesianPlaneX.BackColor = System.Drawing.SystemColors.ScrollBar;
+            resources.ApplyResources(this.cartesianPlaneX, "cartesianPlaneX");
+            this.cartesianPlaneX.Name = "cartesianPlaneX";
+            // 
+            // cartesianPlaneY
+            // 
+            this.cartesianPlaneY.BackColor = System.Drawing.SystemColors.ScrollBar;
+            resources.ApplyResources(this.cartesianPlaneY, "cartesianPlaneY");
+            this.cartesianPlaneY.Name = "cartesianPlaneY";
             // 
             // canvasPropBox
             // 
@@ -175,6 +208,7 @@
             // listView_fieldLimitType
             // 
             resources.ApplyResources(this.listView_fieldLimitType, "listView_fieldLimitType");
+            this.listView_fieldLimitType.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.listView_fieldLimitType.CheckBoxes = true;
             this.listView_fieldLimitType.FullRowSelect = true;
             this.listView_fieldLimitType.GridLines = true;
@@ -285,6 +319,41 @@
             resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
             this.MainDockPanel.Name = "MainDockPanel";
             // 
+            // timerImgSequence
+            // 
+            this.timerImgSequence.Tick += new System.EventHandler(this.timerImgSequence_Tick);
+            // 
+            // DataTree
+            // 
+            resources.ApplyResources(this.DataTree, "DataTree");
+            this.DataTree.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.DataTree.Name = "DataTree";
+            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
+            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
+            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
+            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            // 
+            // nameBox
+            // 
+            resources.ApplyResources(this.nameBox, "nameBox");
+            this.nameBox.BackColor = System.Drawing.SystemColors.Control;
+            this.nameBox.ButtonEnabled = false;
+            this.nameBox.Name = "nameBox";
+            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
+            // 
+            // vectorPanel
+            // 
+            resources.ApplyResources(this.vectorPanel, "vectorPanel");
+            this.vectorPanel.Name = "vectorPanel";
+            this.vectorPanel.X = 0;
+            this.vectorPanel.Y = 0;
+            // 
+            // mp3Player
+            // 
+            resources.ApplyResources(this.mp3Player, "mp3Player");
+            this.mp3Player.Name = "mp3Player";
+            this.mp3Player.SoundProperty = null;
+            // 
             // HaRepackerMainPanel
             // 
             resources.ApplyResources(this, "$this");
@@ -316,7 +385,6 @@
         private System.Windows.Forms.SplitContainer MainSplitContainer;
         private System.Windows.Forms.PictureBox canvasPropBox;
         private System.Windows.Forms.StatusStrip statusStrip;
-        private System.Windows.Forms.ToolStripStatusLabel selectionLabel;
         private System.Windows.Forms.Panel pictureBoxPanel;
         private System.Windows.Forms.TextBox textPropBox;
         private SoundPlayer mp3Player;
@@ -340,5 +408,13 @@
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel_additionalInfo;
         private System.Windows.Forms.ListView listView_fieldLimitType;
         private XYPanel vectorPanel;
+        private System.Windows.Forms.Panel cartesianPlaneX;
+        private System.Windows.Forms.Panel cartesianPlaneY;
+        private System.Windows.Forms.Button selectedNodesImgAnimateButton;
+        private System.Windows.Forms.Timer timerImgSequence;
+        private System.Windows.Forms.ToolStripStatusLabel selectionLabel;
+        private System.Windows.Forms.ComboBox nextLoopTime_comboBox;
+        private System.Windows.Forms.Label nextLoopTime_label;
+        private System.Windows.Forms.CheckBox cartesianPlane_checkBox;
     }
 }

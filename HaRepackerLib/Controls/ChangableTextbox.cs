@@ -25,11 +25,11 @@ namespace HaRepackerLib
 
         protected override void OnSizeChanged(EventArgs e)
         {
-            if (this.Size.Height != textBox.Size.Height)
-                this.Size = new Size(this.Size.Width, textBox.Size.Height);
-            textBox.Location = new Point(0, 0);
-            textBox.Size = new Size(this.Size.Width - applyButton.Width - applyButton.Margin.Left, textBox.Size.Height);
-            applyButton.Location = new Point(textBox.Size.Width + textBox.Margin.Right, 0);
+            //if (this.Size.Height != textBox.Size.Height)
+                //this.Size = new Size(this.Size.Width, textBox.Size.Height);
+            textBox.Location = new Point(123, 3);
+            textBox.Size = new Size(90, textBox.Size.Height);
+            applyButton.Location = new Point(textBox.Size.Width + textBox.Margin.Right + label.Size.Width, 1);
             base.OnSizeChanged(e);
         }
 

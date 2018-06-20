@@ -119,12 +119,9 @@
   </resheader>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="MainSplitContainer.Location" type="System.Drawing.Point, System.Drawing">
-    <value>4, 5</value>
+    <value>3, 3</value>
   </data>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="MainSplitContainer.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
-  </data>
   <data name="DataTree.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Bottom, Left, Right</value>
   </data>
@@ -134,17 +131,14 @@
   <data name="DataTree.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 0</value>
   </data>
-  <data name="DataTree.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
-  </data>
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAABsAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAJkAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
-    <value>160, 295</value>
+    <value>107, 193</value>
   </data>
   <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="DataTree.TabIndex" type="System.Int32, mscorlib">
@@ -177,6 +171,162 @@
   <data name="&gt;&gt;MainSplitContainer.Panel1.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
+  <data name="cartesianPlane_checkBox.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="cartesianPlane_checkBox.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
+  <data name="cartesianPlane_checkBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>333, 83</value>
+  </data>
+  <data name="cartesianPlane_checkBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 17</value>
+  </data>
+  <data name="cartesianPlane_checkBox.TabIndex" type="System.Int32, mscorlib">
+    <value>19</value>
+  </data>
+  <data name="cartesianPlane_checkBox.Text" xml:space="preserve">
+    <value>Cartesian Plane</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlane_checkBox.Name" xml:space="preserve">
+    <value>cartesianPlane_checkBox</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlane_checkBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.CheckBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlane_checkBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlane_checkBox.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="nextLoopTime_label.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="nextLoopTime_label.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
+  <data name="nextLoopTime_label.Location" type="System.Drawing.Point, System.Drawing">
+    <value>288, 71</value>
+  </data>
+  <data name="nextLoopTime_label.Size" type="System.Drawing.Size, System.Drawing">
+    <value>85, 13</value>
+  </data>
+  <data name="nextLoopTime_label.TabIndex" type="System.Int32, mscorlib">
+    <value>17</value>
+  </data>
+  <data name="nextLoopTime_label.Text" xml:space="preserve">
+    <value>Next Loop Time:</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_label.Name" xml:space="preserve">
+    <value>nextLoopTime_label</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_label.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Label, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_label.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_label.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="nameBox.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="nameBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>17, 60</value>
+  </data>
+  <data name="nameBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
+    <value>4, 5, 4, 5</value>
+  </data>
+  <data name="nameBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>306, 30</value>
+  </data>
+  <data name="nameBox.TabIndex" type="System.Int32, mscorlib">
+    <value>7</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Name" xml:space="preserve">
+    <value>nameBox</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Type" xml:space="preserve">
+    <value>HaRepackerLib.ChangableTextbox, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;nameBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;nameBox.ZOrder" xml:space="preserve">
+    <value>2</value>
+  </data>
+  <data name="nextLoopTime_comboBox.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Popup</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Items" xml:space="preserve">
+    <value>Delay</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Items1" xml:space="preserve">
+    <value>1s</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Items2" xml:space="preserve">
+    <value>2s</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Items3" xml:space="preserve">
+    <value>5s</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Items4" xml:space="preserve">
+    <value>10s</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>306, 52</value>
+  </data>
+  <data name="nextLoopTime_comboBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>75, 21</value>
+  </data>
+  <data name="nextLoopTime_comboBox.TabIndex" type="System.Int32, mscorlib">
+    <value>18</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_comboBox.Name" xml:space="preserve">
+    <value>nextLoopTime_comboBox</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_comboBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ComboBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_comboBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;nextLoopTime_comboBox.ZOrder" xml:space="preserve">
+    <value>3</value>
+  </data>
+  <data name="textPropBox.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
+  </data>
+  <data name="textPropBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>17, 81</value>
+  </data>
+  <data name="textPropBox.Multiline" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="textPropBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>144, 124</value>
+  </data>
+  <data name="textPropBox.TabIndex" type="System.Int32, mscorlib">
+    <value>2</value>
+  </data>
+  <data name="textPropBox.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Name" xml:space="preserve">
+    <value>textPropBox</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.TextBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;textPropBox.ZOrder" xml:space="preserve">
+    <value>4</value>
+  </data>
   <data name="vectorPanel.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>None</value>
   </data>
@@ -184,16 +334,16 @@
     <value>Segoe UI, 8pt</value>
   </data>
   <data name="vectorPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>19, 20</value>
+    <value>13, 13</value>
   </data>
   <data name="vectorPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>0, 0, 0, 0</value>
   </data>
   <data name="vectorPanel.MinimumSize" type="System.Drawing.Size, System.Drawing">
-    <value>300, 120</value>
+    <value>200, 78</value>
   </data>
   <data name="vectorPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>300, 120</value>
+    <value>200, 78</value>
   </data>
   <data name="vectorPanel.TabIndex" type="System.Int32, mscorlib">
     <value>14</value>
@@ -211,7 +361,43 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;vectorPanel.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>5</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>3, 223</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>60, 30</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.TabIndex" type="System.Int32, mscorlib">
+    <value>15</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.Text" xml:space="preserve">
+    <value>Animate</value>
+  </data>
+  <data name="selectedNodesImgAnimateButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;selectedNodesImgAnimateButton.Name" xml:space="preserve">
+    <value>selectedNodesImgAnimateButton</value>
+  </data>
+  <data name="&gt;&gt;selectedNodesImgAnimateButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;selectedNodesImgAnimateButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;selectedNodesImgAnimateButton.ZOrder" xml:space="preserve">
+    <value>6</value>
   </data>
   <data name="saveSoundButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -220,13 +406,10 @@
     <value>NoControl</value>
   </data>
   <data name="saveSoundButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>96, 386</value>
-  </data>
-  <data name="saveSoundButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>103, 251</value>
   </data>
   <data name="saveSoundButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 52</value>
+    <value>118, 34</value>
   </data>
   <data name="saveSoundButton.TabIndex" type="System.Int32, mscorlib">
     <value>12</value>
@@ -247,7 +430,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;saveSoundButton.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>7</value>
   </data>
   <data name="saveImageButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -256,13 +439,10 @@
     <value>NoControl</value>
   </data>
   <data name="saveImageButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>279, 447</value>
-  </data>
-  <data name="saveImageButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>186, 291</value>
   </data>
   <data name="saveImageButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 52</value>
+    <value>118, 34</value>
   </data>
   <data name="saveImageButton.TabIndex" type="System.Int32, mscorlib">
     <value>11</value>
@@ -283,7 +463,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;saveImageButton.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>8</value>
   </data>
   <data name="changeSoundButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -292,13 +472,10 @@
     <value>NoControl</value>
   </data>
   <data name="changeSoundButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>464, 447</value>
-  </data>
-  <data name="changeSoundButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>309, 291</value>
   </data>
   <data name="changeSoundButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 52</value>
+    <value>118, 34</value>
   </data>
   <data name="changeSoundButton.TabIndex" type="System.Int32, mscorlib">
     <value>10</value>
@@ -319,7 +496,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;changeSoundButton.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>9</value>
   </data>
   <data name="changeImageButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -328,13 +505,10 @@
     <value>NoControl</value>
   </data>
   <data name="changeImageButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>96, 324</value>
-  </data>
-  <data name="changeImageButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>103, 211</value>
   </data>
   <data name="changeImageButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 52</value>
+    <value>118, 34</value>
   </data>
   <data name="changeImageButton.TabIndex" type="System.Int32, mscorlib">
     <value>9</value>
@@ -355,7 +529,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;changeImageButton.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>10</value>
   </data>
   <data name="applyChangesButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -364,13 +538,10 @@
     <value>NoControl</value>
   </data>
   <data name="applyChangesButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>96, 447</value>
-  </data>
-  <data name="applyChangesButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>64, 291</value>
   </data>
   <data name="applyChangesButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 52</value>
+    <value>118, 34</value>
   </data>
   <data name="applyChangesButton.TabIndex" type="System.Int32, mscorlib">
     <value>8</value>
@@ -391,46 +562,22 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;applyChangesButton.ZOrder" xml:space="preserve">
-    <value>5</value>
-  </data>
-  <data name="nameBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>26, 98</value>
-  </data>
-  <data name="nameBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>6, 8, 6, 8</value>
-  </data>
-  <data name="nameBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>459, 26</value>
-  </data>
-  <data name="nameBox.TabIndex" type="System.Int32, mscorlib">
-    <value>7</value>
-  </data>
-  <data name="&gt;&gt;nameBox.Name" xml:space="preserve">
-    <value>nameBox</value>
-  </data>
-  <data name="&gt;&gt;nameBox.Type" xml:space="preserve">
-    <value>HaRepackerLib.ChangableTextbox, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
-  </data>
-  <data name="&gt;&gt;nameBox.Parent" xml:space="preserve">
-    <value>MainSplitContainer.Panel2</value>
-  </data>
-  <data name="&gt;&gt;nameBox.ZOrder" xml:space="preserve">
-    <value>6</value>
+    <value>11</value>
   </data>
   <data name="mp3Player.Location" type="System.Drawing.Point, System.Drawing">
-    <value>134, 0</value>
+    <value>89, 0</value>
   </data>
   <data name="mp3Player.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>6, 8, 6, 8</value>
+    <value>4, 5, 4, 5</value>
   </data>
   <data name="mp3Player.MaximumSize" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>310, 86</value>
   </data>
   <data name="mp3Player.MinimumSize" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>310, 86</value>
   </data>
   <data name="mp3Player.Size" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>310, 86</value>
   </data>
   <data name="mp3Player.TabIndex" type="System.Int32, mscorlib">
     <value>3</value>
@@ -448,55 +595,64 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;mp3Player.ZOrder" xml:space="preserve">
-    <value>7</value>
-  </data>
-  <data name="textPropBox.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
-  </data>
-  <data name="textPropBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>26, 125</value>
-  </data>
-  <data name="textPropBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
-  </data>
-  <data name="textPropBox.Multiline" type="System.Boolean, mscorlib">
-    <value>True</value>
-  </data>
-  <data name="textPropBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>214, 189</value>
-  </data>
-  <data name="textPropBox.TabIndex" type="System.Int32, mscorlib">
-    <value>2</value>
-  </data>
-  <data name="textPropBox.Visible" type="System.Boolean, mscorlib">
-    <value>False</value>
-  </data>
-  <data name="&gt;&gt;textPropBox.Name" xml:space="preserve">
-    <value>textPropBox</value>
-  </data>
-  <data name="&gt;&gt;textPropBox.Type" xml:space="preserve">
-    <value>System.Windows.Forms.TextBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;textPropBox.Parent" xml:space="preserve">
-    <value>MainSplitContainer.Panel2</value>
-  </data>
-  <data name="&gt;&gt;textPropBox.ZOrder" xml:space="preserve">
-    <value>8</value>
+    <value>12</value>
   </data>
   <data name="pictureBoxPanel.AutoScroll" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="cartesianPlaneX.Location" type="System.Drawing.Point, System.Drawing">
+    <value>28, 38</value>
+  </data>
+  <data name="cartesianPlaneX.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 1</value>
+  </data>
+  <data name="cartesianPlaneX.TabIndex" type="System.Int32, mscorlib">
+    <value>16</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneX.Name" xml:space="preserve">
+    <value>cartesianPlaneX</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneX.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Panel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneX.Parent" xml:space="preserve">
+    <value>pictureBoxPanel</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneX.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="cartesianPlaneY.Location" type="System.Drawing.Point, System.Drawing">
+    <value>16, 38</value>
+  </data>
+  <data name="cartesianPlaneY.Size" type="System.Drawing.Size, System.Drawing">
+    <value>2, 100</value>
+  </data>
+  <data name="cartesianPlaneY.TabIndex" type="System.Int32, mscorlib">
+    <value>15</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneY.Name" xml:space="preserve">
+    <value>cartesianPlaneY</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneY.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Panel, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneY.Parent" xml:space="preserve">
+    <value>pictureBoxPanel</value>
+  </data>
+  <data name="&gt;&gt;cartesianPlaneY.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="canvasPropBox.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
+    <value>None</value>
   </data>
   <data name="canvasPropBox.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
   </data>
   <data name="canvasPropBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>10, 40</value>
-  </data>
-  <data name="canvasPropBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>24, 45</value>
   </data>
   <data name="canvasPropBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>189, 118</value>
+    <value>24, 24</value>
   </data>
   <data name="canvasPropBox.SizeMode" type="System.Windows.Forms.PictureBoxSizeMode, System.Windows.Forms">
     <value>AutoSize</value>
@@ -517,16 +673,13 @@
     <value>pictureBoxPanel</value>
   </data>
   <data name="&gt;&gt;canvasPropBox.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>2</value>
   </data>
   <data name="pictureBoxPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>292, 166</value>
-  </data>
-  <data name="pictureBoxPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>227, 92</value>
   </data>
   <data name="pictureBoxPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>298, 271</value>
+    <value>199, 176</value>
   </data>
   <data name="pictureBoxPanel.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -544,7 +697,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;pictureBoxPanel.ZOrder" xml:space="preserve">
-    <value>9</value>
+    <value>13</value>
   </data>
   <data name="listView_fieldLimitType.Alignment" type="System.Windows.Forms.ListViewAlignment, System.Windows.Forms">
     <value>Default</value>
@@ -559,13 +712,13 @@
     <value>False</value>
   </data>
   <data name="listView_fieldLimitType.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 80</value>
+    <value>0, 52</value>
   </data>
   <data name="listView_fieldLimitType.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>0, 0, 0, 10</value>
+    <value>0, 0, 0, 6</value>
   </data>
   <data name="listView_fieldLimitType.Size" type="System.Drawing.Size, System.Drawing">
-    <value>637, 428</value>
+    <value>426, 280</value>
   </data>
   <data name="listView_fieldLimitType.TabIndex" type="System.Int32, mscorlib">
     <value>13</value>
@@ -583,7 +736,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;listView_fieldLimitType.ZOrder" xml:space="preserve">
-    <value>10</value>
+    <value>14</value>
   </data>
   <data name="&gt;&gt;MainSplitContainer.Panel2.Name" xml:space="preserve">
     <value>MainSplitContainer.Panel2</value>
@@ -598,13 +751,10 @@
     <value>1</value>
   </data>
   <data name="MainSplitContainer.Size" type="System.Drawing.Size, System.Drawing">
-    <value>986, 508</value>
+    <value>657, 330</value>
   </data>
   <data name="MainSplitContainer.SplitterDistance" type="System.Int32, mscorlib">
-    <value>327</value>
-  </data>
-  <data name="MainSplitContainer.SplitterWidth" type="System.Int32, mscorlib">
-    <value>6</value>
+    <value>217</value>
   </data>
   <data name="MainSplitContainer.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -625,31 +775,28 @@
     <value>114, 17</value>
   </metadata>
   <data name="selectionLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>177, 26</value>
+    <value>118, 17</value>
   </data>
   <data name="selectionLabel.Text" xml:space="preserve">
     <value>Selection Type: None</value>
   </data>
   <data name="mainProgressBar.Size" type="System.Drawing.Size, System.Drawing">
-    <value>150, 25</value>
+    <value>100, 16</value>
   </data>
   <data name="secondaryProgressBar.Size" type="System.Drawing.Size, System.Drawing">
-    <value>150, 25</value>
+    <value>100, 16</value>
   </data>
   <data name="toolStripStatusLabel_additionalInfo.Size" type="System.Drawing.Size, System.Drawing">
-    <value>19, 26</value>
+    <value>12, 17</value>
   </data>
   <data name="toolStripStatusLabel_additionalInfo.Text" xml:space="preserve">
     <value>-</value>
   </data>
   <data name="statusStrip.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 671</value>
-  </data>
-  <data name="statusStrip.Padding" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>2, 0, 21, 0</value>
+    <value>0, 434</value>
   </data>
   <data name="statusStrip.Size" type="System.Drawing.Size, System.Drawing">
-    <value>994, 31</value>
+    <value>663, 22</value>
   </data>
   <data name="statusStrip.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -679,7 +826,7 @@
     <value>Magenta</value>
   </data>
   <data name="btnFindAll.Size" type="System.Drawing.Size, System.Drawing">
-    <value>60, 35</value>
+    <value>49, 22</value>
   </data>
   <data name="btnFindAll.Text" xml:space="preserve">
     <value>All</value>
@@ -688,7 +835,7 @@
     <value>Magenta</value>
   </data>
   <data name="btnFindNext.Size" type="System.Drawing.Size, System.Drawing">
-    <value>76, 35</value>
+    <value>59, 22</value>
   </data>
   <data name="btnFindNext.Text" xml:space="preserve">
     <value>Next</value>
@@ -697,13 +844,13 @@
     <value>Microsoft Sans Serif, 8.25pt</value>
   </data>
   <data name="findBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>148, 38</value>
+    <value>100, 25</value>
   </data>
   <data name="btnRestart.ImageTransparentColor" type="System.Drawing.Color, System.Drawing">
     <value>Magenta</value>
   </data>
   <data name="btnRestart.Size" type="System.Drawing.Size, System.Drawing">
-    <value>28, 35</value>
+    <value>28, 22</value>
   </data>
   <data name="btnRestart.Text" xml:space="preserve">
     <value>Restart</value>
@@ -712,7 +859,7 @@
     <value>Magenta</value>
   </data>
   <data name="btnClose.Size" type="System.Drawing.Size, System.Drawing">
-    <value>28, 35</value>
+    <value>28, 22</value>
   </data>
   <data name="btnClose.Text" xml:space="preserve">
     <value>Close</value>
@@ -720,7 +867,7 @@
   <data name="btnOptions.Image" type="System.Drawing.Bitmap, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
     <value>
         iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8
-        YQUAAAAJcEhZcwAAFiUAABYlAUlSJPAAAAIDSURBVDhPpZLrS5NhGMb3j4SWh0oRQVExD4gonkDpg4hG
+        YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAIDSURBVDhPpZLrS5NhGMb3j4SWh0oRQVExD4gonkDpg4hG
         YKxG6WBogkMZKgPNCEVJFBGdGETEvgwyO9DJE5syZw3PIlPEE9pgBCLZ5XvdMB8Ew8gXbl54nuf63dd9
         0OGSnwCahxbPRNPAPMw9Xpg6ZmF46kZZ0xSKzJPIrhpDWsVnpBhGkKx3nAX8Pv7z1zg8OoY/cITdn4fw
         bf/C0kYAN3Ma/w3gWfZL5kzTKBxjWyK2DftwI9tyMYCZKXbNHaD91bLYJrDXsYbrWfUKwJrPE9M2M1Oc
@@ -736,19 +883,16 @@
     <value>Magenta</value>
   </data>
   <data name="btnOptions.Size" type="System.Drawing.Size, System.Drawing">
-    <value>80, 35</value>
+    <value>53, 22</value>
   </data>
   <data name="btnOptions.Text" xml:space="preserve">
     <value>Options</value>
   </data>
   <data name="findStrip.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 629</value>
-  </data>
-  <data name="findStrip.Padding" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>0, 0, 2, 0</value>
+    <value>0, 409</value>
   </data>
   <data name="findStrip.Size" type="System.Drawing.Size, System.Drawing">
-    <value>994, 38</value>
+    <value>663, 25</value>
   </data>
   <data name="findStrip.TabIndex" type="System.Int32, mscorlib">
     <value>2</value>
@@ -772,13 +916,10 @@
     <value>0</value>
   </data>
   <data name="MainDockPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>202, 537</value>
-  </data>
-  <data name="MainDockPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>135, 349</value>
   </data>
   <data name="MainDockPanel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>338, 86</value>
+    <value>225, 56</value>
   </data>
   <data name="MainDockPanel.TabIndex" type="System.Int32, mscorlib">
     <value>3</value>
@@ -795,17 +936,17 @@
   <data name="&gt;&gt;MainDockPanel.ZOrder" xml:space="preserve">
     <value>1</value>
   </data>
+  <metadata name="timerImgSequence.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>321, 17</value>
+  </metadata>
   <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
   <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>9, 20</value>
-  </data>
-  <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>6, 13</value>
   </data>
   <data name="$this.Size" type="System.Drawing.Size, System.Drawing">
-    <value>994, 702</value>
+    <value>663, 456</value>
   </data>
   <data name="&gt;&gt;selectionLabel.Name" xml:space="preserve">
     <value>selectionLabel</value>
@@ -866,6 +1007,12 @@
   </data>
   <data name="&gt;&gt;btnOptions.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripButton, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;timerImgSequence.Name" xml:space="preserve">
+    <value>timerImgSequence</value>
+  </data>
+  <data name="&gt;&gt;timerImgSequence.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Timer, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>HaRepackerMainPanel</value>

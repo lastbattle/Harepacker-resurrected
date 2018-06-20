@@ -32,7 +32,6 @@
             this.sortBox = new System.Windows.Forms.CheckBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.indentBox = new HaRepackerLib.Controls.IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.lineBreakBox = new System.Windows.Forms.ComboBox();
             this.label2 = new System.Windows.Forms.Label();
@@ -42,6 +41,8 @@
             this.browse = new System.Windows.Forms.Button();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
             this.autoUpdate = new System.Windows.Forms.CheckBox();
+            this.devImgSequences = new System.Windows.Forms.CheckBox();
+            this.indentBox = new HaRepackerLib.Controls.IntegerInput();
             this.SuspendLayout();
             // 
             // sortBox
@@ -63,12 +64,6 @@
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.UseVisualStyleBackColor = true;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
-            // 
-            // indentBox
-            // 
-            resources.ApplyResources(this.indentBox, "indentBox");
-            this.indentBox.Name = "indentBox";
-            this.indentBox.Value = 0;
             // 
             // label1
             // 
@@ -127,10 +122,23 @@
             this.autoUpdate.Name = "autoUpdate";
             this.autoUpdate.UseVisualStyleBackColor = true;
             // 
+            // devImgSequences
+            // 
+            resources.ApplyResources(this.devImgSequences, "devImgSequences");
+            this.devImgSequences.Name = "devImgSequences";
+            this.devImgSequences.UseVisualStyleBackColor = true;
+            // 
+            // indentBox
+            // 
+            resources.ApplyResources(this.indentBox, "indentBox");
+            this.indentBox.Name = "indentBox";
+            this.indentBox.Value = 0;
+            // 
             // OptionsForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.devImgSequences);
             this.Controls.Add(this.autoUpdate);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.browse);
@@ -166,5 +174,6 @@
         private System.Windows.Forms.Button browse;
         private System.Windows.Forms.CheckBox autoAssociateBox;
         private System.Windows.Forms.CheckBox autoUpdate;
+        private System.Windows.Forms.CheckBox devImgSequences;
     }
 }
