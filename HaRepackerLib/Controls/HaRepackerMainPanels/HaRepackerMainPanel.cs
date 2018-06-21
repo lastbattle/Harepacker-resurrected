@@ -115,7 +115,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             changeSoundButton.Location = changeImageButton.Location;
             saveSoundButton.Location = saveImageButton.Location;            
             selectedNodesImgAnimateButton.Location = new Point(pictureBoxPanel.Width - selectedNodesImgAnimateButton.Size.Width - 15, 30);
-            nextLoopTime_label.Location = new Point(nameBox.Width - 40, 6);
+            nextLoopTime_label.Location = new Point(nameBox.Width, 6);
             nextLoopTime_comboBox.SelectedIndex = 0;
             nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);
             cartesianPlane_checkBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 6);
@@ -1418,10 +1418,10 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             timerImgSequence.Stop();
             timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
             selectedNodesImgAnimateButton.Text = "Animate";
-        }        
-        private void selectedNodesImgAnimateButton_Click(object sender, EventArgs e)
+        }
+        public void animateCanvas()
         {
-            if(nextLoopTime_comboBox.SelectedIndex == 1)
+            if (nextLoopTime_comboBox.SelectedIndex == 1)
                 timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
             if (selectedNodesImgAnimateButton.Text == "Stop")
             {
@@ -1429,13 +1429,16 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 return;
             }
             if (DataTree.SelectedNodes.Count > 1 && selectedNodesImgAnimateButton.Text == "Animate")
-            {                
-                timerImgSequence.Start();                
+            {
+                timerImgSequence.Start();
                 selectedNodesImgAnimateButton.Text = "Stop";
                 return;
-            }            
-
+            }
             MessageBox.Show("Select two or more nodes WzCanvasProperty", "Selection", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+        }
+        private void selectedNodesImgAnimateButton_Click(object sender, EventArgs e)
+        {
+            animateCanvas();
         }
 
         private void timerImgSequence_Tick(object sender, EventArgs e)
@@ -1521,6 +1524,24 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     UserSettings.delayNextLoop = Constants.TimeStartAnimateDefault;
                     break;
             }
+        }
+
+        private void HaRepackerMainPanel_KeyUp(object sender, KeyEventArgs e)
+        {
+            /*
+            if (e.Control)
+            {
+                switch (e.KeyCode)
+                {
+                    case Keys.A:
+                        animateCanvas();
+                        break;
+                    case Keys.P:
+                        stopCanvasAnimation();
+                        break;
+                }
+                    
+           }*/
         }
     }
 }

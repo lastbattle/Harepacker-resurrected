@@ -296,10 +296,11 @@ namespace HaRepacker.GUI
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            InputBox inputBox = new InputBox("Tab", "Enter name tab", "addTab");
-            inputBox.tabControl = tabControl_MainPanels;
-            inputBox.tabPage = tabPage;
-            inputBox.ShowDialog();
+            using(InputBox inputBox = new InputBox("Enter name tab", "Tab"))
+            {                
+                tabPage.Text = inputBox.getValue();
+                tabControl_MainPanels.Controls.Add(tabPage);
+            }            
         }
 
         private void button_addTab_Click(object sender, EventArgs e)
@@ -1279,9 +1280,10 @@ namespace HaRepacker.GUI
 
         private void renameTab()
         {
-            InputBox inputBox = new InputBox("Tab Name: " + tabControl_MainPanels.SelectedTab.Text, "Write new tab name", "renameTab");
-            inputBox.tabControl = tabControl_MainPanels;
-            inputBox.ShowDialog();
+            using (InputBox inputBox = new InputBox("Write new tab name", "Tab Name: " + tabControl_MainPanels.SelectedTab.Text))
+            {                
+                tabControl_MainPanels.SelectedTab.Text = inputBox.getValue();
+            }
         }
 
         private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
@@ -1365,7 +1367,7 @@ namespace HaRepacker.GUI
                     case Keys.NumPad0:
                         if (countTabs < 10) return;
                         tabControl_MainPanels.SelectTab(9);
-                        break;
+                        break;                    
                 }
             }
         }

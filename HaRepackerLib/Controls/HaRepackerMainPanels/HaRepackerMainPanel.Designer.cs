@@ -364,6 +364,7 @@
             this.Controls.Add(this.MainSplitContainer);
             this.Name = "HaRepackerMainPanel";
             this.SizeChanged += new System.EventHandler(this.HaRepackerMainPanel_SizeChanged);
+            this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.HaRepackerMainPanel_KeyUp);
             this.MainSplitContainer.Panel1.ResumeLayout(false);
             this.MainSplitContainer.Panel2.ResumeLayout(false);
             this.MainSplitContainer.Panel2.PerformLayout();

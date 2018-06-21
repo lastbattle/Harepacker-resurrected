@@ -15,19 +15,19 @@ namespace HaRepacker.GUI.Interaction
         private string title = "Title";
         private string text = "Text";        
         public byte length;
-        public string type;
-        public TabControl tabControl { get; set; }
-        public TabPage tabPage { get; set; }
+        private string value { get; set; } = null;
+        //public TabControl tabControl { get; set; }
+        //public TabPage tabPage { get; set; }
 
-        public InputBox(string title, string text, string type, byte length = 25)
+        public InputBox(string text, string title, byte length = 25)
         {
             this.title = title;
             this.text = text;
-            this.type = type;
             this.length = length;
             InitializeComponent();
             btn_done.Enabled = false;
-            txt_input.MaxLength = length;            
+            txt_input.MaxLength = length;
+            ShowDialog();
         }
 
         private void InputBox_Load(object sender, EventArgs e)
@@ -40,6 +40,10 @@ namespace HaRepacker.GUI.Interaction
         private void btn_cancel_Click(object sender, EventArgs e)
         {            
             Close();
+        }
+        public string getValue()
+        {
+            return value;
         }
         private void done()
         {
@@ -56,21 +60,8 @@ namespace HaRepacker.GUI.Interaction
             }
             if (status)
             {
-                switch (type)
-                {
-                    case "addTab":
-                        this.tabPage.Text = txt_input.Text;
-                        this.tabControl.TabPages.Add(this.tabPage);
-                        break;
-                    case "renameTab":
-                        tabControl.SelectedTab.Text = txt_input.Text;
-                        break;
-                    default:
-                        MessageBox.Show("Type not valid", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        break;
-                }
-                Close();
-                this.tabControl.Focus();
+                value = txt_input.Text;
+                Close();                
             }
         }
 
