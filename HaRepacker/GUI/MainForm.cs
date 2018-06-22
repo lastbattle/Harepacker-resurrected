@@ -272,8 +272,7 @@ namespace HaRepacker.GUI
         /// Add a new tab to the TabControl
         /// </summary>
         /// <param name="sender"></param>
-        /// <param name="e"></param>
-
+        /// <param name="e"></param>        
         private void addTab()
         {
             if (tabControl_MainPanels.TabCount > 10)
@@ -292,7 +291,7 @@ namespace HaRepacker.GUI
             {
                 Padding = new Padding(0, 0, 0, 0),
                 Margin = new Padding(0, 0, 0, 0),
-                Size = new Size(1492, 884),
+                Size = new Size(1492, 884),                
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
 
@@ -1321,8 +1320,6 @@ namespace HaRepacker.GUI
 
         private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
         {
-            if(e.Control && e.KeyCode == Keys.T) addTab();
-            if (e.Control && e.KeyCode == Keys.O) openWz();
             byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
 
             if (e.Control)
@@ -1367,7 +1364,19 @@ namespace HaRepacker.GUI
                     case Keys.NumPad0:
                         if (countTabs < 10) return;
                         tabControl_MainPanels.SelectTab(9);
-                        break;                    
+                        break;
+                    case Keys.A:
+                        MainPanel.animateCanvas();
+                        break;
+                    case Keys.T:
+                        addTab();
+                        break;
+                    case Keys.O:
+                        openWz();
+                        break;
+                    case Keys.P:
+                        MainPanel.stopCanvasAnimation();
+                        break;
                 }
             }
         }
@@ -1463,6 +1472,5 @@ namespace HaRepacker.GUI
             MessageBox.Show("Copied to your clipboard! " + Environment.NewLine + sb.ToString());
         }
         #endregion
-        
     }
 }

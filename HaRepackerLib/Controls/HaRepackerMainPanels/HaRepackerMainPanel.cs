@@ -1410,9 +1410,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             catch
             {
             }
-        }
+        }        
         private int i_node = 0;
-        private void stopCanvasAnimation()
+        public void stopCanvasAnimation()
         {
             i_node = 0;
             timerImgSequence.Stop();
