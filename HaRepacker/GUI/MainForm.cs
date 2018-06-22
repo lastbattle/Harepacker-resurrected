@@ -933,7 +933,7 @@ namespace HaRepacker.GUI
         {
             // Map name load
             string loadedWzVersion;
-            WzStringSearchFormDataCache dataCache = new WzStringSearchFormDataCache();
+            WzStringSearchFormDataCache dataCache = new WzStringSearchFormDataCache((WzMapleVersion)encryptionBox.SelectedIndex);
             if (dataCache.OpenBaseWZFile(out loadedWzVersion))
             {
                 WzStringSearchForm form = new WzStringSearchForm(dataCache, loadedWzVersion);

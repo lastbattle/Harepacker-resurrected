@@ -30,11 +30,12 @@ namespace HaRepacker.GUI
 {
     public partial class WzStringSearchForm : Form
     {
+
         // WZ Searcher
         public static Dictionary<int, KeyValuePair<string, string>>
             HexJumpList = new Dictionary<int, KeyValuePair<string, string>>();
         public static Dictionary<int, int> JumpList_Map = new Dictionary<int, int>();
-        private WzStringSearchFormDataCache WzDataCache = new WzStringSearchFormDataCache();
+        private WzStringSearchFormDataCache WzDataCache;
 
         private string loadedWzVersion;
 

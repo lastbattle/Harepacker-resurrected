@@ -18,6 +18,11 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
+        /// Wz encryption to use
+        /// </summary>
+        private WzMapleVersion WzMapleVersion = WzMapleVersion.BMS;
+
+        /// <summary>
         /// List of WZ Directories
         /// </summary>
         private Dictionary<string, WzFile> Files { get; set; }
@@ -36,8 +41,10 @@ namespace HaRepacker.GUI
 
         private Dictionary<int, KeyValuePair<string, string>> NPCsCache; // <NPCId, <Name, func>>
 
-        public WzStringSearchFormDataCache()
+        public WzStringSearchFormDataCache(WzMapleVersion wzMapleVersion)
         {
+            this.WzMapleVersion = wzMapleVersion;
+
             Files = new Dictionary<string, WzFile>();
 
             MapNameCache = new Dictionary<int, Tuple<string, string, string>>();
@@ -311,7 +318,7 @@ namespace HaRepacker.GUI
                         FileInfo Info = new FileInfo(Name);
                         if (Info.Extension != ".wz")
                             continue;
-                        WzFile File = new WzFile(Name, MapleLib.WzLib.WzMapleVersion.BMS);
+                        WzFile File = new WzFile(Name, WzMapleVersion);
                         File.ParseWzFile();
 
                         this.Files.Add(Info.Name, File);
