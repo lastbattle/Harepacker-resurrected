@@ -31,44 +31,75 @@ namespace HaRepackerLib.Controls
 
         private void PauseButton_Click(object sender, EventArgs e)
         {
-            AudioTimer.Enabled = false;
-            currAudio.Pause();
-            PauseButton.Visible = false;
-            PlayButton.Visible = true;
+            Audio("pause");
         }
 
         private void TimeBar_Scroll(object sender, EventArgs e)
         {
             if (currAudio != null)
-                currAudio.Position = ((TrackBar)sender).Value;
+                currAudio.PositionPerByte = ((TrackBar)sender).Value;
         }
-
         private void AudioTimer_Tick(object sender, EventArgs e)
-        {
+        {            
             if (currAudio == null) return;
-            TimeBar.Value = (int)currAudio.Position;
-            TimeSpan time = TimeSpan.FromSeconds(currAudio.Position);
-            CurrentPositionLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0') + " /";
-        }
 
-        private void PlayButton_Click(object sender, EventArgs e)
-        {
-            if (currAudio == null)
+            if(currAudio.PositionPerByte >= currAudio.LengthPerByte && !LoopBox.Checked)
             {
+                Audio("stop");
+                return;
+            }else if (currAudio.PositionPerByte >= currAudio.LengthPerByte && LoopBox.Checked)
+            {                
+                TimeBar.Value = 0;
+                CurrentPositionLabel.Text = "00:00 /";
+                return;
+            }
+            TimeBar.Value = currAudio.PositionPerByte;
+            TimeSpan time = TimeSpan.FromSeconds(currAudio.Position);
+            CurrentPositionLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0') + " /";                        
+        }
+        private void PrepareAudio()
+        {
+            if(currAudio == null)
+            {
+                currAudio = new WzMp3Streamer(soundProp, LoopBox.Checked);
+                TimeBar.Maximum = currAudio.LengthPerByte;
+                TimeBar.Minimum = 0;
+            }
+        }
+        private void Audio(string status)
+        {            
+            switch (status)
+            {
+                case "play":
+                    AudioTimer.Start();
+                    currAudio.Play();                    
+                    PlayButton.Visible = false;
+                    PauseButton.Visible = true;
+                    break;
+                case "pause":
+                    AudioTimer.Start();
+                    currAudio.Pause();
+                    PauseButton.Visible = false;
+                    PlayButton.Visible = true;
+                    break;
+                case "stop":
+                    AudioTimer.Stop();
+                    PauseButton.Visible = false;
+                    PlayButton.Visible = true;
+                    TimeBar.Value = 0;
+                    CurrentPositionLabel.Text = "00:00 /";                    
+                    currAudio.Stop();
+                    currAudio.Position = 0;
+                    break;
+            }
+              
+        }
+        private void PlayButton_Click(object sender, EventArgs e)
+        {            
                 //currSoundFile = Path.GetTempFileName();
                 //soundProp.SaveToFile(currSoundFile);
-                currAudio = new WzMp3Streamer(soundProp, LoopBox.Checked);
-                TimeBar.Maximum = (int)currAudio.Length;
-                TimeBar.Minimum = 0;
-                currAudio.Play();
-            }
-            else
-            {
-                currAudio.Play();
-            }
-            AudioTimer.Enabled = true;
-            PlayButton.Visible = false;
-            PauseButton.Visible = true;
+            PrepareAudio();
+            Audio("play");
         }
 
         public WzSoundProperty SoundProperty
@@ -85,7 +116,7 @@ namespace HaRepackerLib.Controls
                 if (soundProp != null)
                 {
                     TimeSpan time = TimeSpan.FromMilliseconds(soundProp.Length);
-                    LengthLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0');
+                    LengthLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0');                    
                 }
                 CurrentPositionLabel.Text = "00:00 /";
                 TimeBar.Value = 0;
@@ -94,6 +125,7 @@ namespace HaRepackerLib.Controls
 
         private void LoopBox_CheckedChanged(object sender, EventArgs e)
         {
+            PrepareAudio();
             currAudio.Repeat = LoopBox.Checked;
         }
     }

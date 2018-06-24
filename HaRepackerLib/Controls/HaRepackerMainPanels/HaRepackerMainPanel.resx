@@ -134,7 +134,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAJwAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAJ0AAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -171,6 +171,39 @@
   <data name="&gt;&gt;MainSplitContainer.Panel1.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
+  <data name="applyChangesButton.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
+  </data>
+  <data name="applyChangesButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
+  <data name="applyChangesButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>64, 291</value>
+  </data>
+  <data name="applyChangesButton.Size" type="System.Drawing.Size, System.Drawing">
+    <value>118, 34</value>
+  </data>
+  <data name="applyChangesButton.TabIndex" type="System.Int32, mscorlib">
+    <value>8</value>
+  </data>
+  <data name="applyChangesButton.Text" xml:space="preserve">
+    <value>Apply Changed Value</value>
+  </data>
+  <data name="applyChangesButton.Visible" type="System.Boolean, mscorlib">
+    <value>False</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Name" xml:space="preserve">
+    <value>applyChangesButton</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.Parent" xml:space="preserve">
+    <value>MainSplitContainer.Panel2</value>
+  </data>
+  <data name="&gt;&gt;applyChangesButton.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
   <data name="cartesianPlane_checkBox.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
@@ -199,7 +232,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;cartesianPlane_checkBox.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>1</value>
   </data>
   <data name="nextLoopTime_label.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -229,7 +262,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;nextLoopTime_label.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="nameBox.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -256,7 +289,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;nameBox.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <data name="nextLoopTime_comboBox.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
     <value>Popup</value>
@@ -295,7 +328,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;nextLoopTime_comboBox.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="textPropBox.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -325,7 +358,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;textPropBox.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="vectorPanel.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>None</value>
@@ -361,7 +394,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;vectorPanel.ZOrder" xml:space="preserve">
-    <value>5</value>
+    <value>6</value>
   </data>
   <data name="selectedNodesImgAnimateButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
     <value>Flat</value>
@@ -397,7 +430,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;selectedNodesImgAnimateButton.ZOrder" xml:space="preserve">
-    <value>6</value>
+    <value>7</value>
   </data>
   <data name="saveSoundButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -430,7 +463,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;saveSoundButton.ZOrder" xml:space="preserve">
-    <value>7</value>
+    <value>8</value>
   </data>
   <data name="saveImageButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -463,7 +496,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;saveImageButton.ZOrder" xml:space="preserve">
-    <value>8</value>
+    <value>9</value>
   </data>
   <data name="changeSoundButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -496,7 +529,7 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;changeSoundButton.ZOrder" xml:space="preserve">
-    <value>9</value>
+    <value>10</value>
   </data>
   <data name="changeImageButton.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
@@ -529,39 +562,6 @@
     <value>MainSplitContainer.Panel2</value>
   </data>
   <data name="&gt;&gt;changeImageButton.ZOrder" xml:space="preserve">
-    <value>10</value>
-  </data>
-  <data name="applyChangesButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
-  </data>
-  <data name="applyChangesButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
-    <value>NoControl</value>
-  </data>
-  <data name="applyChangesButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>64, 291</value>
-  </data>
-  <data name="applyChangesButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
-  </data>
-  <data name="applyChangesButton.TabIndex" type="System.Int32, mscorlib">
-    <value>8</value>
-  </data>
-  <data name="applyChangesButton.Text" xml:space="preserve">
-    <value>Apply Changed Value</value>
-  </data>
-  <data name="applyChangesButton.Visible" type="System.Boolean, mscorlib">
-    <value>False</value>
-  </data>
-  <data name="&gt;&gt;applyChangesButton.Name" xml:space="preserve">
-    <value>applyChangesButton</value>
-  </data>
-  <data name="&gt;&gt;applyChangesButton.Type" xml:space="preserve">
-    <value>System.Windows.Forms.Button, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;applyChangesButton.Parent" xml:space="preserve">
-    <value>MainSplitContainer.Panel2</value>
-  </data>
-  <data name="&gt;&gt;applyChangesButton.ZOrder" xml:space="preserve">
     <value>11</value>
   </data>
   <data name="mp3Player.Location" type="System.Drawing.Point, System.Drawing">

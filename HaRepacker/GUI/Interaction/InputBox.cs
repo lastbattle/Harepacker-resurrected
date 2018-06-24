@@ -48,7 +48,7 @@ namespace HaRepacker.GUI.Interaction
         private void done()
         {
             bool status = true;
-            if (txt_input.Text == "")
+            if (txt_input.Text.Trim() == "")
             {
                 lb_error.Text = "Error, complete field...";
                 status = false;
@@ -84,8 +84,12 @@ namespace HaRepacker.GUI.Interaction
 
         private void txt_input_KeyUp(object sender, KeyEventArgs e)
         {
-            //if (e.KeyCode == Keys.Escape) Close();
-            //if (e.KeyCode == Keys.Enter) done();
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                Close();
+            }          
         }
 
         private void panel1_MouseMove(object sender, MouseEventArgs e)

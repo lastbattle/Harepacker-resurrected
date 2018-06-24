@@ -94,7 +94,11 @@ namespace HaRepackerLib
         {
             wavePlayer.Pause();
         }
-
+        
+        public void Stop()
+        {
+            wavePlayer.Stop();            
+        }
         public bool Repeat
         {
             get { return repeat; }
@@ -105,7 +109,34 @@ namespace HaRepackerLib
         {
             get { return sound.Length / 1000; }
         }
-
+        public int LengthPerByte
+        {
+            get {
+                if (mpegStream != null)
+                    return (int)mpegStream.Length;
+                else if (waveFileStream != null)
+                    return (int)waveFileStream.Length;
+                return 0;
+            }
+        }
+        public int PositionPerByte
+        {
+            get
+            {
+                if (mpegStream != null)
+                    return (int)mpegStream.Position;
+                else if (waveFileStream != null)
+                    return (int)waveFileStream.Position;
+                return 0;
+            }
+            set
+            {
+                if (mpegStream != null)
+                    mpegStream.Seek(value, SeekOrigin.Begin);
+                else if (waveFileStream != null)
+                    waveFileStream.Seek(value, SeekOrigin.Begin);
+            }
+        }
         public int Position
         {
             get

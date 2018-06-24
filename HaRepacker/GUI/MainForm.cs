@@ -298,6 +298,7 @@ namespace HaRepacker.GUI
             using(InputBox inputBox = new InputBox("Enter name tab", "Tab"))
             {                
                 tabPage.Text = inputBox.getValue();
+                if (tabPage.Text == null) return;
                 tabControl_MainPanels.Controls.Add(tabPage);
             }            
         }
@@ -1280,8 +1281,10 @@ namespace HaRepacker.GUI
         private void renameTab()
         {
             using (InputBox inputBox = new InputBox("Write new tab name", "Tab Name: " + tabControl_MainPanels.SelectedTab.Text))
-            {                
-                tabControl_MainPanels.SelectedTab.Text = inputBox.getValue();
+            {
+                string nameTab = inputBox.getValue();
+                if (nameTab == null) return;
+                tabControl_MainPanels.SelectedTab.Text = nameTab;
             }
         }
 
@@ -1320,7 +1323,7 @@ namespace HaRepacker.GUI
 
         private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
         {
-            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
+            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);            
 
             if (e.Control)
             {
@@ -1349,7 +1352,7 @@ namespace HaRepacker.GUI
                         if (countTabs < 6) return;
                         tabControl_MainPanels.SelectTab(5);
                         break;
-                    case Keys.NumPad7:
+                    case Keys.NumPad7:;
                         if (countTabs < 7) return;
                         tabControl_MainPanels.SelectTab(6);
                         break;
@@ -1365,17 +1368,15 @@ namespace HaRepacker.GUI
                         if (countTabs < 10) return;
                         tabControl_MainPanels.SelectTab(9);
                         break;
-                    case Keys.A:
-                        MainPanel.animateCanvas();
-                        break;
                     case Keys.T:
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
                         addTab();
                         break;
                     case Keys.O:
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
                         openWz();
-                        break;
-                    case Keys.P:
-                        MainPanel.stopCanvasAnimation();
                         break;
                 }
             }

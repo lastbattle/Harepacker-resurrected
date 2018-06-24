@@ -1122,10 +1122,12 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             bool ctrl = (Control.ModifierKeys & Keys.Control) == Keys.Control;
             bool alt = (Control.ModifierKeys & Keys.Alt) == Keys.Alt;
             bool shift = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+            bool esc = (Control.ModifierKeys & Keys.Escape) == Keys.Escape;
             Keys filteredKeys = e.KeyData;
             if (ctrl) filteredKeys = filteredKeys ^ Keys.Control;
             if (alt) filteredKeys = filteredKeys ^ Keys.Alt;
             if (shift) filteredKeys = filteredKeys ^ Keys.Shift;
+            if (esc) filteredKeys = filteredKeys ^ Keys.Escape;
 
             switch (filteredKeys)
             {
@@ -1136,10 +1138,23 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     PromptRemoveSelectedTreeNodes();
                     break;
             }
+
+            switch (filteredKeys)
+            {
+                case Keys.F5:
+                    animateCanvas();
+                    break;
+                case Keys.Escape:
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    stopCanvasAnimation();                    
+                    break;
+            }
+
             if (ctrl)
             {
                 switch (filteredKeys)
-                {
+                {                    
                     case Keys.C:
                         DoCopy();
                         e.Handled = true;
