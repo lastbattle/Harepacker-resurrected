@@ -31,20 +31,16 @@
             this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaRepackerMainPanel));
             this.MainSplitContainer = new System.Windows.Forms.SplitContainer();
-            this.DataTree = new TreeViewMS.TreeViewMS();
+            this.applyChangesButton = new System.Windows.Forms.Button();
             this.cartesianPlane_checkBox = new System.Windows.Forms.CheckBox();
             this.nextLoopTime_label = new System.Windows.Forms.Label();
-            this.nameBox = new HaRepackerLib.ChangableTextbox();
             this.nextLoopTime_comboBox = new System.Windows.Forms.ComboBox();
             this.textPropBox = new System.Windows.Forms.TextBox();
-            this.vectorPanel = new HaRepackerLib.XYPanel();
             this.selectedNodesImgAnimateButton = new System.Windows.Forms.Button();
             this.saveSoundButton = new System.Windows.Forms.Button();
             this.saveImageButton = new System.Windows.Forms.Button();
             this.changeSoundButton = new System.Windows.Forms.Button();
             this.changeImageButton = new System.Windows.Forms.Button();
-            this.applyChangesButton = new System.Windows.Forms.Button();
-            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             this.pictureBoxPanel = new System.Windows.Forms.Panel();
             this.cartesianPlaneX = new System.Windows.Forms.Panel();
             this.cartesianPlaneY = new System.Windows.Forms.Panel();
@@ -64,6 +60,10 @@
             this.btnOptions = new System.Windows.Forms.ToolStripButton();
             this.MainDockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
             this.timerImgSequence = new System.Windows.Forms.Timer(this.components);
+            this.DataTree = new TreeViewMS.TreeViewMS();
+            this.nameBox = new HaRepackerLib.ChangableTextbox();
+            this.vectorPanel = new HaRepackerLib.XYPanel();
+            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             ((System.ComponentModel.ISupportInitialize)(this.MainSplitContainer)).BeginInit();
             this.MainSplitContainer.Panel1.SuspendLayout();
             this.MainSplitContainer.Panel2.SuspendLayout();
@@ -103,15 +103,15 @@
             this.MainSplitContainer.Panel2.Controls.Add(this.listView_fieldLimitType);
             this.MainSplitContainer.SplitterMoved += new System.Windows.Forms.SplitterEventHandler(this.MainSplitContainer_SplitterMoved);
             // 
-            // DataTree
+            // applyChangesButton
             // 
-            resources.ApplyResources(this.DataTree, "DataTree");
-            this.DataTree.BorderStyle = System.Windows.Forms.BorderStyle.None;
-            this.DataTree.Name = "DataTree";
-            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
-            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
-            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
-            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            this.applyChangesButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.applyChangesButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
+            resources.ApplyResources(this.applyChangesButton, "applyChangesButton");
+            this.applyChangesButton.ForeColor = System.Drawing.SystemColors.ControlLight;
+            this.applyChangesButton.Name = "applyChangesButton";
+            this.applyChangesButton.UseVisualStyleBackColor = false;
+            this.applyChangesButton.Click += new System.EventHandler(this.applyChangesButton_Click);
             // 
             // cartesianPlane_checkBox
             // 
@@ -126,14 +126,6 @@
             // 
             resources.ApplyResources(this.nextLoopTime_label, "nextLoopTime_label");
             this.nextLoopTime_label.Name = "nextLoopTime_label";
-            // 
-            // nameBox
-            // 
-            resources.ApplyResources(this.nameBox, "nameBox");
-            this.nameBox.BackColor = System.Drawing.SystemColors.Control;
-            this.nameBox.ButtonEnabled = false;
-            this.nameBox.Name = "nameBox";
-            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
             // 
             // nextLoopTime_comboBox
             // 
@@ -154,60 +146,55 @@
             resources.ApplyResources(this.textPropBox, "textPropBox");
             this.textPropBox.Name = "textPropBox";
             // 
-            // vectorPanel
-            // 
-            resources.ApplyResources(this.vectorPanel, "vectorPanel");
-            this.vectorPanel.Name = "vectorPanel";
-            this.vectorPanel.X = 0;
-            this.vectorPanel.Y = 0;
-            // 
             // selectedNodesImgAnimateButton
             // 
+            this.selectedNodesImgAnimateButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.selectedNodesImgAnimateButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
             resources.ApplyResources(this.selectedNodesImgAnimateButton, "selectedNodesImgAnimateButton");
+            this.selectedNodesImgAnimateButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.selectedNodesImgAnimateButton.Name = "selectedNodesImgAnimateButton";
-            this.selectedNodesImgAnimateButton.UseVisualStyleBackColor = true;
+            this.selectedNodesImgAnimateButton.UseVisualStyleBackColor = false;
             this.selectedNodesImgAnimateButton.Click += new System.EventHandler(this.selectedNodesImgAnimateButton_Click);
             // 
             // saveSoundButton
             // 
+            this.saveSoundButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.saveSoundButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
             resources.ApplyResources(this.saveSoundButton, "saveSoundButton");
+            this.saveSoundButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.saveSoundButton.Name = "saveSoundButton";
-            this.saveSoundButton.UseVisualStyleBackColor = true;
+            this.saveSoundButton.UseVisualStyleBackColor = false;
             this.saveSoundButton.Click += new System.EventHandler(this.saveSoundButton_Click);
             // 
             // saveImageButton
             // 
+            this.saveImageButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.saveImageButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
             resources.ApplyResources(this.saveImageButton, "saveImageButton");
+            this.saveImageButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.saveImageButton.Name = "saveImageButton";
-            this.saveImageButton.UseVisualStyleBackColor = true;
+            this.saveImageButton.UseVisualStyleBackColor = false;
             this.saveImageButton.Click += new System.EventHandler(this.saveImageButton_Click);
             // 
             // changeSoundButton
             // 
+            this.changeSoundButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.changeSoundButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
             resources.ApplyResources(this.changeSoundButton, "changeSoundButton");
+            this.changeSoundButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.changeSoundButton.Name = "changeSoundButton";
-            this.changeSoundButton.UseVisualStyleBackColor = true;
+            this.changeSoundButton.UseVisualStyleBackColor = false;
             this.changeSoundButton.Click += new System.EventHandler(this.changeSoundButton_Click);
             // 
             // changeImageButton
             // 
+            this.changeImageButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.changeImageButton.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
             resources.ApplyResources(this.changeImageButton, "changeImageButton");
+            this.changeImageButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.changeImageButton.Name = "changeImageButton";
-            this.changeImageButton.UseVisualStyleBackColor = true;
+            this.changeImageButton.UseVisualStyleBackColor = false;
             this.changeImageButton.Click += new System.EventHandler(this.changeImageButton_Click);
-            // 
-            // applyChangesButton
-            // 
-            resources.ApplyResources(this.applyChangesButton, "applyChangesButton");
-            this.applyChangesButton.Name = "applyChangesButton";
-            this.applyChangesButton.UseVisualStyleBackColor = true;
-            this.applyChangesButton.Click += new System.EventHandler(this.applyChangesButton_Click);
-            // 
-            // mp3Player
-            // 
-            resources.ApplyResources(this.mp3Player, "mp3Player");
-            this.mp3Player.Name = "mp3Player";
-            this.mp3Player.SoundProperty = null;
             // 
             // pictureBoxPanel
             // 
@@ -353,6 +340,37 @@
             // timerImgSequence
             // 
             this.timerImgSequence.Tick += new System.EventHandler(this.timerImgSequence_Tick);
+            // 
+            // DataTree
+            // 
+            resources.ApplyResources(this.DataTree, "DataTree");
+            this.DataTree.BorderStyle = System.Windows.Forms.BorderStyle.None;
+            this.DataTree.Name = "DataTree";
+            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
+            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
+            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
+            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            // 
+            // nameBox
+            // 
+            resources.ApplyResources(this.nameBox, "nameBox");
+            this.nameBox.BackColor = System.Drawing.SystemColors.Control;
+            this.nameBox.ButtonEnabled = false;
+            this.nameBox.Name = "nameBox";
+            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
+            // 
+            // vectorPanel
+            // 
+            resources.ApplyResources(this.vectorPanel, "vectorPanel");
+            this.vectorPanel.Name = "vectorPanel";
+            this.vectorPanel.X = 0;
+            this.vectorPanel.Y = 0;
+            // 
+            // mp3Player
+            // 
+            resources.ApplyResources(this.mp3Player, "mp3Player");
+            this.mp3Player.Name = "mp3Player";
+            this.mp3Player.SoundProperty = null;
             // 
             // HaRepackerMainPanel
             // 

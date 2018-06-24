@@ -298,7 +298,7 @@ namespace HaRepacker.GUI
             using(InputBox inputBox = new InputBox("Enter name tab", "Tab"))
             {                
                 tabPage.Text = inputBox.getValue();
-                if (tabPage.Text == null) return;
+                if (tabPage.Text == "") return;
                 tabControl_MainPanels.Controls.Add(tabPage);
             }            
         }
@@ -1283,7 +1283,7 @@ namespace HaRepacker.GUI
             using (InputBox inputBox = new InputBox("Write new tab name", "Tab Name: " + tabControl_MainPanels.SelectedTab.Text))
             {
                 string nameTab = inputBox.getValue();
-                if (nameTab == null) return;
+                if (nameTab == "") return;
                 tabControl_MainPanels.SelectedTab.Text = nameTab;
             }
         }
@@ -1369,14 +1369,14 @@ namespace HaRepacker.GUI
                         tabControl_MainPanels.SelectTab(9);
                         break;
                     case Keys.T:
+                        addTab();
                         e.Handled = true;
                         e.SuppressKeyPress = true;
-                        addTab();
                         break;
                     case Keys.O:
+                        openWz();
                         e.Handled = true;
                         e.SuppressKeyPress = true;
-                        openWz();
                         break;
                 }
             }

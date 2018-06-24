@@ -134,7 +134,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAJ0AAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAKgAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -171,8 +171,11 @@
   <data name="&gt;&gt;MainSplitContainer.Panel1.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
+  <data name="applyChangesButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
   <data name="applyChangesButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
+    <value>Segoe UI Semibold, 8.25pt, style=Bold</value>
   </data>
   <data name="applyChangesButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
@@ -181,7 +184,7 @@
     <value>64, 291</value>
   </data>
   <data name="applyChangesButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
+    <value>100, 30</value>
   </data>
   <data name="applyChangesButton.TabIndex" type="System.Int32, mscorlib">
     <value>8</value>
@@ -432,8 +435,11 @@
   <data name="&gt;&gt;selectedNodesImgAnimateButton.ZOrder" xml:space="preserve">
     <value>7</value>
   </data>
+  <data name="saveSoundButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
   <data name="saveSoundButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
+    <value>Segoe UI Semibold, 8.25pt, style=Bold</value>
   </data>
   <data name="saveSoundButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
@@ -442,13 +448,13 @@
     <value>103, 251</value>
   </data>
   <data name="saveSoundButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
+    <value>100, 30</value>
   </data>
   <data name="saveSoundButton.TabIndex" type="System.Int32, mscorlib">
     <value>12</value>
   </data>
   <data name="saveSoundButton.Text" xml:space="preserve">
-    <value>Save Sound...</value>
+    <value>Save Sound</value>
   </data>
   <data name="saveSoundButton.Visible" type="System.Boolean, mscorlib">
     <value>False</value>
@@ -465,8 +471,11 @@
   <data name="&gt;&gt;saveSoundButton.ZOrder" xml:space="preserve">
     <value>8</value>
   </data>
+  <data name="saveImageButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
   <data name="saveImageButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
+    <value>Segoe UI Semibold, 8.25pt, style=Bold</value>
   </data>
   <data name="saveImageButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
@@ -475,13 +484,13 @@
     <value>186, 291</value>
   </data>
   <data name="saveImageButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
+    <value>100, 30</value>
   </data>
   <data name="saveImageButton.TabIndex" type="System.Int32, mscorlib">
     <value>11</value>
   </data>
   <data name="saveImageButton.Text" xml:space="preserve">
-    <value>Save Image...</value>
+    <value>Save Image</value>
   </data>
   <data name="saveImageButton.Visible" type="System.Boolean, mscorlib">
     <value>False</value>
@@ -498,8 +507,11 @@
   <data name="&gt;&gt;saveImageButton.ZOrder" xml:space="preserve">
     <value>9</value>
   </data>
+  <data name="changeSoundButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
   <data name="changeSoundButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
+    <value>Segoe UI Semibold, 8.25pt, style=Bold</value>
   </data>
   <data name="changeSoundButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
@@ -508,13 +520,13 @@
     <value>309, 291</value>
   </data>
   <data name="changeSoundButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
+    <value>100, 30</value>
   </data>
   <data name="changeSoundButton.TabIndex" type="System.Int32, mscorlib">
     <value>10</value>
   </data>
   <data name="changeSoundButton.Text" xml:space="preserve">
-    <value>Change Sound...</value>
+    <value>Change Sound</value>
   </data>
   <data name="changeSoundButton.Visible" type="System.Boolean, mscorlib">
     <value>False</value>
@@ -531,8 +543,11 @@
   <data name="&gt;&gt;changeSoundButton.ZOrder" xml:space="preserve">
     <value>10</value>
   </data>
+  <data name="changeImageButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
+    <value>Flat</value>
+  </data>
   <data name="changeImageButton.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8pt</value>
+    <value>Segoe UI Semibold, 8.25pt, style=Bold</value>
   </data>
   <data name="changeImageButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
@@ -541,13 +556,13 @@
     <value>103, 211</value>
   </data>
   <data name="changeImageButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>118, 34</value>
+    <value>100, 30</value>
   </data>
   <data name="changeImageButton.TabIndex" type="System.Int32, mscorlib">
     <value>9</value>
   </data>
   <data name="changeImageButton.Text" xml:space="preserve">
-    <value>Change Image...</value>
+    <value>Change Image</value>
   </data>
   <data name="changeImageButton.Visible" type="System.Boolean, mscorlib">
     <value>False</value>

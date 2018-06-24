@@ -91,8 +91,7 @@ namespace HaRepackerLib.Controls
                     currAudio.Stop();
                     currAudio.Position = 0;
                     break;
-            }
-              
+            } 
         }
         private void PlayButton_Click(object sender, EventArgs e)
         {            

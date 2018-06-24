@@ -116,8 +116,10 @@
             this.encryptionBox,
             this.helpToolStripMenuItem,
             this.debugToolStripMenuItem});
+            this.mainMenu.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.HorizontalStackWithOverflow;
             resources.ApplyResources(this.mainMenu, "mainMenu");
             this.mainMenu.Name = "mainMenu";
+            this.mainMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.System;
             // 
             // fileToolStripMenuItem
             // 
@@ -608,9 +610,11 @@
             // button_addTab
             // 
             resources.ApplyResources(this.button_addTab, "button_addTab");
+            this.button_addTab.BackColor = System.Drawing.SystemColors.ActiveCaptionText;
             this.button_addTab.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.button_addTab.ForeColor = System.Drawing.SystemColors.Control;
             this.button_addTab.Name = "button_addTab";
-            this.button_addTab.UseVisualStyleBackColor = true;
+            this.button_addTab.UseVisualStyleBackColor = false;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
             // 
             // MainForm
