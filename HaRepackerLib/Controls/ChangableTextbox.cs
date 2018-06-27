@@ -27,7 +27,7 @@ namespace HaRepackerLib
         {
             //if (this.Size.Height != textBox.Size.Height)
                 //this.Size = new Size(this.Size.Width, textBox.Size.Height);
-            textBox.Location = new Point(83, 3);
+            textBox.Location = new Point(38, 3);
             textBox.Size = new Size(90, textBox.Size.Height);
             applyButton.Location = new Point(textBox.Size.Width + textBox.Margin.Right + label.Size.Width, 1);
             base.OnSizeChanged(e);

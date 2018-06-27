@@ -36,21 +36,77 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
         }
-        private void refreshCanvasLocation(WzVectorProperty vector = null)
+        private WzVectorProperty vectorSelected;
+        private void refreshCanvasLocation()
         {            
-            if (UserSettings.devImgSequences && vector != null)
-            {   
+            if (UserSettings.devImgSequences && vectorSelected != null)
+            {
+                //planePosition();
                 showOptionsCanvasAnimate();
-                canvasPropBox.Location = new Point(
-                    (listView_fieldLimitType.Width / 2) - vector.X.Value,
-                    (listView_fieldLimitType.Height / 2) - vector.Y.Value
-                );
                 return;
             }                        
             showOptionsCanvasAnimate(false);
             canvasPropBox.Location = new Point(0, 0);
         }
+        private void planePosition()
+        {
+            if (vectorSelected == null) return;
+            int X = ((listView_fieldLimitType.Width / 2) * 90) / 100,  // 90%
+                Y = ((listView_fieldLimitType.Height / 2) * 90) / 100, // 90%
+                planeX__Y = pictureBoxPanel.Height / 2 + 10,
+                planeY__X = pictureBoxPanel.Width / 2 - 6,
+                canvasX = listView_fieldLimitType.Width / 2 - vectorSelected.X.Value,
+                canvasY = listView_fieldLimitType.Height / 2 - vectorSelected.Y.Value;
 
+            switch (UserSettings.PlanePosition)
+            {
+                case 1:// Top
+                    canvasPropBox.Location = new Point(canvasX, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+                case 2:// Bottom
+                    canvasPropBox.Location = new Point(canvasX, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+                case 3:// Right
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 4:// Left
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                case 5:
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 6:
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 7:
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                case 8:
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                default:                    
+                    canvasPropBox.Location = new Point(canvasX, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+            }
+        }
         #region Handlers
         private void PopulateDefaultListView()
         {
@@ -100,8 +156,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             MainDockPanel.Size = MainSplitContainer.Size;
             DataTree.Location = new Point(0, 0);
             DataTree.Size = new Size(MainSplitContainer.Panel1.Width, MainSplitContainer.Panel1.Height);
-            nameBox.Location = new Point(0, 0);
-            //nameBox.Size = new Size(MainSplitContainer.Panel2.Width, 25);
+            nameBox.Location = new Point(0, 0);            
             pictureBoxPanel.Location = new Point(0, nameBox.Size.Height + nameBox.Margin.Bottom);
             pictureBoxPanel.Size = new Size(MainSplitContainer.Panel2.Width, MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top);        
             canvasPropBox.Size = canvasPropBox.Image == null ? new Size(0, 0) : canvasPropBox.Image.Size;
@@ -116,9 +171,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             saveSoundButton.Location = saveImageButton.Location;            
             selectedNodesImgAnimateButton.Location = new Point(pictureBoxPanel.Width - selectedNodesImgAnimateButton.Size.Width - 15, 30);
             nextLoopTime_label.Location = new Point(nameBox.Width, 6);
-            nextLoopTime_comboBox.SelectedIndex = 0;
+            nextLoopTime_comboBox.SelectedIndex = 0;            
             nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);
             cartesianPlane_checkBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 6);
+            planePosition_comboBox.SelectedIndex = UserSettings.PlanePosition;
+            planePosition_comboBox.Location = new Point(cartesianPlane_checkBox.Location.X + cartesianPlane_checkBox.Width, 3);
             if (isSelectingWzMapFieldLimit)
             {
                 listView_fieldLimitType.Visible = true;
@@ -136,8 +193,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             cartesianPlaneX.Width = pictureBoxPanel.Width;
             cartesianPlaneY.Height = pictureBoxPanel.Height;            
-            cartesianPlaneX.Location = new Point(0, pictureBoxPanel.Height / 2 + 11);
-            cartesianPlaneY.Location = new Point(pictureBoxPanel.Width / 2 - 6, 0);
+            //cartesianPlaneX.Location = new Point(0, pictureBoxPanel.Height / 2 + 10);
+            //cartesianPlaneY.Location = new Point(pictureBoxPanel.Width / 2 - 6, 0);
             refreshCanvasLocation();
         }
 
@@ -168,29 +225,27 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
             {
                 Image img = canvas.GetLinkedWzCanvasProperty()?.GetBitmap();
-                canvasPropBox.Image = img;                
-
+                canvasPropBox.Image = img;
             }
             else
-            {
                 canvasPropBox.Image = obj.GetBitmap();                                    
-            }
 
             bool propertyStatus = false;
             for (int i = 0; i < canvas.WzProperties.Count; i++)
             {
                 if (canvas.WzProperties[i] is WzVectorProperty)
                 {
-                    refreshCanvasLocation((WzVectorProperty)canvas.WzProperties[i]);
+                    //refreshCanvasLocation((WzVectorProperty)canvas.WzProperties[i]);
+                    vectorSelected = (WzVectorProperty)canvas.WzProperties[i];
                     nameCanvasSelected = canvas.Name;
+                    refreshCanvasLocation();
                     propertyStatus = true;
                     break;
                 }
-
             }
             if (!propertyStatus)
             {
-                refreshCanvasLocation(null);
+                refreshCanvasLocation();
                 toolStripStatusLabel_additionalInfo.Text = "Status: Not found origin property. Cartesian Plane: off";
             }
         }
@@ -202,15 +257,18 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 nextLoopTime_comboBox.Visible = true;
                 cartesianPlane_checkBox.Visible = true;
                 selectedNodesImgAnimateButton.Visible = true;
-                if (UserSettings.cartesianPlane)
+                planePosition();
+                if (UserSettings.Plane)
                 {
                     cartesianPlaneX.Visible = true;
                     cartesianPlaneY.Visible = true;
+                    planePosition_comboBox.Visible = true;                    
                 }
                 else
                 {
                     cartesianPlaneX.Visible = false;
                     cartesianPlaneY.Visible = false;
+                    planePosition_comboBox.Visible = false;
                 }
                 return;
             }
@@ -220,6 +278,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             selectedNodesImgAnimateButton.Visible = false;
             cartesianPlaneX.Visible = false;
             cartesianPlaneY.Visible = false;
+            planePosition_comboBox.Visible = false;
         }
         /// <summary>
         /// Shows the selected data treeview object to UI
@@ -1491,7 +1550,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                         WzIntProperty delay = (WzIntProperty)canvas.WzProperties[i];
                         if (delay.Value <= 0) break;
 
-                        if (i_node == DataTree.SelectedNodes.Count - 1)
+                        if (i_node == DataTree.SelectedNodes.Count)
                             toolStripStatusLabel_additionalInfo.Text = "Status: Animating..., img " + nameCanvasSelected + ", delay " + delay.Value + " milliseconds. Repeat Animate.";
                         else
                             toolStripStatusLabel_additionalInfo.Text = "Status: Animating..., img " + nameCanvasSelected +", delay " + delay.Value + " milliseconds.";
@@ -1518,10 +1577,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private void cartesianPlane_checkBox_CheckedChanged(object sender, EventArgs e)
         {
-            if (cartesianPlane_checkBox.Checked) UserSettings.cartesianPlane = true;                            
-            else UserSettings.cartesianPlane = false;
-            cartesianPlaneX.Visible = UserSettings.cartesianPlane;
-            cartesianPlaneY.Visible = UserSettings.cartesianPlane;
+            if (cartesianPlane_checkBox.Checked) UserSettings.Plane = true;                            
+            else UserSettings.Plane = false;
+            cartesianPlaneX.Visible = UserSettings.Plane;
+            cartesianPlaneY.Visible = UserSettings.Plane;
+            planePosition_comboBox.Visible = UserSettings.Plane;
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -1548,20 +1608,14 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private void HaRepackerMainPanel_KeyUp(object sender, KeyEventArgs e)
         {
-            /*
-            if (e.Control)
-            {
-                switch (e.KeyCode)
-                {
-                    case Keys.A:
-                        animateCanvas();
-                        break;
-                    case Keys.P:
-                        stopCanvasAnimation();
-                        break;
-                }
-                    
-           }*/
+
+        }
+
+        private void planePosition_comboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UserSettings.PlanePosition = planePosition_comboBox.SelectedIndex;
+            //MessageBox.Show(UserSettings.PlanePosition);
+            planePosition();
         }
     }
 }

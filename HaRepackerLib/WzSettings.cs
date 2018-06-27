@@ -34,7 +34,8 @@ namespace HaRepackerLib
         public static bool ParseImagesInSearch = false;
         public static bool SearchStringValues = true;
         public static bool devImgSequences = false;
-        public static bool cartesianPlane = true;
+        public static bool Plane = true;
+        public static int PlanePosition = 0;//center
         public static int delayNextLoop = 60;
     }
 

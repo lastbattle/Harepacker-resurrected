@@ -15,9 +15,7 @@ namespace HaRepacker.GUI.Interaction
         private string title = "Title";
         private string text = "Text";        
         public byte length;
-        private string value { get; set; } = null;
-        //public TabControl tabControl { get; set; }
-        //public TabPage tabPage { get; set; }
+        private string value = null;
 
         public InputBox(string text, string title, byte length = 25)
         {
@@ -34,7 +32,6 @@ namespace HaRepacker.GUI.Interaction
         {
             lb_title.Text = this.title;
             lb_text.Text = this.text;
-            //txt_input.Focus();
         }     
 
         private void btn_cancel_Click(object sender, EventArgs e)
