@@ -172,10 +172,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             selectedNodesImgAnimateButton.Location = new Point(pictureBoxPanel.Width - selectedNodesImgAnimateButton.Size.Width - 15, 30);
             nextLoopTime_label.Location = new Point(nameBox.Width, 6);
             nextLoopTime_comboBox.SelectedIndex = 0;            
-            nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);
-            cartesianPlane_checkBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 6);
+            nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);            
             planePosition_comboBox.SelectedIndex = UserSettings.PlanePosition;
-            planePosition_comboBox.Location = new Point(cartesianPlane_checkBox.Location.X + cartesianPlane_checkBox.Width, 3);
+            planePosition_comboBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 3);
+            cartesianPlane_checkBox.Location = new Point(planePosition_comboBox.Location.X + planePosition_comboBox.Width + 3, 6);
+            cartesianPlane_checkBox.Checked = UserSettings.Plane;
             if (isSelectingWzMapFieldLimit)
             {
                 listView_fieldLimitType.Visible = true;
@@ -185,16 +186,16 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
                 textPropBox.Height = 30;
                 textPropBox.Enabled = false;
+                ///MessageBox.Show("true");
             } else
             {
                 listView_fieldLimitType.Visible = false;
+                //MessageBox.Show("false");
                 textPropBox.Height = MainSplitContainer.Panel2.Height;
                 textPropBox.Enabled = true;
             }
             cartesianPlaneX.Width = pictureBoxPanel.Width;
             cartesianPlaneY.Height = pictureBoxPanel.Height;            
-            //cartesianPlaneX.Location = new Point(0, pictureBoxPanel.Height / 2 + 10);
-            //cartesianPlaneY.Location = new Point(pictureBoxPanel.Width / 2 - 6, 0);
             refreshCanvasLocation();
         }
 
@@ -234,8 +235,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             for (int i = 0; i < canvas.WzProperties.Count; i++)
             {
                 if (canvas.WzProperties[i] is WzVectorProperty)
-                {
-                    //refreshCanvasLocation((WzVectorProperty)canvas.WzProperties[i]);
+                {                    
                     vectorSelected = (WzVectorProperty)canvas.WzProperties[i];
                     nameCanvasSelected = canvas.Name;
                     refreshCanvasLocation();
@@ -246,39 +246,25 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (!propertyStatus)
             {
                 refreshCanvasLocation();
-                toolStripStatusLabel_additionalInfo.Text = "Status: Not found origin property. Cartesian Plane: off";
+                toolStripStatusLabel_additionalInfo.Text = "Status: Not found origin property. Plane: off";
             }
         }
         private void showOptionsCanvasAnimate(bool visible = true)
         {
+            nextLoopTime_label.Visible = visible;
+            nextLoopTime_comboBox.Visible = visible;
+            cartesianPlane_checkBox.Visible = visible;
+            selectedNodesImgAnimateButton.Visible = visible;
+            planePosition_comboBox.Visible = visible;
             if (visible)
             {
-                nextLoopTime_label.Visible = true;
-                nextLoopTime_comboBox.Visible = true;
-                cartesianPlane_checkBox.Visible = true;
-                selectedNodesImgAnimateButton.Visible = true;
                 planePosition();
-                if (UserSettings.Plane)
-                {
-                    cartesianPlaneX.Visible = true;
-                    cartesianPlaneY.Visible = true;
-                    planePosition_comboBox.Visible = true;                    
-                }
-                else
-                {
-                    cartesianPlaneX.Visible = false;
-                    cartesianPlaneY.Visible = false;
-                    planePosition_comboBox.Visible = false;
-                }
+                cartesianPlaneX.Visible = UserSettings.Plane;
+                cartesianPlaneY.Visible = UserSettings.Plane;
                 return;
             }
-            nextLoopTime_label.Visible = false;
-            nextLoopTime_comboBox.Visible = false;
-            cartesianPlane_checkBox.Visible = false;
-            selectedNodesImgAnimateButton.Visible = false;
             cartesianPlaneX.Visible = false;
             cartesianPlaneY.Visible = false;
-            planePosition_comboBox.Visible = false;
         }
         /// <summary>
         /// Shows the selected data treeview object to UI
@@ -289,7 +275,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             mp3Player.SoundProperty = null;
             nameBox.Text = obj is WzFile ? ((WzFile)obj).Header.Copyright : obj.Name;
             nameBox.ButtonEnabled = false;
-
+            nameBox.Visible = true;
             toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
             if (isSelectingWzMapFieldLimit) // previously already selected. update again
             {
@@ -299,7 +285,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = false;
@@ -314,9 +300,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzCanvasProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = true;
-                pictureBoxPanel.Visible = true;                
+                pictureBoxPanel.Visible = true;
                 textPropBox.Visible = false;
                 mp3Player.Visible = false;
 
@@ -331,7 +317,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             } 
             else if (obj is WzUOLProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 textPropBox.Visible = true;
                 mp3Player.Visible = false;
                 textPropBox.Text = obj.ToString();
@@ -363,7 +349,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzSoundProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = false;
@@ -379,7 +365,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty/* || obj is WzUOLProperty*/)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;                
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = true;
@@ -436,19 +422,19 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzVectorProperty)
             {
-                nameBox.Visible = true;
-                canvasPropBox.Visible = false;
-                pictureBoxPanel.Visible = false;
-                textPropBox.Visible = false;
-                mp3Player.Visible = false;
-                vectorPanel.Visible = true;
+                //nameBox.Visible = true;                
+                canvasPropBox.Visible = false;                
+                pictureBoxPanel.Visible = false;                
+                textPropBox.Visible = false;                
+                mp3Player.Visible = false;                
+                vectorPanel.Visible = true;                
                 vectorPanel.X = ((WzVectorProperty)obj).X.Value;
-                vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;
-                applyChangesButton.Visible = true;
-                changeImageButton.Visible = false;
-                saveImageButton.Visible = false;
-                changeSoundButton.Visible = false;
-                saveSoundButton.Visible = false;
+                vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;                
+                applyChangesButton.Visible = true;                
+                changeImageButton.Visible = false;                
+                saveImageButton.Visible = false;                
+                changeSoundButton.Visible = false;                
+                saveSoundButton.Visible = false;                
                 showOptionsCanvasAnimate(false);
             }
             else
@@ -1564,7 +1550,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     timerImgSequence.Stop();
                     MessageBox.Show("there is no delay property or it's a 0 value", "Not found delay property", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     selectedNodesImgAnimateButton.Text = "Animate";
-                }                
+                }
             }
             else
             {
@@ -1580,8 +1566,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (cartesianPlane_checkBox.Checked) UserSettings.Plane = true;                            
             else UserSettings.Plane = false;
             cartesianPlaneX.Visible = UserSettings.Plane;
-            cartesianPlaneY.Visible = UserSettings.Plane;
-            planePosition_comboBox.Visible = UserSettings.Plane;
+            cartesianPlaneY.Visible = UserSettings.Plane;            
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -1613,8 +1598,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private void planePosition_comboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            UserSettings.PlanePosition = planePosition_comboBox.SelectedIndex;
-            //MessageBox.Show(UserSettings.PlanePosition);
+            UserSettings.PlanePosition = planePosition_comboBox.SelectedIndex;            
             planePosition();
         }
     }
