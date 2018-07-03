@@ -103,10 +103,16 @@
     <Compile Include="Controls\BitmapInputBox.Designer.cs">
       <DependentUpon>BitmapInputBox.cs</DependentUpon>
     </Compile>
-    <Compile Include="Controls\ChangableTextbox.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="Controls\ChangableTextbox.Designer.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.designer.cs">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\ChangableTextbox.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\ChangableTextbox.Designer.cs">
       <DependentUpon>ChangableTextbox.cs</DependentUpon>
     </Compile>
     <Compile Include="Controls\DockableSearchResult.cs">
@@ -124,11 +130,11 @@
     <Compile Include="Controls\FloatingPointInputBox.Designer.cs">
       <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
     </Compile>
-    <Compile Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\FieldLimitPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.Designer.cs">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\FieldLimitPanel.designer.cs">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="Controls\IntegerInput.cs">
       <SubType>Component</SubType>
@@ -192,10 +198,10 @@
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
-    <Compile Include="Controls\SoundPlayer.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\SoundPlayer.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="Controls\SoundPlayer.designer.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\SoundPlayer.designer.cs">
       <DependentUpon>SoundPlayer.cs</DependentUpon>
     </Compile>
     <Compile Include="UndoRedoManager.cs" />
@@ -204,10 +210,10 @@
     <Compile Include="WzMp3Streamer.cs" />
     <Compile Include="WzNode.cs" />
     <Compile Include="WzSettings.cs" />
-    <Compile Include="Controls\XYPanel.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\XYPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="Controls\XYPanel.Designer.cs">
+    <Compile Include="Controls\HaRepackerMainPanels\SubPanels\XYPanel.Designer.cs">
       <DependentUpon>XYPanel.cs</DependentUpon>
     </Compile>
   </ItemGroup>
@@ -226,13 +232,28 @@
     <EmbeddedResource Include="Controls\BitmapInputBox.zh-CHT.resx">
       <DependentUpon>BitmapInputBox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\ChangableTextbox.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.ja.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.ko.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.zh-CHS.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.zh-CHT.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\ChangableTextbox.resx">
       <DependentUpon>ChangableTextbox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\ChangableTextbox.zh-CHS.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\ChangableTextbox.zh-CHS.resx">
       <DependentUpon>ChangableTextbox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\ChangableTextbox.zh-CHT.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\ChangableTextbox.zh-CHT.resx">
       <DependentUpon>ChangableTextbox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\DockableSearchResult.resx">
@@ -254,21 +275,14 @@
     <EmbeddedResource Include="Controls\FloatingPointInputBox.zh-CHT.resx">
       <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.ja.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\FieldLimitPanel.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.ko.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\FieldLimitPanel.zh-CHS.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.zh-CHS.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Controls\HaRepackerMainPanels\HaRepackerMainPanel.zh-CHT.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\FieldLimitPanel.zh-CHT.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\IntInputBox.resx">
       <DependentUpon>IntInputBox.cs</DependentUpon>
@@ -331,10 +345,10 @@
     <EmbeddedResource Include="Controls\SoundInputBox.zh-CHT.resx">
       <DependentUpon>SoundInputBox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\SoundPlayer.zh-CHS.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\SoundPlayer.zh-CHS.resx">
       <DependentUpon>SoundPlayer.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\SoundPlayer.zh-CHT.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\SoundPlayer.zh-CHT.resx">
       <DependentUpon>SoundPlayer.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\TreeViewMS.resx">
@@ -363,11 +377,11 @@
     <EmbeddedResource Include="Controls\SearchOptionsForm.resx">
       <DependentUpon>SearchOptionsForm.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\SoundPlayer.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\SoundPlayer.resx">
       <DependentUpon>SoundPlayer.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="Controls\XYPanel.resx">
+    <EmbeddedResource Include="Controls\HaRepackerMainPanels\SubPanels\XYPanel.resx">
       <DependentUpon>XYPanel.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
@@ -401,6 +415,7 @@
       <Name>MapleLib</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -23,57 +23,19 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         private static List<WzObject> clipboard = new List<WzObject>();
         private UndoRedoManager undoRedoMan;
 
-        // misc
         private bool isSelectingWzMapFieldLimit = false;
-        private bool initializingListViewForFieldLimit = false;
 
         public HaRepackerMainPanel()
         {
             InitializeComponent();
 
-            PopulateDefaultListView();
+            this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
 
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
         }
 
         #region Handlers
-        private void PopulateDefaultListView()
-        {
-            initializingListViewForFieldLimit = true;
-
-            // Populate FieldLimitType
-            if (listView_fieldLimitType.Items.Count == 0)
-            {
-                // dummy column
-                listView_fieldLimitType.Columns.Add(new ColumnHeader()
-                {
-                    Text = "",
-                    Name = "col1",
-                    Width = 450,
-                });
-
-                int i_index = 0;
-                foreach (WzFieldLimitType limitType in Enum.GetValues(typeof(WzFieldLimitType)))
-                {
-                    ListViewItem item1 = new ListViewItem(
-                        string.Format("{0} - {1}", (i_index).ToString(), limitType.ToString().Replace("_", " ")));
-                    item1.Tag = limitType; // starts from 0
-                    listView_fieldLimitType.Items.Add(item1);
-
-                    i_index++;
-                }
-                for (int i = i_index; i < i_index + 50; i++) // add 50 dummy values, we really dont have the field properties of future MS versions :( 
-                {
-                    ListViewItem item1 = new ListViewItem(string.Format("{0} - UNKNOWN", (i).ToString()));
-                    item1.Tag = i;
-                    listView_fieldLimitType.Items.Add(item1);
-                }
-            }
-
-            initializingListViewForFieldLimit = false;
-        }
-
         private void RedockControls()
         {
             if (Width * Height == 0)
@@ -106,8 +68,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
             if (isSelectingWzMapFieldLimit)
             {
-                listView_fieldLimitType.Visible = true;
-                listView_fieldLimitType.Size = new Size(
+                fieldLimitPanel1.Visible = true;
+                fieldLimitPanel1.Size = new Size(
                     MainSplitContainer.Panel2.Width, 
                     MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top - 20);
 
@@ -115,7 +77,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 textPropBox.Enabled = false;
             } else
             {
-                listView_fieldLimitType.Visible = false;
+                fieldLimitPanel1.Visible = false;
                 textPropBox.Height = MainSplitContainer.Panel2.Height;
                 textPropBox.Enabled = true;
             }
@@ -283,17 +245,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     {
                         isSelectingWzMapFieldLimit = true;
 
-
-                        initializingListViewForFieldLimit = true;
-
-                        // Fill checkboxes
-                        //int maxFieldLimitType = FieldLimitTypeExtension.GetMaxFieldLimitType();
-                        foreach (ListViewItem item in listView_fieldLimitType.Items)
-                        {
-                            item.Checked = FieldLimitTypeExtension.Check((int)item.Tag, intProperty.Value);
-                        }
-                        initializingListViewForFieldLimit = false;
-                        ListView_fieldLimitType_ItemChecked(listView_fieldLimitType, null);
+                        fieldLimitPanel1.UpdateFieldLimitCheckboxes(intProperty);
 
                         // Redock controls
                         RedockControls();
@@ -321,43 +273,6 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
-        /// <summary>
-        /// On WzFieldLimitType listview item checked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ListView_fieldLimitType_ItemCheck(object sender, ItemCheckEventArgs e)
-        {
-            if (initializingListViewForFieldLimit)
-                return;
-
-            System.Diagnostics.Debug.WriteLine("Set index at  " + e.Index + " to " + listView_fieldLimitType.Items[e.Index].Checked);
-        }
-
-        /// <summary>
-        /// On WzFieldLimitType listview item checked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ListView_fieldLimitType_ItemChecked(object sender, ItemCheckedEventArgs e)
-        {
-            if (initializingListViewForFieldLimit)
-                return;
-
-            ulong fieldLimit = 0;
-            foreach (ListViewItem item in listView_fieldLimitType.Items)
-            {
-                if (item.Checked)
-                {
-                    int numShift = ((int)item.Tag);
-
-                    System.Diagnostics.Debug.WriteLine("Selected " + numShift + ", " + (long)(1L << numShift));
-                    fieldLimit |= (ulong) (1L << numShift);
-                }
-            }
-            System.Diagnostics.Debug.WriteLine("Result " + fieldLimit);
-            textPropBox.Text = fieldLimit.ToString();
-        }
 
         private void DataTree_DoubleClick(object sender, EventArgs e)
         {
@@ -962,6 +877,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
+        /// <summary>
+        /// Copies from the selected Wz object
+        /// </summary>
         public void DoCopy()
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmCopy))
@@ -976,6 +894,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
+        /// <summary>
+        /// Paste to the selected WzObject
+        /// </summary>
         public void DoPaste()
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmPaste))

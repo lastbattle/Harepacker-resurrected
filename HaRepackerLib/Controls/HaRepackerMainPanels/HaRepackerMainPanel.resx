@@ -140,7 +140,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAABoAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAB8AAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -184,7 +184,7 @@
     <value>Segoe UI, 8pt</value>
   </data>
   <data name="vectorPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>20, 20</value>
+    <value>12, 30</value>
   </data>
   <data name="vectorPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>0, 0, 0, 0</value>
@@ -393,6 +393,9 @@
   <data name="&gt;&gt;applyChangesButton.ZOrder" xml:space="preserve">
     <value>5</value>
   </data>
+  <data name="nameBox.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
+  </data>
   <data name="nameBox.Location" type="System.Drawing.Point, System.Drawing">
     <value>26, 98</value>
   </data>
@@ -400,7 +403,7 @@
     <value>6, 8, 6, 8</value>
   </data>
   <data name="nameBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>459, 26</value>
+    <value>459, 29</value>
   </data>
   <data name="nameBox.TabIndex" type="System.Int32, mscorlib">
     <value>7</value>
@@ -416,6 +419,9 @@
   </data>
   <data name="&gt;&gt;nameBox.ZOrder" xml:space="preserve">
     <value>6</value>
+  </data>
+  <data name="mp3Player.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
   </data>
   <data name="mp3Player.Location" type="System.Drawing.Point, System.Drawing">
     <value>134, 0</value>
@@ -546,43 +552,34 @@
   <data name="&gt;&gt;pictureBoxPanel.ZOrder" xml:space="preserve">
     <value>9</value>
   </data>
-  <data name="listView_fieldLimitType.Alignment" type="System.Windows.Forms.ListViewAlignment, System.Windows.Forms">
-    <value>Default</value>
-  </data>
-  <data name="listView_fieldLimitType.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
+  <data name="fieldLimitPanel1.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Bottom, Left, Right</value>
   </data>
-  <data name="listView_fieldLimitType.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 10pt</value>
+  <data name="fieldLimitPanel1.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8pt</value>
   </data>
-  <data name="listView_fieldLimitType.LabelWrap" type="System.Boolean, mscorlib">
-    <value>False</value>
-  </data>
-  <data name="listView_fieldLimitType.Location" type="System.Drawing.Point, System.Drawing">
+  <data name="fieldLimitPanel1.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 80</value>
   </data>
-  <data name="listView_fieldLimitType.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
+  <data name="fieldLimitPanel1.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>0, 0, 0, 10</value>
   </data>
-  <data name="listView_fieldLimitType.Size" type="System.Drawing.Size, System.Drawing">
-    <value>639, 428</value>
+  <data name="fieldLimitPanel1.Size" type="System.Drawing.Size, System.Drawing">
+    <value>637, 428</value>
   </data>
-  <data name="listView_fieldLimitType.TabIndex" type="System.Int32, mscorlib">
-    <value>13</value>
+  <data name="fieldLimitPanel1.TabIndex" type="System.Int32, mscorlib">
+    <value>15</value>
   </data>
-  <data name="listView_fieldLimitType.Visible" type="System.Boolean, mscorlib">
-    <value>False</value>
+  <data name="&gt;&gt;fieldLimitPanel1.Name" xml:space="preserve">
+    <value>fieldLimitPanel1</value>
   </data>
-  <data name="&gt;&gt;listView_fieldLimitType.Name" xml:space="preserve">
-    <value>listView_fieldLimitType</value>
+  <data name="&gt;&gt;fieldLimitPanel1.Type" xml:space="preserve">
+    <value>HaRepackerLib.Controls.FieldLimitPanel, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
   </data>
-  <data name="&gt;&gt;listView_fieldLimitType.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ListView, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;listView_fieldLimitType.Parent" xml:space="preserve">
+  <data name="&gt;&gt;fieldLimitPanel1.Parent" xml:space="preserve">
     <value>MainSplitContainer.Panel2</value>
   </data>
-  <data name="&gt;&gt;listView_fieldLimitType.ZOrder" xml:space="preserve">
+  <data name="&gt;&gt;fieldLimitPanel1.ZOrder" xml:space="preserve">
     <value>10</value>
   </data>
   <data name="&gt;&gt;MainSplitContainer.Panel2.Name" xml:space="preserve">
