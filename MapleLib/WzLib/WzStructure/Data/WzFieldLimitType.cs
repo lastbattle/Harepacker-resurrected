@@ -44,10 +44,20 @@ namespace MapleLib.WzLib.WzStructure.Data
     {
         public static bool Check(int type, int fieldLimit)
         {
+            return Check(type, (long)fieldLimit);
+        }
+
+        public static bool Check(int type, long fieldLimit)
+        {
             return ((fieldLimit >> type) & 1) != 0;
         }
 
         public static bool Check(this WzFieldLimitType type, int fieldLimit)
+        {
+            return Check(type, (long) fieldLimit);
+        }
+
+        public static bool Check(this WzFieldLimitType type, long fieldLimit)
         {
             return ((fieldLimit >> (int)type) & 1) != 0;
         }

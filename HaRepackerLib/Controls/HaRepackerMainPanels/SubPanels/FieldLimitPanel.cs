@@ -42,7 +42,7 @@ namespace HaRepackerLib.Controls
             //int maxFieldLimitType = FieldLimitTypeExtension.GetMaxFieldLimitType();
             foreach (ListViewItem item in listView_fieldLimitType.Items)
             {
-                item.Checked = FieldLimitTypeExtension.Check((int)item.Tag, propertyValue.Value);
+                item.Checked = FieldLimitTypeExtension.Check((int)item.Tag, propertyValue.GetLong());
             }
             initializingListViewForFieldLimit = false;
             ListView_fieldLimitType_ItemChecked(listView_fieldLimitType, null);
@@ -76,7 +76,7 @@ namespace HaRepackerLib.Controls
 
                     i_index++;
                 }
-                for (int i = i_index; i < i_index + 30; i++) // add 50 dummy values, we really dont have the field properties of future MS versions :( 
+                for (int i = i_index; i < i_index + 30; i++) // add 30 dummy values, we really dont have the field properties of future MS versions :( 
                 {
                     ListViewItem item1 = new ListViewItem(string.Format("{0} - UNKNOWN", (i).ToString()));
                     item1.Tag = i;

@@ -101,7 +101,7 @@ namespace HaRepacker.GUI
         private void textBox_itemidFind_TextChanged(object sender, EventArgs e)
         {
             string query = textBox_itemidFind.Text;
-            if (query.Length <= 3 && query != string.Empty) // if its string empty, include everything..
+            if (query.Length <= 2 && query != string.Empty) // if its string empty, include everything..
                 return;
 
             HexJumpList.Clear();
