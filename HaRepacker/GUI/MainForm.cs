@@ -940,6 +940,20 @@ namespace HaRepacker.GUI
                 form.Show();
             }
         }
+
+        /// <summary>
+        /// Get packet encryption keys from ZLZ.dll
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void toolStripMenuItem_WzEncryption_Click(object sender, EventArgs e)
+        {
+            ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
+            bool opened = form.OpenZLZDllFile();
+
+            if (opened)
+                form.Show();
+        }
         #endregion
 
         #region Image directory add
@@ -1303,85 +1317,5 @@ namespace HaRepacker.GUI
         {
             MainPanel.DoPaste();
         }
-
-        #region GetWZKey
-        private void wzKeyMenuItem_Click(object sender, EventArgs e)
-        {
-            // Create an instance of the open file dialog box.
-            OpenFileDialog openFileDialog1 = new OpenFileDialog();
-
-            // Set filter options and filter index.
-            openFileDialog1.Filter = "ZLZ file (.dll)|*.dll";
-            openFileDialog1.FilterIndex = 1;
-            openFileDialog1.Multiselect = false;
-
-            // Call the ShowDialog method to show the dialog box.
-            DialogResult userClickedOK = openFileDialog1.ShowDialog();
-
-            // Process input if the user clicked OK.
-            if (userClickedOK == DialogResult.OK)
-            {
-                FileInfo fileinfo = new FileInfo(openFileDialog1.FileName);
-
-                // Since this library is x86, HaRepacker needs to be compiled under x86! Not any CPU or x64
-                bool setDLLDirectory = kernel32.SetDllDirectory(fileinfo.Directory.FullName);
-
-                IntPtr module;
-                if (((int)(module = kernel32.LoadLibrary(fileinfo.FullName))) == 0)
-                {
-                    uint lastError = kernel32.GetLastError();
-
-                    MessageBox.Show("ZLZ not found. Last Error: " + lastError);
-                }
-                else
-                {
-                    try
-                    {
-                        var Method = Marshal.GetDelegateForFunctionPointer((IntPtr)(module.ToInt32() + 0x1340), typeof(GenerateKey)) as GenerateKey;
-                        Method();
-                        ShowKey(module);
-                    }
-                    catch
-                    {
-                        MessageBox.Show("Invalid KeyGen position");
-                    }
-                    finally
-                    {
-                        kernel32.FreeLibrary(module);
-                    }
-                }
-            }
-        }
-
-        // see http://forum.ragezone.com/f921/release-gms-key-retriever-895646/index2.html
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void GenerateKey();
-
-
-        /// <summary>
-        /// Display the Aes key used for the maplestory encryption.
-        /// </summary>
-        private static void ShowKey(IntPtr module)
-        {
-            const int KeyPos = 0x14020;
-            const int KeyGen = 0x1340;
-
-            StringBuilder sb = new StringBuilder();
-
-            sb.Append("AesKey ");
-            sb.AppendLine();
-
-            for (int i = 0; i < 16 * 8; i += 4 * 4)
-            {
-                short value = (short)Marshal.ReadInt32((IntPtr)(module.ToInt32() + KeyPos + i));
-                //    Console.Write("0x" + value.ToString("X") + "-0x00-0x00-0x00-");
-                sb.AppendLine("0x" + value.ToString("X") + "-0x00-0x00-0x00");
-            }
-            sb.AppendLine();
-
-            Clipboard.SetText(Environment.NewLine + sb.ToString());
-            MessageBox.Show("Copied to your clipboard! " + Environment.NewLine + sb.ToString());
-        }
-        #endregion
     }
 }

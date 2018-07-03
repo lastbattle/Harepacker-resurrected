@@ -71,7 +71,6 @@
             this.newToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.pNGsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.imgToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzKeyMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.importToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem2 = new System.Windows.Forms.ToolStripMenuItem();
             this.iMGToolStripMenuItem2 = new System.Windows.Forms.ToolStripMenuItem();
@@ -96,6 +95,7 @@
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.toolStripMenuItem_WzEncryption = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -320,7 +320,6 @@
             this.toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.exportFilesToXMLToolStripMenuItem,
             this.exportDataToolStripMenuItem,
-            this.wzKeyMenuItem,
             this.importToolStripMenuItem,
             this.optionsToolStripMenuItem,
             this.searchToolStripMenuItem,
@@ -406,12 +405,6 @@
             resources.ApplyResources(this.imgToolStripMenuItem1, "imgToolStripMenuItem1");
             this.imgToolStripMenuItem1.Click += new System.EventHandler(this.imgToolStripMenuItem1_Click);
             // 
-            // wzKeyMenuItem
-            // 
-            this.wzKeyMenuItem.Name = "wzKeyMenuItem";
-            resources.ApplyResources(this.wzKeyMenuItem, "wzKeyMenuItem");
-            this.wzKeyMenuItem.Click += new System.EventHandler(this.wzKeyMenuItem_Click);
-            // 
             // importToolStripMenuItem
             // 
             this.importToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -463,7 +456,8 @@
             this.extrasToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fHMappingToolStripMenuItem,
             this.animateToolStripMenuItem,
-            this.toolStripMenuItem_searchWzStrings});
+            this.toolStripMenuItem_searchWzStrings,
+            this.toolStripMenuItem_WzEncryption});
             this.extrasToolStripMenuItem.Name = "extrasToolStripMenuItem";
             resources.ApplyResources(this.extrasToolStripMenuItem, "extrasToolStripMenuItem");
             // 
@@ -577,6 +571,12 @@
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
             // 
+            // toolStripMenuItem_WzEncryption
+            // 
+            this.toolStripMenuItem_WzEncryption.Name = "toolStripMenuItem_WzEncryption";
+            resources.ApplyResources(this.toolStripMenuItem_WzEncryption, "toolStripMenuItem_WzEncryption");
+            this.toolStripMenuItem_WzEncryption.Click += new System.EventHandler(this.toolStripMenuItem_WzEncryption_Click);
+            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -659,7 +659,6 @@
         public System.Windows.Forms.ToolStripMenuItem reloadAllToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem copyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem wzKeyMenuItem;
         private System.Windows.Forms.ToolStripTextBox zoomTextBox;
         private System.Windows.Forms.TabControl tabControl_MainPanels;
         private System.Windows.Forms.TabPage tabPage1;
@@ -667,6 +666,7 @@
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
+        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_WzEncryption;
     }
 }
 
