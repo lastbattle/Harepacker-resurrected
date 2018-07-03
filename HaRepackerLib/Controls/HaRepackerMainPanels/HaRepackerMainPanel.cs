@@ -29,10 +29,20 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         {
             InitializeComponent();
 
-            this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
-
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
+
+            this.Load += HaRepackerMainPanel_Load;
+        }
+        
+        /// <summary>
+        /// On loaded
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void HaRepackerMainPanel_Load(object sender, EventArgs e)
+        {
+            this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
         }
 
         #region Handlers

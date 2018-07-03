@@ -23,6 +23,16 @@ namespace HaRepackerLib.Controls
         {
             InitializeComponent();
 
+            Load += FieldLimitPanel_Load;
+        }
+
+        /// <summary>
+        /// On loaded
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void FieldLimitPanel_Load(object sender, EventArgs e)
+        {
             PopulateDefaultListView();
         }
 
