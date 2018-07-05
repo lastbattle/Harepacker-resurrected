@@ -27,6 +27,7 @@ namespace HaRepacker.FHMapper
 
         // Fonts
         private static Font FONT_DISPLAY_MAPID = new Font("Segoe UI", 20);
+        private static Font FONT_GAME_TOOLTIP = new Font("Segoe UI", 9);
         private static Font FONT_DISPLAY_MINIMAP_NOT_AVAILABLE = new Font("Segoe UI", 18);
         private static Font FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD = new Font("Segoe UI", 8);
 
@@ -343,7 +344,7 @@ namespace HaRepacker.FHMapper
                         if (bS == string.Empty)
                             continue;
 
-                        string bgObjImagePath = "Map.wz/Back/" + bS + ".img/back/" + no;
+                        string bgObjImagePath = "Map.wz/Back/" + bS + ".img/Back/" + no;
                         WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzMan.WzFileListReadOnly);
                         if (wzBgCanvas != null)
                         {
@@ -367,6 +368,53 @@ namespace HaRepacker.FHMapper
             backgroundRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_backgroundRender.bmp");
 
 
+            // Render tooltip
+            WzSubProperty tooltipProperty = (WzSubProperty)img["ToolTip"];
+            Bitmap toolTip = null;
+            if (tooltipProperty != null)
+            {
+                toolTip = new Bitmap(bmpSize.Width, bmpSize.Height);
+                using (Graphics toolTipBuf = Graphics.FromImage(toolTip))
+                {
+                    string stringTooltipPath = "String.wz/ToolTipHelp.img/Mapobject/" + mapIdName;
+                    WzSubProperty wzToolTip = (WzSubProperty)WzFile.GetObjectFromMultipleWzFilePath(stringTooltipPath, Program.WzMan.WzFileListReadOnly);
+
+                    if (wzToolTip == null)
+                    {
+                        throw new ArgumentException("Map tooltip object is missing. Path: " + stringTooltipPath);
+                    }
+
+                    for (int i = 0; i < 99; i++) // starts from 0
+                    {
+                        WzSubProperty toolTipItem = (WzSubProperty)tooltipProperty[i.ToString()];
+                        if (toolTipItem == null)
+                            break;
+
+                        int x1 = toolTipItem["x1"].ReadValue();
+                        int x2 = toolTipItem["x2"].ReadValue();
+                        int y1 = toolTipItem["y1"].ReadValue();
+                        int y2 = toolTipItem["y2"].ReadValue();
+
+                        // Check String.wz
+                        WzSubProperty wzToolTipForI = (WzSubProperty)wzToolTip[i.ToString()];
+                        if (wzToolTipForI == null)
+                        {
+                            throw new ArgumentException("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i);
+                        }
+                        string title = wzToolTipForI["Title"].ReadString(null);
+                        string desc = wzToolTipForI["Desc"].ReadString(null);
+
+                        if (title == null)
+                        {
+                            throw new ArgumentException("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i + "/Title");
+                        }
+                        toolTipBuf.DrawString(string.Format("{0}\n{1}", title, desc == null ? string.Empty : desc), FONT_GAME_TOOLTIP, new SolidBrush(Color.Black), new PointF(x1 + center.X, y1 + center.Y));
+                    }
+                }
+                toolTip.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_tooltip.bmp");
+            }
+
+            // Render Tiles
             Bitmap tileRender = new Bitmap(bmpSize.Width, bmpSize.Height);
             using (Graphics tileBuf = Graphics.FromImage(tileRender))
             {
@@ -374,9 +422,14 @@ namespace HaRepacker.FHMapper
                 {
                     // The below code was commented out because it was creating problems when loading certain maps. When debugging it would throw an exception at line 469.
                     // Objects first
-                    if (((WzSubProperty)((WzSubProperty)img[i.ToString()])["obj"]).WzProperties.Count > 0)
+                    WzSubProperty iProperty = (WzSubProperty)img[i.ToString()];
+                    WzSubProperty objProperties = ((WzSubProperty)iProperty["obj"]);
+                    WzSubProperty infoProperties = ((WzSubProperty)iProperty["info"]);
+                    WzSubProperty tileProperties = ((WzSubProperty)iProperty["tile"]);
+
+                    if (objProperties.WzProperties.Count > 0)
                     {
-                        foreach (WzSubProperty obj in ((WzSubProperty)((WzSubProperty)img[i.ToString()])["obj"]).WzProperties)
+                        foreach (WzSubProperty obj in objProperties.WzProperties)
                         {
                             //WzSubProperty obj = (WzSubProperty)oe.ExtendedProperty;
                             string imgName = ((WzStringProperty)obj["oS"]).Value + ".img";
@@ -388,7 +441,7 @@ namespace HaRepacker.FHMapper
                             WzVectorProperty origin;
                             WzPngProperty png;
 
-                            string imgObjPath = wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0";
+                            string imgObjPath = string.Format("{0}/Obj/{1}/{2}/{3}/{4}/0", wzFile.WzDirectory.Name, imgName, l0, l1, l2);
 
                             WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, Program.WzMan.WzFileListReadOnly);
                             tryagain:
@@ -431,21 +484,22 @@ namespace HaRepacker.FHMapper
                                 objData = (WzImageProperty)currProp;
                                 goto tryagain;
                             }
-                            else throw new ArgumentException("Unknown Wz type at map renderer");
+                            else
+                                throw new ArgumentException("Unknown Wz type at map renderer");
+
                             //WzVectorProperty origin = (WzVectorProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0");
                             //WzPngProperty png = (WzPngProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0/PNG");
                             tileBuf.DrawImage(png.GetPNG(false), x - origin.X.Value, y - origin.Y.Value);
                         }
                     }
-                    if (((WzSubProperty)((WzSubProperty)img[i.ToString()])["info"]).WzProperties.Count == 0)
+                    if (infoProperties.WzProperties.Count == 0)
                         continue;
 
-                    if (((WzSubProperty)((WzSubProperty)img[i.ToString()])["tile"]).WzProperties.Count == 0)
+                    if (tileProperties.WzProperties.Count == 0)
                         continue;
 
                     // Ok, we have some tiles and a tileset
-
-                    string tileSetName = ((WzStringProperty)((WzSubProperty)((WzSubProperty)img[i.ToString()])["info"])["tS"]).Value;
+                    string tileSetName = ((WzStringProperty)infoProperties["tS"]).Value;
 
                     // Browse to the tileset
                     string tilePath = wzFile.WzDirectory.Name + "/Tile/" + tileSetName + ".img";
@@ -453,7 +507,7 @@ namespace HaRepacker.FHMapper
                     if (!tileSet.Parsed)
                         tileSet.ParseImage();
 
-                    foreach (WzSubProperty tile in ((WzSubProperty)((WzSubProperty)img[i.ToString()])["tile"]).WzProperties)
+                    foreach (WzSubProperty tile in tileProperties.WzProperties)
                     {
                         //WzSubProperty tile = (WzSubProperty)te.ExtendedProperty;
 
@@ -461,9 +515,15 @@ namespace HaRepacker.FHMapper
                         int y = ((WzIntProperty)tile["y"]).Value + center.Y;
                         string tilePackName = ((WzStringProperty)tile["u"]).Value;
                         string tileID = ((WzIntProperty)tile["no"]).Value.ToString();
-                        Point origin = new Point(((WzVectorProperty)((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID])["origin"]).X.Value, ((WzVectorProperty)((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID])["origin"]).Y.Value);
 
-                        tileBuf.DrawImage(((WzCanvasProperty)((WzSubProperty)tileSet[tilePackName])[tileID]).PngProperty.GetPNG(false), x - origin.X, y - origin.Y);
+                        WzSubProperty tilePack = ((WzSubProperty)tileSet[tilePackName]);
+                        WzCanvasProperty tileCanvas = (WzCanvasProperty)tilePack[tileID];
+                        if (tileCanvas == null)
+                        {
+                            throw new ArgumentException(string.Format("Tile {0}, ID: {1} is not found.", tilePackName, tileID));
+                        }
+                        PointF tileVector = tileCanvas.GetCanvasVectorPosition();
+                        tileBuf.DrawImage(tileCanvas.GetBitmap(), x - tileVector.X, y - tileVector.Y);
                     }
                 }
             }
@@ -476,6 +536,10 @@ namespace HaRepacker.FHMapper
                 fullBuf.DrawImage(backgroundRender, 0, 0);
                 fullBuf.DrawImage(tileRender, 0, 0);
                 fullBuf.DrawImage(mapRender, 0, 0);
+                if (toolTip != null)
+                {
+                    fullBuf.DrawImage(toolTip, 0, 0);
+                }
                 fullBuf.DrawImage(minimapRender, 0, 0);
             }
             //pbx_Foothold_Render.Image = fullBmp;
