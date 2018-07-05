@@ -42,17 +42,17 @@
             // 
             this.panel1.Controls.Add(this.textBox_aesOdin);
             this.panel1.Controls.Add(this.label1);
-            this.panel1.Location = new System.Drawing.Point(12, 12);
+            this.panel1.Location = new System.Drawing.Point(0, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(607, 190);
+            this.panel1.Size = new System.Drawing.Size(633, 211);
             this.panel1.TabIndex = 0;
             // 
             // textBox_aesOdin
             // 
-            this.textBox_aesOdin.Location = new System.Drawing.Point(7, 35);
+            this.textBox_aesOdin.Location = new System.Drawing.Point(0, 35);
             this.textBox_aesOdin.Multiline = true;
             this.textBox_aesOdin.Name = "textBox_aesOdin";
-            this.textBox_aesOdin.Size = new System.Drawing.Size(597, 152);
+            this.textBox_aesOdin.Size = new System.Drawing.Size(630, 152);
             this.textBox_aesOdin.TabIndex = 1;
             // 
             // label1
@@ -69,17 +69,17 @@
             // 
             this.panel2.Controls.Add(this.textBox_aesOthers);
             this.panel2.Controls.Add(this.label2);
-            this.panel2.Location = new System.Drawing.Point(12, 228);
+            this.panel2.Location = new System.Drawing.Point(0, 207);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(607, 190);
+            this.panel2.Size = new System.Drawing.Size(633, 189);
             this.panel2.TabIndex = 1;
             // 
             // textBox_aesOthers
             // 
-            this.textBox_aesOthers.Location = new System.Drawing.Point(7, 35);
+            this.textBox_aesOthers.Location = new System.Drawing.Point(0, 35);
             this.textBox_aesOthers.Multiline = true;
             this.textBox_aesOthers.Name = "textBox_aesOthers";
-            this.textBox_aesOthers.Size = new System.Drawing.Size(597, 152);
+            this.textBox_aesOthers.Size = new System.Drawing.Size(630, 152);
             this.textBox_aesOthers.TabIndex = 2;
             // 
             // label2
@@ -92,17 +92,17 @@
             this.label2.TabIndex = 0;
             this.label2.Text = "AES Keys (MapleShark):";
             // 
-            // WzZLZEncryptionForm
+            // ZLZPacketEncryptionKeyForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 21F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(631, 432);
+            this.ClientSize = new System.Drawing.Size(631, 398);
             this.Controls.Add(this.panel2);
             this.Controls.Add(this.panel1);
             this.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.SizableToolWindow;
-            this.Name = "WzZLZEncryptionForm";
-            this.Text = "WzZLZEncryptionForm";
+            this.Name = "ZLZPacketEncryptionKeyForm";
+            this.Text = "ZLZ AES Encryption keys";
             this.panel1.ResumeLayout(false);
             this.panel1.PerformLayout();
             this.panel2.ResumeLayout(false);
