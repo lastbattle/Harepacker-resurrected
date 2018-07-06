@@ -80,7 +80,7 @@ namespace HaRepacker.FHMapper
 
                 // Draw mini map
                 if (miniMapSubProperty != null)
-                    drawBuf.DrawImage(((WzCanvasProperty)miniMapSubProperty["canvas"]).PngProperty.GetPNG(false), 10, 80);
+                    drawBuf.DrawImage(((WzCanvasProperty)miniMapSubProperty["canvas"]).GetLinkedWzCanvasBitmap(), 10, 80);
                 else
                 {
                     drawBuf.DrawString("Minimap not availible", FONT_DISPLAY_MINIMAP_NOT_AVAILABLE, new SolidBrush(Color.Black), new PointF(10, 45));
@@ -438,8 +438,9 @@ namespace HaRepacker.FHMapper
                             string l2 = ((WzStringProperty)obj["l2"]).Value;
                             int x = ((WzIntProperty)obj["x"]).Value + center.X;
                             int y = ((WzIntProperty)obj["y"]).Value + center.Y;
-                            WzVectorProperty origin;
-                            WzPngProperty png;
+
+                            PointF origin;
+                            WzCanvasProperty png;
 
                             string imgObjPath = string.Format("{0}/Obj/{1}/{2}/{3}/{4}/0", wzFile.WzDirectory.Name, imgName, l0, l1, l2);
 
@@ -447,8 +448,8 @@ namespace HaRepacker.FHMapper
                             tryagain:
                             if (objData is WzCanvasProperty)
                             {
-                                png = ((WzCanvasProperty)objData).PngProperty;
-                                origin = (WzVectorProperty)((WzCanvasProperty)objData)["origin"];
+                                png = ((WzCanvasProperty)objData);
+                                origin = ((WzCanvasProperty)objData).GetCanvasVectorPosition();
                             }
                             else if (objData is WzUOLProperty)
                             {
@@ -489,7 +490,7 @@ namespace HaRepacker.FHMapper
 
                             //WzVectorProperty origin = (WzVectorProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0");
                             //WzPngProperty png = (WzPngProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0/PNG");
-                            tileBuf.DrawImage(png.GetPNG(false), x - origin.X.Value, y - origin.Y.Value);
+                            tileBuf.DrawImage(png.GetLinkedWzCanvasBitmap(), x - origin.X, y - origin.Y);
                         }
                     }
                     if (infoProperties.WzProperties.Count == 0)
