@@ -545,6 +545,15 @@ namespace HaRepacker.FHMapper
             //pbx_Foothold_Render.Image = fullBmp;
             fullBmp.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_fullRender.bmp");
 
+            // Cleanup resources
+            backgroundRender.Dispose();
+            tileRender.Dispose();
+            mapRender.Dispose();
+            toolTip?.Dispose();
+            minimapRender.Dispose();
+
+
+            // Display render map
             DisplayMap showMap = new DisplayMap();
             showMap.map = fullBmp;
             showMap.Footholds = FHs;
@@ -554,7 +563,6 @@ namespace HaRepacker.FHMapper
             showMap.FormClosed += new FormClosedEventHandler(DisplayMapClosed);
             try
             {
-
                 showMap.scale = zoom;
                 showMap.Show();
             }
