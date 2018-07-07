@@ -139,20 +139,41 @@
   <data name="toolsToolStripMenuItem.Text" xml:space="preserve">
     <value>Tools</value>
   </data>
+  <data name="renderMapToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
+    <value>261, 30</value>
+  </data>
+  <data name="renderMapToolStripMenuItem.Text" xml:space="preserve">
+    <value>Render Map (Ctl + R)</value>
+  </data>
+  <data name="settingsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
+    <value>192, 30</value>
+  </data>
+  <data name="settingsToolStripMenuItem.Text" xml:space="preserve">
+    <value>Settings...</value>
+  </data>
+  <data name="zoomTextBox.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Tahoma, 8.25pt</value>
+  </data>
+  <data name="zoomTextBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>100, 27</value>
+  </data>
+  <data name="zoomTextBox.Text" xml:space="preserve">
+    <value>1</value>
+  </data>
   <data name="fHMappingToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>316, 30</value>
+    <value>410, 30</value>
   </data>
   <data name="fHMappingToolStripMenuItem.Text" xml:space="preserve">
     <value>FH Mapping</value>
   </data>
   <data name="animateToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>316, 30</value>
+    <value>410, 30</value>
   </data>
   <data name="animateToolStripMenuItem.Text" xml:space="preserve">
     <value>Animate</value>
   </data>
   <data name="toolStripMenuItem_searchWzStrings.Size" type="System.Drawing.Size, System.Drawing">
-    <value>316, 30</value>
+    <value>410, 30</value>
   </data>
   <data name="toolStripMenuItem_searchWzStrings.Text" xml:space="preserve">
     <value>Search WZ strings</value>
@@ -182,10 +203,10 @@
     <value>Help</value>
   </data>
   <data name="debugToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>78, 31</value>
+    <value>137, 31</value>
   </data>
   <data name="debugToolStripMenuItem.Text" xml:space="preserve">
-    <value>Debug</value>
+    <value>DEBUG MODE</value>
   </data>
   <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="debugToolStripMenuItem.Visible" type="System.Boolean, mscorlib">
@@ -220,7 +241,7 @@
     <value>3</value>
   </data>
   <data name="newToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>178, 30</value>
+    <value>210, 30</value>
   </data>
   <data name="newToolStripMenuItem.Text" xml:space="preserve">
     <value>New...</value>
@@ -541,13 +562,13 @@
     <value>Import</value>
   </data>
   <data name="xMLToolStripMenuItem2.Size" type="System.Drawing.Size, System.Drawing">
-    <value>210, 30</value>
+    <value>131, 30</value>
   </data>
   <data name="xMLToolStripMenuItem2.Text" xml:space="preserve">
     <value>XML</value>
   </data>
   <data name="iMGToolStripMenuItem2.Size" type="System.Drawing.Size, System.Drawing">
-    <value>210, 30</value>
+    <value>131, 30</value>
   </data>
   <data name="iMGToolStripMenuItem2.Text" xml:space="preserve">
     <value>IMG</value>
@@ -591,27 +612,6 @@
   </data>
   <data name="pasteToolStripMenuItem.Text" xml:space="preserve">
     <value>Paste (Ctrl+V)</value>
-  </data>
-  <data name="renderMapToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>192, 30</value>
-  </data>
-  <data name="renderMapToolStripMenuItem.Text" xml:space="preserve">
-    <value>Render Map</value>
-  </data>
-  <data name="settingsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>192, 30</value>
-  </data>
-  <data name="settingsToolStripMenuItem.Text" xml:space="preserve">
-    <value>Settings...</value>
-  </data>
-  <data name="zoomTextBox.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Tahoma, 8.25pt</value>
-  </data>
-  <data name="zoomTextBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>100, 27</value>
-  </data>
-  <data name="zoomTextBox.Text" xml:space="preserve">
-    <value>1</value>
   </data>
   <data name="viewHelpToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>244, 30</value>
@@ -2810,6 +2810,12 @@
   <data name="&gt;&gt;toolStripMenuItem_searchWzStrings.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="&gt;&gt;toolStripMenuItem_WzEncryption.Name" xml:space="preserve">
+    <value>toolStripMenuItem_WzEncryption</value>
+  </data>
+  <data name="&gt;&gt;toolStripMenuItem_WzEncryption.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="&gt;&gt;encryptionBox.Name" xml:space="preserve">
     <value>encryptionBox</value>
   </data>
@@ -2838,12 +2844,6 @@
     <value>debugToolStripMenuItem</value>
   </data>
   <data name="&gt;&gt;debugToolStripMenuItem.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;toolStripMenuItem_WzEncryption.Name" xml:space="preserve">
-    <value>toolStripMenuItem_WzEncryption</value>
-  </data>
-  <data name="&gt;&gt;toolStripMenuItem_WzEncryption.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">

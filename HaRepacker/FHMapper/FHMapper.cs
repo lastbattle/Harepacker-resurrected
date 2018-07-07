@@ -96,7 +96,7 @@ namespace HaRepacker.FHMapper
             string mapIdName = img.Name.Substring(0, img.Name.Length - 4);
 
             node = MainPanel.DataTree.SelectedNode;
-            WzFile wzFile = (WzFile)((WzObject)node.Tag).WzFileParent;
+            WzFile wzFile = ((WzObject)node.Tag).WzFileParent;
 
             // Spawnpoint foothold and portal lists
             List<SpawnPoint.Spawnpoint> MSPs = new List<SpawnPoint.Spawnpoint>();
@@ -216,7 +216,7 @@ namespace HaRepacker.FHMapper
 
 
                                 // Render monster image
-                                string lifeStrId = lifeId < 1000000 ? ("0" + lifeId) : lifeId.ToString();
+                                string lifeStrId = lifeId.ToString().PadLeft(7, '0');
 
                                 string mobWzPath;
                                 string mobLinkWzPath;
@@ -226,21 +226,25 @@ namespace HaRepacker.FHMapper
                                 {
                                     mobWzPath = string.Format("Mob.wz/{0}.img/info/link", lifeStrId);
                                     mobNamePath = string.Format("String.wz/Mob.img/{0}/name", lifeId);
-                                    mobLinkWzPath = string.Format("Mob.wz/{0}.img/stand/0", lifeStrId);
                                 }
                                 else
                                 {
                                     mobWzPath = string.Format("Npc.wz/{0}.img/info/link", lifeStrId);
                                     mobNamePath = string.Format("String.wz/Npc.img/{0}/name", lifeId);
-                                    mobLinkWzPath = string.Format("Npc.wz/{0}.img/stand/0", lifeStrId);
                                 }
 
                                 WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobWzPath, Program.WzMan.WzFileListReadOnly);
                                 if (linkInfo != null)
                                 {
                                     lifeId = int.Parse(linkInfo.GetString());
-                                    lifeStrId = lifeId.ToString().PadLeft(7, '0');  //lifeId < 1000000 ? ("0" + lifeId) : lifeId.ToString();
+                                    lifeStrId = lifeId.ToString().PadLeft(7, '0');
                                 }
+
+                                if (!isNPC)
+                                    mobLinkWzPath = string.Format("Mob.wz/{0}.img/stand/0", lifeStrId);
+                                else
+                                    mobLinkWzPath = string.Format("Npc.wz/{0}.img/stand/0", lifeStrId);
+
                                 WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzMan.WzFileListReadOnly);
                                 if (lifeImg != null)
                                 {
