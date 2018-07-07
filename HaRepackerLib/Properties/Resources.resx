@@ -253,4 +253,7 @@
   <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
     <value>Portal Type: {0}</value>
   </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
+  </data>
 </root>

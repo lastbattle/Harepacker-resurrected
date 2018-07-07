@@ -140,11 +140,20 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Creates a WzDirectory with the given name
         /// </summary>
-        /// <param name="name">The name of the directory</param>
-        public WzDirectory(string name)
+        /// <param name="dirName">The name of the directory</param>
+        public WzDirectory(string dirName)
         {
-            this.name = name;
+            this.name = dirName;
         }
+
+        public WzDirectory(string dirName, WzFile parentWzFileIvVerHashCloneSource)
+        {
+            this.name = dirName;
+            this.hash = parentWzFileIvVerHashCloneSource.versionHash;
+            this.WzIv = parentWzFileIvVerHashCloneSource.WzIv;
+            this.wzFile = parentWzFileIvVerHashCloneSource;
+        }
+
         /// <summary>
         /// Creates a WzDirectory
         /// </summary>
@@ -294,10 +303,9 @@ namespace MapleLib.WzLib
             WzBinaryWriter imgWriter = null;
             MemoryStream memStream = null;
             FileStream fileWrite = new FileStream(fileName, FileMode.Append, FileAccess.Write);
-            WzImage img;
-            for (int i = 0; i < images.Count; i++)
+
+            foreach (WzImage img in images)
             {
-                img = images[i];
                 if (img.changed)
                 {
                     memStream = new MemoryStream();
@@ -336,13 +344,11 @@ namespace MapleLib.WzLib
             }
             fileWrite.Close();
 
-            WzDirectory dir;
-            for (int i = 0; i < subDirs.Count; i++)
+            foreach (WzDirectory dir in subDirs)
             {
-                dir = subDirs[i];
                 int nameLen = WzTool.GetWzObjectValueLength(dir.name, 3);
                 size += nameLen;
-                size += subDirs[i].GenerateDataFile(fileName);
+                size += dir.GenerateDataFile(fileName);
                 size += WzTool.GetCompressedIntLength(dir.size);
                 size += WzTool.GetCompressedIntLength(dir.checksum);
                 size += 4;

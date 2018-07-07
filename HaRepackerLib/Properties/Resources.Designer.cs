@@ -373,6 +373,15 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Couldn&apos;t find a parent WzFile to add this WzDirectoryProperty..
+        /// </summary>
+        internal static string MainTreeAddDirError {
+            get {
+                return ResourceManager.GetString("MainTreeAddDirError", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Reached the end of the tree.
         /// </summary>
         internal static string MainTreeEnd {

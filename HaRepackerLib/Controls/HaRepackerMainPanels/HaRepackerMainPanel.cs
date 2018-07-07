@@ -34,7 +34,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
             this.Load += HaRepackerMainPanel_Load;
         }
-        
+
         /// <summary>
         /// On loaded
         /// </summary>
@@ -61,10 +61,13 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             DataTree.Size = new Size(MainSplitContainer.Panel1.Width, MainSplitContainer.Panel1.Height);
             nameBox.Location = new Point(0, 0);
             nameBox.Size = new Size(MainSplitContainer.Panel2.Width, nameBox.Size.Height);
+
             pictureBoxPanel.Location = new Point(0, nameBox.Size.Height + nameBox.Margin.Bottom);
             pictureBoxPanel.Size = new Size(MainSplitContainer.Panel2.Width, MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top);
             canvasPropBox.Location = new Point(0, 0);
+
             canvasPropBox.Size = canvasPropBox.Image == null ? new Size(0, 0) : canvasPropBox.Image.Size;
+
             textPropBox.Location = pictureBoxPanel.Location;
             textPropBox.Size = pictureBoxPanel.Size;
             mp3Player.Location = new Point(MainSplitContainer.Panel2.Width / 2 - mp3Player.Width / 2, MainSplitContainer.Height / 2 - mp3Player.Height / 2);
@@ -80,12 +83,13 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             {
                 fieldLimitPanel1.Visible = true;
                 fieldLimitPanel1.Size = new Size(
-                    MainSplitContainer.Panel2.Width, 
+                    MainSplitContainer.Panel2.Width,
                     MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top - 20);
 
                 textPropBox.Height = 30;
                 textPropBox.Enabled = false;
-            } else
+            }
+            else
             {
                 fieldLimitPanel1.Visible = false;
                 textPropBox.Height = MainSplitContainer.Panel2.Height;
@@ -112,6 +116,25 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
             ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);
             selectionLabel.Text = string.Format(Properties.Resources.SelectionType, ((WzNode)DataTree.SelectedNode).GetTypeName());
+        }
+
+        /// <summary>
+        /// On painting PictureBox
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void CanvasPropBox_Paint(object sender, PaintEventArgs e)
+        {
+        }
+
+        /// <summary>
+        /// Mouse move inside the picture panel
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void panel_pictureOrigin_OnMouseMove(object sender, MouseEventArgs e)
+        {
+
         }
 
         /// <summary>
@@ -153,6 +176,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 textPropBox.Visible = false;
                 mp3Player.Visible = false;
 
+                // Paint image
                 WzCanvasProperty canvas = (WzCanvasProperty)obj;
                 if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
                 {
@@ -169,7 +193,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = true;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
-            } 
+            }
             else if (obj is WzUOLProperty)
             {
                 nameBox.Visible = true;
@@ -191,7 +215,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     saveImageButton.Visible = true;
 
                     textPropBox.Size = new Size(textPropBox.Size.Width, 50);
-                } else
+                }
+                else
                 {
 
                     canvasPropBox.Visible = false;
@@ -240,14 +265,16 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     {
                         if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
                         {
-                            toolStripStatusLabel_additionalInfo.Text = 
-                                string.Format(Properties.Resources.MainAdditionalInfo_PortalType,  MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
-                        } else
+                            toolStripStatusLabel_additionalInfo.Text =
+                                string.Format(Properties.Resources.MainAdditionalInfo_PortalType, MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
+                        }
+                        else
                         {
                             toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
                         }
                     }
-                } else if (obj is WzIntProperty)
+                }
+                else if (obj is WzIntProperty)
                 {
                     WzIntProperty intProperty = (WzIntProperty)obj;
 
@@ -316,7 +343,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         /// <param name="e"></param>
         private void saveImageButton_Click(object sender, EventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty)) 
+            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty))
             {
                 return;
             }
@@ -405,7 +432,21 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddDir, out name))
                 return;
 
-            ((WzNode)target).AddObject(new WzDirectory(name), UndoRedoMan);
+            bool added = false;
+
+            WzObject obj = (WzObject)target.Tag;
+            while (obj is WzFile || ((obj = obj.Parent) is WzFile))
+            {
+                WzFile topMostWzFileParent = (WzFile)obj;
+
+                ((WzNode)target).AddObject(new WzDirectory(name, topMostWzFileParent), UndoRedoMan);
+                added = true;
+                break;
+            }
+            if (!added)
+            {
+                MessageBox.Show(Properties.Resources.MainTreeAddDirError);
+            }
         }
 
         /// <summary>
@@ -787,7 +828,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
                     childInlinkNode.Delete(); // Delete '_inlink' node
-                } else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
+                }
+                else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
 
@@ -802,7 +844,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
                 }
                 selectedWzCanvas.PngProperty.SetPNG(bmp);
- 
+
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
                 canvasPropBox.Image = bmp;
@@ -970,6 +1012,12 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             {
                 switch (filteredKeys)
                 {
+                    case Keys.R: // Render map        
+                        //HaRepackerMainPanel.
+
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        break;
                     case Keys.C:
                         DoCopy();
                         e.Handled = true;
@@ -1162,11 +1210,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 dsr.searchResultsBox.Items.Add(result);
             dsr.Show(MainDockPanel);
             dsr.DockState = DockState.DockBottom;
-//            searchResults.AutoHide = false;
-//            searchResults.Visible = true;
-//            searchResultsContainer.Visible = true;
-//            dockSite8.Visible = true;
-//            panelDockContainer1.Visible = true;
+            //            searchResults.AutoHide = false;
+            //            searchResults.Visible = true;
+            //            searchResultsContainer.Visible = true;
+            //            dockSite8.Visible = true;
+            //            panelDockContainer1.Visible = true;
             findBox.Focus();
         }
 
@@ -1203,9 +1251,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
         private WzNode GetNodeByName(TreeNodeCollection collection, string name)
         {
-            foreach (WzNode node in collection) 
-                if (node.Text == name) 
-                    return node; 
+            foreach (WzNode node in collection)
+                if (node.Text == name)
+                    return node;
             return null;
         }
 
