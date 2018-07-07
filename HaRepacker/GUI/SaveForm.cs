@@ -28,7 +28,7 @@ namespace HaRepacker.GUI
 
         public string path;
         private HaRepackerMainPanel panel;
-        
+
         public SaveForm(HaRepackerMainPanel panel, WzNode wzNode)
         {
             InitializeComponent();
@@ -60,7 +60,7 @@ namespace HaRepacker.GUI
                 PrepareAllImgs(subdir);
         }
 
-        private  void saveButton_Click(object sender, EventArgs e)
+        private void saveButton_Click(object sender, EventArgs e)
         {
             if (versionBox.Value < 0)
             {
@@ -71,6 +71,7 @@ namespace HaRepacker.GUI
             using (SaveFileDialog dialog = new SaveFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectOutWz,
+                FileName = wzNode.Text,
                 Filter = string.Format("{0}|*.wz",
                 HaRepacker.Properties.Resources.WzFilter)
             })
@@ -103,7 +104,7 @@ namespace HaRepacker.GUI
                     // Reload the new file
                     Program.WzMan.LoadWzFile(dialog.FileName, (WzMapleVersion)encryptionBox.SelectedIndex, panel);
                 }
-                else 
+                else
                 {
                     byte[] WzIv = WzTool.GetIvByMapleVersion(wzMapleVersionSelected);
 
@@ -131,7 +132,8 @@ namespace HaRepacker.GUI
                             Debug.WriteLine(exp); // nvm, dont show to user
                         }
                         wzNode.Delete();
-                    } catch (UnauthorizedAccessException)
+                    }
+                    catch (UnauthorizedAccessException)
                     {
                         error_noAdminPriviledge = true;
                     }
@@ -153,7 +155,8 @@ namespace HaRepacker.GUI
             {
                 encryptionBox.SelectedIndex = (int)wzf.MapleVersion;
                 versionBox.Value = wzf.Version;
-            } else
+            }
+            else
             { // Data.wz uses BMS encryption... no sepcific version indicated
                 encryptionBox.SelectedIndex = 2;
             }
