@@ -420,10 +420,26 @@ namespace HaRepacker.GUI
                 }
                 try
                 {
+                    List<string> renderErrorList = new List<string>();
+
                     FHMapper.FHMapper mapper = new FHMapper.FHMapper(MainPanel);
                     mapper.ParseSettings();
-                    mapper.SaveMap(img, zoomLevel);
-                } catch (ArgumentException argExp)
+                    bool rendered = mapper.TryRenderMapAndSave(img, zoomLevel, ref renderErrorList);
+
+                    if (!rendered)
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        int i = 1;
+                        foreach (string error in renderErrorList)
+                        {
+                            sb.Append("[").Append(i).Append("] ").Append(error);
+                            sb.AppendLine();
+                            i++;
+                        }
+                        MessageBox.Show(sb.ToString(), "Error rendering map");
+                    }
+                }
+                catch (ArgumentException argExp)
                 {
                     MessageBox.Show(argExp.Message, "Error rendering map");
                 }

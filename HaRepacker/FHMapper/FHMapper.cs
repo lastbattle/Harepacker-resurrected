@@ -37,7 +37,7 @@ namespace HaRepacker.FHMapper
         }
 
         #region Renders
-        public Bitmap RenderMinimap(Size bmpSize, WzFile wzFile, WzImage img, string mapIdName, WzSubProperty miniMapSubProperty)
+        private Bitmap RenderMinimap(Size bmpSize, WzFile wzFile, WzImage img, string mapIdName, WzSubProperty miniMapSubProperty)
         {
             Bitmap minimapRender = new Bitmap(400, 200);
             using (Graphics drawBuf = Graphics.FromImage(minimapRender))
@@ -91,7 +91,13 @@ namespace HaRepacker.FHMapper
         }
         #endregion
 
-        public void SaveMap(WzImage img, double zoom)
+        /// <summary>
+        /// Attempts to render the map and save the progress
+        /// </summary>
+        /// <param name="img"></param>
+        /// <param name="zoom"></param>
+        /// <param name="errorList"></param>
+        public bool TryRenderMapAndSave(WzImage img, double zoom, ref List<string> errorList)
         {
             string mapIdName = img.Name.Substring(0, img.Name.Length - 4);
 
@@ -124,11 +130,12 @@ namespace HaRepacker.FHMapper
                     }
                     catch
                     {
-                        throw new ArgumentException("Missing map info WzSubProperty. Path: " + mapIdName + ".img/info/VRRight; VRLeft; VRBottom; VRTop\r\n OR info/miniMap/width ; height; centerX; centerY");
+                        errorList.Add("Missing map info WzSubProperty. Path: " + mapIdName + ".img/info/VRRight; VRLeft; VRBottom; VRTop\r\n OR info/miniMap/width ; height; centerX; centerY");
+                        return false;
                     }
                 }
                 else
-                    return;
+                    return false;
             }
 
             // Render minimap
@@ -262,7 +269,7 @@ namespace HaRepacker.FHMapper
                                 {
                                     //drawBuf.FillRectangle(new SolidBrush(Color.FromArgb(95, MSPColor.R, MSPColor.G, MSPColor.B)), x_text, y_text, 30, 30);
                                     //drawBuf.DrawRectangle(new Pen(Color.Black, 1F), x_text, y_text, 30, 30);
-                                    throw new ArgumentException("Missing monster/npc object. Path: " + mobWzPath + "\r\n" + mobLinkWzPath);
+                                    errorList.Add("Missing monster/npc object. Path: " + mobWzPath + "\r\n" + mobLinkWzPath);
                                 }
 
                                 // Get monster name
@@ -270,7 +277,7 @@ namespace HaRepacker.FHMapper
                                 if (stringName != null)
                                     drawBuf.DrawString(string.Format("SP: {0}, Name: {1}, ID: {2}", sp.Name, stringName.GetString(), lifeId), FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x_text + 7, y_text + 7.3F);
                                 else
-                                    throw new ArgumentException("Missing monster/npc string object. Path: " + mobNamePath);
+                                    errorList.Add("Missing monster/npc string object. Path: " + mobNamePath);
                                 break;
                             }
                         default:
@@ -364,7 +371,7 @@ namespace HaRepacker.FHMapper
                         }
                         else
                         {
-                            throw new ArgumentException("Missing Map BG object. Path: " + bgObjImagePath);
+                            errorList.Add("Missing Map BG object. Path: " + bgObjImagePath);
                         }
                     }
                 }
@@ -385,7 +392,7 @@ namespace HaRepacker.FHMapper
 
                     if (wzToolTip == null)
                     {
-                        throw new ArgumentException("Map tooltip object is missing. Path: " + stringTooltipPath);
+                        errorList.Add("Map tooltip object is missing. Path: " + stringTooltipPath);
                     }
 
                     for (int i = 0; i < 99; i++) // starts from 0
@@ -403,14 +410,14 @@ namespace HaRepacker.FHMapper
                         WzSubProperty wzToolTipForI = (WzSubProperty)wzToolTip[i.ToString()];
                         if (wzToolTipForI == null)
                         {
-                            throw new ArgumentException("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i);
+                            errorList.Add("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i);
                         }
                         string title = wzToolTipForI["Title"].ReadString(null);
                         string desc = wzToolTipForI["Desc"].ReadString(null);
 
                         if (title == null)
                         {
-                            throw new ArgumentException("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i + "/Title");
+                            errorList.Add("Map tooltip is missing. Path: " + stringTooltipPath + "/" + i + "/Title");
                         }
                         toolTipBuf.DrawString(string.Format("{0}\n{1}", title, desc == null ? string.Empty : desc), FONT_GAME_TOOLTIP, new SolidBrush(Color.Black), new PointF(x1 + center.X, y1 + center.Y));
                     }
@@ -482,7 +489,8 @@ namespace HaRepacker.FHMapper
                                         }
                                         else
                                         {
-                                            throw new ArgumentException("UOL error at map renderer");
+                                            errorList.Add("UOL error at map renderer");
+                                            return false;
                                         }
                                     }
                                 }
@@ -490,7 +498,10 @@ namespace HaRepacker.FHMapper
                                 goto tryagain;
                             }
                             else
-                                throw new ArgumentException("Unknown Wz type at map renderer");
+                            {
+                                errorList.Add("Unknown Wz type at map renderer");
+                                return false;
+                            }
 
                             //WzVectorProperty origin = (WzVectorProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0");
                             //WzPngProperty png = (WzPngProperty)wzFile.GetObjectFromPath(wzFile.WzDirectory.Name + "/Obj/" + imgName + "/" + l0 + "/" + l1 + "/" + l2 + "/0/PNG");
@@ -525,7 +536,7 @@ namespace HaRepacker.FHMapper
                         WzCanvasProperty tileCanvas = (WzCanvasProperty)tilePack[tileID];
                         if (tileCanvas == null)
                         {
-                            throw new ArgumentException(string.Format("Tile {0}, ID: {1} is not found.", tilePackName, tileID));
+                            errorList.Add(string.Format("Tile {0}, ID: {1} is not found.", tilePackName, tileID));
                         }
                         PointF tileVector = tileCanvas.GetCanvasVectorPosition();
                         tileBuf.DrawImage(tileCanvas.GetBitmap(), x - tileVector.X, y - tileVector.Y);
@@ -557,6 +568,8 @@ namespace HaRepacker.FHMapper
             toolTip?.Dispose();
             minimapRender.Dispose();
 
+            if (errorList.Count() > 0)
+                return false;
 
             // Display render map
             DisplayMap showMap = new DisplayMap();
@@ -570,10 +583,12 @@ namespace HaRepacker.FHMapper
             {
                 showMap.scale = zoom;
                 showMap.Show();
+                return true;
             }
             catch (FormatException)
             {
                 MessageBox.Show("You must set the render scale to a valid number.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
         }
 
