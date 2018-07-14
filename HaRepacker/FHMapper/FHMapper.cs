@@ -545,6 +545,69 @@ namespace HaRepacker.FHMapper
             }
             tileRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_tileRender.bmp");
 
+            // Render nodeInfo
+            Bitmap nodeInfoRender = null;
+            WzSubProperty nodeInfoProperty = (WzSubProperty)img["nodeInfo"];
+            if (nodeInfoProperty != null)
+            {
+                nodeInfoRender = new Bitmap(bmpSize.Width, bmpSize.Height);
+                using (Graphics nodeInfoBuffer = Graphics.FromImage(nodeInfoRender))
+                {
+                    int start = 0;
+                    int end = 0;
+
+                    foreach (WzImageProperty nodeInfoImg in nodeInfoProperty.WzProperties)
+                    {
+                        switch (nodeInfoImg.Name)
+                        {
+                            case "edgeInfo":
+                                {
+                                    break;
+                                }
+                            case "end":
+                                {
+                                    end = ((WzIntProperty)nodeInfoImg).ReadValue();
+                                    break;
+                                }
+                            case "start":
+                                {
+                                    start = ((WzIntProperty)nodeInfoImg).ReadValue();
+                                    break;
+                                }
+                            default:
+                                {
+                                    int nodeInfoImgFileName = -1;
+                                    if (int.TryParse(nodeInfoImg.Name, out nodeInfoImgFileName))
+                                    {
+                                        int attr = ((WzIntProperty)nodeInfoImg["attr"]).ReadValue();
+                                        int key = ((WzIntProperty)nodeInfoImg["key"]).ReadValue();
+                                        int x = ((WzIntProperty)nodeInfoImg["x"]).ReadValue() + center.X;
+                                        int y = ((WzIntProperty)nodeInfoImg["y"]).ReadValue() + center.Y;
+
+                                        List<int> edges = new List<int>();
+                                        foreach (WzImageProperty edge in nodeInfoImg["edge"].WzProperties)
+                                        {
+                                            edges.Add(edge.ReadValue());
+                                        }
+
+                                        const int width = 200;
+                                        const int height = 20;
+
+                                        nodeInfoBuffer.FillRectangle(new SolidBrush(Color.Wheat), x, y, width, height);
+                                        nodeInfoBuffer.DrawRectangle(new Pen(Color.Black, 1F), x, y, width, height);
+                                        nodeInfoBuffer.DrawString(
+                                            string.Format("Key: {0}, x: {1}, y: {1}", key, x, y),
+                                            FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Black), new PointF(x + (width / 2) - 8, y + (height / 2) - 7.7F));
+                                    }
+                                    break;
+                                }
+                        }
+                    }
+                }
+            }
+
+
+            // Render everything combined
             Bitmap fullBmp = new Bitmap(bmpSize.Width, bmpSize.Height + 10);
             using (Graphics fullBuf = Graphics.FromImage(fullBmp))
             {
@@ -555,6 +618,10 @@ namespace HaRepacker.FHMapper
                 if (toolTip != null)
                 {
                     fullBuf.DrawImage(toolTip, 0, 0);
+                }
+                if (nodeInfoRender != null)
+                {
+                    fullBuf.DrawImage(nodeInfoRender, 0, 0);
                 }
                 fullBuf.DrawImage(minimapRender, 0, 0);
             }
