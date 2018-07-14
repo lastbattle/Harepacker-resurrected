@@ -604,6 +604,7 @@ namespace HaRepacker.FHMapper
                         }
                     }
                 }
+                nodeInfoRender.Save("Renders\\" + mapIdName + "\\" + mapIdName + "_nodeInfoRender.bmp");
             }
 
 
