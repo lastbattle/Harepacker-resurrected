@@ -26,7 +26,19 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         // misc
         private bool isSelectingWzMapFieldLimit = false;
         private bool initializingListViewForFieldLimit = false;
-
+        public void ThemeColor()
+        {
+            if(UserSettings.ThemeColor == 0)
+            {
+                this.BackColor = Color.DimGray;
+                DataTree.BackColor = Color.Black;
+                DataTree.ForeColor = Color.WhiteSmoke;
+                return;
+            }
+            this.BackColor = Control.DefaultBackColor;
+            DataTree.BackColor = Color.White;
+            DataTree.ForeColor = DefaultForeColor;
+        }
         public HaRepackerMainPanel()
         {
             InitializeComponent();
@@ -575,7 +587,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
             SaveFileDialog dialog = new SaveFileDialog() { Title = "Select where to save the image...", Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3" };
             if (dialog.ShowDialog() != DialogResult.OK) return;
-            mp3.SaveToFile(dialog.FileName);
+            mp3.SaveToFile(dialog.FileName);            
         }
 
         private void nameBox_ButtonClicked(object sender, EventArgs e)
@@ -1513,7 +1525,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 if (nextLoopTime_comboBox.SelectedIndex != 0)
                 {                    
                     canvasPropBox.Image = Properties.Resources.img_default;
-                    toolStripStatusLabel_additionalInfo.Text = "Status: Waiting... " + UserSettings.delayNextLoop + " millisecods.";                    
+                    toolStripStatusLabel_additionalInfo.Text = "Status: Waiting " + UserSettings.delayNextLoop + " millisecods.";                    
                     timerImgSequence.Interval = UserSettings.delayNextLoop;
                     i_node = 0;
                     return;
@@ -1537,9 +1549,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                         if (delay.Value <= 0) break;
 
                         if (i_node == DataTree.SelectedNodes.Count)
-                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating..., img " + nameCanvasSelected + ", delay " + delay.Value + " milliseconds. Repeat Animate.";
+                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating; img " + nameCanvasSelected + ", delay " + delay.Value + " milliseconds. Repeating Animate.";
                         else
-                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating..., img " + nameCanvasSelected +", delay " + delay.Value + " milliseconds.";
+                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating; img " + nameCanvasSelected +", delay " + delay.Value + " milliseconds.";
                         
                         timerImgSequence.Interval = delay.Value;
                         propertyStatus = true;                        

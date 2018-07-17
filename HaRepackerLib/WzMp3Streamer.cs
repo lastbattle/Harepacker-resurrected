@@ -13,7 +13,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using NAudio.Wave;
 using System.IO;
-
+using System.Windows.Forms;
 namespace HaRepackerLib
 {
     public class WzMp3Streamer
@@ -21,11 +21,12 @@ namespace HaRepackerLib
         private Stream byteStream;
 
         private Mp3FileReader mpegStream;
-        private WaveFileReader waveFileStream;
+        private WaveFileReader waveFileStream;        
 
         private WaveOut wavePlayer;
         private WzSoundProperty sound;
         private bool repeat;
+        private bool status = true;
 
         public WzMp3Streamer(WzSoundProperty sound, bool repeat)
         {
@@ -34,6 +35,8 @@ namespace HaRepackerLib
             byteStream = new MemoryStream(sound.GetBytes(false));
 
             wavePlayer = new WaveOut(WaveCallbackInfo.FunctionCallback());
+            
+            
             try
             {
                 mpegStream = new Mp3FileReader(byteStream);
@@ -41,8 +44,20 @@ namespace HaRepackerLib
             }
             catch (System.InvalidOperationException)
             {
-                waveFileStream = new WaveFileReader(byteStream);
-                wavePlayer.Init(waveFileStream);
+                try
+                {
+                    waveFileStream = new WaveFileReader(byteStream);
+                    wavePlayer.Init(waveFileStream);
+                }
+                catch (FormatException)
+                {
+                    status = false;
+                }
+                //InvalidDataException
+            }            
+            finally
+            {
+                if(!status) MessageBox.Show("it's not possible to read this format", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
         }
@@ -68,6 +83,7 @@ namespace HaRepackerLib
         }
         public void Dispose()
         {
+            if (!status) return;
             disposed = true;
             wavePlayer.Dispose();
             if (mpegStream != null)
@@ -87,16 +103,19 @@ namespace HaRepackerLib
 
         public void Play()
         {
+            if (!status) return;
             wavePlayer.Play();
         }
 
         public void Pause()
         {
+            if (!status) return;
             wavePlayer.Pause();
         }
         
         public void Stop()
         {
+            if (!status) return;
             wavePlayer.Stop();            
         }
         public bool Repeat

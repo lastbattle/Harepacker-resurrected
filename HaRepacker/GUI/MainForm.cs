@@ -60,7 +60,42 @@ namespace HaRepacker.GUI
                 }
             }
         }
+        public void ThemeColor()
+        {
+            if(UserSettings.ThemeColor == 0)//black
+            {
+                this.BackColor = Color.Black;
+                mainMenu.BackColor = Color.Black;
+                mainMenu.ForeColor = Color.White;
+                
+                /*for (int i = 0; i < mainMenu.Items.Count; i++)
+                {
+                    try
+                    {
+                        foreach (ToolStripMenuItem item in ((ToolStripMenuItem)mainMenu.Items[i]).DropDownItems)
+                        {
+                            item.BackColor = Color.Black;
+                            item.ForeColor = Color.White;
+                            MessageBox.Show(item.Name);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                        //throw;
+                    }
+                }*/
+                button_addTab.ForeColor = Color.Black;
+                button_addTab.BackColor = Color.White;
+                return;
+            }
+            this.BackColor = DefaultBackColor;
+            mainMenu.BackColor = DefaultBackColor;
+            mainMenu.ForeColor = Color.Black;
 
+            button_addTab.ForeColor = Color.White;
+            button_addTab.BackColor = Color.Black;
+        }
         private HaRepackerMainPanel MainPanel = null;        
 
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
@@ -424,7 +459,7 @@ namespace HaRepacker.GUI
 
         private void optionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            new OptionsForm(MainPanel).ShowDialog();
+            new OptionsForm(MainPanel).ShowDialog();            
         }
 
         private void newToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1283,9 +1318,9 @@ namespace HaRepacker.GUI
             using (InputBox inputBox = new InputBox("Write new tab name", "Tab Name: " + tabControl_MainPanels.SelectedTab.Text))
             {
                 string nameTab = inputBox.getValue();
-                if (nameTab == "") return;
+                if (nameTab == "" || nameTab == null) return;
                 tabControl_MainPanels.SelectedTab.Text = nameTab;
-            }
+            }            
         }
 
         private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)

@@ -37,6 +37,7 @@ namespace HaRepackerLib
         public static bool Plane = true;
         public static int PlanePosition = 0;//center
         public static int delayNextLoop = 60;
+        public static int ThemeColor = 1;//white
     }
 
     public static class ApplicationSettings

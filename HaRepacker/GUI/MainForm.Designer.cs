@@ -59,7 +59,6 @@
             this.redoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.expandAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.collapseAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.tabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.addTabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.renameToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -107,6 +106,8 @@
             // 
             // mainMenu
             // 
+            this.mainMenu.BackColor = System.Drawing.SystemColors.Control;
+            this.mainMenu.GripMargin = new System.Windows.Forms.Padding(0);
             this.mainMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.mainMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileToolStripMenuItem,
@@ -119,10 +120,11 @@
             this.mainMenu.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.HorizontalStackWithOverflow;
             resources.ApplyResources(this.mainMenu, "mainMenu");
             this.mainMenu.Name = "mainMenu";
-            this.mainMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.System;
+            this.mainMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.Professional;
             // 
             // fileToolStripMenuItem
             // 
+            this.fileToolStripMenuItem.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.newToolStripMenuItem,
             this.openToolStripMenuItem,
@@ -155,6 +157,7 @@
             // unloadAllToolStripMenuItem
             // 
             resources.ApplyResources(this.unloadAllToolStripMenuItem, "unloadAllToolStripMenuItem");
+            this.unloadAllToolStripMenuItem.MergeAction = System.Windows.Forms.MergeAction.Replace;
             this.unloadAllToolStripMenuItem.Name = "unloadAllToolStripMenuItem";
             this.unloadAllToolStripMenuItem.Click += new System.EventHandler(this.unloadAllToolStripMenuItem_Click);
             // 
@@ -173,7 +176,6 @@
             this.redoToolStripMenuItem,
             this.expandAllToolStripMenuItem,
             this.collapseAllToolStripMenuItem,
-            this.toolStripSeparator2,
             this.tabToolStripMenuItem});
             this.editToolStripMenuItem.Name = "editToolStripMenuItem";
             resources.ApplyResources(this.editToolStripMenuItem, "editToolStripMenuItem");
@@ -322,11 +324,6 @@
             this.collapseAllToolStripMenuItem.Name = "collapseAllToolStripMenuItem";
             resources.ApplyResources(this.collapseAllToolStripMenuItem, "collapseAllToolStripMenuItem");
             this.collapseAllToolStripMenuItem.Click += new System.EventHandler(this.collapseAllToolStripMenuItem_Click);
-            // 
-            // toolStripSeparator2
-            // 
-            this.toolStripSeparator2.Name = "toolStripSeparator2";
-            resources.ApplyResources(this.toolStripSeparator2, "toolStripSeparator2");
             // 
             // tabToolStripMenuItem
             // 
@@ -612,6 +609,7 @@
             resources.ApplyResources(this.button_addTab, "button_addTab");
             this.button_addTab.BackColor = System.Drawing.SystemColors.ActiveCaptionText;
             this.button_addTab.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.button_addTab.FlatAppearance.BorderSize = 0;
             this.button_addTab.ForeColor = System.Drawing.SystemColors.Control;
             this.button_addTab.Name = "button_addTab";
             this.button_addTab.UseVisualStyleBackColor = false;
@@ -706,7 +704,6 @@
         private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
-        private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
         private System.Windows.Forms.ToolStripMenuItem tabToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem addTabToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem renameToolStripMenuItem;

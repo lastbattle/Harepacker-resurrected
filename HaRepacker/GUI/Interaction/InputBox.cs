@@ -16,7 +16,12 @@ namespace HaRepacker.GUI.Interaction
         private string text = "Text";        
         public byte length;
         private string value = null;
-
+        /// <summary>
+        /// InputBox
+        /// </summary>
+        /// <param name="text">text</param>
+        /// <param name="title">title</param>
+        /// <param name="length">charácter amount, default 25</param>
         public InputBox(string text, string title, byte length = 25)
         {
             this.title = title;

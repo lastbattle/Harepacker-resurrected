@@ -193,12 +193,6 @@
     <Compile Include="GUI\Interaction\InputBox.Designer.cs">
       <DependentUpon>InputBox.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Interaction\LoadBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\LoadBox.Designer.cs">
-      <DependentUpon>LoadBox.cs</DependentUpon>
-    </Compile>
     <Compile Include="GUI\Interaction\WzMapleVersionInputBox.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -305,9 +299,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\InputBox.resx">
       <DependentUpon>InputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\LoadBox.resx">
-      <DependentUpon>LoadBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.resx">
       <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>

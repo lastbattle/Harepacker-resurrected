@@ -318,7 +318,7 @@
 </value>
   </data>
   <data name="addToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="addToolStripMenuItem.Text" xml:space="preserve">
     <value>Add</value>
@@ -341,13 +341,13 @@
 </value>
   </data>
   <data name="removeToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="removeToolStripMenuItem.Text" xml:space="preserve">
     <value>Remove (Del)</value>
   </data>
   <data name="undoToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="undoToolStripMenuItem.Text" xml:space="preserve">
     <value>Undo</value>
@@ -357,7 +357,7 @@
     <value>False</value>
   </data>
   <data name="redoToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="redoToolStripMenuItem.Text" xml:space="preserve">
     <value>Redo</value>
@@ -366,19 +366,16 @@
     <value>False</value>
   </data>
   <data name="expandAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="expandAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Expand All</value>
   </data>
   <data name="collapseAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="collapseAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Collapse All</value>
-  </data>
-  <data name="toolStripSeparator2.Size" type="System.Drawing.Size, System.Drawing">
-    <value>142, 6</value>
   </data>
   <data name="addTabToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>141, 22</value>
@@ -399,7 +396,7 @@
     <value>Delete</value>
   </data>
   <data name="tabToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>145, 22</value>
+    <value>160, 30</value>
   </data>
   <data name="tabToolStripMenuItem.Text" xml:space="preserve">
     <value>Tab</value>
@@ -621,6 +618,10 @@
   <data name="mainMenu.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 0</value>
   </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="mainMenu.Padding" type="System.Windows.Forms.Padding, System.Windows.Forms">
+    <value>6, 2, 5, 2</value>
+  </data>
   <data name="mainMenu.Size" type="System.Drawing.Size, System.Drawing">
     <value>997, 25</value>
   </data>
@@ -642,7 +643,6 @@
   <data name="&gt;&gt;mainMenu.ZOrder" xml:space="preserve">
     <value>3</value>
   </data>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="AbortButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
   </data>
@@ -686,7 +686,7 @@
     <value>0, 0, 0, 0</value>
   </data>
   <data name="haRepackerMainPanel1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>995, 565</value>
+    <value>995, 630</value>
   </data>
   <data name="haRepackerMainPanel1.TabIndex" type="System.Int32, mscorlib">
     <value>4</value>
@@ -713,7 +713,7 @@
     <value>2, 2, 2, 2</value>
   </data>
   <data name="tabPage1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>989, 567</value>
+    <value>989, 632</value>
   </data>
   <data name="tabPage1.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -743,7 +743,7 @@
     <value>0, 0</value>
   </data>
   <data name="tabControl_MainPanels.Size" type="System.Drawing.Size, System.Drawing">
-    <value>997, 593</value>
+    <value>997, 658</value>
   </data>
   <data name="tabControl_MainPanels.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -803,7 +803,7 @@
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>997, 618</value>
+    <value>997, 683</value>
   </data>
   <data name="$this.Icon" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
     <value>
@@ -2647,12 +2647,6 @@
   </data>
   <data name="&gt;&gt;collapseAllToolStripMenuItem.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;toolStripSeparator2.Name" xml:space="preserve">
-    <value>toolStripSeparator2</value>
-  </data>
-  <data name="&gt;&gt;toolStripSeparator2.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripSeparator, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;tabToolStripMenuItem.Name" xml:space="preserve">
     <value>tabToolStripMenuItem</value>

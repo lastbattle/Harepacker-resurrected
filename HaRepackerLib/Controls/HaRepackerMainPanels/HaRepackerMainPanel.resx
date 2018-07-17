@@ -134,7 +134,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAALsAAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAL8AAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -298,13 +298,13 @@
     <value>224, 60</value>
   </data>
   <data name="nextLoopTime_label.Size" type="System.Drawing.Size, System.Drawing">
-    <value>59, 13</value>
+    <value>33, 13</value>
   </data>
   <data name="nextLoopTime_label.TabIndex" type="System.Int32, mscorlib">
     <value>17</value>
   </data>
   <data name="nextLoopTime_label.Text" xml:space="preserve">
-    <value>Next Loop:</value>
+    <value>Time:</value>
   </data>
   <data name="&gt;&gt;nextLoopTime_label.Name" xml:space="preserve">
     <value>nextLoopTime_label</value>
@@ -349,7 +349,7 @@
     <value>Popup</value>
   </data>
   <data name="nextLoopTime_comboBox.Items" xml:space="preserve">
-    <value>Delay</value>
+    <value>none</value>
   </data>
   <data name="nextLoopTime_comboBox.Items1" xml:space="preserve">
     <value>1s</value>
