@@ -117,157 +117,168 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="page_edit" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_edit.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="map" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\map.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="information" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\information.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="lightning" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\lightning.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="page_white" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\page_white.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="find" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\find.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="arrow_refresh" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\arrow_refresh1.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="disk" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\disk.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="folder_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\folder_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="delete" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\delete.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="cog" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\cog.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="help" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\help.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="EditFoothold" xml:space="preserve">
-    <value>Foothold</value>
-  </data>
   <data name="EditPortal" xml:space="preserve">
     <value>Portal</value>
   </data>
-  <data name="EditSP" xml:space="preserve">
-    <value>Mob spawnpoint</value>
-  </data>
-  <data name="FHMapperInvalidInput" xml:space="preserve">
-    <value>Input was invalid.
-Please provide valid values before confirming.</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>Warning</value>
-  </data>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>Animated Portable Network Graphics (*.png)</value>
-  </data>
-  <data name="EncTypeGMS" xml:space="preserve">
-    <value>GMS (old)</value>
-  </data>
-  <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA/Taiwan (old)</value>
-  </data>
-  <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리</value>
-  </data>
-  <data name="EnterValidInput" xml:space="preserve">
-    <value>Please enter valid input</value>
+  <data name="MainUpdateTitle" xml:space="preserve">
+    <value>New Version</value>
   </data>
   <data name="Error" xml:space="preserve">
     <value>Error</value>
   </data>
-  <data name="FHSettingsForceValue" xml:space="preserve">
-    <value>force value</value>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="Pause" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Pause.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="FHSettingsInvalidMessage" xml:space="preserve">
-    <value>The {0} was invalid.
-Please make sure all values are valid before confirming.</value>
+  <data name="page_white" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\page_white.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="FHSettingsNextValue" xml:space="preserve">
-    <value>next value</value>
+  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
+    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
   </data>
-  <data name="FHSettingsPortalValue" xml:space="preserve">
-    <value>portal type value</value>
+  <data name="EnterValidInput" xml:space="preserve">
+    <value>Please enter valid input</value>
   </data>
-  <data name="FHSettingsPrevValue" xml:space="preserve">
-    <value>prev value</value>
+  <data name="map" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\map.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="FHSettingsXValue" xml:space="preserve">
     <value>X value</value>
   </data>
-  <data name="FHSettingsYValue" xml:space="preserve">
-    <value>Y value</value>
-  </data>
-  <data name="MainAnimationFail" xml:space="preserve">
-    <value>This item is not an animation.</value>
-  </data>
-  <data name="MainConfirmAbort" xml:space="preserve">
-    <value>Are you sure you want to abort the current operation?</value>
-  </data>
-  <data name="MainConfirmExit" xml:space="preserve">
-    <value>Are you sure you want to exit?</value>
-  </data>
-  <data name="MainConfirmRemoveNode" xml:space="preserve">
-    <value>Are you sure you want to remove this node?</value>
-  </data>
-  <data name="MainCouldntOpenWZ" xml:space="preserve">
-    <value>Could not open WZ file "{0}"</value>
-  </data>
-  <data name="MainHelpOpenFail" xml:space="preserve">
-    <value>Help could not be shown because the help file ({0}) was not found</value>
-  </data>
-  <data name="MainInvalidFileError" xml:space="preserve">
-    <value>The file "{0}" is invalid and will be skipped. Error: {1}</value>
+  <data name="SelectDefaultXmlFolder" xml:space="preserve">
+    <value>Select default XML folder</value>
   </data>
   <data name="MainListWzDetected" xml:space="preserve">
     <value>The file at {0} is a List.wz file and will be skipped.</value>
   </data>
-  <data name="MainReloadAll" xml:space="preserve">
-    <value>Are you sure you want to reload all files?</value>
+  <data name="FHSettingsForceValue" xml:space="preserve">
+    <value>force value</value>
+  </data>
+  <data name="disk" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\disk.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MainCouldntOpenWZ" xml:space="preserve">
+    <value>Could not open WZ file "{0}"</value>
+  </data>
+  <data name="play" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\play.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="MainSelectWzFolder" xml:space="preserve">
     <value>Please select the WZ file to save</value>
   </data>
-  <data name="MainUnloadAll" xml:space="preserve">
-    <value>Are you sure you want to unload all files?</value>
+  <data name="FHSettingsNextValue" xml:space="preserve">
+    <value>next value</value>
+  </data>
+  <data name="MainInvalidFileError" xml:space="preserve">
+    <value>The file "{0}" is invalid and will be skipped. Error: {1}</value>
+  </data>
+  <data name="page_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\page_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="SelectWz" xml:space="preserve">
+    <value>Select the WZ File</value>
+  </data>
+  <data name="SelectXml" xml:space="preserve">
+    <value>Select the XML files</value>
+  </data>
+  <data name="information" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\information.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="EncTypeNone" xml:space="preserve">
+    <value>BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리</value>
   </data>
   <data name="MainUpdateAvailable" xml:space="preserve">
     <value>{0}
 
 Click "Yes" to download the new version.</value>
   </data>
-  <data name="MainUpdateTitle" xml:space="preserve">
-    <value>New Version</value>
+  <data name="ApngFilter" xml:space="preserve">
+    <value>Animated Portable Network Graphics (*.png)</value>
+  </data>
+  <data name="MainConfirmExit" xml:space="preserve">
+    <value>Are you sure you want to exit?</value>
+  </data>
+  <data name="EncTypeGMS" xml:space="preserve">
+    <value>GMS (old)</value>
   </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
+  </data>
+  <data name="SelectWzImg" xml:space="preserve">
+    <value>Select the IMG files</value>
+  </data>
+  <data name="folder_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\folder_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="SelectOutWz" xml:space="preserve">
+    <value>Select where to save the file</value>
+  </data>
+  <data name="FHMapperInvalidInput" xml:space="preserve">
+    <value>Input was invalid.
+Please provide valid values before confirming.</value>
+  </data>
+  <data name="EditSP" xml:space="preserve">
+    <value>Mob spawnpoint</value>
+  </data>
+  <data name="help" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\help.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MainConfirmRemoveNode" xml:space="preserve">
+    <value>Are you sure you want to remove this node?</value>
+  </data>
+  <data name="MainConfirmAbort" xml:space="preserve">
+    <value>Are you sure you want to abort the current operation?</value>
+  </data>
+  <data name="MainReloadAll" xml:space="preserve">
+    <value>Are you sure you want to reload all files?</value>
+  </data>
+  <data name="EncTypeMSEA" xml:space="preserve">
+    <value>MSEA/Taiwan (old)</value>
+  </data>
+  <data name="add" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
+    <value>Select the WZ encryption used:</value>
+  </data>
+  <data name="lightning" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\lightning.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="SelectOutApng" xml:space="preserve">
+    <value>Select where to save the animation</value>
+  </data>
+  <data name="EditFoothold" xml:space="preserve">
+    <value>Foothold</value>
+  </data>
+  <data name="WzFilter" xml:space="preserve">
+    <value>WZ File (*.wz)</value>
+  </data>
+  <data name="page_add" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\page_add.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="page_edit" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\page_edit.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="SelectOutDir" xml:space="preserve">
+    <value>Select the output directory</value>
+  </data>
+  <data name="delete" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\delete.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="folder" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\folder.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="arrow_right" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_right.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MainAnimationFail" xml:space="preserve">
+    <value>This item is not an animation.</value>
+  </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+  </data>
+  <data name="folder_go" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\folder_go.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="ProgramLoadSettingsError" xml:space="preserve">
     <value>Could not load settings file, make sure it is not in use. If it is not, delete it and try again.</value>
@@ -275,61 +286,56 @@ Click "Yes" to download the new version.</value>
   <data name="SaveVersionError" xml:space="preserve">
     <value>Version must be above 0</value>
   </data>
-  <data name="SelectDefaultXmlFolder" xml:space="preserve">
-    <value>Select default XML folder</value>
-  </data>
-  <data name="SelectOutApng" xml:space="preserve">
-    <value>Select where to save the animation</value>
-  </data>
-  <data name="SelectOutDir" xml:space="preserve">
-    <value>Select the output directory</value>
-  </data>
-  <data name="SelectOutWz" xml:space="preserve">
-    <value>Select where to save the file</value>
-  </data>
-  <data name="SelectOutXml" xml:space="preserve">
-    <value>Select where to save the XML</value>
-  </data>
-  <data name="SelectWz" xml:space="preserve">
-    <value>Select the WZ File</value>
-  </data>
-  <data name="SelectWzImg" xml:space="preserve">
-    <value>Select the IMG files</value>
-  </data>
-  <data name="SelectXml" xml:space="preserve">
-    <value>Select the XML files</value>
-  </data>
-  <data name="WzFilter" xml:space="preserve">
-    <value>WZ File (*.wz)</value>
-  </data>
-  <data name="WzImgFilter" xml:space="preserve">
-    <value>WZ Image Files (*.img)</value>
-  </data>
-  <data name="XmlFilter" xml:space="preserve">
-    <value>eXtended Markup Language (*.xml)</value>
-  </data>
-  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
-    <value>Select the WZ encryption used:</value>
+  <data name="FHSettingsPortalValue" xml:space="preserve">
+    <value>portal type value</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ Encryption</value>
   </data>
-  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
+  <data name="arrow_refresh" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\arrow_refresh1.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="MainWzExportError" xml:space="preserve">
-    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
+  <data name="WzImgFilter" xml:space="preserve">
+    <value>WZ Image Files (*.img)</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="FHSettingsPrevValue" xml:space="preserve">
+    <value>prev value</value>
+  </data>
+  <data name="FHSettingsInvalidMessage" xml:space="preserve">
+    <value>The {0} was invalid.
+Please make sure all values are valid before confirming.</value>
+  </data>
+  <data name="MainUnloadAll" xml:space="preserve">
+    <value>Are you sure you want to unload all files?</value>
+  </data>
+  <data name="find" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\find.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="XmlFilter" xml:space="preserve">
+    <value>eXtended Markup Language (*.xml)</value>
+  </data>
+  <data name="MainHelpOpenFail" xml:space="preserve">
+    <value>Help could not be shown because the help file ({0}) was not found</value>
+  </data>
+  <data name="cog" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\cog.png;System.Drawing.Bitmap, System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="FHSettingsYValue" xml:space="preserve">
+    <value>Y value</value>
+  </data>
+  <data name="SelectOutXml" xml:space="preserve">
+    <value>Select where to save the XML</value>
   </data>
   <data name="arrow_left" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\arrow_left.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="arrow_right" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\arrow_right.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  <data name="orangeMushroom_Jump" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\OrangeMushroom\orangeMushroom_Jump.gif;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="Pause" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\Pause.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="play" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\play.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  <data name="orangeMushroom_Stand" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\OrangeMushroom\orangeMushroom_Stand.gif;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
 </root>

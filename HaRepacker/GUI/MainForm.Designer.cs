@@ -43,6 +43,7 @@
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.wzByteFloatPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzCanvasPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzCompressedIntPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzConvexPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzDoublePropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -58,6 +59,10 @@
             this.redoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.expandAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.collapseAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.tabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.addTabToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.renameToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.deleteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportFilesToXMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -94,7 +99,6 @@
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
-            this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
             this.tabPage1.SuspendLayout();
@@ -102,6 +106,8 @@
             // 
             // mainMenu
             // 
+            this.mainMenu.BackColor = System.Drawing.SystemColors.Control;
+            this.mainMenu.GripMargin = new System.Windows.Forms.Padding(0);
             this.mainMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.mainMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileToolStripMenuItem,
@@ -111,11 +117,14 @@
             this.encryptionBox,
             this.helpToolStripMenuItem,
             this.debugToolStripMenuItem});
+            this.mainMenu.LayoutStyle = System.Windows.Forms.ToolStripLayoutStyle.HorizontalStackWithOverflow;
             resources.ApplyResources(this.mainMenu, "mainMenu");
             this.mainMenu.Name = "mainMenu";
+            this.mainMenu.RenderMode = System.Windows.Forms.ToolStripRenderMode.Professional;
             // 
             // fileToolStripMenuItem
             // 
+            this.fileToolStripMenuItem.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.newToolStripMenuItem,
             this.openToolStripMenuItem,
@@ -148,6 +157,7 @@
             // unloadAllToolStripMenuItem
             // 
             resources.ApplyResources(this.unloadAllToolStripMenuItem, "unloadAllToolStripMenuItem");
+            this.unloadAllToolStripMenuItem.MergeAction = System.Windows.Forms.MergeAction.Replace;
             this.unloadAllToolStripMenuItem.Name = "unloadAllToolStripMenuItem";
             this.unloadAllToolStripMenuItem.Click += new System.EventHandler(this.unloadAllToolStripMenuItem_Click);
             // 
@@ -165,7 +175,8 @@
             this.undoToolStripMenuItem,
             this.redoToolStripMenuItem,
             this.expandAllToolStripMenuItem,
-            this.collapseAllToolStripMenuItem});
+            this.collapseAllToolStripMenuItem,
+            this.tabToolStripMenuItem});
             this.editToolStripMenuItem.Name = "editToolStripMenuItem";
             resources.ApplyResources(this.editToolStripMenuItem, "editToolStripMenuItem");
             // 
@@ -219,6 +230,12 @@
             this.wzCanvasPropertyToolStripMenuItem.Name = "wzCanvasPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzCanvasPropertyToolStripMenuItem, "wzCanvasPropertyToolStripMenuItem");
             this.wzCanvasPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzCanvasPropertyToolStripMenuItem_Click);
+            // 
+            // wzLongPropertyToolStripMenuItem
+            // 
+            this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
+            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
             // 
             // wzCompressedIntPropertyToolStripMenuItem
             // 
@@ -307,6 +324,33 @@
             this.collapseAllToolStripMenuItem.Name = "collapseAllToolStripMenuItem";
             resources.ApplyResources(this.collapseAllToolStripMenuItem, "collapseAllToolStripMenuItem");
             this.collapseAllToolStripMenuItem.Click += new System.EventHandler(this.collapseAllToolStripMenuItem_Click);
+            // 
+            // tabToolStripMenuItem
+            // 
+            this.tabToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.addTabToolStripMenuItem,
+            this.renameToolStripMenuItem,
+            this.deleteToolStripMenuItem});
+            this.tabToolStripMenuItem.Name = "tabToolStripMenuItem";
+            resources.ApplyResources(this.tabToolStripMenuItem, "tabToolStripMenuItem");
+            // 
+            // addTabToolStripMenuItem
+            // 
+            this.addTabToolStripMenuItem.Name = "addTabToolStripMenuItem";
+            resources.ApplyResources(this.addTabToolStripMenuItem, "addTabToolStripMenuItem");
+            this.addTabToolStripMenuItem.Click += new System.EventHandler(this.addTabToolStripMenuItem_Click);
+            // 
+            // renameToolStripMenuItem
+            // 
+            this.renameToolStripMenuItem.Name = "renameToolStripMenuItem";
+            resources.ApplyResources(this.renameToolStripMenuItem, "renameToolStripMenuItem");
+            this.renameToolStripMenuItem.Click += new System.EventHandler(this.renameToolStripMenuItem_Click);
+            // 
+            // deleteToolStripMenuItem
+            // 
+            this.deleteToolStripMenuItem.Name = "deleteToolStripMenuItem";
+            resources.ApplyResources(this.deleteToolStripMenuItem, "deleteToolStripMenuItem");
+            this.deleteToolStripMenuItem.Click += new System.EventHandler(this.deleteToolStripMenuItem_Click);
             // 
             // toolsToolStripMenuItem
             // 
@@ -496,6 +540,7 @@
             // 
             // encryptionBox
             // 
+            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.encryptionBox.DropDownWidth = 400;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
@@ -544,6 +589,8 @@
             this.tabControl_MainPanels.SelectedIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.TabIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.TabStopChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
+            this.tabControl_MainPanels.DoubleClick += new System.EventHandler(this.tabControl_MainPanels_DoubleClick);
+            this.tabControl_MainPanels.KeyUp += new System.Windows.Forms.KeyEventHandler(this.tabControl_MainPanels_KeyUp);
             // 
             // tabPage1
             // 
@@ -560,16 +607,13 @@
             // button_addTab
             // 
             resources.ApplyResources(this.button_addTab, "button_addTab");
+            this.button_addTab.BackColor = System.Drawing.SystemColors.ActiveCaptionText;
             this.button_addTab.DialogResult = System.Windows.Forms.DialogResult.Cancel;
+            this.button_addTab.FlatAppearance.BorderSize = 0;
+            this.button_addTab.ForeColor = System.Drawing.SystemColors.Control;
             this.button_addTab.Name = "button_addTab";
-            this.button_addTab.UseVisualStyleBackColor = true;
+            this.button_addTab.UseVisualStyleBackColor = false;
             this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
-            // 
-            // wzLongPropertyToolStripMenuItem
-            // 
-            this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
-            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
             // 
             // MainForm
             // 
@@ -660,6 +704,10 @@
         private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem tabToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem addTabToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem renameToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem deleteToolStripMenuItem;
     }
 }
 

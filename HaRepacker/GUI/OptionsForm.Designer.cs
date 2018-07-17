@@ -32,7 +32,6 @@
             this.sortBox = new System.Windows.Forms.CheckBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.indentBox = new HaRepackerLib.Controls.IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.lineBreakBox = new System.Windows.Forms.ComboBox();
             this.label2 = new System.Windows.Forms.Label();
@@ -42,6 +41,10 @@
             this.browse = new System.Windows.Forms.Button();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
             this.autoUpdate = new System.Windows.Forms.CheckBox();
+            this.devImgSequences = new System.Windows.Forms.CheckBox();
+            this.label3 = new System.Windows.Forms.Label();
+            this.themeColor__comboBox = new System.Windows.Forms.ComboBox();
+            this.indentBox = new HaRepackerLib.Controls.IntegerInput();
             this.SuspendLayout();
             // 
             // sortBox
@@ -52,23 +55,22 @@
             // 
             // okButton
             // 
+            this.okButton.BackColor = System.Drawing.SystemColors.ButtonHighlight;
+            this.okButton.FlatAppearance.BorderSize = 0;
             resources.ApplyResources(this.okButton, "okButton");
             this.okButton.Name = "okButton";
-            this.okButton.UseVisualStyleBackColor = true;
+            this.okButton.UseVisualStyleBackColor = false;
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
             // 
             // cancelButton
             // 
+            this.cancelButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.cancelButton.FlatAppearance.BorderSize = 0;
             resources.ApplyResources(this.cancelButton, "cancelButton");
+            this.cancelButton.ForeColor = System.Drawing.SystemColors.Control;
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.UseVisualStyleBackColor = true;
+            this.cancelButton.UseVisualStyleBackColor = false;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
-            // 
-            // indentBox
-            // 
-            resources.ApplyResources(this.indentBox, "indentBox");
-            this.indentBox.Name = "indentBox";
-            this.indentBox.Value = 0;
             // 
             // label1
             // 
@@ -77,12 +79,13 @@
             // 
             // lineBreakBox
             // 
+            this.lineBreakBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.lineBreakBox, "lineBreakBox");
             this.lineBreakBox.FormattingEnabled = true;
             this.lineBreakBox.Items.AddRange(new object[] {
             resources.GetString("lineBreakBox.Items"),
             resources.GetString("lineBreakBox.Items1"),
             resources.GetString("lineBreakBox.Items2")});
-            resources.ApplyResources(this.lineBreakBox, "lineBreakBox");
             this.lineBreakBox.Name = "lineBreakBox";
             // 
             // label2
@@ -127,10 +130,40 @@
             this.autoUpdate.Name = "autoUpdate";
             this.autoUpdate.UseVisualStyleBackColor = true;
             // 
+            // devImgSequences
+            // 
+            resources.ApplyResources(this.devImgSequences, "devImgSequences");
+            this.devImgSequences.Name = "devImgSequences";
+            this.devImgSequences.UseVisualStyleBackColor = true;
+            // 
+            // label3
+            // 
+            resources.ApplyResources(this.label3, "label3");
+            this.label3.Name = "label3";
+            // 
+            // themeColor__comboBox
+            // 
+            this.themeColor__comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.themeColor__comboBox, "themeColor__comboBox");
+            this.themeColor__comboBox.FormattingEnabled = true;
+            this.themeColor__comboBox.Items.AddRange(new object[] {
+            resources.GetString("themeColor__comboBox.Items"),
+            resources.GetString("themeColor__comboBox.Items1")});
+            this.themeColor__comboBox.Name = "themeColor__comboBox";
+            // 
+            // indentBox
+            // 
+            resources.ApplyResources(this.indentBox, "indentBox");
+            this.indentBox.Name = "indentBox";
+            this.indentBox.Value = 0;
+            // 
             // OptionsForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.themeColor__comboBox);
+            this.Controls.Add(this.label3);
+            this.Controls.Add(this.devImgSequences);
             this.Controls.Add(this.autoUpdate);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.browse);
@@ -166,5 +199,8 @@
         private System.Windows.Forms.Button browse;
         private System.Windows.Forms.CheckBox autoAssociateBox;
         private System.Windows.Forms.CheckBox autoUpdate;
+        private System.Windows.Forms.CheckBox devImgSequences;
+        private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.ComboBox themeColor__comboBox;
     }
 }

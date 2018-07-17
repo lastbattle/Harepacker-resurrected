@@ -33,6 +33,11 @@ namespace HaRepackerLib
         public static bool SuppressWarnings = false;
         public static bool ParseImagesInSearch = false;
         public static bool SearchStringValues = true;
+        public static bool devImgSequences = false;
+        public static bool Plane = true;
+        public static int PlanePosition = 0;//center
+        public static int delayNextLoop = 60;
+        public static int ThemeColor = 1;//white
     }
 
     public static class ApplicationSettings
@@ -42,11 +47,12 @@ namespace HaRepackerLib
         public static bool FirstRun = true;
         public static string LastBrowserPath = "";
         public static WzMapleVersion MapleVersion = WzMapleVersion.BMS;
-        public static string UpdateServer = "";
+        public static string UpdateServer = "";        
     }
 
     public static class Constants
     {
         public const int Version = 423;
+        public const int TimeStartAnimateDefault = 60;
     }
 }

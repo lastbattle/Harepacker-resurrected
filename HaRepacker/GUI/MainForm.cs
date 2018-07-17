@@ -60,8 +60,43 @@ namespace HaRepacker.GUI
                 }
             }
         }
+        public void ThemeColor()
+        {
+            if(UserSettings.ThemeColor == 0)//black
+            {
+                this.BackColor = Color.Black;
+                mainMenu.BackColor = Color.Black;
+                mainMenu.ForeColor = Color.White;
+                
+                /*for (int i = 0; i < mainMenu.Items.Count; i++)
+                {
+                    try
+                    {
+                        foreach (ToolStripMenuItem item in ((ToolStripMenuItem)mainMenu.Items[i]).DropDownItems)
+                        {
+                            item.BackColor = Color.Black;
+                            item.ForeColor = Color.White;
+                            MessageBox.Show(item.Name);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                        //throw;
+                    }
+                }*/
+                button_addTab.ForeColor = Color.Black;
+                button_addTab.BackColor = Color.White;
+                return;
+            }
+            this.BackColor = DefaultBackColor;
+            mainMenu.BackColor = DefaultBackColor;
+            mainMenu.ForeColor = Color.Black;
 
-        private HaRepackerMainPanel MainPanel = null;
+            button_addTab.ForeColor = Color.White;
+            button_addTab.BackColor = Color.Black;
+        }
+        private HaRepackerMainPanel MainPanel = null;        
 
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
         {
@@ -115,6 +150,8 @@ namespace HaRepacker.GUI
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
             WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);
+
+            tabControl_MainPanels.Focus();
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -270,8 +307,8 @@ namespace HaRepacker.GUI
         /// Add a new tab to the TabControl
         /// </summary>
         /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_addTab_Click(object sender, EventArgs e)
+        /// <param name="e"></param>        
+        private void addTab()
         {
             if (tabControl_MainPanels.TabCount > 10)
             {
@@ -289,11 +326,21 @@ namespace HaRepacker.GUI
             {
                 Padding = new Padding(0, 0, 0, 0),
                 Margin = new Padding(0, 0, 0, 0),
-                Size = new Size(1492, 884),
+                Size = new Size(1492, 884),                
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            tabControl_MainPanels.TabPages.Add(tabPage);
+            using(InputBox inputBox = new InputBox("Enter name tab", "Tab"))
+            {                
+                tabPage.Text = inputBox.getValue();
+                if (tabPage.Text == "") return;
+                tabControl_MainPanels.Controls.Add(tabPage);
+            }            
+        }
+
+        private void button_addTab_Click(object sender, EventArgs e)
+        {
+            addTab();
         }
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -301,7 +348,7 @@ namespace HaRepacker.GUI
             ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
         }
 
-        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        private void openWz()
         {
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
@@ -314,7 +361,7 @@ namespace HaRepacker.GUI
 
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
-
+                
                 WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
                 foreach (string filePath in dialog.FileNames)
                 {
@@ -356,8 +403,12 @@ namespace HaRepacker.GUI
                             }
                         }
                     }
-                }
+                }                
             }
+        }
+        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            openWz();            
         }
 
         private void unloadAllToolStripMenuItem_Click(object sender, EventArgs e)
@@ -408,7 +459,7 @@ namespace HaRepacker.GUI
 
         private void optionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            new OptionsForm(MainPanel).ShowDialog();
+            new OptionsForm(MainPanel).ShowDialog();            
         }
 
         private void newToolStripMenuItem_Click(object sender, EventArgs e)
@@ -1248,6 +1299,122 @@ namespace HaRepacker.GUI
         private void pasteToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.DoPaste();
+        }
+
+        private void enabledDeleteToolStripMenuItem()
+        {
+            if (tabControl_MainPanels.TabCount <= 1)
+            {
+                deleteToolStripMenuItem.Enabled = false;
+            }
+            else
+            {
+                deleteToolStripMenuItem.Enabled = true;
+            }
+        }
+
+        private void renameTab()
+        {
+            using (InputBox inputBox = new InputBox("Write new tab name", "Tab Name: " + tabControl_MainPanels.SelectedTab.Text))
+            {
+                string nameTab = inputBox.getValue();
+                if (nameTab == "" || nameTab == null) return;
+                tabControl_MainPanels.SelectedTab.Text = nameTab;
+            }            
+        }
+
+        private void tabControl_MainPanels_DoubleClick(object sender, EventArgs e)
+        {
+            renameTab();
+        }
+
+        private void renameToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            renameTab();
+        }
+
+        private void addTabToolStripMenuItem_Click(object sender, EventArgs e)
+        {            
+            addTab();            
+        }
+
+        private void deleteToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (tabControl_MainPanels.TabCount <= 1) {
+                MessageBox.Show("Can not delete the only existing tab", "Error Delete Tab", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            DialogResult dr = MessageBox.Show("Do you really want to delete \"" +  tabControl_MainPanels.SelectedTab.Text +"\"?", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            switch (dr)
+            {
+                case DialogResult.Yes:
+                    tabControl_MainPanels.TabPages.Remove(tabControl_MainPanels.SelectedTab);                    
+                    break;
+                case DialogResult.No:
+                    break;
+            }
+        }
+
+        private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
+        {
+            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);            
+
+            if (e.Control)
+            {
+                switch (e.KeyCode)
+                {
+                    case Keys.NumPad1:
+                        tabControl_MainPanels.SelectTab(0);
+                        break;
+                    case Keys.NumPad2:
+                        if (countTabs < 2) return;
+                        tabControl_MainPanels.SelectTab(1);
+                        break;
+                    case Keys.NumPad3:
+                        if (countTabs < 3) return;
+                        tabControl_MainPanels.SelectTab(2);
+                        break;
+                    case Keys.NumPad4:
+                        if (countTabs < 4) return;
+                        tabControl_MainPanels.SelectTab(3);
+                        break;
+                    case Keys.NumPad5:
+                        if (countTabs < 5) return;
+                        tabControl_MainPanels.SelectTab(4);
+                        break;
+                    case Keys.NumPad6:
+                        if (countTabs < 6) return;
+                        tabControl_MainPanels.SelectTab(5);
+                        break;
+                    case Keys.NumPad7:;
+                        if (countTabs < 7) return;
+                        tabControl_MainPanels.SelectTab(6);
+                        break;
+                    case Keys.NumPad8:
+                        if (countTabs < 8) return;
+                        tabControl_MainPanels.SelectTab(7);
+                        break;
+                    case Keys.NumPad9:
+                        if (countTabs < 9) return;
+                        tabControl_MainPanels.SelectTab(8);
+                        break;
+                    case Keys.NumPad0:
+                        if (countTabs < 10) return;
+                        tabControl_MainPanels.SelectTab(9);
+                        break;
+                    case Keys.T:
+                        addTab();
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        break;
+                    case Keys.O:
+                        openWz();
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        break;
+                }
+            }
         }
 
         #region Remove WZ Image resource

@@ -26,7 +26,19 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         // misc
         private bool isSelectingWzMapFieldLimit = false;
         private bool initializingListViewForFieldLimit = false;
-
+        public void ThemeColor()
+        {
+            if(UserSettings.ThemeColor == 0)
+            {
+                this.BackColor = Color.DimGray;
+                DataTree.BackColor = Color.Black;
+                DataTree.ForeColor = Color.WhiteSmoke;
+                return;
+            }
+            this.BackColor = Control.DefaultBackColor;
+            DataTree.BackColor = Color.White;
+            DataTree.ForeColor = DefaultForeColor;
+        }
         public HaRepackerMainPanel()
         {
             InitializeComponent();
@@ -36,12 +48,82 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
         }
+        private WzVectorProperty vectorSelected;
+        private void refreshCanvasLocation()
+        {            
+            if (UserSettings.devImgSequences && vectorSelected != null)
+            {
+                //planePosition();
+                showOptionsCanvasAnimate();
+                return;
+            }                        
+            showOptionsCanvasAnimate(false);
+            canvasPropBox.Location = new Point(0, 0);
+        }
+        private void planePosition()
+        {
+            if (vectorSelected == null) return;
+            int X = ((listView_fieldLimitType.Width / 2) * 90) / 100,  // 90%
+                Y = ((listView_fieldLimitType.Height / 2) * 90) / 100, // 90%
+                planeX__Y = pictureBoxPanel.Height / 2 + 10,
+                planeY__X = pictureBoxPanel.Width / 2 - 6,
+                canvasX = listView_fieldLimitType.Width / 2 - vectorSelected.X.Value,
+                canvasY = listView_fieldLimitType.Height / 2 - vectorSelected.Y.Value;
 
+            switch (UserSettings.PlanePosition)
+            {
+                case 1:// Top
+                    canvasPropBox.Location = new Point(canvasX, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+                case 2:// Bottom
+                    canvasPropBox.Location = new Point(canvasX, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+                case 3:// Right
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 4:// Left
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                case 5:
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 6:
+                    canvasPropBox.Location = new Point(canvasX - X, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X - X, 0);
+                    break;
+                case 7:
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY - Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y - Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                case 8:
+                    canvasPropBox.Location = new Point(canvasX + X, canvasY + Y);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y + Y);
+                    cartesianPlaneY.Location = new Point(planeY__X + X, 0);
+                    break;
+                default:                    
+                    canvasPropBox.Location = new Point(canvasX, canvasY);
+                    cartesianPlaneX.Location = new Point(0, planeX__Y);
+                    cartesianPlaneY.Location = new Point(planeY__X, 0);
+                    break;
+            }
+        }
         #region Handlers
         private void PopulateDefaultListView()
         {
             initializingListViewForFieldLimit = true;
-
+               
             // Populate FieldLimitType
             if (listView_fieldLimitType.Items.Count == 0)
             {
@@ -72,8 +154,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
 
             initializingListViewForFieldLimit = false;
-        }
-
+        }        
         private void RedockControls()
         {
             if (Width * Height == 0)
@@ -87,23 +168,27 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             MainDockPanel.Size = MainSplitContainer.Size;
             DataTree.Location = new Point(0, 0);
             DataTree.Size = new Size(MainSplitContainer.Panel1.Width, MainSplitContainer.Panel1.Height);
-            nameBox.Location = new Point(0, 0);
-            nameBox.Size = new Size(MainSplitContainer.Panel2.Width, nameBox.Size.Height);
+            nameBox.Location = new Point(0, 0);            
             pictureBoxPanel.Location = new Point(0, nameBox.Size.Height + nameBox.Margin.Bottom);
-            pictureBoxPanel.Size = new Size(MainSplitContainer.Panel2.Width, MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top);
-            canvasPropBox.Location = new Point(0, 0);
+            pictureBoxPanel.Size = new Size(MainSplitContainer.Panel2.Width, MainSplitContainer.Panel2.Height - pictureBoxPanel.Location.Y - saveImageButton.Height - saveImageButton.Margin.Top);        
             canvasPropBox.Size = canvasPropBox.Image == null ? new Size(0, 0) : canvasPropBox.Image.Size;
             textPropBox.Location = pictureBoxPanel.Location;
             textPropBox.Size = pictureBoxPanel.Size;
             mp3Player.Location = new Point(MainSplitContainer.Panel2.Width / 2 - mp3Player.Width / 2, MainSplitContainer.Height / 2 - mp3Player.Height / 2);
             vectorPanel.Location = new Point(MainSplitContainer.Panel2.Width / 2 - vectorPanel.Width / 2, MainSplitContainer.Height / 2 - vectorPanel.Height / 2);
-
-            applyChangesButton.Location = new Point(MainSplitContainer.Panel2.Width / 2 - applyChangesButton.Width / 2, MainSplitContainer.Panel2.Height - applyChangesButton.Height);
-            changeImageButton.Location = new Point(MainSplitContainer.Panel2.Width / 2 - (changeImageButton.Width + changeImageButton.Margin.Right + saveImageButton.Width) / 2, MainSplitContainer.Panel2.Height - changeImageButton.Height);
+            applyChangesButton.Location = new Point(MainSplitContainer.Panel2.Width / 2 - applyChangesButton.Width / 2, MainSplitContainer.Panel2.Height - applyChangesButton.Height - 5);
+            changeImageButton.Location = new Point(MainSplitContainer.Panel2.Width / 2 - (changeImageButton.Width + changeImageButton.Margin.Right + saveImageButton.Width) / 2, MainSplitContainer.Panel2.Height - changeImageButton.Height - 5);
             saveImageButton.Location = new Point(changeImageButton.Location.X + changeImageButton.Width + changeImageButton.Margin.Right + 100, changeImageButton.Location.Y);
             changeSoundButton.Location = changeImageButton.Location;
-            saveSoundButton.Location = saveImageButton.Location;
-
+            saveSoundButton.Location = saveImageButton.Location;            
+            selectedNodesImgAnimateButton.Location = new Point(pictureBoxPanel.Width - selectedNodesImgAnimateButton.Size.Width - 15, 30);
+            nextLoopTime_label.Location = new Point(nameBox.Width, 6);
+            nextLoopTime_comboBox.SelectedIndex = 0;            
+            nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);            
+            planePosition_comboBox.SelectedIndex = UserSettings.PlanePosition;
+            planePosition_comboBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 3);
+            cartesianPlane_checkBox.Location = new Point(planePosition_comboBox.Location.X + planePosition_comboBox.Width + 3, 6);
+            cartesianPlane_checkBox.Checked = UserSettings.Plane;
             if (isSelectingWzMapFieldLimit)
             {
                 listView_fieldLimitType.Visible = true;
@@ -113,12 +198,17 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
                 textPropBox.Height = 30;
                 textPropBox.Enabled = false;
+                ///MessageBox.Show("true");
             } else
             {
                 listView_fieldLimitType.Visible = false;
+                //MessageBox.Show("false");
                 textPropBox.Height = MainSplitContainer.Panel2.Height;
                 textPropBox.Enabled = true;
             }
+            cartesianPlaneX.Width = pictureBoxPanel.Width;
+            cartesianPlaneY.Height = pictureBoxPanel.Height;            
+            refreshCanvasLocation();
         }
 
         private void MainSplitContainer_SplitterMoved(object sender, SplitterEventArgs e)
@@ -137,11 +227,57 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             {
                 return;
             }
-
-            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);
+            stopCanvasAnimation();//if it exists          
+            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);                        
             selectionLabel.Text = string.Format(Properties.Resources.SelectionType, ((WzNode)DataTree.SelectedNode).GetTypeName());
         }
+        private string nameCanvasSelected = "";
+        private void setImgCanvasPropBox(WzObject obj)
+        {
+            WzCanvasProperty canvas = (WzCanvasProperty)obj;
+            if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
+            {
+                Image img = canvas.GetLinkedWzCanvasProperty()?.GetBitmap();
+                canvasPropBox.Image = img;
+            }
+            else
+                canvasPropBox.Image = obj.GetBitmap();                                    
 
+            bool propertyStatus = false;
+            for (int i = 0; i < canvas.WzProperties.Count; i++)
+            {
+                if (canvas.WzProperties[i] is WzVectorProperty)
+                {                    
+                    vectorSelected = (WzVectorProperty)canvas.WzProperties[i];
+                    nameCanvasSelected = canvas.Name;
+                    refreshCanvasLocation();
+                    propertyStatus = true;
+                    break;
+                }
+            }
+            if (!propertyStatus)
+            {
+                refreshCanvasLocation();
+                toolStripStatusLabel_additionalInfo.Text = "Status: Not found origin property. Plane: off";
+            }
+        }
+        private void showOptionsCanvasAnimate(bool visible = true)
+        {
+            nextLoopTime_label.Visible = visible;
+            nextLoopTime_comboBox.Visible = visible;
+            cartesianPlane_checkBox.Visible = visible;
+            selectedNodesImgAnimateButton.Visible = visible;
+            planePosition_comboBox.Visible = visible;
+            if (visible)
+            {
+                planePosition();
+                cartesianPlaneX.Visible = UserSettings.Plane;
+                cartesianPlaneY.Visible = UserSettings.Plane;
+                return;
+            }
+            cartesianPlaneX.Visible = false;
+            cartesianPlaneY.Visible = false;
+        }
         /// <summary>
         /// Shows the selected data treeview object to UI
         /// </summary>
@@ -151,17 +287,17 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             mp3Player.SoundProperty = null;
             nameBox.Text = obj is WzFile ? ((WzFile)obj).Header.Copyright : obj.Name;
             nameBox.ButtonEnabled = false;
-
+            nameBox.Visible = true;
             toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
             if (isSelectingWzMapFieldLimit) // previously already selected. update again
             {
                 isSelectingWzMapFieldLimit = false;
                 RedockControls();
-            }
+            }            
 
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = false;
@@ -172,24 +308,18 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = false;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
+                showOptionsCanvasAnimate(false);                
             }
             else if (obj is WzCanvasProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = true;
                 pictureBoxPanel.Visible = true;
                 textPropBox.Visible = false;
                 mp3Player.Visible = false;
 
-                WzCanvasProperty canvas = (WzCanvasProperty)obj;
-                if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
-                {
-                    Image img = canvas.GetLinkedWzCanvasProperty()?.GetBitmap();
-                    canvasPropBox.Image = img;
-                }
-                else
-                    canvasPropBox.Image = obj.GetBitmap();
-
+                setImgCanvasPropBox(obj);
+                
                 vectorPanel.Visible = false;
                 applyChangesButton.Visible = false;
                 changeImageButton.Visible = true;
@@ -199,7 +329,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             } 
             else if (obj is WzUOLProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 textPropBox.Visible = true;
                 mp3Player.Visible = false;
                 textPropBox.Text = obj.ToString();
@@ -208,6 +338,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 changeImageButton.Visible = false;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
+                showOptionsCanvasAnimate(false);                
 
                 WzObject linkValue = ((WzUOLProperty)obj).LinkValue;
                 if (linkValue is WzCanvasProperty)
@@ -230,7 +361,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzSoundProperty)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = false;
@@ -242,10 +373,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = false;
                 changeSoundButton.Visible = true;
                 saveSoundButton.Visible = true;
+                showOptionsCanvasAnimate(false);
             }
             else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty/* || obj is WzUOLProperty*/)
             {
-                nameBox.Visible = true;
+                //nameBox.Visible = true;                
                 canvasPropBox.Visible = false;
                 pictureBoxPanel.Visible = false;
                 textPropBox.Visible = true;
@@ -257,6 +389,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 saveImageButton.Visible = false;
                 changeSoundButton.Visible = false;
                 saveSoundButton.Visible = false;
+                showOptionsCanvasAnimate(false);
 
                 if (obj is WzStringProperty)
                 {
@@ -301,19 +434,20 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
             else if (obj is WzVectorProperty)
             {
-                nameBox.Visible = true;
-                canvasPropBox.Visible = false;
-                pictureBoxPanel.Visible = false;
-                textPropBox.Visible = false;
-                mp3Player.Visible = false;
-                vectorPanel.Visible = true;
+                //nameBox.Visible = true;                
+                canvasPropBox.Visible = false;                
+                pictureBoxPanel.Visible = false;                
+                textPropBox.Visible = false;                
+                mp3Player.Visible = false;                
+                vectorPanel.Visible = true;                
                 vectorPanel.X = ((WzVectorProperty)obj).X.Value;
-                vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;
-                applyChangesButton.Visible = true;
-                changeImageButton.Visible = false;
-                saveImageButton.Visible = false;
-                changeSoundButton.Visible = false;
-                saveSoundButton.Visible = false;
+                vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;                
+                applyChangesButton.Visible = true;                
+                changeImageButton.Visible = false;                
+                saveImageButton.Visible = false;                
+                changeSoundButton.Visible = false;                
+                saveSoundButton.Visible = false;                
+                showOptionsCanvasAnimate(false);
             }
             else
             {
@@ -375,7 +509,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (!((WzImage)selectedNode.Tag).Parsed)
                 ((WzImage)selectedNode.Tag).ParseImage();
             selectedNode.Reparse();
-            selectedNode.Expand();
+            selectedNode.Expand();            
         }
         #endregion
 
@@ -453,7 +587,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
             SaveFileDialog dialog = new SaveFileDialog() { Title = "Select where to save the image...", Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3" };
             if (dialog.ShowDialog() != DialogResult.OK) return;
-            mp3.SaveToFile(dialog.FileName);
+            mp3.SaveToFile(dialog.FileName);            
         }
 
         private void nameBox_ButtonClicked(object sender, EventArgs e)
@@ -838,7 +972,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             else if (obj is WzUOLProperty)
             {
                 ((WzUOLProperty)obj).Value = textPropBox.Text;
-            }
+            }            
         }
 
         /// <summary>
@@ -894,7 +1028,6 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
                 canvasPropBox.Image = bmp;
-
                 // Add undo actions
                 //UndoRedoMan.AddUndoBatch(actions);
             }
@@ -1046,10 +1179,12 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             bool ctrl = (Control.ModifierKeys & Keys.Control) == Keys.Control;
             bool alt = (Control.ModifierKeys & Keys.Alt) == Keys.Alt;
             bool shift = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+            bool esc = (Control.ModifierKeys & Keys.Escape) == Keys.Escape;
             Keys filteredKeys = e.KeyData;
             if (ctrl) filteredKeys = filteredKeys ^ Keys.Control;
             if (alt) filteredKeys = filteredKeys ^ Keys.Alt;
             if (shift) filteredKeys = filteredKeys ^ Keys.Shift;
+            if (esc) filteredKeys = filteredKeys ^ Keys.Escape;
 
             switch (filteredKeys)
             {
@@ -1060,10 +1195,23 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     PromptRemoveSelectedTreeNodes();
                     break;
             }
+
+            switch (filteredKeys)
+            {
+                case Keys.F5:
+                    animateCanvas();
+                    break;
+                case Keys.Escape:
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                    stopCanvasAnimation();                    
+                    break;
+            }
+
             if (ctrl)
             {
                 switch (filteredKeys)
-                {
+                {                    
                     case Keys.C:
                         DoCopy();
                         e.Handled = true;
@@ -1080,6 +1228,11 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                             findBox.Focus();
                         }
                         findStrip.Visible = true;
+                        e.Handled = true;
+                        e.SuppressKeyPress = true;
+                        break;
+                    case Keys.T:
+                    case Keys.O:
                         e.Handled = true;
                         e.SuppressKeyPress = true;
                         break;
@@ -1334,6 +1487,131 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             catch
             {
             }
+        }        
+        private int i_node = 0;
+        public void stopCanvasAnimation()
+        {
+            i_node = 0;
+            timerImgSequence.Stop();
+            timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
+            selectedNodesImgAnimateButton.Text = "Animate";
+        }
+        public void animateCanvas()
+        {
+            if (nextLoopTime_comboBox.SelectedIndex == 1)
+                timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
+            if (selectedNodesImgAnimateButton.Text == "Stop")
+            {
+                stopCanvasAnimation();
+                return;
+            }
+            if (DataTree.SelectedNodes.Count > 1 && selectedNodesImgAnimateButton.Text == "Animate")
+            {
+                timerImgSequence.Start();
+                selectedNodesImgAnimateButton.Text = "Stop";
+                return;
+            }
+            MessageBox.Show("Select two or more nodes WzCanvasProperty", "Selection", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+        }
+        private void selectedNodesImgAnimateButton_Click(object sender, EventArgs e)
+        {
+            animateCanvas();
+        }
+
+        private void timerImgSequence_Tick(object sender, EventArgs e)
+        {
+            if (i_node >= DataTree.SelectedNodes.Count)
+            {
+                if (nextLoopTime_comboBox.SelectedIndex != 0)
+                {                    
+                    canvasPropBox.Image = Properties.Resources.img_default;
+                    toolStripStatusLabel_additionalInfo.Text = "Status: Waiting " + UserSettings.delayNextLoop + " millisecods.";                    
+                    timerImgSequence.Interval = UserSettings.delayNextLoop;
+                    i_node = 0;
+                    return;
+                }
+                i_node = 0;
+            }
+            WzObject obj = (WzObject)((WzNode)DataTree.SelectedNodes[i_node]).Tag;
+            if (obj is WzCanvasProperty)
+            {
+                setImgCanvasPropBox(obj);
+                i_node++;
+                WzCanvasProperty canvas = (WzCanvasProperty)obj;
+                
+                bool propertyStatus = false;
+
+                for (int i = 0; i < canvas.WzProperties.Count; i++)
+                {
+                    if (canvas.WzProperties[i] is WzIntProperty && canvas.WzProperties[i].Name == "delay")
+                    {
+                        WzIntProperty delay = (WzIntProperty)canvas.WzProperties[i];
+                        if (delay.Value <= 0) break;
+
+                        if (i_node == DataTree.SelectedNodes.Count)
+                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating; img " + nameCanvasSelected + ", delay " + delay.Value + " milliseconds. Repeating Animate.";
+                        else
+                            toolStripStatusLabel_additionalInfo.Text = "Status: Animating; img " + nameCanvasSelected +", delay " + delay.Value + " milliseconds.";
+                        
+                        timerImgSequence.Interval = delay.Value;
+                        propertyStatus = true;                        
+                    }
+                }                
+                if (!propertyStatus)
+                {
+                    timerImgSequence.Stop();
+                    MessageBox.Show("there is no delay property or it's a 0 value", "Not found delay property", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    selectedNodesImgAnimateButton.Text = "Animate";
+                }
+            }
+            else
+            {
+                timerImgSequence.Stop();
+                MessageBox.Show("One of the selected nodes is not a Canvas type", "Animate", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                selectedNodesImgAnimateButton.Text = "Animate";
+            }
+            
+        }
+
+        private void cartesianPlane_checkBox_CheckedChanged(object sender, EventArgs e)
+        {
+            if (cartesianPlane_checkBox.Checked) UserSettings.Plane = true;                            
+            else UserSettings.Plane = false;
+            cartesianPlaneX.Visible = UserSettings.Plane;
+            cartesianPlaneY.Visible = UserSettings.Plane;            
+        }
+
+        private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            switch (nextLoopTime_comboBox.SelectedIndex)
+            {
+                case 1:
+                    UserSettings.delayNextLoop = 1000;
+                    break;
+                case 2:
+                    UserSettings.delayNextLoop = 2000;
+                    break;
+                case 3:
+                    UserSettings.delayNextLoop = 5000;
+                    break;
+                case 4:
+                    UserSettings.delayNextLoop = 10000;
+                    break;
+                default:
+                    UserSettings.delayNextLoop = Constants.TimeStartAnimateDefault;
+                    break;
+            }
+        }
+
+        private void HaRepackerMainPanel_KeyUp(object sender, KeyEventArgs e)
+        {
+
+        }
+
+        private void planePosition_comboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UserSettings.PlanePosition = planePosition_comboBox.SelectedIndex;            
+            planePosition();
         }
     }
 }

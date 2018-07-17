@@ -24,6 +24,7 @@ namespace HaRepacker.GUI
             sortBox.Checked = UserSettings.Sort;
             apngIncompEnable.Checked = UserSettings.UseApngIncompatibilityFrame;
             autoAssociateBox.Checked = UserSettings.AutoAssociate;
+            devImgSequences.Checked = UserSettings.devImgSequences;
             if (UserSettings.DefaultXmlFolder != "") 
             { 
                 defXmlFolderEnable.Checked = true; 
@@ -32,6 +33,7 @@ namespace HaRepacker.GUI
             indentBox.Value = UserSettings.Indentation;
             lineBreakBox.SelectedIndex = (int)UserSettings.LineBreakType;
             autoUpdate.Checked = UserSettings.AutoUpdate;
+            themeColor__comboBox.SelectedIndex = UserSettings.ThemeColor;
         }
 
         private void cancelButton_Click(object sender, EventArgs e)
@@ -52,7 +54,10 @@ namespace HaRepacker.GUI
             UserSettings.Indentation = indentBox.Value;
             UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
             UserSettings.AutoUpdate = autoUpdate.Checked;
+            UserSettings.devImgSequences = devImgSequences.Checked;
+            UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;            
             Program.SettingsManager.Save();
+            //panel.ThemeColor();
             Close();
         }
 
