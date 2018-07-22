@@ -1184,6 +1184,7 @@ namespace HaRepacker.GUI
 
         private bool yesToAll = false;
         private bool noToAll = false;
+        private ReplaceResult result;
 
         private bool ShowReplaceDialog(string name)
         {
@@ -1191,9 +1192,8 @@ namespace HaRepacker.GUI
             else if (noToAll) return false;
             else
             {
-                ReplaceBox dialog = new ReplaceBox(name);
-                dialog.ShowDialog();
-                switch (dialog.result)
+                ReplaceBox.Show(name, out result);
+                switch (result)
                 {
                     case ReplaceResult.NoToAll:
                         noToAll = true;

@@ -14,49 +14,56 @@ namespace HaRepackerLib
         Yes,
         No,
         YesToAll,
-        NoToAll
+        NoToAll,
+        NoneSelectedYet
     }
 
     public partial class ReplaceBox : Form
     {
         public ReplaceResult result = ReplaceResult.No;
 
-        public ReplaceBox(string name)
+        private ReplaceBox()
         {
             InitializeComponent();
-            label1.Text = string.Format(Properties.Resources.ReplaceConfirm, name);
         }
 
-        private void ReplaceBox_FormClosing(object sender, FormClosingEventArgs e)
+        public static bool Show(string name, out ReplaceResult result)
         {
-            e.Cancel = true;
+            ReplaceBox box = new ReplaceBox();
+
+            box.label1.Text = string.Format(Properties.Resources.ReplaceConfirm, name);
+
+            box.ShowDialog();
+            result = box.result;
+
+            return true;
         }
+
 
         private void btnYes_Click(object sender, EventArgs e)
         {
             result = ReplaceResult.Yes;
-            FormClosing -= ReplaceBox_FormClosing;
             Close();
         }
 
         private void btnNo_Click(object sender, EventArgs e)
         {
             result = ReplaceResult.No;
-            FormClosing -= ReplaceBox_FormClosing;
+
             Close();
         }
 
         private void btnYestoall_Click(object sender, EventArgs e)
         {
             result = ReplaceResult.YesToAll;
-            FormClosing -= ReplaceBox_FormClosing;
+
             Close();
         }
 
         private void btnNotoall_Click(object sender, EventArgs e)
         {
             result = ReplaceResult.NoToAll;
-            FormClosing -= ReplaceBox_FormClosing;
+
             Close();
         }
     }

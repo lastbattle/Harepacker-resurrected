@@ -879,34 +879,6 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
-        private bool yesToAll = false;
-        private bool noToAll = false;
-
-        private bool ShowReplaceDialog(string name)
-        {
-            if (yesToAll) return true;
-            else if (noToAll) return false;
-            else
-            {
-                ReplaceBox dialog = new ReplaceBox(name);
-                dialog.ShowDialog();
-                switch (dialog.result)
-                {
-                    case ReplaceResult.NoToAll:
-                        noToAll = true;
-                        return false;
-                    case ReplaceResult.No:
-                        return false;
-                    case ReplaceResult.YesToAll:
-                        yesToAll = true;
-                        return true;
-                    case ReplaceResult.Yes:
-                        return true;
-                }
-            }
-            throw new Exception("cant get here anyway");
-        }
-
         public WzObject CloneWzObject(WzObject obj)
         {
             if (obj is WzDirectory)
@@ -946,6 +918,8 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             }
         }
 
+        private ReplaceResult replaceBoxResult = ReplaceResult.NoneSelectedYet;
+
         /// <summary>
         /// Paste to the selected WzObject
         /// </summary>
@@ -954,8 +928,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (!Warning.Warn(Properties.Resources.MainConfirmPaste))
                 return;
 
-            yesToAll = false;
-            noToAll = false;
+            // Reset replace option
+            replaceBoxResult = ReplaceResult.NoneSelectedYet;
+
             WzNode parent = (WzNode)DataTree.SelectedNode;
             WzObject parentObj = (WzObject)parent.Tag;
 
@@ -967,6 +942,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             if (parentObj is WzFile)
                 parentObj = ((WzFile)parentObj).WzDirectory;
 
+            bool bNoToAllComplete = false;
             foreach (WzObject obj in clipboard)
             {
                 if (((obj is WzDirectory || obj is WzImage) && parentObj is WzDirectory) || (obj is WzImageProperty && parentObj is IPropertyContainer))
@@ -974,16 +950,45 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     WzObject clone = CloneWzObject(obj);
                     if (clone == null)
                         continue;
-                    WzNode node = new WzNode(clone);
-                    WzNode child = WzNode.GetChildNode(parent, node.Text);
-                    if (child != null)
-                    {
-                        if (ShowReplaceDialog(node.Text))
-                            child.Delete();
-                        else return;
-                    }
-                    parent.AddNode(node);
+                    WzNode node = new WzNode(clone, true);
 
+                    WzNode child = WzNode.GetChildNode(parent, node.Text);
+                    if (child != null) // A Child already exist
+                    {
+                        if (replaceBoxResult == ReplaceResult.NoneSelectedYet)
+                        {
+                            ReplaceBox.Show(node.Text, out replaceBoxResult);
+                        }
+
+                        switch (replaceBoxResult)
+                        {
+                            case ReplaceResult.No: // Skip just this
+                                replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
+                                break;
+
+                            case ReplaceResult.Yes: // Replace just this
+                                child.Delete();
+                                parent.AddNode(node);
+                                replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
+                                break;
+
+                            case ReplaceResult.NoToAll:
+                                bNoToAllComplete = true;
+                                break;
+
+                            case ReplaceResult.YesToAll:
+                                child.Delete();
+                                parent.AddNode(node);
+                                break;
+                        }
+
+                        if (bNoToAllComplete)
+                            break;
+                    }
+                    else // not not in this 
+                    {
+                        parent.AddNode(node);
+                    }
                 }
             }
         }

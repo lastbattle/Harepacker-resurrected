@@ -80,7 +80,6 @@
             this.Controls.Add(this.label1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "ReplaceBox";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.ReplaceBox_FormClosing);
             this.ResumeLayout(false);
 
         }
