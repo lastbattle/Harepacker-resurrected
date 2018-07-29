@@ -136,7 +136,17 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
-        public bool ListWzUsed { get { return listWzUsed; } set { if (value != listWzUsed) { listWzUsed = value; CompressPng(GetPNG(false)); } } }
+        public bool ListWzUsed {
+            get {
+                return listWzUsed;
+            }
+            set {
+                if (value != listWzUsed) {
+                    listWzUsed = value;
+                    CompressPng(GetPNG(false), false);
+                }
+            }
+        }
         /// <summary>
         /// The actual bitmap
         /// </summary>
@@ -145,7 +155,7 @@ namespace MapleLib.WzLib.WzProperties
             set
             {
                 png = value;
-                CompressPng(value);
+                CompressPng(value, false);
             }
         }
 
@@ -215,7 +225,7 @@ namespace MapleLib.WzLib.WzProperties
         public void SetPNG(Bitmap png)
         {
             this.png = png;
-            CompressPng(png);
+            CompressPng(png, true);
         }
 
         public Bitmap GetPNG(bool saveInMemory)
@@ -326,7 +336,7 @@ namespace MapleLib.WzLib.WzProperties
                         int low = decBuf[i] & 0x0F;
                         int high = decBuf[i] & 0xF0;
 
-                        argb[i * 2] = (byte)(low | (byte)(low << 4));
+                        argb[i * 2] = (byte)(low | (low << 4));
                         argb[i * 2 + 1] = (byte)(high | (high >> 4));
                     }
                     Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
@@ -482,10 +492,18 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region DXT format compressor
-        internal void CompressPng(Bitmap bmp)
+        internal void CompressPng(Bitmap bmp, bool fromImport)
         {
             this.width = bmp.Width;
             this.height = bmp.Height;
+
+            if (fromImport) // rescan pixel format
+            {
+                if (bmp.PixelFormat == PixelFormat.Format32bppArgb)
+                {
+                    nPixFormat = 2;
+                }
+            }
 
             // https://github.com/eaxvac/Harepacker-resurrected 
             // http://forum.ragezone.com/f921/release-harepacker-resurrected-1149521/
