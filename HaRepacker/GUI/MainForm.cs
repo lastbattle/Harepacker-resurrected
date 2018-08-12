@@ -286,6 +286,9 @@ namespace HaRepacker.GUI
                     case Keys.O: // Open new WZ file
                         openToolStripMenuItem_Click(null, null);
                         break;
+                    case Keys.N: // New
+                        newToolStripMenuItem_Click(null, null);
+                        break;
 
                         // Switch between tabs
                     case Keys.NumPad1:
@@ -552,6 +555,11 @@ namespace HaRepacker.GUI
             new OptionsForm(MainPanel).ShowDialog();
         }
 
+        /// <summary>
+        /// New WZ
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void newToolStripMenuItem_Click(object sender, EventArgs e)
         {
             new NewForm(MainPanel).ShowDialog();
