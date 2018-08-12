@@ -274,16 +274,20 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
         {
-            if (e.Control && e.KeyCode == Keys.T)
-            {
-                AddTabsInternal();
-            }
-
             byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
-            if (e.Control)
-            {
+
+            if (e.Control) {
+
                 switch (e.KeyCode)
                 {
+                    case Keys.T: // Open new tab
+                        AddTabsInternal();
+                        break;
+                    case Keys.O: // Open new WZ file
+                        openToolStripMenuItem_Click(null, null);
+                        break;
+
+                        // Switch between tabs
                     case Keys.NumPad1:
                         tabControl_MainPanels.SelectTab(0);
                         break;
@@ -325,6 +329,7 @@ namespace HaRepacker.GUI
                         break;
                 }
             }
+
         }
 
         private void UpdateSelectedMainPanelTab()
