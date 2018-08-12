@@ -713,6 +713,9 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             ((WzNode)target).AddObject(new WzVectorProperty(name, new WzIntProperty("X", ((Point)pt).X), new WzIntProperty("Y", ((Point)pt).Y)), UndoRedoMan);
         }
 
+        /// <summary>
+        /// Remove selected nodes
+        /// </summary>
         public void PromptRemoveSelectedTreeNodes()
         {
             if (!Warning.Warn(Properties.Resources.MainConfirmRemove))
@@ -732,6 +735,26 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                     node.Delete();
                 }
             UndoRedoMan.AddUndoBatch(actions);
+        }
+
+        /// <summary>
+        /// Rename an individual node
+        /// </summary>
+        public void PromptRenameSelectedTreeNode()
+        {
+            if (DataTree.SelectedNodes.Count != 1)
+            {
+                return;
+            }
+
+            string newName = "";
+            TreeNode currentSelectedNode = DataTree.SelectedNodes[0] as TreeNode;
+            WzNode wzNode = (WzNode)currentSelectedNode;
+
+            if (RenameInputBox.Show(Properties.Resources.MainConfirmRename, wzNode.Text, out newName))
+            {
+                wzNode.ChangeName(newName);
+            }
         }
         #endregion
 

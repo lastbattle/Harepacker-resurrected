@@ -435,6 +435,7 @@
   <ItemGroup>
     <Content Include="ILMergeOrder.txt" />
     <Content Include="Resources\arrow_left.png" />
+    <None Include="Resources\rename.png" />
     <None Include="Resources\arrow_refresh.png" />
     <Content Include="Resources\arrow_right.png" />
     <Content Include="Resources\Pause.png" />

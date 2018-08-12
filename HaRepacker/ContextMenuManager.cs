@@ -54,6 +54,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddUshort;
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
+        private ToolStripMenuItem Rename;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
         private ToolStripMenuItem ExportAnimationSubMenu;
@@ -72,7 +73,7 @@ namespace HaRepacker
         public ContextMenuManager(HaRepackerMainPanel haRepackerMainPanel, UndoRedoManager undoMan)
         {
             //this.parent = parent;
-            SaveFile = new ToolStripMenuItem("Save...", Properties.Resources.disk, new EventHandler(
+            SaveFile = new ToolStripMenuItem("Save", Properties.Resources.disk, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     foreach (WzNode node in GetNodes(sender))
@@ -81,7 +82,11 @@ namespace HaRepacker
                         new SaveForm(parent, node).ShowDialog();
                     }
                 }));
-
+            Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    haRepackerMainPanel.PromptRenameSelectedTreeNode();
+                }));
             Remove = new ToolStripMenuItem("Remove", Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
@@ -298,14 +303,18 @@ namespace HaRepacker
 
             WzFileMenu = new ContextMenuStrip();
             WzFileMenu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, SaveFile, Unload, Reload });
+
             WzDirectoryMenu = new ContextMenuStrip();
-            WzDirectoryMenu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, /*export, import,*/Remove });
+            WzDirectoryMenu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, Rename, /*export, import,*/Remove });
+
             PropertyContainerMenu = new ContextMenuStrip();
-            PropertyContainerMenu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, /*export, import,*/Remove });
+            PropertyContainerMenu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
+
             PropertyMenu = new ContextMenuStrip();
-            PropertyMenu.Items.AddRange(new ToolStripItem[] { /*export, import,*/Remove });
+            PropertyMenu.Items.AddRange(new ToolStripItem[] { Rename, /*export, import,*/Remove });
+
             SubPropertyMenu = new ContextMenuStrip();
-            SubPropertyMenu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, /*export, import,*/Remove });
+            SubPropertyMenu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
         }
 
         public ContextMenuStrip CreateMenu(WzNode node, WzObject Tag)
@@ -316,23 +325,23 @@ namespace HaRepacker
                 if (Tag is WzSubProperty)
                 {
                     menu = new ContextMenuStrip();
-                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, /*export, import,*/Remove });
+                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
                 }
                 else
                 {
                     menu = new ContextMenuStrip();
-                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, /*export, import,*/Remove });
+                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
                 }
             }
             else if (Tag is WzImageProperty)
             {
                 menu = new ContextMenuStrip();
-                menu.Items.AddRange(new ToolStripItem[] { /*export, import,*/Remove });
+                menu.Items.AddRange(new ToolStripItem[] { Rename, /*export, import,*/Remove });
             }
             else if (Tag is WzDirectory)
             {
                 menu = new ContextMenuStrip();
-                menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, /*export, import,*/Remove });
+                menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, Rename, /*export, import,*/Remove });
             }
             else if (Tag is WzFile)
             {

@@ -337,6 +337,15 @@ namespace HaRepackerLib.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Rename.
+        /// </summary>
+        internal static string MainConfirmRename {
+            get {
+                return ResourceManager.GetString("MainConfirmRename", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Could not convert &quot;{0}&quot; to the required type.
         /// </summary>
         internal static string MainConversionError {

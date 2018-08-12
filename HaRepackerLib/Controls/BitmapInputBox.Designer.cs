@@ -36,10 +36,10 @@
             this.pathBox = new System.Windows.Forms.TextBox();
             this.label2 = new System.Windows.Forms.Label();
             this.browseButton = new System.Windows.Forms.Button();
-            this.panel1 = new System.Windows.Forms.Panel();
             this.pictureBox = new System.Windows.Forms.PictureBox();
-            this.panel1.SuspendLayout();
+            this.panel1 = new System.Windows.Forms.Panel();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox)).BeginInit();
+            this.panel1.SuspendLayout();
             this.SuspendLayout();
             // 
             // label1
@@ -86,36 +86,35 @@
             this.browseButton.UseVisualStyleBackColor = true;
             this.browseButton.Click += new System.EventHandler(this.browseButton_Click);
             // 
-            // panel1
-            // 
-            this.panel1.Controls.Add(this.pictureBox);
-            resources.ApplyResources(this.panel1, "panel1");
-            this.panel1.Name = "panel1";
-            // 
             // pictureBox
             // 
             resources.ApplyResources(this.pictureBox, "pictureBox");
             this.pictureBox.Name = "pictureBox";
             this.pictureBox.TabStop = false;
             // 
+            // panel1
+            // 
+            this.panel1.Controls.Add(this.okButton);
+            this.panel1.Controls.Add(this.cancelButton);
+            resources.ApplyResources(this.panel1, "panel1");
+            this.panel1.Name = "panel1";
+            // 
             // BitmapInputBox
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.panel1);
-            this.Controls.Add(this.cancelButton);
+            this.Controls.Add(this.pictureBox);
             this.Controls.Add(this.browseButton);
             this.Controls.Add(this.pathBox);
             this.Controls.Add(this.label2);
-            this.Controls.Add(this.okButton);
             this.Controls.Add(this.nameBox);
             this.Controls.Add(this.label1);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.SizableToolWindow;
             this.Name = "BitmapInputBox";
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.keyPress);
-            this.panel1.ResumeLayout(false);
-            this.panel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox)).EndInit();
+            this.panel1.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -130,7 +129,7 @@
         private System.Windows.Forms.TextBox pathBox;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Button browseButton;
-        private System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.PictureBox pictureBox;
+        private System.Windows.Forms.Panel panel1;
     }
 }

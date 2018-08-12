@@ -85,14 +85,21 @@ namespace HaRepacker.GUI.Interaction
         {
             OpenFileDialog dialog = new OpenFileDialog()
             {
-                Title = HaRepackerLib.Properties.Resources.SelectImage, Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepackerLib.Properties.Resources.ImagesFilter)
+                Title = HaRepackerLib.Properties.Resources.SelectImage,
+                Filter = string.Format("{0}|*.jpg;*.bmp;*.png;*.gif;*.tiff", HaRepackerLib.Properties.Resources.ImagesFilter)
             };
             if (dialog.ShowDialog() == DialogResult.OK)
             {
+                // Set path
                 pathBox.Text = dialog.FileName;
             }
         }
 
+        /// <summary>
+        /// On path changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void pathBox_TextChanged(object sender, EventArgs e)
         {
             if (pictureBox.Image != null)
@@ -105,7 +112,10 @@ namespace HaRepacker.GUI.Interaction
 
             try
             {
-                pictureBox.Image = Image.FromFile(FilePath);
+                Image img = Image.FromFile(FilePath);
+
+                pictureBox.Size = img.Size;
+                pictureBox.Image = img;
 
 
                 if (IsPathGIF(FilePath))
@@ -120,7 +130,7 @@ namespace HaRepacker.GUI.Interaction
                     }
                 } else
                 {
-                    bmpResult.Add((Bitmap)pictureBox.Image);
+                    bmpResult.Add((Bitmap)img);
                 }
             }
             catch (Exception exp)
@@ -128,7 +138,6 @@ namespace HaRepacker.GUI.Interaction
                 Debug.WriteLine(exp.ToString());
             }
         }
-
         /// <summary>
         /// Converts a BitmapSource object to Bitmap
         /// </summary>

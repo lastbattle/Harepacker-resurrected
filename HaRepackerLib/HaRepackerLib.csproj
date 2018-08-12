@@ -163,6 +163,12 @@
     <Compile Include="Controls\NameValueInputBox.Designer.cs">
       <DependentUpon>NameValueInputBox.cs</DependentUpon>
     </Compile>
+    <Compile Include="Controls\RenameInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\RenameInputBox.Designer.cs">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </Compile>
     <Compile Include="Controls\ReplaceBox.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -322,6 +328,15 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\NameValueInputBox.zh-CHT.resx">
       <DependentUpon>NameValueInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\RenameInputBox.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\RenameInputBox.zh-CHS.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\RenameInputBox.zh-CHT.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\ReplaceBox.zh-CHS.resx">
       <DependentUpon>ReplaceBox.cs</DependentUpon>

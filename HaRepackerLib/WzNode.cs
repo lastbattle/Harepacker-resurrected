@@ -213,11 +213,19 @@ namespace HaRepackerLib
             return Tag.GetType().Name;
         }
 
+        /// <summary>
+        /// Change the name of the WzNode
+        /// </summary>
+        /// <param name="name"></param>
         public void ChangeName(string name)
         {
             Text = name;
             ((WzObject)Tag).Name = name;
-            if (Tag is WzImageProperty) ((WzImageProperty)Tag).ParentImage.Changed = true;
+            if (Tag is WzImageProperty)
+                ((WzImageProperty)Tag).ParentImage.Changed = true;
+
+            isWzObjectAddedManually = true;
+            ForeColor = NewObjectForeColor; ;
         }
 
         public WzNode TopLevelNode

@@ -219,4 +219,7 @@
   <data name="MainTreeAddDirError" xml:space="preserve">
     <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
   </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>改名</value>
+  </data>
 </root>

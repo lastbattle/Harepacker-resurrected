@@ -514,7 +514,6 @@ namespace MapleLib.WzLib.WzProperties
                         byte[] buf = new byte[bmp.Width * bmp.Height * 2];
                         int curPos = 0;
 
-                        long ticksNow = DateTime.Now.Ticks;
                         for (int row = 0; row < height; row++)
                         {
                             for (int col = 0; col < width; col++)

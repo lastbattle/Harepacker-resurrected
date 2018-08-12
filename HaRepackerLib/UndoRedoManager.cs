@@ -42,6 +42,11 @@ namespace HaRepackerLib
         {
             return new UndoRedoAction(item, parent, UndoRedoType.ObjectRemoved);
         }
+
+        public static UndoRedoAction ObjectRenamed(WzNode parent, WzNode item)
+        {
+            return new UndoRedoAction(item, parent, UndoRedoType.ObjectRemoved);
+        }
         #endregion
 
         public void Undo()
@@ -124,6 +129,7 @@ namespace HaRepackerLib
     {
         ObjectAdded,
         ObjectRemoved,
+        ObjectRenamed,
         ObjectChanged
     }
 }

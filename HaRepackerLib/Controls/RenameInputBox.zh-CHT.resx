@@ -117,118 +117,26 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="AnimCompatMessage" xml:space="preserve">
-    <value>你的浏览器或照片查看器不支持此格式的动画, 请下载更新的浏览器比如火狐</value>
+  <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+  <data name="label1.Size" type="System.Drawing.Size, System.Drawing">
+    <value>34, 13</value>
   </data>
-  <data name="AnimError" xml:space="preserve">
-    <value>Error at animation builder, frame {0}</value>
+  <data name="label1.Text" xml:space="preserve">
+    <value>名稱:</value>
   </data>
-  <data name="EnterValidInput" xml:space="preserve">
-    <value>Please enter valid input</value>
+  <data name="okButton.Text" xml:space="preserve">
+    <value>確認</value>
   </data>
-  <data name="Error" xml:space="preserve">
-    <value>错误</value>
+  <data name="cancelButton.Text" xml:space="preserve">
+    <value>取消</value>
   </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  <data name="label2.Size" type="System.Drawing.Size, System.Drawing">
+    <value>22, 13</value>
   </data>
-  <data name="MainCannotInsertToNode" xml:space="preserve">
-    <value>无法插入这个类型到选中的wz节点</value>
+  <data name="label2.Text" xml:space="preserve">
+    <value>值:</value>
   </data>
-  <data name="MainConfirmCopy" xml:space="preserve">
-    <value>要将WZ节点复制到剪切板吗? (警告 - 如果选择的节点较多会花比较多时间)</value>
-  </data>
-  <data name="MainConfirmPaste" xml:space="preserve">
-    <value>要从剪切板粘贴WZ节点吗? (警告 - 如果选择的节点较多会花比较多时间)</value>
-  </data>
-  <data name="MainConfirmRemove" xml:space="preserve">
-    <value>你确定要删除这个节点吗?</value>
-  </data>
-  <data name="MainConversionError" xml:space="preserve">
-    <value>无法将"{0}"转换成需要的类型</value>
-  </data>
-  <data name="MainCopyDirError" xml:space="preserve">
-    <value>无法复制目录因为需要太多内存了</value>
-  </data>
-  <data name="MainImageLoadError" xml:space="preserve">
-    <value>无法读取图片</value>
-  </data>
-  <data name="MainNodeExists" xml:space="preserve">
-    <value>这个名称的节点已存在, 请输入一个不同的节点名称</value>
-  </data>
-  <data name="MainTreeEnd" xml:space="preserve">
-    <value>已经到达结尾了</value>
-  </data>
-  <data name="Mp3Filter" xml:space="preserve">
-    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
-  </data>
-  <data name="ReplaceConfirm" xml:space="preserve">
-    <value>节点"{0}"已存在, 你想取代它吗?</value>
-  </data>
-  <data name="SelectionType" xml:space="preserve">
-    <value>选中类型: {0}</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>警告</value>
-  </data>
-  <data name="MainAddCanvas" xml:space="preserve">
-    <value>新增图片</value>
-  </data>
-  <data name="MainAddConvex" xml:space="preserve">
-    <value>新增convex</value>
-  </data>
-  <data name="MainAddDir" xml:space="preserve">
-    <value>新增目录</value>
-  </data>
-  <data name="MainAddDouble" xml:space="preserve">
-    <value>新增双精度浮点数</value>
-  </data>
-  <data name="MainAddFloat" xml:space="preserve">
-    <value>新增浮点数</value>
-  </data>
-  <data name="MainAddImg" xml:space="preserve">
-    <value>新增IMG</value>
-  </data>
-  <data name="MainAddInt" xml:space="preserve">
-    <value>新增整數</value>
-  </data>
-  <data name="MainAddLink" xml:space="preserve">
-    <value>新增连接路径</value>
-  </data>
-  <data name="MainAddNull" xml:space="preserve">
-    <value>新增空值</value>
-  </data>
-  <data name="MainAddShort" xml:space="preserve">
-    <value>新增无符号短整数</value>
-  </data>
-  <data name="MainAddSound" xml:space="preserve">
-    <value>新增音乐</value>
-  </data>
-  <data name="MainAddString" xml:space="preserve">
-    <value>新增文本</value>
-  </data>
-  <data name="MainAddSub" xml:space="preserve">
-    <value>新增子目录</value>
-  </data>
-  <data name="MainAddVec" xml:space="preserve">
-    <value>新增坐标</value>
-  </data>
-  <data name="ImagesFilter1" xml:space="preserve">
-    <value>图片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
-  </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>选择图片</value>
-  </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>选择MP3文件</value>
-  </data>
-  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
-    <value>门户类型：{0}</value>
-  </data>
-  <data name="MainTreeAddDirError" xml:space="preserve">
-    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
-  </data>
-  <data name="MainConfirmRename" xml:space="preserve">
-    <value>改名</value>
+  <data name="valueBox.Text" xml:space="preserve">
+    <value>0</value>
   </data>
 </root>
