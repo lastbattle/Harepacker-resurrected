@@ -213,6 +213,9 @@
   <data name="MainAddSub" xml:space="preserve">
     <value>Add sub</value>
   </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>Add tab</value>
+  </data>
   <data name="MainAddVec" xml:space="preserve">
     <value>Add vector</value>
   </data>

@@ -295,7 +295,13 @@ namespace HaRepacker.GUI
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
             });
 
-            tabControl_MainPanels.TabPages.Add(tabPage);
+            string tabName = null;
+            if (NameInputBox.Show(Properties.Resources.MainAddTabTitle, 25, out tabName))
+            {
+                tabPage.Text = tabName;
+
+                tabControl_MainPanels.TabPages.Add(tabPage);
+            }
         }
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)

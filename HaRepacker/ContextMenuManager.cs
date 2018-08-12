@@ -128,7 +128,7 @@ namespace HaRepacker
                     }
 
                     string name;
-                    if (NameInputBox.Show("Add Image", out name))
+                    if (NameInputBox.Show("Add Image", 0, out name))
                         nodes[0].AddObject(new WzImage(name) { Changed = true }, undoMan);
                 }));
             AddDirectory = new ToolStripMenuItem("Directory", null, new EventHandler(

@@ -374,6 +374,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Add Tab.
+        /// </summary>
+        internal static string MainAddTabTitle {
+            get {
+                return ResourceManager.GetString("MainAddTabTitle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to This item is not an animation..
         /// </summary>
         internal static string MainAnimationFail {

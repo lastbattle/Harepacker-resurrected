@@ -429,7 +429,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 return;
             }
             string name;
-            if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddDir, out name))
+            if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddDir, 0, out name))
                 return;
 
             bool added = false;
@@ -461,7 +461,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddImg, out name))
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddImg, 0, out name))
                 return;
             ((WzNode)target).AddObject(new WzImage(name) { Changed = true }, UndoRedoMan);
         }
@@ -566,7 +566,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddConvex, out name))
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddConvex, 0, out name))
                 return;
             ((WzNode)target).AddObject(new WzConvexProperty(name), UndoRedoMan);
         }
@@ -601,7 +601,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddNull, out name))
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddNull, 0, out name))
                 return;
             ((WzNode)target).AddObject(new WzNullProperty(name), UndoRedoMan);
         }
@@ -654,7 +654,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 Warning.Error(HaRepackerLib.Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddSub, out name))
+            else if (!NameInputBox.Show(HaRepackerLib.Properties.Resources.MainAddSub, 0, out name))
                 return;
             ((WzNode)target).AddObject(new WzSubProperty(name), UndoRedoMan);
         }

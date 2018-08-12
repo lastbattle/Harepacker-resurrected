@@ -11,9 +11,12 @@ namespace HaRepacker.GUI.Interaction
 {
     public partial class NameInputBox : Form
     {
-        public static bool Show(string title, out string name)
+        public static bool Show(string title, int maxInputLength, out string name)
         {
             NameInputBox form = new NameInputBox(title);
+            if (maxInputLength != 0) // 0 = not set a max length
+                form.nameBox.MaxLength = maxInputLength;
+
             bool result = form.ShowDialog() == DialogResult.OK;
             name = form.nameResult;
             return result;

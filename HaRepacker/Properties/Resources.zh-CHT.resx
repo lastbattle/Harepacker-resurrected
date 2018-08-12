@@ -173,6 +173,9 @@
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ Encryption</value>
   </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>Add tab</value>
+  </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>這個項目不是動畫</value>
   </data>

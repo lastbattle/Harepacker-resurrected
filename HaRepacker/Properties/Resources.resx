@@ -338,4 +338,7 @@ Click "Yes" to download the new version.</value>
   <data name="rename" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\rename.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>Add Tab</value>
+  </data>
 </root>
