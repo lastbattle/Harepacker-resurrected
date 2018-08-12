@@ -117,6 +117,9 @@ namespace HaRepacker.GUI
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
             WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);
+
+            // Focus on the tab control
+            tabControl_MainPanels.Focus();
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -263,6 +266,67 @@ namespace HaRepacker.GUI
         {
             UpdateSelectedMainPanelTab();
         }
+
+        /// <summary>
+        ///  On key up event for hotkeys
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void tabControl_MainPanels_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.T)
+            {
+                AddTabsInternal();
+            }
+
+            byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
+            if (e.Control)
+            {
+                switch (e.KeyCode)
+                {
+                    case Keys.NumPad1:
+                        tabControl_MainPanels.SelectTab(0);
+                        break;
+                    case Keys.NumPad2:
+                        if (countTabs < 2) return;
+                        tabControl_MainPanels.SelectTab(1);
+                        break;
+                    case Keys.NumPad3:
+                        if (countTabs < 3) return;
+                        tabControl_MainPanels.SelectTab(2);
+                        break;
+                    case Keys.NumPad4:
+                        if (countTabs < 4) return;
+                        tabControl_MainPanels.SelectTab(3);
+                        break;
+                    case Keys.NumPad5:
+                        if (countTabs < 5) return;
+                        tabControl_MainPanels.SelectTab(4);
+                        break;
+                    case Keys.NumPad6:
+                        if (countTabs < 6) return;
+                        tabControl_MainPanels.SelectTab(5);
+                        break;
+                    case Keys.NumPad7:
+                        if (countTabs < 7) return;
+                        tabControl_MainPanels.SelectTab(6);
+                        break;
+                    case Keys.NumPad8:
+                        if (countTabs < 8) return;
+                        tabControl_MainPanels.SelectTab(7);
+                        break;
+                    case Keys.NumPad9:
+                        if (countTabs < 9) return;
+                        tabControl_MainPanels.SelectTab(8);
+                        break;
+                    case Keys.NumPad0:
+                        if (countTabs < 10) return;
+                        tabControl_MainPanels.SelectTab(9);
+                        break;
+                }
+            }
+        }
+
         private void UpdateSelectedMainPanelTab()
         {
             MainPanel = tabControl_MainPanels.SelectedTab.Controls.OfType<HaRepackerMainPanel>().First();
@@ -274,6 +338,14 @@ namespace HaRepacker.GUI
         /// <param name="sender"></param>
         /// <param name="e"></param>
         private void button_addTab_Click(object sender, EventArgs e)
+        {
+            AddTabsInternal();
+        }
+
+        /// <summary>
+        /// Prompts a window to add a new tab
+        /// </summary>
+        private void AddTabsInternal()
         {
             if (tabControl_MainPanels.TabCount > 10)
             {
@@ -301,6 +373,9 @@ namespace HaRepacker.GUI
                 tabPage.Text = tabName;
 
                 tabControl_MainPanels.TabPages.Add(tabPage);
+
+                // Focus on that tab control
+                tabControl_MainPanels.Focus();
             }
         }
 

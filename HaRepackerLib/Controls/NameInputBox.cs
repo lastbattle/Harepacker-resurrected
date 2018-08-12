@@ -31,10 +31,26 @@ namespace HaRepacker.GUI.Interaction
             Text = title;
         }
 
+        /// <summary>
+        /// On key press
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
         {
             if (e.KeyChar == (char)13)
                 okButton_Click(null, null);
+        }
+
+        /// <summary>
+        /// On key up
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void nameBox_KeyUp(object sender, KeyEventArgs e)
+        {
+            //if (e.KeyCode == Keys.Escape) Close();
+            //if (e.KeyCode == Keys.Enter) done();
         }
 
         private void okButton_Click(object sender, EventArgs e)

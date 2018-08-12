@@ -45,6 +45,7 @@
             resources.ApplyResources(this.nameBox, "nameBox");
             this.nameBox.Name = "nameBox";
             this.nameBox.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.nameBox_KeyPress);
+            this.nameBox.KeyUp += new System.Windows.Forms.KeyEventHandler(this.nameBox_KeyUp);
             // 
             // okButton
             // 

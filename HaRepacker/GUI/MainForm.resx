@@ -749,16 +749,16 @@
     <value>NoControl</value>
   </data>
   <data name="button_addTab.Location" type="System.Drawing.Point, System.Drawing">
-    <value>1350, 37</value>
+    <value>1317, 37</value>
   </data>
   <data name="button_addTab.Size" type="System.Drawing.Size, System.Drawing">
-    <value>140, 31</value>
+    <value>173, 31</value>
   </data>
   <data name="button_addTab.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
   </data>
   <data name="button_addTab.Text" xml:space="preserve">
-    <value>Add new tab</value>
+    <value>Add new tab (Ctl + T)</value>
   </data>
   <data name="&gt;&gt;button_addTab.Name" xml:space="preserve">
     <value>button_addTab</value>
@@ -2449,6 +2449,9 @@
         AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
         AAAAAAAAAAAAAAAAAAAAAAAA
 </value>
+  </data>
+  <data name="$this.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>
