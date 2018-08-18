@@ -23,7 +23,7 @@ namespace HaRepacker
 {
     public class ContextMenuManager
     {
-        //private HaRepackerMainPanel parent;
+        private HaRepackerMainPanel parentPanel;
 
         public ContextMenuStrip WzFileMenu;
         public ContextMenuStrip WzDirectoryMenu;
@@ -72,7 +72,8 @@ namespace HaRepacker
 
         public ContextMenuManager(HaRepackerMainPanel haRepackerMainPanel, UndoRedoManager undoMan)
         {
-            //this.parent = parent;
+            this.parentPanel = haRepackerMainPanel;
+
             SaveFile = new ToolStripMenuItem("Save", Properties.Resources.disk, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
@@ -319,35 +320,33 @@ namespace HaRepacker
 
         public ContextMenuStrip CreateMenu(WzNode node, WzObject Tag)
         {
-            ContextMenuStrip menu = null;
+            int currentDataTreeSelectedCount = parentPanel.DataTree.SelectedNodes.Count;
+
+            ContextMenuStrip menu = new ContextMenuStrip();
             if (Tag is WzImage || Tag is IPropertyContainer)
             {
                 if (Tag is WzSubProperty)
                 {
-                    menu = new ContextMenuStrip();
                     menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
                 }
                 else
                 {
-                    menu = new ContextMenuStrip();
                     menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
                 }
             }
             else if (Tag is WzImageProperty)
             {
-                menu = new ContextMenuStrip();
                 menu.Items.AddRange(new ToolStripItem[] { Rename, /*export, import,*/Remove });
             }
             else if (Tag is WzDirectory)
             {
-                menu = new ContextMenuStrip();
                 menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, Rename, /*export, import,*/Remove });
             }
             else if (Tag is WzFile)
             {
-                menu = new ContextMenuStrip();
                 menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, SaveFile, Unload, Reload });
             }
+
             currNode = node;
             return menu;
         }

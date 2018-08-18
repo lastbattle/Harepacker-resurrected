@@ -25,11 +25,11 @@ using System.Text;
 using System.Diagnostics;
 using HaRepackerLib.Controls;
 using System.IO.Pipes;
-using HaRepacker.WindowsAPIImports;
 using HaRepackerLib.Controls.HaRepackerMainPanels;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using Win32;
 
 namespace HaRepacker.GUI
 {
@@ -117,7 +117,8 @@ namespace HaRepacker.GUI
                 encryptionBox.SelectedIndex = (int)encVersion;
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
-            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan).CreateMenu);
+            ContextMenuManager manager = new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan);
+            WzNode.ContextMenuBuilder = new WzNode.ContextMenuBuilderDelegate(manager.CreateMenu);
 
             // Focus on the tab control
             tabControl_MainPanels.Focus();
@@ -154,16 +155,17 @@ namespace HaRepacker.GUI
                         //throw;
                     }
                 }*/
-                button_addTab.ForeColor = Color.Black;
-                button_addTab.BackColor = Color.White;
+                button_addTab.ForeColor = Color.White;
+                button_addTab.BackColor = Color.Black;
             }
             else
             {
                 this.BackColor = DefaultBackColor;
                 mainMenu.BackColor = DefaultBackColor;
                 mainMenu.ForeColor = Color.Black;
-                button_addTab.ForeColor = Color.White;
-                button_addTab.BackColor = Color.Black;
+              
+                button_addTab.ForeColor = Color.Black;
+                button_addTab.BackColor = Color.White;
             }
         }
         #endregion

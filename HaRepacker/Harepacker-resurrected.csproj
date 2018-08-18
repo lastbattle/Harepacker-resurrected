@@ -239,8 +239,6 @@
     <Compile Include="GUI\SaveForm.designer.cs">
       <DependentUpon>SaveForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="WindowsAPIImports\kernel32.cs" />
-    <Compile Include="WindowsAPIImports\user32.cs" />
     <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
     </EmbeddedResource>
@@ -413,6 +411,10 @@
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Win32\Win32.csproj">
+      <Project>{638ca88a-8dee-4af4-9b43-7abdfdb074f7}</Project>
+      <Name>Win32</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

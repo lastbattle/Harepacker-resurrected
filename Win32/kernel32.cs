@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaRepacker.WindowsAPIImports
+namespace Win32
 {
     public class kernel32
     {
