@@ -32,6 +32,9 @@ namespace HaRepacker.GUI
             indentBox.Value = UserSettings.Indentation;
             lineBreakBox.SelectedIndex = (int)UserSettings.LineBreakType;
             autoUpdate.Checked = UserSettings.AutoUpdate;
+
+            // Theme color
+            themeColor__comboBox.SelectedIndex = UserSettings.ThemeColor;
         }
 
         private void cancelButton_Click(object sender, EventArgs e)
@@ -41,7 +44,12 @@ namespace HaRepacker.GUI
 
         private void okButton_Click(object sender, EventArgs e)
         {
-            if (indentBox.Value < 0) { Warning.Error(HaRepacker.Properties.Resources.OptionsIndentError); return; }
+            if (indentBox.Value < 0)
+            {
+                Warning.Error(HaRepacker.Properties.Resources.OptionsIndentError);
+                return;
+            }
+
             UserSettings.Sort = sortBox.Checked;
             UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
             UserSettings.AutoAssociate = autoAssociateBox.Checked;
@@ -52,6 +60,8 @@ namespace HaRepacker.GUI
             UserSettings.Indentation = indentBox.Value;
             UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
             UserSettings.AutoUpdate = autoUpdate.Checked;
+            UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
+
             Program.SettingsManager.Save();
             Close();
         }

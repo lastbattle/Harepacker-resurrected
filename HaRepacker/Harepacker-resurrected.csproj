@@ -438,6 +438,8 @@
     <None Include="Resources\rename.png" />
     <None Include="Resources\arrow_refresh.png" />
     <Content Include="Resources\arrow_right.png" />
+    <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
+    <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />
     <Content Include="Resources\play.png" />
   </ItemGroup>

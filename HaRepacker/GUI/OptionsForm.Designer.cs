@@ -42,6 +42,8 @@
             this.browse = new System.Windows.Forms.Button();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
             this.autoUpdate = new System.Windows.Forms.CheckBox();
+            this.themeColor__comboBox = new System.Windows.Forms.ComboBox();
+            this.label3 = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // sortBox
@@ -127,10 +129,27 @@
             this.autoUpdate.Name = "autoUpdate";
             this.autoUpdate.UseVisualStyleBackColor = true;
             // 
+            // themeColor__comboBox
+            // 
+            this.themeColor__comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.themeColor__comboBox, "themeColor__comboBox");
+            this.themeColor__comboBox.FormattingEnabled = true;
+            this.themeColor__comboBox.Items.AddRange(new object[] {
+            resources.GetString("themeColor__comboBox.Items"),
+            resources.GetString("themeColor__comboBox.Items1")});
+            this.themeColor__comboBox.Name = "themeColor__comboBox";
+            // 
+            // label3
+            // 
+            resources.ApplyResources(this.label3, "label3");
+            this.label3.Name = "label3";
+            // 
             // OptionsForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.themeColor__comboBox);
+            this.Controls.Add(this.label3);
             this.Controls.Add(this.autoUpdate);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.browse);
@@ -166,5 +185,7 @@
         private System.Windows.Forms.Button browse;
         private System.Windows.Forms.CheckBox autoAssociateBox;
         private System.Windows.Forms.CheckBox autoUpdate;
+        private System.Windows.Forms.ComboBox themeColor__comboBox;
+        private System.Windows.Forms.Label label3;
     }
 }

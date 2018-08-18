@@ -28,6 +28,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         public HaRepackerMainPanel()
         {
             InitializeComponent();
+            SetThemeColor();
 
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
@@ -44,6 +45,25 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
         }
+
+        #region Theme Colors
+        public void SetThemeColor()
+        {
+            if (UserSettings.ThemeColor == 0) // black
+            {
+                this.BackColor = Color.DimGray;
+                DataTree.BackColor = Color.Black;
+                DataTree.ForeColor = Color.WhiteSmoke;
+            }
+            else
+            {
+                this.BackColor = Control.DefaultBackColor;
+                DataTree.BackColor = Color.White;
+                DataTree.ForeColor = DefaultForeColor;
+            }
+        }
+        #endregion
+
 
         #region Handlers
         private void RedockControls()

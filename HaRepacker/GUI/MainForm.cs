@@ -68,6 +68,7 @@ namespace HaRepacker.GUI
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
         {
             InitializeComponent();
+            SetThemeColor();
 
             // Set default selected main panel
             UpdateSelectedMainPanelTab();
@@ -126,6 +127,46 @@ namespace HaRepacker.GUI
         {
             Program.WzMan.InsertWzFileUnsafe(f, MainPanel);
         }
+
+        #region Theme colors
+        public void SetThemeColor()
+        {
+            if (UserSettings.ThemeColor == 0)//black
+            {
+                this.BackColor = Color.Black;
+                mainMenu.BackColor = Color.Black;
+                mainMenu.ForeColor = Color.White;
+
+                /*for (int i = 0; i < mainMenu.Items.Count; i++)
+                {
+                    try
+                    {
+                        foreach (ToolStripMenuItem item in ((ToolStripMenuItem)mainMenu.Items[i]).DropDownItems)
+                        {
+                            item.BackColor = Color.Black;
+                            item.ForeColor = Color.White;
+                            MessageBox.Show(item.Name);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                        //throw;
+                    }
+                }*/
+                button_addTab.ForeColor = Color.Black;
+                button_addTab.BackColor = Color.White;
+            }
+            else
+            {
+                this.BackColor = DefaultBackColor;
+                mainMenu.BackColor = DefaultBackColor;
+                mainMenu.ForeColor = Color.Black;
+                button_addTab.ForeColor = Color.White;
+                button_addTab.BackColor = Color.Black;
+            }
+        }
+        #endregion
 
         private delegate void LoadWzFileDelegate(string path, HaRepackerMainPanel panel, bool detectMapleVersion);
         private void LoadWzFileCallback(string path, HaRepackerMainPanel panel, bool detectMapleVersion)
@@ -276,8 +317,8 @@ namespace HaRepacker.GUI
         {
             byte countTabs = Convert.ToByte(tabControl_MainPanels.TabCount);
 
-            if (e.Control) {
-
+            if (e.Control)
+            {
                 switch (e.KeyCode)
                 {
                     case Keys.T: // Open new tab
@@ -332,7 +373,6 @@ namespace HaRepacker.GUI
                         break;
                 }
             }
-
         }
 
         private void UpdateSelectedMainPanelTab()

@@ -33,6 +33,9 @@ namespace HaRepackerLib
         public static bool SuppressWarnings = false;
         public static bool ParseImagesInSearch = false;
         public static bool SearchStringValues = true;
+
+        // Themes
+        public static int ThemeColor = 1;//white = 1, black = 0
     }
 
     public static class ApplicationSettings
@@ -44,7 +47,6 @@ namespace HaRepackerLib
         public static WzMapleVersion MapleVersion = WzMapleVersion.BMS;
         public static string UpdateServer = "";
     }
-
     public static class Constants
     {
         public const int Version = 423;
