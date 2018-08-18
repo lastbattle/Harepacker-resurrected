@@ -31,6 +31,7 @@ If there are any bugs, describe it clearly.
  - Diamondo25
  - LastBattle
  - Novak
+ - Erick https://github.com/ertrii   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
  - and many others that contributed too! 
 
 License
