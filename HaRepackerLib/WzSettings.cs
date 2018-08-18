@@ -34,6 +34,14 @@ namespace HaRepackerLib
         public static bool ParseImagesInSearch = false;
         public static bool SearchStringValues = true;
 
+        // Animate
+        public static bool devImgSequences = false;
+        public static bool cartesianPlane = true;
+        public static int delayNextLoop = 60;
+
+        public static bool Plane = true;
+        public static int PlanePosition = 0;//center
+
         // Themes
         public static int ThemeColor = 1;//white = 1, black = 0
     }
@@ -41,7 +49,7 @@ namespace HaRepackerLib
     public static class ApplicationSettings
     {
         public static bool Maximized = false;
-        public static Size WindowSize = new Size(800, 600);
+        public static Size WindowSize = new Size(1024, 800);//new Size(800, 600);
         public static bool FirstRun = true;
         public static string LastBrowserPath = "";
         public static WzMapleVersion MapleVersion = WzMapleVersion.BMS;
@@ -50,5 +58,6 @@ namespace HaRepackerLib
     public static class Constants
     {
         public const int Version = 423;
+        public const int TimeStartAnimateDefault = 60;
     }
 }

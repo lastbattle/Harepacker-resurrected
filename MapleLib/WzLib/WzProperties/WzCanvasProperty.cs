@@ -34,6 +34,7 @@ namespace MapleLib.WzLib.WzProperties
         public const string InlinkPropertyName = "_inlink";
         public const string OutlinkPropertyName = "_outlink";
         public const string OriginPropertyName = "origin";
+        public const string AnimationDelayPropertyName = "delay";
         #endregion
 
         #region Fields

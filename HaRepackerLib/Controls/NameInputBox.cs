@@ -39,7 +39,9 @@ namespace HaRepacker.GUI.Interaction
         private void nameBox_KeyPress(object sender, KeyPressEventArgs e)
         {
             if (e.KeyChar == (char)13)
+            {
                 okButton_Click(null, null);
+            }
         }
 
         /// <summary>
@@ -51,6 +53,11 @@ namespace HaRepacker.GUI.Interaction
         {
             //if (e.KeyCode == Keys.Escape) Close();
             //if (e.KeyCode == Keys.Enter) done();
+            if (e.KeyCode == Keys.Escape)
+            {
+                DialogResult = DialogResult.Cancel;
+                Close();
+            }
         }
 
         private void okButton_Click(object sender, EventArgs e)

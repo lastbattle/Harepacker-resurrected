@@ -330,8 +330,14 @@ namespace HaRepacker.GUI
                     case Keys.N: // New
                         newToolStripMenuItem_Click(null, null);
                         break;
+                    case Keys.A:
+                        MainPanel.StartAnimateSelectedCanvas();
+                        break;
+                    case Keys.P:
+                        MainPanel.StopCanvasAnimation();
+                        break;
 
-                        // Switch between tabs
+                    // Switch between tabs
                     case Keys.NumPad1:
                         tabControl_MainPanels.SelectTab(0);
                         break;

@@ -28,19 +28,27 @@
         /// </summary>
         private void InitializeComponent()
         {
+            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaRepackerMainPanel));
             this.MainSplitContainer = new System.Windows.Forms.SplitContainer();
             this.DataTree = new TreeViewMS.TreeViewMS();
+            this.nextLoopTime_comboBox = new System.Windows.Forms.ComboBox();
+            this.nextLoopTime_label = new System.Windows.Forms.Label();
+            this.planePosition_comboBox = new System.Windows.Forms.ComboBox();
+            this.cartesianPlane_checkBox = new System.Windows.Forms.CheckBox();
+            this.button_animateSelectedCanvas = new System.Windows.Forms.Button();
             this.vectorPanel = new HaRepackerLib.XYPanel();
             this.saveSoundButton = new System.Windows.Forms.Button();
             this.saveImageButton = new System.Windows.Forms.Button();
             this.changeSoundButton = new System.Windows.Forms.Button();
+            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             this.changeImageButton = new System.Windows.Forms.Button();
             this.applyChangesButton = new System.Windows.Forms.Button();
             this.nameBox = new HaRepackerLib.ChangableTextbox();
-            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             this.textPropBox = new System.Windows.Forms.TextBox();
             this.pictureBoxPanel = new System.Windows.Forms.Panel();
+            this.cartesianPlaneX = new System.Windows.Forms.Panel();
+            this.cartesianPlaneY = new System.Windows.Forms.Panel();
             this.canvasPropBox = new System.Windows.Forms.PictureBox();
             this.fieldLimitPanel1 = new HaRepackerLib.Controls.FieldLimitPanel();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
@@ -56,6 +64,8 @@
             this.btnClose = new System.Windows.Forms.ToolStripButton();
             this.btnOptions = new System.Windows.Forms.ToolStripButton();
             this.MainDockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
+            this.timerImgSequence = new System.Windows.Forms.Timer(this.components);
+            this.panel1 = new System.Windows.Forms.Panel();
             ((System.ComponentModel.ISupportInitialize)(this.MainSplitContainer)).BeginInit();
             this.MainSplitContainer.Panel1.SuspendLayout();
             this.MainSplitContainer.Panel2.SuspendLayout();
@@ -64,6 +74,7 @@
             ((System.ComponentModel.ISupportInitialize)(this.canvasPropBox)).BeginInit();
             this.statusStrip.SuspendLayout();
             this.findStrip.SuspendLayout();
+            this.panel1.SuspendLayout();
             this.SuspendLayout();
             // 
             // MainSplitContainer
@@ -78,15 +89,19 @@
             // 
             // MainSplitContainer.Panel2
             // 
+            this.MainSplitContainer.Panel2.Controls.Add(this.nextLoopTime_comboBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.nextLoopTime_label);
+            this.MainSplitContainer.Panel2.Controls.Add(this.planePosition_comboBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.cartesianPlane_checkBox);
+            this.MainSplitContainer.Panel2.Controls.Add(this.button_animateSelectedCanvas);
             this.MainSplitContainer.Panel2.Controls.Add(this.vectorPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveSoundButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.saveImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeSoundButton);
+            this.MainSplitContainer.Panel2.Controls.Add(this.mp3Player);
             this.MainSplitContainer.Panel2.Controls.Add(this.changeImageButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.applyChangesButton);
             this.MainSplitContainer.Panel2.Controls.Add(this.nameBox);
-            this.MainSplitContainer.Panel2.Controls.Add(this.mp3Player);
-            this.MainSplitContainer.Panel2.Controls.Add(this.textPropBox);
             this.MainSplitContainer.Panel2.Controls.Add(this.pictureBoxPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.fieldLimitPanel1);
             this.MainSplitContainer.SplitterMoved += new System.Windows.Forms.SplitterEventHandler(this.MainSplitContainer_SplitterMoved);
@@ -100,6 +115,61 @@
             this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
             this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
             // 
+            // nextLoopTime_comboBox
+            // 
+            this.nextLoopTime_comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.nextLoopTime_comboBox, "nextLoopTime_comboBox");
+            this.nextLoopTime_comboBox.FormattingEnabled = true;
+            this.nextLoopTime_comboBox.Items.AddRange(new object[] {
+            resources.GetString("nextLoopTime_comboBox.Items"),
+            resources.GetString("nextLoopTime_comboBox.Items1"),
+            resources.GetString("nextLoopTime_comboBox.Items2"),
+            resources.GetString("nextLoopTime_comboBox.Items3"),
+            resources.GetString("nextLoopTime_comboBox.Items4")});
+            this.nextLoopTime_comboBox.Name = "nextLoopTime_comboBox";
+            this.nextLoopTime_comboBox.SelectedIndexChanged += new System.EventHandler(this.nextLoopTime_comboBox_SelectedIndexChanged);
+            // 
+            // nextLoopTime_label
+            // 
+            resources.ApplyResources(this.nextLoopTime_label, "nextLoopTime_label");
+            this.nextLoopTime_label.Name = "nextLoopTime_label";
+            // 
+            // planePosition_comboBox
+            // 
+            this.planePosition_comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            resources.ApplyResources(this.planePosition_comboBox, "planePosition_comboBox");
+            this.planePosition_comboBox.FormattingEnabled = true;
+            this.planePosition_comboBox.Items.AddRange(new object[] {
+            resources.GetString("planePosition_comboBox.Items"),
+            resources.GetString("planePosition_comboBox.Items1"),
+            resources.GetString("planePosition_comboBox.Items2"),
+            resources.GetString("planePosition_comboBox.Items3"),
+            resources.GetString("planePosition_comboBox.Items4"),
+            resources.GetString("planePosition_comboBox.Items5"),
+            resources.GetString("planePosition_comboBox.Items6"),
+            resources.GetString("planePosition_comboBox.Items7"),
+            resources.GetString("planePosition_comboBox.Items8")});
+            this.planePosition_comboBox.Name = "planePosition_comboBox";
+            // 
+            // cartesianPlane_checkBox
+            // 
+            resources.ApplyResources(this.cartesianPlane_checkBox, "cartesianPlane_checkBox");
+            this.cartesianPlane_checkBox.Checked = true;
+            this.cartesianPlane_checkBox.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.cartesianPlane_checkBox.Name = "cartesianPlane_checkBox";
+            this.cartesianPlane_checkBox.UseVisualStyleBackColor = true;
+            this.cartesianPlane_checkBox.CheckedChanged += new System.EventHandler(this.cartesianPlane_checkBox_CheckedChanged);
+            // 
+            // button_animateSelectedCanvas
+            // 
+            this.button_animateSelectedCanvas.BackColor = System.Drawing.SystemColors.ControlDarkDark;
+            this.button_animateSelectedCanvas.FlatAppearance.BorderColor = System.Drawing.SystemColors.Control;
+            resources.ApplyResources(this.button_animateSelectedCanvas, "button_animateSelectedCanvas");
+            this.button_animateSelectedCanvas.ForeColor = System.Drawing.SystemColors.ControlLight;
+            this.button_animateSelectedCanvas.Name = "button_animateSelectedCanvas";
+            this.button_animateSelectedCanvas.UseVisualStyleBackColor = false;
+            this.button_animateSelectedCanvas.Click += new System.EventHandler(this.button_animateSelectedCanvas_Click);
+            // 
             // vectorPanel
             // 
             resources.ApplyResources(this.vectorPanel, "vectorPanel");
@@ -109,37 +179,53 @@
             // 
             // saveSoundButton
             // 
+            this.saveSoundButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
             resources.ApplyResources(this.saveSoundButton, "saveSoundButton");
+            this.saveSoundButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.saveSoundButton.Name = "saveSoundButton";
-            this.saveSoundButton.UseVisualStyleBackColor = true;
+            this.saveSoundButton.UseVisualStyleBackColor = false;
             this.saveSoundButton.Click += new System.EventHandler(this.saveSoundButton_Click);
             // 
             // saveImageButton
             // 
+            this.saveImageButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
             resources.ApplyResources(this.saveImageButton, "saveImageButton");
+            this.saveImageButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.saveImageButton.Name = "saveImageButton";
-            this.saveImageButton.UseVisualStyleBackColor = true;
+            this.saveImageButton.UseVisualStyleBackColor = false;
             this.saveImageButton.Click += new System.EventHandler(this.saveImageButton_Click);
             // 
             // changeSoundButton
             // 
+            this.changeSoundButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
             resources.ApplyResources(this.changeSoundButton, "changeSoundButton");
+            this.changeSoundButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.changeSoundButton.Name = "changeSoundButton";
-            this.changeSoundButton.UseVisualStyleBackColor = true;
+            this.changeSoundButton.UseVisualStyleBackColor = false;
             this.changeSoundButton.Click += new System.EventHandler(this.changeSoundButton_Click);
+            // 
+            // mp3Player
+            // 
+            resources.ApplyResources(this.mp3Player, "mp3Player");
+            this.mp3Player.Name = "mp3Player";
+            this.mp3Player.SoundProperty = null;
             // 
             // changeImageButton
             // 
+            this.changeImageButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
             resources.ApplyResources(this.changeImageButton, "changeImageButton");
+            this.changeImageButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.changeImageButton.Name = "changeImageButton";
-            this.changeImageButton.UseVisualStyleBackColor = true;
+            this.changeImageButton.UseVisualStyleBackColor = false;
             this.changeImageButton.Click += new System.EventHandler(this.changeImageButton_Click);
             // 
             // applyChangesButton
             // 
+            this.applyChangesButton.BackColor = System.Drawing.SystemColors.ControlDarkDark;
             resources.ApplyResources(this.applyChangesButton, "applyChangesButton");
+            this.applyChangesButton.ForeColor = System.Drawing.SystemColors.ControlLight;
             this.applyChangesButton.Name = "applyChangesButton";
-            this.applyChangesButton.UseVisualStyleBackColor = true;
+            this.applyChangesButton.UseVisualStyleBackColor = false;
             this.applyChangesButton.Click += new System.EventHandler(this.applyChangesButton_Click);
             // 
             // nameBox
@@ -149,12 +235,6 @@
             this.nameBox.Name = "nameBox";
             this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
             // 
-            // mp3Player
-            // 
-            resources.ApplyResources(this.mp3Player, "mp3Player");
-            this.mp3Player.Name = "mp3Player";
-            this.mp3Player.SoundProperty = null;
-            // 
             // textPropBox
             // 
             resources.ApplyResources(this.textPropBox, "textPropBox");
@@ -163,8 +243,22 @@
             // pictureBoxPanel
             // 
             resources.ApplyResources(this.pictureBoxPanel, "pictureBoxPanel");
-            this.pictureBoxPanel.Controls.Add(this.canvasPropBox);
+            this.pictureBoxPanel.BackColor = System.Drawing.SystemColors.Control;
+            this.pictureBoxPanel.Controls.Add(this.panel1);
+            this.pictureBoxPanel.Controls.Add(this.textPropBox);
             this.pictureBoxPanel.Name = "pictureBoxPanel";
+            // 
+            // cartesianPlaneX
+            // 
+            this.cartesianPlaneX.BackColor = System.Drawing.SystemColors.ScrollBar;
+            resources.ApplyResources(this.cartesianPlaneX, "cartesianPlaneX");
+            this.cartesianPlaneX.Name = "cartesianPlaneX";
+            // 
+            // cartesianPlaneY
+            // 
+            this.cartesianPlaneY.BackColor = System.Drawing.SystemColors.ScrollBar;
+            resources.ApplyResources(this.cartesianPlaneY, "cartesianPlaneY");
+            this.cartesianPlaneY.Name = "cartesianPlaneY";
             // 
             // canvasPropBox
             // 
@@ -275,6 +369,18 @@
             resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
             this.MainDockPanel.Name = "MainDockPanel";
             // 
+            // timerImgSequence
+            // 
+            this.timerImgSequence.Tick += new System.EventHandler(this.timerImgSequence_Tick);
+            // 
+            // panel1
+            // 
+            this.panel1.Controls.Add(this.cartesianPlaneX);
+            this.panel1.Controls.Add(this.canvasPropBox);
+            this.panel1.Controls.Add(this.cartesianPlaneY);
+            resources.ApplyResources(this.panel1, "panel1");
+            this.panel1.Name = "panel1";
+            // 
             // HaRepackerMainPanel
             // 
             resources.ApplyResources(this, "$this");
@@ -297,6 +403,8 @@
             this.statusStrip.PerformLayout();
             this.findStrip.ResumeLayout(false);
             this.findStrip.PerformLayout();
+            this.panel1.ResumeLayout(false);
+            this.panel1.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -329,6 +437,15 @@
         private WeifenLuo.WinFormsUI.Docking.DockPanel MainDockPanel;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel_additionalInfo;
         private XYPanel vectorPanel;
+        private System.Windows.Forms.Panel cartesianPlaneX;
+        private System.Windows.Forms.Panel cartesianPlaneY;
         private FieldLimitPanel fieldLimitPanel1;
+        private System.Windows.Forms.Button button_animateSelectedCanvas;
+        private System.Windows.Forms.CheckBox cartesianPlane_checkBox;
+        private System.Windows.Forms.ComboBox planePosition_comboBox;
+        private System.Windows.Forms.Label nextLoopTime_label;
+        private System.Windows.Forms.ComboBox nextLoopTime_comboBox;
+        private System.Windows.Forms.Timer timerImgSequence;
+        private System.Windows.Forms.Panel panel1;
     }
 }

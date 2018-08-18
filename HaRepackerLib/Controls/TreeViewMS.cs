@@ -60,9 +60,7 @@ namespace TreeViewMS
 
 
 		protected override void OnBeforeSelect(TreeViewCancelEventArgs e)
-		{
-			base.OnBeforeSelect(e);
-				
+		{	
 			bool bControl = (ModifierKeys==Keys.Control);
 			bool bShift = (ModifierKeys==Keys.Shift);
 
@@ -81,13 +79,13 @@ namespace TreeViewMS
 
 			m_lastNode = e.Node;
 			if (!bShift) m_firstNode = e.Node; // store begin of shift sequence
-		}
+
+            base.OnBeforeSelect(e);
+        }
 
 
 		protected override void OnAfterSelect(TreeViewEventArgs e)
 		{
-			base.OnAfterSelect(e);
-
 			bool bControl = (ModifierKeys==Keys.Control);
 			bool bShift = (ModifierKeys==Keys.Shift);
 
@@ -187,7 +185,8 @@ namespace TreeViewMS
 					m_coll.Add( e.Node );
 				}
 			}
-		}
+            base.OnAfterSelect(e);
+        }
 
 
 

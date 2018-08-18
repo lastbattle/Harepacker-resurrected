@@ -72,6 +72,7 @@
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "NameInputBox";
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.nameBox_KeyPress);
+            this.KeyUp += new System.Windows.Forms.KeyEventHandler(this.nameBox_KeyUp);
             this.ResumeLayout(false);
             this.PerformLayout();
 
