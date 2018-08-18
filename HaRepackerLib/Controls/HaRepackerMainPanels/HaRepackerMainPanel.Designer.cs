@@ -30,14 +30,19 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaRepackerMainPanel));
             this.MainSplitContainer = new System.Windows.Forms.SplitContainer();
+            this.DataTree = new TreeViewMS.TreeViewMS();
+            this.vectorPanel = new HaRepackerLib.XYPanel();
             this.saveSoundButton = new System.Windows.Forms.Button();
             this.saveImageButton = new System.Windows.Forms.Button();
             this.changeSoundButton = new System.Windows.Forms.Button();
             this.changeImageButton = new System.Windows.Forms.Button();
             this.applyChangesButton = new System.Windows.Forms.Button();
+            this.nameBox = new HaRepackerLib.ChangableTextbox();
+            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
             this.textPropBox = new System.Windows.Forms.TextBox();
             this.pictureBoxPanel = new System.Windows.Forms.Panel();
             this.canvasPropBox = new System.Windows.Forms.PictureBox();
+            this.fieldLimitPanel1 = new HaRepackerLib.Controls.FieldLimitPanel();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
             this.selectionLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.mainProgressBar = new System.Windows.Forms.ToolStripProgressBar();
@@ -51,11 +56,6 @@
             this.btnClose = new System.Windows.Forms.ToolStripButton();
             this.btnOptions = new System.Windows.Forms.ToolStripButton();
             this.MainDockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
-            this.DataTree = new TreeViewMS.TreeViewMS();
-            this.vectorPanel = new HaRepackerLib.XYPanel();
-            this.nameBox = new HaRepackerLib.ChangableTextbox();
-            this.mp3Player = new HaRepackerLib.Controls.SoundPlayer();
-            this.fieldLimitPanel1 = new HaRepackerLib.Controls.FieldLimitPanel();
             ((System.ComponentModel.ISupportInitialize)(this.MainSplitContainer)).BeginInit();
             this.MainSplitContainer.Panel1.SuspendLayout();
             this.MainSplitContainer.Panel2.SuspendLayout();
@@ -90,6 +90,22 @@
             this.MainSplitContainer.Panel2.Controls.Add(this.pictureBoxPanel);
             this.MainSplitContainer.Panel2.Controls.Add(this.fieldLimitPanel1);
             this.MainSplitContainer.SplitterMoved += new System.Windows.Forms.SplitterEventHandler(this.MainSplitContainer_SplitterMoved);
+            // 
+            // DataTree
+            // 
+            resources.ApplyResources(this.DataTree, "DataTree");
+            this.DataTree.Name = "DataTree";
+            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
+            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
+            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
+            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
+            // 
+            // vectorPanel
+            // 
+            resources.ApplyResources(this.vectorPanel, "vectorPanel");
+            this.vectorPanel.Name = "vectorPanel";
+            this.vectorPanel.X = 0;
+            this.vectorPanel.Y = 0;
             // 
             // saveSoundButton
             // 
@@ -126,6 +142,19 @@
             this.applyChangesButton.UseVisualStyleBackColor = true;
             this.applyChangesButton.Click += new System.EventHandler(this.applyChangesButton_Click);
             // 
+            // nameBox
+            // 
+            this.nameBox.ButtonEnabled = false;
+            resources.ApplyResources(this.nameBox, "nameBox");
+            this.nameBox.Name = "nameBox";
+            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
+            // 
+            // mp3Player
+            // 
+            resources.ApplyResources(this.mp3Player, "mp3Player");
+            this.mp3Player.Name = "mp3Player";
+            this.mp3Player.SoundProperty = null;
+            // 
             // textPropBox
             // 
             resources.ApplyResources(this.textPropBox, "textPropBox");
@@ -142,6 +171,11 @@
             resources.ApplyResources(this.canvasPropBox, "canvasPropBox");
             this.canvasPropBox.Name = "canvasPropBox";
             this.canvasPropBox.TabStop = false;
+            // 
+            // fieldLimitPanel1
+            // 
+            resources.ApplyResources(this.fieldLimitPanel1, "fieldLimitPanel1");
+            this.fieldLimitPanel1.Name = "fieldLimitPanel1";
             // 
             // statusStrip
             // 
@@ -240,40 +274,6 @@
             this.MainDockPanel.DocumentStyle = WeifenLuo.WinFormsUI.Docking.DocumentStyle.DockingWindow;
             resources.ApplyResources(this.MainDockPanel, "MainDockPanel");
             this.MainDockPanel.Name = "MainDockPanel";
-            // 
-            // DataTree
-            // 
-            resources.ApplyResources(this.DataTree, "DataTree");
-            this.DataTree.Name = "DataTree";
-            this.DataTree.SelectedNodes = ((System.Collections.ArrayList)(resources.GetObject("DataTree.SelectedNodes")));
-            this.DataTree.AfterSelect += new System.Windows.Forms.TreeViewEventHandler(this.DataTree_AfterSelect);
-            this.DataTree.DoubleClick += new System.EventHandler(this.DataTree_DoubleClick);
-            this.DataTree.KeyDown += new System.Windows.Forms.KeyEventHandler(this.DataTree_KeyDown);
-            // 
-            // vectorPanel
-            // 
-            resources.ApplyResources(this.vectorPanel, "vectorPanel");
-            this.vectorPanel.Name = "vectorPanel";
-            this.vectorPanel.X = 0;
-            this.vectorPanel.Y = 0;
-            // 
-            // nameBox
-            // 
-            this.nameBox.ButtonEnabled = false;
-            resources.ApplyResources(this.nameBox, "nameBox");
-            this.nameBox.Name = "nameBox";
-            this.nameBox.ButtonClicked += new System.EventHandler(this.nameBox_ButtonClicked);
-            // 
-            // mp3Player
-            // 
-            resources.ApplyResources(this.mp3Player, "mp3Player");
-            this.mp3Player.Name = "mp3Player";
-            this.mp3Player.SoundProperty = null;
-            // 
-            // fieldLimitPanel1
-            // 
-            resources.ApplyResources(this.fieldLimitPanel1, "fieldLimitPanel1");
-            this.fieldLimitPanel1.Name = "fieldLimitPanel1";
             // 
             // HaRepackerMainPanel
             // 

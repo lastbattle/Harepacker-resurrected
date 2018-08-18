@@ -90,7 +90,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
 
             textPropBox.Location = pictureBoxPanel.Location;
             textPropBox.Size = pictureBoxPanel.Size;
-            mp3Player.Location = new Point(MainSplitContainer.Panel2.Width / 2 - mp3Player.Width / 2, MainSplitContainer.Height / 2 - mp3Player.Height / 2);
+            mp3Player.Location = new Point((MainSplitContainer.Panel2.Width) / 2 - (mp3Player.Width / 2), MainSplitContainer.Height / 2 - mp3Player.Height / 2);
             vectorPanel.Location = new Point(MainSplitContainer.Panel2.Width / 2 - vectorPanel.Width / 2, MainSplitContainer.Height / 2 - vectorPanel.Height / 2);
 
             applyChangesButton.Location = new Point(MainSplitContainer.Panel2.Width / 2 - applyChangesButton.Width / 2, MainSplitContainer.Panel2.Height - applyChangesButton.Height);

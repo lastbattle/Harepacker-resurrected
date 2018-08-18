@@ -117,18 +117,54 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="label1.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
-  <data name="LoopBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>223, 12</value>
+  <data name="label1.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 10pt</value>
   </data>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="label1.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
+  <data name="label1.Location" type="System.Drawing.Point, System.Drawing">
+    <value>294, 19</value>
+  </data>
+  <data name="label1.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
+    <value>4, 0, 4, 0</value>
+  </data>
+  <data name="label1.Size" type="System.Drawing.Size, System.Drawing">
+    <value>20, 28</value>
+  </data>
+  <data name="label1.TabIndex" type="System.Int32, mscorlib">
+    <value>39</value>
+  </data>
+  <data name="label1.Text" xml:space="preserve">
+    <value>/</value>
+  </data>
+  <data name="&gt;&gt;label1.Name" xml:space="preserve">
+    <value>label1</value>
+  </data>
+  <data name="&gt;&gt;label1.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Label, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;label1.Parent" xml:space="preserve">
+    <value>containerPanel</value>
+  </data>
+  <data name="&gt;&gt;label1.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
+  <data name="LoopBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>126, 19</value>
+  </data>
   <data name="LoopBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>
   </data>
   <data name="LoopBox.Size" type="System.Drawing.Size, System.Drawing">
     <value>87, 34</value>
   </data>
-  <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="LoopBox.TabIndex" type="System.Int32, mscorlib">
     <value>38</value>
   </data>
@@ -145,7 +181,7 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;LoopBox.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>1</value>
   </data>
   <data name="TimeBar.Location" type="System.Drawing.Point, System.Drawing">
     <value>6, 58</value>
@@ -154,7 +190,7 @@
     <value>4, 5, 4, 5</value>
   </data>
   <data name="TimeBar.Size" type="System.Drawing.Size, System.Drawing">
-    <value>304, 69</value>
+    <value>446, 69</value>
   </data>
   <data name="TimeBar.TabIndex" type="System.Int32, mscorlib">
     <value>37</value>
@@ -169,25 +205,28 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;TimeBar.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="CurrentPositionLabel.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
+  <data name="CurrentPositionLabel.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 10pt</value>
+  </data>
   <data name="CurrentPositionLabel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>320, 58</value>
+    <value>221, 19</value>
   </data>
   <data name="CurrentPositionLabel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 0, 4, 0</value>
   </data>
   <data name="CurrentPositionLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>59, 21</value>
+    <value>65, 28</value>
   </data>
   <data name="CurrentPositionLabel.TabIndex" type="System.Int32, mscorlib">
     <value>36</value>
   </data>
   <data name="CurrentPositionLabel.Text" xml:space="preserve">
-    <value>00:00 /</value>
+    <value>00:00 </value>
   </data>
   <data name="&gt;&gt;CurrentPositionLabel.Name" xml:space="preserve">
     <value>CurrentPositionLabel</value>
@@ -199,19 +238,22 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;CurrentPositionLabel.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <data name="LengthLabel.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
+  <data name="LengthLabel.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 10pt</value>
+  </data>
   <data name="LengthLabel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>384, 58</value>
+    <value>322, 19</value>
   </data>
   <data name="LengthLabel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 0, 4, 0</value>
   </data>
   <data name="LengthLabel.Size" type="System.Drawing.Size, System.Drawing">
-    <value>49, 21</value>
+    <value>60, 28</value>
   </data>
   <data name="LengthLabel.TabIndex" type="System.Int32, mscorlib">
     <value>35</value>
@@ -229,13 +271,13 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;LengthLabel.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="PauseButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
     <value>Flat</value>
   </data>
   <data name="PauseButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>4, 5</value>
+    <value>4, 14</value>
   </data>
   <data name="PauseButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>4, 5, 4, 5</value>
@@ -259,7 +301,7 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;PauseButton.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="PlayButton.FlatStyle" type="System.Windows.Forms.FlatStyle, System.Windows.Forms">
     <value>Flat</value>
@@ -286,7 +328,7 @@
     <value>containerPanel</value>
   </data>
   <data name="&gt;&gt;PlayButton.ZOrder" xml:space="preserve">
-    <value>5</value>
+    <value>6</value>
   </data>
   <data name="containerPanel.Location" type="System.Drawing.Point, System.Drawing">
     <value>4, 5</value>

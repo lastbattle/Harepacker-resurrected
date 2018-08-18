@@ -27,6 +27,8 @@ namespace HaRepackerLib
         private WzSoundProperty sound;
         private bool repeat;
 
+        private bool playbackSuccessfully = true;
+
         public WzMp3Streamer(WzSoundProperty sound, bool repeat)
         {
             this.repeat = repeat;
@@ -41,8 +43,16 @@ namespace HaRepackerLib
             }
             catch (System.InvalidOperationException)
             {
-                waveFileStream = new WaveFileReader(byteStream);
-                wavePlayer.Init(waveFileStream);
+                try
+                {
+                    waveFileStream = new WaveFileReader(byteStream);
+                    wavePlayer.Init(waveFileStream);
+                }
+                catch (FormatException)
+                {
+                    playbackSuccessfully = false;
+                }
+                //InvalidDataException
             }
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
         }
@@ -68,6 +78,9 @@ namespace HaRepackerLib
         }
         public void Dispose()
         {
+            if (!playbackSuccessfully)
+                return;
+
             disposed = true;
             wavePlayer.Dispose();
             if (mpegStream != null)
@@ -87,12 +100,24 @@ namespace HaRepackerLib
 
         public void Play()
         {
+            if (!playbackSuccessfully)
+                return;
+
             wavePlayer.Play();
         }
 
         public void Pause()
         {
+            if (!playbackSuccessfully)
+                return;
+
             wavePlayer.Pause();
+        }
+
+        public void Stop()
+        {
+            if (!playbackSuccessfully) return;
+            wavePlayer.Stop();
         }
 
         public bool Repeat

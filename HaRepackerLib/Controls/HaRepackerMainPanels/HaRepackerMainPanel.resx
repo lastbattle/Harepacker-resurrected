@@ -140,7 +140,7 @@
   <data name="DataTree.SelectedNodes" mimetype="application/x-microsoft.net.object.binary.base64">
     <value>
         AAEAAAD/////AQAAAAAAAAAEAQAAABxTeXN0ZW0uQ29sbGVjdGlvbnMuQXJyYXlMaXN0AwAAAAZfaXRl
-        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAAB8AAAAQAgAAAAAAAAAL
+        bXMFX3NpemUIX3ZlcnNpb24FAAAICAkCAAAAAAAAACAAAAAQAgAAAAAAAAAL
 </value>
   </data>
   <data name="DataTree.Size" type="System.Drawing.Size, System.Drawing">
@@ -184,7 +184,7 @@
     <value>Segoe UI, 8pt</value>
   </data>
   <data name="vectorPanel.Location" type="System.Drawing.Point, System.Drawing">
-    <value>12, 30</value>
+    <value>11, 30</value>
   </data>
   <data name="vectorPanel.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
     <value>0, 0, 0, 0</value>
@@ -427,16 +427,13 @@
     <value>134, 0</value>
   </data>
   <data name="mp3Player.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>6, 8, 6, 8</value>
-  </data>
-  <data name="mp3Player.MaximumSize" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>0, 0, 0, 0</value>
   </data>
   <data name="mp3Player.MinimumSize" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>650, 132</value>
   </data>
   <data name="mp3Player.Size" type="System.Drawing.Size, System.Drawing">
-    <value>465, 132</value>
+    <value>650, 132</value>
   </data>
   <data name="mp3Player.TabIndex" type="System.Int32, mscorlib">
     <value>3</value>
@@ -565,7 +562,7 @@
     <value>0, 0, 0, 10</value>
   </data>
   <data name="fieldLimitPanel1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>637, 428</value>
+    <value>635, 428</value>
   </data>
   <data name="fieldLimitPanel1.TabIndex" type="System.Int32, mscorlib">
     <value>15</value>

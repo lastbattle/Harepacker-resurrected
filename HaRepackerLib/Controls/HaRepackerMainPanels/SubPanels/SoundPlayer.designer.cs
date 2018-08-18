@@ -38,12 +38,14 @@
             this.PauseButton = new System.Windows.Forms.Button();
             this.PlayButton = new System.Windows.Forms.Button();
             this.AudioTimer = new System.Windows.Forms.Timer(this.components);
+            this.label1 = new System.Windows.Forms.Label();
             this.containerPanel.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.TimeBar)).BeginInit();
             this.SuspendLayout();
             // 
             // containerPanel
             // 
+            this.containerPanel.Controls.Add(this.label1);
             this.containerPanel.Controls.Add(this.LoopBox);
             this.containerPanel.Controls.Add(this.TimeBar);
             this.containerPanel.Controls.Add(this.CurrentPositionLabel);
@@ -62,6 +64,7 @@
             // TimeBar
             // 
             resources.ApplyResources(this.TimeBar, "TimeBar");
+            this.TimeBar.Maximum = 100;
             this.TimeBar.Name = "TimeBar";
             this.TimeBar.TickStyle = System.Windows.Forms.TickStyle.None;
             this.TimeBar.Scroll += new System.EventHandler(this.TimeBar_Scroll);
@@ -101,6 +104,12 @@
             // 
             this.AudioTimer.Tick += new System.EventHandler(this.AudioTimer_Tick);
             // 
+            // label1
+            // 
+            resources.ApplyResources(this.label1, "label1");
+            this.label1.BackColor = System.Drawing.Color.Transparent;
+            this.label1.Name = "label1";
+            // 
             // SoundPlayer
             // 
             resources.ApplyResources(this, "$this");
@@ -124,6 +133,6 @@
         private System.Windows.Forms.Button PauseButton;
         private System.Windows.Forms.Button PlayButton;
         private System.Windows.Forms.Timer AudioTimer;
-
+        private System.Windows.Forms.Label label1;
     }
 }
