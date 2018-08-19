@@ -1,4 +1,6 @@
-﻿namespace HaRepacker.GUI
+﻿using HaRepacker.GUI.Input;
+
+namespace HaRepacker.GUI
 {
     partial class SaveForm
     {
@@ -31,7 +33,7 @@
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SaveForm));
             this.encryptionBox = new System.Windows.Forms.ComboBox();
             this.saveButton = new System.Windows.Forms.Button();
-            this.versionBox = new HaRepackerLib.Controls.IntegerInput();
+            this.versionBox = new IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.SuspendLayout();
@@ -86,7 +88,7 @@
 
         private System.Windows.Forms.Button saveButton;
         public System.Windows.Forms.ComboBox encryptionBox;
-        private HaRepackerLib.Controls.IntegerInput versionBox;
+        private IntegerInput versionBox;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
     }

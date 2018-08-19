@@ -17,7 +17,8 @@ using System.Collections;
 using HaRepackerLib;
 using HaRepacker.GUI.Interaction;
 using HaRepacker.GUI;
-using HaRepackerLib.Controls.HaRepackerMainPanels;
+using HaRepacker.GUI.Panels;
+using HaRepacker.GUI.Input;
 
 namespace HaRepacker
 {

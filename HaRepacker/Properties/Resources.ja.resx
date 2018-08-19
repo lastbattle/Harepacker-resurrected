@@ -117,6 +117,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox.</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>Error at animation builder, frame {0}</value>
+  </data>
   <data name="ApngFilter" xml:space="preserve">
     <value>Animated Portable Network Graphics (*.png)</value>
   </data>
@@ -139,6 +145,9 @@
     <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
   </data>
   <data name="EnterValidInput" xml:space="preserve">
+    <value>Please enter valid input</value>
+  </data>
+  <data name="EnterValidInput1" xml:space="preserve">
     <value>Please enter valid input</value>
   </data>
   <data name="Error" xml:space="preserve">
@@ -168,6 +177,9 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y value</value>
   </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>Select the WZ encryption used:</value>
   </data>
@@ -177,40 +189,82 @@
   <data name="MainAddCanvas" xml:space="preserve">
     <value>Add canvas</value>
   </data>
+  <data name="MainAddCanvas1" xml:space="preserve">
+    <value>Add canvas</value>
+  </data>
   <data name="MainAddConvex" xml:space="preserve">
+    <value>Add convex</value>
+  </data>
+  <data name="MainAddConvex1" xml:space="preserve">
     <value>Add convex</value>
   </data>
   <data name="MainAddDir" xml:space="preserve">
     <value>Add directory</value>
   </data>
+  <data name="MainAddDir1" xml:space="preserve">
+    <value>Add directory</value>
+  </data>
   <data name="MainAddDouble" xml:space="preserve">
+    <value>Add double</value>
+  </data>
+  <data name="MainAddDouble1" xml:space="preserve">
     <value>Add double</value>
   </data>
   <data name="MainAddFloat" xml:space="preserve">
     <value>Add float</value>
   </data>
+  <data name="MainAddFloat1" xml:space="preserve">
+    <value>Add float</value>
+  </data>
   <data name="MainAddImg" xml:space="preserve">
+    <value>Add image</value>
+  </data>
+  <data name="MainAddImg1" xml:space="preserve">
     <value>Add image</value>
   </data>
   <data name="MainAddInt" xml:space="preserve">
     <value>Add int</value>
   </data>
+  <data name="MainAddInt1" xml:space="preserve">
+    <value>Add int</value>
+  </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>ポータルタイプ：{0}</value>
+  </data>
   <data name="MainAddLink" xml:space="preserve">
+    <value>Add link</value>
+  </data>
+  <data name="MainAddLink1" xml:space="preserve">
     <value>Add link</value>
   </data>
   <data name="MainAddNull" xml:space="preserve">
     <value>Add null</value>
   </data>
+  <data name="MainAddNull1" xml:space="preserve">
+    <value>Add null</value>
+  </data>
   <data name="MainAddShort" xml:space="preserve">
+    <value>Add short</value>
+  </data>
+  <data name="MainAddShort1" xml:space="preserve">
     <value>Add short</value>
   </data>
   <data name="MainAddSound" xml:space="preserve">
     <value>Add sound</value>
   </data>
+  <data name="MainAddSound1" xml:space="preserve">
+    <value>Add sound</value>
+  </data>
   <data name="MainAddString" xml:space="preserve">
     <value>Add string</value>
   </data>
+  <data name="MainAddString1" xml:space="preserve">
+    <value>Add string</value>
+  </data>
   <data name="MainAddSub" xml:space="preserve">
+    <value>Add sub</value>
+  </data>
+  <data name="MainAddSub1" xml:space="preserve">
     <value>Add sub</value>
   </data>
   <data name="MainAddTabTitle" xml:space="preserve">
@@ -219,17 +273,41 @@
   <data name="MainAddVec" xml:space="preserve">
     <value>Add vector</value>
   </data>
+  <data name="MainAddVec1" xml:space="preserve">
+    <value>Add vector</value>
+  </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>This item is not an animation.</value>
+  </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>Cannot insert selected object into this type of wz node.</value>
   </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>Are you sure you want to abort the current operation?</value>
   </data>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>Copy WZ nodes to clipboard? (warning - can take a lot of time if many nodes are selected)</value>
+  </data>
   <data name="MainConfirmExit" xml:space="preserve">
     <value>Are you sure you want to exit?</value>
   </data>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>Paste WZ nodes from clipboard? (warning - can take a lot of time if many nodes are pasted)</value>
+  </data>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>これを削除してもよろしいですか？</value>
+  </data>
   <data name="MainConfirmRemoveNode" xml:space="preserve">
     <value>Are you sure you want to remove this node?</value>
+  </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>名前を変更する</value>
+  </data>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>「{0}」を必要なタイプに変換できませんでした</value>
+  </data>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>You can't copy directories because they require too much memory</value>
   </data>
   <data name="MainCouldntOpenWZ" xml:space="preserve">
     <value>Could not open WZ file "{0}"</value>
@@ -243,17 +321,29 @@
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>Help could not be shown because the help file ({0}) was not found</value>
   </data>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>画像を読み込めませんでした</value>
+  </data>
   <data name="MainInvalidFileError" xml:space="preserve">
     <value>The file "{0}" is invalid and will be skipped. Error: {1}</value>
   </data>
   <data name="MainListWzDetected" xml:space="preserve">
     <value>The file at {0} is a List.wz file and will be skipped.</value>
   </data>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>A node with that name already exists. Please choose a different name</value>
+  </data>
   <data name="MainReloadAll" xml:space="preserve">
     <value>Are you sure you want to reload all files?</value>
   </data>
   <data name="MainSelectWzFolder" xml:space="preserve">
     <value>Please select the WZ file to save</value>
+  </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
+  </data>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>Reached the end of the tree</value>
   </data>
   <data name="MainUnloadAll" xml:space="preserve">
     <value>Are you sure you want to unload all files?</value>
@@ -267,17 +357,32 @@
   <data name="MainWzExportError" xml:space="preserve">
     <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
   </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
+  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
   </data>
   <data name="ProgramLoadSettingsError" xml:space="preserve">
     <value>Could not load settings file, make sure it is not in use. If it is not, delete it and try again.</value>
   </data>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>The node "{0}" already exists. Do you want it to be replaced?</value>
+  </data>
   <data name="SaveVersionError" xml:space="preserve">
     <value>Version must be above 0</value>
   </data>
   <data name="SelectDefaultXmlFolder" xml:space="preserve">
     <value>Select default XML folder</value>
+  </data>
+  <data name="SelectImage" xml:space="preserve">
+    <value>Select the image</value>
+  </data>
+  <data name="SelectionType" xml:space="preserve">
+    <value>Selection Type: {0}</value>
+  </data>
+  <data name="SelectMp3" xml:space="preserve">
+    <value>Select MP3 File</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>Select where to save the animation</value>

@@ -2,8 +2,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.27130.2010
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaRepackerLib", "HaRepackerLib\HaRepackerLib.csproj", "{B68C971F-4B8A-44A3-88D0-6213D1A512E7}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib", "MapleLib\MapleLib.csproj", "{28AAB36D-942E-4476-A000-0E9DE380F390}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaCreator", "HaCreator\HaCreator.csproj", "{679DD557-5E1E-447E-B48C-0F082E5FB1F4}"
@@ -22,18 +20,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|x64.ActiveCfg = Debug|x64
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|x64.Build.0 = Debug|x64
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|x86.ActiveCfg = Debug|x86
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Debug|x86.Build.0 = Debug|x86
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|x64.ActiveCfg = Release|x64
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|x64.Build.0 = Release|x64
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|x86.ActiveCfg = Release|x86
-		{B68C971F-4B8A-44A3-88D0-6213D1A512E7}.Release|x86.Build.0 = Release|x86
 		{28AAB36D-942E-4476-A000-0E9DE380F390}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{28AAB36D-942E-4476-A000-0E9DE380F390}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{28AAB36D-942E-4476-A000-0E9DE380F390}.Debug|x64.ActiveCfg = Debug|x64

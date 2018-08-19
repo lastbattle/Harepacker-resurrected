@@ -691,10 +691,6 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaRepackerLib\HaRepackerLib.csproj">
-      <Project>{B68C971F-4B8A-44A3-88D0-6213D1A512E7}</Project>
-      <Name>HaRepackerLib</Name>
-    </ProjectReference>
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>

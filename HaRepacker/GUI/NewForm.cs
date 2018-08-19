@@ -8,8 +8,7 @@ using System;
 using System.Windows.Forms;
 using HaRepackerLib;
 using MapleLib.WzLib;
-using HaRepackerLib.Controls;
-using HaRepackerLib.Controls.HaRepackerMainPanels;
+using HaRepacker.GUI.Panels;
 
 namespace HaRepacker.GUI
 {

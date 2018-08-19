@@ -1,4 +1,6 @@
-﻿namespace HaRepacker.GUI
+﻿using HaRepacker.GUI.Input;
+
+namespace HaRepacker.GUI
 {
     partial class NewForm
     {
@@ -42,7 +44,7 @@
             this.label5 = new System.Windows.Forms.Label();
             this.label6 = new System.Windows.Forms.Label();
             this.encryptionBox = new System.Windows.Forms.ComboBox();
-            this.versionBox = new HaRepackerLib.Controls.IntegerInput();
+            this.versionBox = new IntegerInput();
             this.radioButton_hotfix = new System.Windows.Forms.RadioButton();
             this.SuspendLayout();
             // 
@@ -176,7 +178,7 @@
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.ComboBox encryptionBox;
-        private HaRepackerLib.Controls.IntegerInput versionBox;
+        private IntegerInput versionBox;
         private System.Windows.Forms.RadioButton radioButton_hotfix;
     }
 }

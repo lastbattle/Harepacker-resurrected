@@ -117,6 +117,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>你的瀏覽器或相片檢視器不支援此格式的動畫, 請下載更新的瀏覽器比如火狐</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>Error at animation builder, frame {0}</value>
+  </data>
   <data name="EditFoothold" xml:space="preserve">
     <value>立足處</value>
   </data>
@@ -137,6 +143,9 @@
   </data>
   <data name="EnterValidInput" xml:space="preserve">
     <value>請輸入有效的內容</value>
+  </data>
+  <data name="EnterValidInput1" xml:space="preserve">
+    <value>Please enter valid input</value>
   </data>
   <data name="Error" xml:space="preserve">
     <value>錯誤</value>
@@ -167,26 +176,95 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y值</value>
   </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>圖片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>Select the WZ encryption used:</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ Encryption</value>
   </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>新增圖片</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>新增convex</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>新增目錄</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>新增雙精度浮點數</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>新增浮點數</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>新增IMG</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>新增整數</value>
+  </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>門戶類型：{0}</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>新增連結路徑</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>新增空值</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>新增無符號短整數</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>新增音樂</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>新增文本</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>新增子目錄</value>
+  </data>
   <data name="MainAddTabTitle" xml:space="preserve">
     <value>Add tab</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>新增坐標</value>
   </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>這個項目不是動畫</value>
   </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>無法插入這個類型到選中的wz節點</value>
+  </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>你確定你想終止當前操作?</value>
+  </data>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>要將WZ節點複製到剪切板嗎? (警告 - 如果選擇的節點較多會花比較多時間)</value>
   </data>
   <data name="MainConfirmExit" xml:space="preserve">
     <value>你確定要離開嗎?</value>
   </data>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>要從剪切板貼上WZ節點嗎? (警告 - 如果選擇的節點較多會花比較多時間)</value>
+  </data>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>你確定要移除這個節點嗎?</value>
+  </data>
   <data name="MainConfirmRemoveNode" xml:space="preserve">
     <value>你確定你要移除當前節點嗎?</value>
+  </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>改名</value>
+  </data>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>無法將"{0}"轉換成需要的類型</value>
+  </data>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>無法複製目錄因為需要太多記憶體了</value>
   </data>
   <data name="MainCouldntOpenWZ" xml:space="preserve">
     <value>無法打開WZ檔案 "{0}"</value>
@@ -200,17 +278,29 @@
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>無法顯示幫助, 因為找不到幫助檔案({0})</value>
   </data>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>無法讀取圖片</value>
+  </data>
   <data name="MainInvalidFileError" xml:space="preserve">
     <value>檔案"{0}""無效, 將跳過。 錯誤: {1}</value>
   </data>
   <data name="MainListWzDetected" xml:space="preserve">
     <value>這個檔案(路徑: {0}) 是List.wz檔案, 將會被跳過</value>
   </data>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>這個名稱的節點已存在, 請輸入一個不同的節點名稱</value>
+  </data>
   <data name="MainReloadAll" xml:space="preserve">
     <value>你確定要重載所有檔案嗎?</value>
   </data>
   <data name="MainSelectWzFolder" xml:space="preserve">
     <value>請選擇WZ檔案來保存</value>
+  </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
+  </data>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>已經到達結尾了</value>
   </data>
   <data name="MainUnloadAll" xml:space="preserve">
     <value>你確定要關閉所有檔案嗎?</value>
@@ -226,17 +316,26 @@
   <data name="MainWzExportError" xml:space="preserve">
     <value>導出目錄未找到。 請在工具 - &gt;選項下指定它</value>
   </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
+  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>縮進必須大於或等於0</value>
   </data>
   <data name="ProgramLoadSettingsError" xml:space="preserve">
     <value>無法讀取設置檔案, 請確認它未被使用. 若還是不行, 請刪除並重試.</value>
   </data>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>節點"{0}"已存在, 你想取代它嗎?</value>
+  </data>
   <data name="SaveVersionError" xml:space="preserve">
     <value>版本必須大於或等於0</value>
   </data>
   <data name="SelectDefaultXmlFolder" xml:space="preserve">
     <value>選擇默認XML資料夾</value>
+  </data>
+  <data name="SelectionType" xml:space="preserve">
+    <value>選中類型: {0}</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>選擇動畫路徑</value>

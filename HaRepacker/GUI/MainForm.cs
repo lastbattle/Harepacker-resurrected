@@ -25,11 +25,12 @@ using System.Text;
 using System.Diagnostics;
 using HaRepackerLib.Controls;
 using System.IO.Pipes;
-using HaRepackerLib.Controls.HaRepackerMainPanels;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using Win32;
+using HaRepacker.GUI.Panels;
+using HaRepacker.GUI.Input;
 
 namespace HaRepacker.GUI
 {

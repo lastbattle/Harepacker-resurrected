@@ -117,6 +117,12 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>你的浏览器或照片查看器不支持此格式的动画, 请下载更新的浏览器比如火狐</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>Error at animation builder, frame {0}</value>
+  </data>
   <data name="ApngFilter" xml:space="preserve">
     <value>Animated Portable Network Graphics (*.png)</value>
   </data>
@@ -140,6 +146,9 @@
   </data>
   <data name="EnterValidInput" xml:space="preserve">
     <value>请输入有效的內容</value>
+  </data>
+  <data name="EnterValidInput1" xml:space="preserve">
+    <value>Please enter valid input</value>
   </data>
   <data name="Error" xml:space="preserve">
     <value>错误</value>
@@ -169,26 +178,98 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y值</value>
   </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="ImagesFilter1" xml:space="preserve">
+    <value>图片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>Select the WZ encryption used:</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ Encryption</value>
   </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>新增图片</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>新增convex</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>新增目录</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>新增双精度浮点数</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>新增浮点数</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>新增IMG</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>新增整數</value>
+  </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>门户类型：{0}</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>新增连接路径</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>新增空值</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>新增无符号短整数</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>新增音乐</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>新增文本</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>新增子目录</value>
+  </data>
   <data name="MainAddTabTitle" xml:space="preserve">
     <value>Add tab</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>新增坐标</value>
   </data>
   <data name="MainAnimationFail" xml:space="preserve">
     <value>这个项目不是动画</value>
   </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>无法插入这个类型到选中的wz节点</value>
+  </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>你确定你想终止当前操作?</value>
+  </data>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>要将WZ节点复制到剪切板吗? (警告 - 如果选择的节点较多会花比较多时间)</value>
   </data>
   <data name="MainConfirmExit" xml:space="preserve">
     <value>你确定要离开吗?</value>
   </data>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>要从剪切板粘贴WZ节点吗? (警告 - 如果选择的节点较多会花比较多时间)</value>
+  </data>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>你确定要删除这个节点吗?</value>
+  </data>
   <data name="MainConfirmRemoveNode" xml:space="preserve">
     <value>你确定你要删除当前节点吗?</value>
+  </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>改名</value>
+  </data>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>无法将"{0}"转换成需要的类型</value>
+  </data>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>无法复制目录因为需要太多内存了</value>
   </data>
   <data name="MainCouldntOpenWZ" xml:space="preserve">
     <value>无法打开開WZ文件 "{0}"</value>
@@ -202,17 +283,29 @@
   <data name="MainHelpOpenFail" xml:space="preserve">
     <value>无法显示帮助, 因为找不到帮助文件({0})</value>
   </data>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>无法读取图片</value>
+  </data>
   <data name="MainInvalidFileError" xml:space="preserve">
     <value>文件"{0}""无效, 将跳过。 错误: {1}</value>
   </data>
   <data name="MainListWzDetected" xml:space="preserve">
     <value>这个文件(路径: {0}) 是List.wz文件, 将会被跳过</value>
   </data>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>这个名称的节点已存在, 请输入一个不同的节点名称</value>
+  </data>
   <data name="MainReloadAll" xml:space="preserve">
     <value>你确定要重载所有文件吗?</value>
   </data>
   <data name="MainSelectWzFolder" xml:space="preserve">
     <value>请选择WZ文件来保存</value>
+  </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
+  </data>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>已经到达结尾了</value>
   </data>
   <data name="MainUnloadAll" xml:space="preserve">
     <value>你确定要关闭所有文件吗?</value>
@@ -228,11 +321,17 @@
   <data name="MainWzExportError" xml:space="preserve">
     <value>导出目录未找到。 请在工具 - &gt;选项下指定它</value>
   </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
+  </data>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>缩进必须大于或等于0</value>
   </data>
   <data name="ProgramLoadSettingsError" xml:space="preserve">
     <value>无法读取设置文件, 请确认它未被使用. 若还是不行, 请删除并重试.</value>
+  </data>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>节点"{0}"已存在, 你想取代它吗?</value>
   </data>
   <data name="SaveVersionError" xml:space="preserve">
     <value>版本必须大于或等于0</value>
@@ -243,8 +342,17 @@
   <data name="SelectImage" xml:space="preserve">
     <value>選擇圖片</value>
   </data>
+  <data name="SelectImage1" xml:space="preserve">
+    <value>选择图片</value>
+  </data>
+  <data name="SelectionType" xml:space="preserve">
+    <value>选中类型: {0}</value>
+  </data>
   <data name="SelectMp3" xml:space="preserve">
     <value>選擇MP3文件</value>
+  </data>
+  <data name="SelectMp31" xml:space="preserve">
+    <value>选择MP3文件</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>选择动画路径</value>

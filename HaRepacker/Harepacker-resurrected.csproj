@@ -133,14 +133,22 @@
       <HintPath>..\packages\ExpressionEvaluator.2.0.4.0\lib\net40\ExpressionEvaluator.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="NAudio, Version=1.8.4.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NAudio.1.8.4\lib\net35\NAudio.dll</HintPath>
+    </Reference>
+    <Reference Include="PresentationCore" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="WeifenLuo.WinFormsUI.Docking, Version=2.1.6643.41644, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\WeifenLuo.WinFormsUI.Docking.2.1.0\lib\net20\WeifenLuo.WinFormsUI.Docking.dll</HintPath>
+    </Reference>
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AnimationBuilder.cs" />
     <Compile Include="ContextMenuManager.cs" />
     <Compile Include="FHMapper\FHMapper.cs" />
     <Compile Include="GUI\AboutForm.cs">
@@ -182,11 +190,89 @@
     <Compile Include="FHMapper\SpawnpointInfo.designer.cs">
       <DependentUpon>SpawnpointInfo.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\DockableSearchResult.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\DockableSearchResult.Designer.cs">
+      <DependentUpon>DockableSearchResult.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\FirstRunForm.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="GUI\FirstRunForm.Designer.cs">
       <DependentUpon>FirstRunForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\BitmapInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\BitmapInputBox.Designer.cs">
+      <DependentUpon>BitmapInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\DoubleInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\FloatingPointInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\FloatingPointInputBox.Designer.cs">
+      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\IntegerInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\IntInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\IntInputBox.Designer.cs">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\LongInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\LongInputBox.designer.cs">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\NameInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\NameInputBox.Designer.cs">
+      <DependentUpon>NameInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\NameValueInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\NameValueInputBox.Designer.cs">
+      <DependentUpon>NameValueInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\RenameInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\RenameInputBox.Designer.cs">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\ReplaceBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\ReplaceBox.Designer.cs">
+      <DependentUpon>ReplaceBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\SearchOptionsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\SearchOptionsForm.Designer.cs">
+      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\SoundInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\SoundInputBox.Designer.cs">
+      <DependentUpon>SoundInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Input\VectorInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\VectorInputBox.Designer.cs">
+      <DependentUpon>VectorInputBox.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\Interaction\WzMapleVersionInputBox.cs">
       <SubType>Form</SubType>
@@ -218,6 +304,44 @@
     <Compile Include="GUI\OptionsForm.Designer.cs">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Panels\HaRepackerMainPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Panels\HaRepackerMainPanel.Designer.cs">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\ChangableTextbox.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\ChangableTextbox.Designer.cs">
+      <DependentUpon>ChangableTextbox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.designer.cs">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.designer.cs">
+      <DependentUpon>SoundPlayer.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\XYPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\XYPanel.Designer.cs">
+      <DependentUpon>XYPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="SavedFolderBrowser.cs" />
+    <Compile Include="SharpApng.cs" />
+    <Compile Include="TreeViewMS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="UndoRedoManager.cs" />
+    <Compile Include="Warning.cs" />
+    <Compile Include="WzFileManager.cs" />
     <Compile Include="GUI\WzStringSearchForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -239,6 +363,9 @@
     <Compile Include="GUI\SaveForm.designer.cs">
       <DependentUpon>SaveForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="WzMp3Streamer.cs" />
+    <Compile Include="WzNode.cs" />
+    <Compile Include="WzSettings.cs" />
     <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
     </EmbeddedResource>
@@ -294,6 +421,15 @@
     <EmbeddedResource Include="GUI\AboutForm.zh-CHT.resx">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="GUI\DockableSearchResult.resx">
+      <DependentUpon>DockableSearchResult.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\DockableSearchResult.zh-CHS.resx">
+      <DependentUpon>DockableSearchResult.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\DockableSearchResult.zh-CHT.resx">
+      <DependentUpon>DockableSearchResult.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="GUI\FirstRunForm.resx">
       <DependentUpon>FirstRunForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -302,6 +438,112 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\FirstRunForm.zh-CHT.resx">
       <DependentUpon>FirstRunForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\BitmapInputBox.resx">
+      <DependentUpon>BitmapInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\BitmapInputBox.zh-CHS.resx">
+      <DependentUpon>BitmapInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\BitmapInputBox.zh-CHT.resx">
+      <DependentUpon>BitmapInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.resx">
+      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.zh-CHS.resx">
+      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.zh-CHT.resx">
+      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHS.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHT.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\LongInputBox.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\LongInputBox.zh-CHS.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\LongInputBox.zh-CHT.resx">
+      <DependentUpon>LongInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameInputBox.resx">
+      <DependentUpon>NameInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameInputBox.zh-CHS.resx">
+      <DependentUpon>NameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameInputBox.zh-CHT.resx">
+      <DependentUpon>NameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameValueInputBox.resx">
+      <DependentUpon>NameValueInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameValueInputBox.zh-CHS.resx">
+      <DependentUpon>NameValueInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\NameValueInputBox.zh-CHT.resx">
+      <DependentUpon>NameValueInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\RenameInputBox.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\RenameInputBox.zh-CHS.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\RenameInputBox.zh-CHT.resx">
+      <DependentUpon>RenameInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\ReplaceBox.resx">
+      <DependentUpon>ReplaceBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\ReplaceBox.zh-CHS.resx">
+      <DependentUpon>ReplaceBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\ReplaceBox.zh-CHT.resx">
+      <DependentUpon>ReplaceBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.resx">
+      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.zh-CHS.resx">
+      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.zh-CHT.resx">
+      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SoundInputBox.resx">
+      <DependentUpon>SoundInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SoundInputBox.zh-CHS.resx">
+      <DependentUpon>SoundInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SoundInputBox.zh-CHT.resx">
+      <DependentUpon>SoundInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\VectorInputBox.resx">
+      <DependentUpon>VectorInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\VectorInputBox.zh-CHS.resx">
+      <DependentUpon>VectorInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\VectorInputBox.zh-CHT.resx">
+      <DependentUpon>VectorInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.resx">
       <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
@@ -349,6 +591,53 @@
     <EmbeddedResource Include="GUI\OptionsForm.zh-CHT.resx">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.ja.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.ko.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.zh-CHS.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.zh-CHT.resx">
+      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.resx">
+      <DependentUpon>ChangableTextbox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.zh-CHS.resx">
+      <DependentUpon>ChangableTextbox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.zh-CHT.resx">
+      <DependentUpon>ChangableTextbox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHS.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHT.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.resx">
+      <DependentUpon>SoundPlayer.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.zh-CHS.resx">
+      <DependentUpon>SoundPlayer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.zh-CHT.resx">
+      <DependentUpon>SoundPlayer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Panels\SubPanels\XYPanel.resx">
+      <DependentUpon>XYPanel.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
     <EmbeddedResource Include="GUI\SaveForm.zh-CHS.resx">
       <DependentUpon>SaveForm.cs</DependentUpon>
     </EmbeddedResource>
@@ -379,6 +668,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.zh-CHS.resx" />
     <EmbeddedResource Include="Properties\Resources.zh-CHT.resx" />
+    <EmbeddedResource Include="TreeViewMS.resx">
+      <DependentUpon>TreeViewMS.cs</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
@@ -404,10 +696,6 @@
     <None Include="Resources\find.png" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaRepackerLib\HaRepackerLib.csproj">
-      <Project>{B68C971F-4B8A-44A3-88D0-6213D1A512E7}</Project>
-      <Name>HaRepackerLib</Name>
-    </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
@@ -436,14 +724,18 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="ILMergeOrder.txt" />
+    <None Include="Resources\Pause_.png" />
+    <None Include="Resources\Play.png" />
+    <None Include="Resources\207px-Circle-undo.svg.png" />
     <Content Include="Resources\arrow_left.png" />
+    <None Include="Resources\red_x1.png" />
     <None Include="Resources\rename.png" />
     <None Include="Resources\arrow_refresh.png" />
     <Content Include="Resources\arrow_right.png" />
+    <None Include="Resources\img_default.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />
-    <Content Include="Resources\play.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

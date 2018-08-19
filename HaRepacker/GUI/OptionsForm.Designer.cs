@@ -1,4 +1,6 @@
-﻿namespace HaRepacker.GUI
+﻿using HaRepacker.GUI.Input;
+
+namespace HaRepacker.GUI
 {
     partial class OptionsForm
     {
@@ -32,7 +34,7 @@
             this.sortBox = new System.Windows.Forms.CheckBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.indentBox = new HaRepackerLib.Controls.IntegerInput();
+            this.indentBox = new IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.lineBreakBox = new System.Windows.Forms.ComboBox();
             this.label2 = new System.Windows.Forms.Label();
@@ -175,7 +177,7 @@
         private System.Windows.Forms.CheckBox sortBox;
         private System.Windows.Forms.Button okButton;
         private System.Windows.Forms.Button cancelButton;
-        private HaRepackerLib.Controls.IntegerInput indentBox;
+        private IntegerInput indentBox;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox lineBreakBox;
         private System.Windows.Forms.Label label2;

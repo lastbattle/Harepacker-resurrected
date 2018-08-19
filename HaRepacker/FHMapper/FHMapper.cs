@@ -12,9 +12,9 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using HaRepackerLib.Controls;
 using System.Security.Cryptography;
-using HaRepackerLib.Controls.HaRepackerMainPanels;
 using System.Diagnostics;
 using MapleLib;
+using HaRepacker.GUI.Panels;
 
 namespace HaRepacker.FHMapper
 {

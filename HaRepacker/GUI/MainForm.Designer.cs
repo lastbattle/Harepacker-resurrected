@@ -1,4 +1,6 @@
-﻿namespace HaRepacker.GUI
+﻿using HaRepacker.GUI.Panels;
+
+namespace HaRepacker.GUI
 {
     partial class MainForm
     {
@@ -94,7 +96,7 @@
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.haRepackerMainPanel1 = new HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel();
+            this.haRepackerMainPanel1 = new HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
             this.mainMenu.SuspendLayout();
             this.tabControl_MainPanels.SuspendLayout();
@@ -664,7 +666,7 @@
         private System.Windows.Forms.ToolStripTextBox zoomTextBox;
         private System.Windows.Forms.TabControl tabControl_MainPanels;
         private System.Windows.Forms.TabPage tabPage1;
-        private HaRepackerLib.Controls.HaRepackerMainPanels.HaRepackerMainPanel haRepackerMainPanel1;
+        private HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;

@@ -13,7 +13,7 @@ using HaRepackerLib;
 using HaRepackerLib.Controls;
 using MapleLib.WzLib.Util;
 using System.Diagnostics;
-using HaRepackerLib.Controls.HaRepackerMainPanels;
+using HaRepacker.GUI.Panels;
 
 namespace HaRepacker.GUI
 {

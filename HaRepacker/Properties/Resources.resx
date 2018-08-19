@@ -329,7 +329,7 @@ Click "Yes" to download the new version.</value>
   <data name="Pause" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\Pause.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="play" type="System.Resources.ResXFileRef, System.Windows.Forms">
+  <data name="play_" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\play.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="MainFileOpenFail" xml:space="preserve">
@@ -346,5 +346,122 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="orangeMushroom_Stand" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\OrangeMushroom\orangeMushroom_Stand.gif;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox.</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>Error at animation builder, frame {0}</value>
+  </data>
+  <data name="EnterValidInput1" xml:space="preserve">
+    <value>Please enter valid input</value>
+  </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>Add canvas</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>Add convex</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>Add directory</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>Add double</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>Add float</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>Add image</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>Add int</value>
+  </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>Portal Type: {0}</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>Add link</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>Add null</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>Add short</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>Add sound</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>Add string</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>Add sub</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>Add vector</value>
+  </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>Cannot insert selected object into this type of wz node.</value>
+  </data>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>Copy WZ nodes to clipboard? (warning - can take a lot of time if many nodes are selected)</value>
+  </data>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>Paste WZ nodes from clipboard? (warning - can take a lot of time if many nodes are pasted)</value>
+  </data>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>Are you sure you want to remove this node?</value>
+  </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>Could not convert "{0}" to the required type</value>
+  </data>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>You can't copy directories because they require too much memory</value>
+  </data>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>Could not load image</value>
+  </data>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>A node with that name already exists. Please choose a different name</value>
+  </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
+  </data>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>Reached the end of the tree</value>
+  </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
+  </data>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>The node "{0}" already exists. Do you want it to be replaced?</value>
+  </data>
+  <data name="SelectImage" xml:space="preserve">
+    <value>Select the image</value>
+  </data>
+  <data name="SelectionType" xml:space="preserve">
+    <value>Selection Type: {0}</value>
+  </data>
+  <data name="SelectMp3" xml:space="preserve">
+    <value>Select MP3 File</value>
+  </data>
+  <data name="img_default" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\img_default.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="Pause_" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\Pause_.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="red_x1" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\red_x1.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="undo" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\207px-Circle-undo.svg.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
 </root>
