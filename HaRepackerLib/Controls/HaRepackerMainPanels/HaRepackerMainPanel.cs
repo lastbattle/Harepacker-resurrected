@@ -240,6 +240,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
                 nameBox.Visible = true;
                 textPropBox.Visible = true;
                 mp3Player.Visible = false;
+                pictureBoxPanel.Visible = true; // textPropBox is inside Picturebox
                 textPropBox.Text = obj.ToString();
                 vectorPanel.Visible = false;
                 applyChangesButton.Visible = true;
@@ -286,7 +287,7 @@ namespace HaRepackerLib.Controls.HaRepackerMainPanels
             {
                 nameBox.Visible = true;
                 canvasPropBox.Visible = false;
-                pictureBoxPanel.Visible = false;
+                pictureBoxPanel.Visible = true; // textPropBox is inside Picturebox
                 textPropBox.Visible = true;
                 mp3Player.Visible = false;
                 textPropBox.Text = obj.ToString();

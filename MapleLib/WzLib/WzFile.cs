@@ -20,6 +20,7 @@ using System.Text.RegularExpressions;
 using System;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
+using System.Diagnostics;
 
 namespace MapleLib.WzLib
 {
@@ -33,9 +34,9 @@ namespace MapleLib.WzLib
         internal WzDirectory wzDir;
         internal WzHeader header;
         internal string name = "";
-        internal short version = 0;
+        internal int version = 0;
         internal uint versionHash = 0;
-        internal short mapleStoryPatchVersion = 0;
+        internal int mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
         internal byte[] WzIv;
         #endregion
@@ -77,7 +78,7 @@ namespace MapleLib.WzLib
 
         public WzHeader Header { get { return header; } set { header = value; } }
 
-        public short Version { get { return mapleStoryPatchVersion; } set { mapleStoryPatchVersion = value; } }
+        public int Version { get { return mapleStoryPatchVersion; } set { mapleStoryPatchVersion = value; } }
 
         public string FilePath { get { return path; } }
 
@@ -193,7 +194,7 @@ namespace MapleLib.WzLib
             this.Header.Copyright = reader.ReadNullTerminatedString();
             reader.ReadBytes((int)(Header.FStart - reader.BaseStream.Position));
             reader.Header = this.Header;
-            this.version = reader.ReadInt16();
+            this.version = (int) reader.ReadUInt16();
 
             if (mapleStoryPatchVersion == -1)
             {

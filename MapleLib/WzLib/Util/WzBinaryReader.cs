@@ -15,9 +15,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using MapleLib.MapleCryptoLib;
+using MapleLib.PacketLib;
 
 namespace MapleLib.WzLib.Util
 {
@@ -61,9 +63,7 @@ namespace MapleLib.WzLib.Util
 			sbyte smallLength = base.ReadSByte();
 
 			if (smallLength == 0)
-			{
 				return string.Empty;
-			}
 
 			int length;
 			StringBuilder retString = new StringBuilder();
@@ -71,17 +71,12 @@ namespace MapleLib.WzLib.Util
 			{
 				ushort mask = 0xAAAA;
 				if (smallLength == sbyte.MaxValue)
-				{
 					length = ReadInt32();
-				}
 				else
-				{
 					length = (int)smallLength;
-				}
+
 				if (length <= 0)
-				{
 					return string.Empty;
-				}
 
 				for (int i = 0; i < length; i++)
 				{
@@ -96,17 +91,12 @@ namespace MapleLib.WzLib.Util
 			{ // ASCII
 				byte mask = 0xAA;
 				if (smallLength == sbyte.MinValue)
-				{
 					length = ReadInt32();
-				}
 				else
-				{
 					length = (int)(-smallLength);
-				}
+
 				if (length <= 0)
-				{
 					return string.Empty;
-				}
 
 				for (int i = 0; i < length; i++)
 				{
