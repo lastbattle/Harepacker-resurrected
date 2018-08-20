@@ -65,25 +65,34 @@ namespace HaRepacker.GUI
             }
         }
 
+        private bool mainFormLoaded = false;
+
         private HaRepackerMainPanel MainPanel = null;
 
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
         {
             InitializeComponent();
-            SetThemeColor();
 
-            // Set default selected main panel
-            UpdateSelectedMainPanelTab();
-
-            // encryptions
-            AddWzEncryptionTypesToComboBox(encryptionBox);
+            // Events
+            Load += MainForm_Load1;
 #if DEBUG
             debugToolStripMenuItem.Visible = true;
 #endif
+
+            // Sets theme color
+            SetThemeColor();
+
+            // encryptions
+            AddWzEncryptionTypesToComboBox(encryptionBox);
+
             WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
             Size = new Size(
                 Program.ConfigurationManager.ApplicationSettings.Width, 
                 Program.ConfigurationManager.ApplicationSettings.Height);
+
+
+            // Set default selected main panel
+            UpdateSelectedMainPanelTab();
 
             if (usingPipes)
             {
@@ -126,6 +135,13 @@ namespace HaRepacker.GUI
 
             // Focus on the tab control
             tabControl_MainPanels.Focus();
+
+            // flag. loaded
+            mainFormLoaded = true;
+        }
+
+        private void MainForm_Load1(object sender, EventArgs e)
+        {
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -295,6 +311,9 @@ namespace HaRepacker.GUI
 
         private void MainForm_SizeChanged(object sender, EventArgs e)
         {
+            if (!mainFormLoaded)
+                return;
+
             if (this.Size.Width * this.Size.Height != 0)
             {
                 RedockControls();

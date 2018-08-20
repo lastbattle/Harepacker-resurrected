@@ -27,35 +27,24 @@ namespace HaRepacker.Configuration
         private const string SETTINGS_FILE_APPLICATION = "ApplicationSettings.txt";
 
         private string folderPath;
-        Type userSettingsType;
-        Type appSettingsType;
-        Type xnaColorType = null;
 
-        private UserSettings _userSettings;
+        private UserSettings _userSettings = new UserSettings(); // default configuration for UI designer :( 
         public UserSettings UserSettings
         {
             get { return _userSettings; }
             private set { }
         }
 
-        private ApplicationSettings _appSettings;
+        private ApplicationSettings _appSettings = new ApplicationSettings(); // default configuration for UI designer :( 
         public ApplicationSettings ApplicationSettings
         {
             get { return _appSettings; }
             private set { }
         }
 
-        public ConfigurationManager(string folderPath, Type userSettingsType, Type appSettingsType)
+        public ConfigurationManager(string folderPath)
         {
             this.folderPath = folderPath;
-            this.userSettingsType = userSettingsType;
-            this.appSettingsType = appSettingsType;
-        }
-
-        public ConfigurationManager(string folderPath, Type userSettingsType, Type appSettingsType, Type xnaColorType)
-            : this(folderPath, userSettingsType, appSettingsType)
-        {
-            this.xnaColorType = xnaColorType;
         }
 
         /// <summary>

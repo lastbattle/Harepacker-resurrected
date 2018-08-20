@@ -35,8 +35,7 @@ namespace HaRepacker.GUI.Panels
         public HaRepackerMainPanel()
         {
             InitializeComponent();
-            SetThemeColor();
-
+           
             MainSplitContainer.Parent = MainDockPanel;
             undoRedoMan = new UndoRedoManager(this);
 
@@ -51,6 +50,8 @@ namespace HaRepacker.GUI.Panels
         private void HaRepackerMainPanel_Load(object sender, EventArgs e)
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
+
+             SetThemeColor();
         }
 
         #region Theme Colors
@@ -991,6 +992,9 @@ namespace HaRepacker.GUI.Panels
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (nextLoopTime_comboBox == null)
+                return;
+
             switch (nextLoopTime_comboBox.SelectedIndex)
             {
                 case 1:
