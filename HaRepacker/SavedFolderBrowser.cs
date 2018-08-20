@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,9 +18,11 @@ namespace HaRepacker
         public static string Show(string description)
         {
             FolderBrowserDialog dialog = new FolderBrowserDialog() { Description = description };
-            if (ApplicationSettings.LastBrowserPath != "") dialog.SelectedPath = ApplicationSettings.LastBrowserPath;
-            if (dialog.ShowDialog() != DialogResult.OK) return "";
-            return ApplicationSettings.LastBrowserPath = dialog.SelectedPath;
+            if (Program.ConfigurationManager.ApplicationSettings.LastBrowserPath != "")
+                dialog.SelectedPath = Program.ConfigurationManager.ApplicationSettings.LastBrowserPath;
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return "";
+            return Program.ConfigurationManager.ApplicationSettings.LastBrowserPath = dialog.SelectedPath;
         }
     }
 }

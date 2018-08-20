@@ -21,6 +21,7 @@ using HaRepackerLib;
 using HaRepackerLib.Controls;
 using HaRepacker.Properties;
 using HaRepacker.GUI.Input;
+using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -55,7 +56,7 @@ namespace HaRepacker.GUI.Panels
         #region Theme Colors
         public void SetThemeColor()
         {
-            if (UserSettings.ThemeColor == 0) // black
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0) // black
             {
                 this.BackColor = Color.DimGray;
                 DataTree.BackColor = Color.Black;
@@ -132,10 +133,10 @@ namespace HaRepacker.GUI.Panels
             nextLoopTime_label.Location = new Point(nameBox.Width, 6);
             nextLoopTime_comboBox.SelectedIndex = 0;
             nextLoopTime_comboBox.Location = new Point(nextLoopTime_label.Location.X + nextLoopTime_label.Width + 2, 3);
-            planePosition_comboBox.SelectedIndex = UserSettings.PlanePosition;
+            planePosition_comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.PlanePosition;
             planePosition_comboBox.Location = new Point(nextLoopTime_comboBox.Location.X + nextLoopTime_comboBox.Width + 5, 3);
             cartesianPlane_checkBox.Location = new Point(planePosition_comboBox.Location.X + planePosition_comboBox.Width + 3, 6);
-            cartesianPlane_checkBox.Checked = UserSettings.Plane;
+            cartesianPlane_checkBox.Checked = Program.ConfigurationManager.UserSettings.Plane;
         }
 
         private void MainSplitContainer_SplitterMoved(object sender, SplitterEventArgs e)
@@ -807,7 +808,7 @@ namespace HaRepacker.GUI.Panels
         public void StartAnimateSelectedCanvas()
         {
             if (nextLoopTime_comboBox.SelectedIndex == 1)
-                timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
+                timerImgSequence.Interval = Program.TimeStartAnimateDefault;
 
             if (bCanvasAnimationActive) // currently animating
             {
@@ -936,7 +937,7 @@ namespace HaRepacker.GUI.Panels
         {
             i_animateCanvasNode = 0;
             timerImgSequence.Stop();
-            timerImgSequence.Interval = Constants.TimeStartAnimateDefault;
+            timerImgSequence.Interval = Program.TimeStartAnimateDefault;
             button_animateSelectedCanvas.Text = "Animate";
 
             bCanvasAnimationActive = false; // flag
@@ -949,8 +950,8 @@ namespace HaRepacker.GUI.Panels
                 if (nextLoopTime_comboBox.SelectedIndex != 0)
                 {
                     canvasPropBox.Image = Properties.Resources.img_default;
-                    toolStripStatusLabel_additionalInfo.Text = "Waiting " + UserSettings.delayNextLoop + " ms.";
-                    timerImgSequence.Interval = UserSettings.delayNextLoop;
+                    toolStripStatusLabel_additionalInfo.Text = "Waiting " + Program.ConfigurationManager.UserSettings.DelayNextLoop + " ms.";
+                    timerImgSequence.Interval = Program.ConfigurationManager.UserSettings.DelayNextLoop;
                     i_animateCanvasNode = 0;
                 }
                 else
@@ -980,9 +981,9 @@ namespace HaRepacker.GUI.Panels
         private void cartesianPlane_checkBox_CheckedChanged(object sender, EventArgs e)
         {
             if (cartesianPlane_checkBox.Checked)
-                UserSettings.Plane = true;
+                Program.ConfigurationManager.UserSettings.Plane = true;
             else
-                UserSettings.Plane = false;
+                Program.ConfigurationManager.UserSettings.Plane = false;
 
             //cartesianPlaneX.Visible = UserSettings.Plane;
             //cartesianPlaneY.Visible = UserSettings.Plane;
@@ -993,19 +994,19 @@ namespace HaRepacker.GUI.Panels
             switch (nextLoopTime_comboBox.SelectedIndex)
             {
                 case 1:
-                    UserSettings.delayNextLoop = 1000;
+                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 1000;
                     break;
                 case 2:
-                    UserSettings.delayNextLoop = 2000;
+                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 2000;
                     break;
                 case 3:
-                    UserSettings.delayNextLoop = 5000;
+                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 5000;
                     break;
                 case 4:
-                    UserSettings.delayNextLoop = 10000;
+                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 10000;
                     break;
                 default:
-                    UserSettings.delayNextLoop = Constants.TimeStartAnimateDefault;
+                    Program.ConfigurationManager.UserSettings.DelayNextLoop = Program.TimeStartAnimateDefault;
                     break;
             }
         }
@@ -1038,7 +1039,7 @@ namespace HaRepacker.GUI.Panels
         private PointF vectorOriginSelected;
         private void RefreshCanvasLocation()
         {
-            if (UserSettings.devImgSequences && vectorOriginSelected != null)
+            if (Program.ConfigurationManager.UserSettings.DevImgSequences && vectorOriginSelected != null)
             {
                 UpdatePlanePosition();
                 ShowOptionsCanvasAnimate(true);
@@ -1062,7 +1063,7 @@ namespace HaRepacker.GUI.Panels
                 canvasX = fieldLimitPanel1.Width / 2 - (int) vectorOriginSelected.X,
                 canvasY = fieldLimitPanel1.Height / 2 - (int)vectorOriginSelected.Y;
 
-            switch (UserSettings.PlanePosition)
+            switch (Program.ConfigurationManager.UserSettings.PlanePosition)
             {
                 case 1:// Top
                     canvasPropBox.Location = new Point(canvasX, canvasY - Y);
@@ -1583,10 +1584,10 @@ namespace HaRepacker.GUI.Panels
             finished = false;
             listSearchResults = false;
             searchResultsList.Clear();
-            searchValues = UserSettings.SearchStringValues;
+            searchValues = Program.ConfigurationManager.UserSettings.SearchStringValues;
             currentidx = 0;
             searchText = findBox.Text;
-            extractImages = UserSettings.ParseImagesInSearch;
+            extractImages = Program.ConfigurationManager.UserSettings.ParseImagesInSearch;
             foreach (WzNode node in DataTree.SelectedNodes)
             {
                 if (node.Tag is IPropertyContainer)
@@ -1612,10 +1613,10 @@ namespace HaRepacker.GUI.Panels
             listSearchResults = true;
             searchResultsList.Clear();
             //searchResultsBox.Items.Clear();
-            searchValues = UserSettings.SearchStringValues;
+            searchValues = Program.ConfigurationManager.UserSettings.SearchStringValues;
             currentidx = 0;
             searchText = findBox.Text;
-            extractImages = UserSettings.ParseImagesInSearch;
+            extractImages = Program.ConfigurationManager.UserSettings.ParseImagesInSearch;
             foreach (WzNode node in DataTree.SelectedNodes)
             {
                 if (node.Tag is WzImageProperty) continue;

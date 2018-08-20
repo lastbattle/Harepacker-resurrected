@@ -162,7 +162,6 @@
     <Compile Include="WzLib\IPropertyContainer.cs" />
     <Compile Include="WzLib\WzPropertyType.cs" />
     <Compile Include="WzLib\WzSerializer.cs" />
-    <Compile Include="WzLib\WzSettings.cs" />
     <Compile Include="WzLib\WzStructure\Data\Data.cs" />
     <Compile Include="WzLib\WzStructure\Data\Enums.cs" />
     <Compile Include="WzLib\WzStructure\Data\WzFieldLimitType.cs" />

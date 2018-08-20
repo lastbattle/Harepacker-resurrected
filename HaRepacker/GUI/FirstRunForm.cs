@@ -6,6 +6,7 @@
 
 using System;
 using System.Windows.Forms;
+using HaRepacker.Configuration;
 using HaRepackerLib;
 
 namespace HaRepacker.GUI
@@ -19,8 +20,8 @@ namespace HaRepacker.GUI
 
         private void button1_Click(object sender, EventArgs e)
         {
-            UserSettings.AutoUpdate = autoUpdate.Checked;
-            UserSettings.AutoAssociate = autoAssociateBox.Checked;
+            Program.ConfigurationManager.UserSettings.AutoUpdate = autoUpdate.Checked;
+            Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
             FormClosing -= FirstRunForm_FormClosing;
             Close();
         }

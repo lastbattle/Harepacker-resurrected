@@ -31,6 +31,7 @@ using System.Windows.Threading;
 using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
+using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -79,8 +80,10 @@ namespace HaRepacker.GUI
 #if DEBUG
             debugToolStripMenuItem.Visible = true;
 #endif
-            WindowState = ApplicationSettings.Maximized ? FormWindowState.Maximized : FormWindowState.Normal;
-            Size = ApplicationSettings.WindowSize;
+            WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
+            Size = new Size(
+                Program.ConfigurationManager.ApplicationSettings.Width, 
+                Program.ConfigurationManager.ApplicationSettings.Height);
 
             if (usingPipes)
             {
@@ -133,7 +136,7 @@ namespace HaRepacker.GUI
         #region Theme colors
         public void SetThemeColor()
         {
-            if (UserSettings.ThemeColor == 0)//black
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)//black
             {
                 this.BackColor = Color.Black;
                 mainMenu.BackColor = Color.Black;
@@ -246,17 +249,17 @@ namespace HaRepacker.GUI
                 int version = int.Parse(
                     Encoding.ASCII.GetString(
                     client.DownloadData(
-                    ApplicationSettings.UpdateServer + "version.txt"
+                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "version.txt"
                     )));
                 string notice = Encoding.ASCII.GetString(
                     client.DownloadData(
-                    ApplicationSettings.UpdateServer + "notice.txt"
+                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "notice.txt"
                     ));
                 string url = Encoding.ASCII.GetString(
                     client.DownloadData(
-                    ApplicationSettings.UpdateServer + "url.txt"
+                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "url.txt"
                     ));
-                if (version <= Constants.Version)
+                if (version <= Program.Version_)
                     return;
                 if (MessageBox.Show(string.Format(HaRepacker.Properties.Resources.MainUpdateAvailable, notice.Replace("%URL%", url)), HaRepacker.Properties.Resources.MainUpdateTitle, MessageBoxButtons.YesNo) == DialogResult.Yes)
                     Process.Start(url);
@@ -267,8 +270,8 @@ namespace HaRepacker.GUI
         #region Handlers
         private void MainForm_Load(object sender, EventArgs e)
         {
-            encryptionBox.SelectedIndex = (int)ApplicationSettings.MapleVersion;
-            if (UserSettings.AutoUpdate && ApplicationSettings.UpdateServer != "")
+            encryptionBox.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
+            if (Program.ConfigurationManager.UserSettings.AutoUpdate && Program.ConfigurationManager.ApplicationSettings.UpdateServer != "")
             {
                 updater = new Thread(new ThreadStart(UpdaterThread));
                 updater.IsBackground = true;
@@ -296,8 +299,9 @@ namespace HaRepacker.GUI
             {
                 RedockControls();
 
-                ApplicationSettings.WindowSize = this.Size;
-                ApplicationSettings.Maximized = WindowState == FormWindowState.Maximized;
+                Program.ConfigurationManager.ApplicationSettings.Height = this.Size.Height;
+                Program.ConfigurationManager.ApplicationSettings.Width = this.Size.Width;
+                Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == FormWindowState.Maximized;
             }
         }
 
@@ -438,7 +442,7 @@ namespace HaRepacker.GUI
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
         }
 
         /// <summary>
@@ -649,7 +653,7 @@ namespace HaRepacker.GUI
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            ApplicationSettings.Maximized = WindowState == FormWindowState.Maximized;
+            Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == FormWindowState.Maximized;
             e.Cancel = !Warning.Warn(HaRepacker.Properties.Resources.MainConfirmExit);
         }
         #endregion
@@ -792,7 +796,9 @@ namespace HaRepacker.GUI
             if (folderDialog.ShowDialog() != DialogResult.OK)
                 return;
 
-            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, false);
+            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
+                Program.ConfigurationManager.UserSettings.Indentation, 
+                Program.ConfigurationManager.UserSettings.LineBreakType, false);
             threadDone = false;
             new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start((object)new object[] { dialog.FileNames, folderDialog.SelectedPath, encryptionBox.SelectedIndex, serializer });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
@@ -839,9 +845,9 @@ namespace HaRepacker.GUI
 
         private string GetOutputDirectory()
         {
-            return UserSettings.DefaultXmlFolder == "" ?
+            return Program.ConfigurationManager.UserSettings.DefaultXmlFolder == "" ?
                 SavedFolderBrowser.Show(HaRepacker.Properties.Resources.SelectOutDir)
-                : UserSettings.DefaultXmlFolder;
+                : Program.ConfigurationManager.UserSettings.DefaultXmlFolder;
         }
 
         private void rawDataToolStripMenuItem_Click(object sender, EventArgs e)
@@ -970,7 +976,9 @@ namespace HaRepacker.GUI
                     dirs.Add(((WzFile)node.Tag).WzDirectory);
                 }
             }
-            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, false);
+            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
+                Program.ConfigurationManager.UserSettings.Indentation, 
+                Program.ConfigurationManager.UserSettings.LineBreakType, false);
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
             runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
@@ -1000,7 +1008,9 @@ namespace HaRepacker.GUI
                     dirs.Add(((WzFile)node.Tag).WzDirectory);
                 }
             }
-            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType, true);
+            WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
+                Program.ConfigurationManager.UserSettings.Indentation,
+                Program.ConfigurationManager.UserSettings.LineBreakType, true);
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
             runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
@@ -1023,7 +1033,9 @@ namespace HaRepacker.GUI
                 if (node.Tag is WzObject)
                     objs.Add((WzObject)node.Tag);
             }
-            WzNewXmlSerializer serializer = new WzNewXmlSerializer(UserSettings.Indentation, UserSettings.LineBreakType);
+            WzNewXmlSerializer serializer = new WzNewXmlSerializer(
+                Program.ConfigurationManager.UserSettings.Indentation,
+                Program.ConfigurationManager.UserSettings.LineBreakType);
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzObjExtraction));
             runningThread.Start((object)new object[] { objs, dialog.FileName, serializer });
@@ -1079,7 +1091,8 @@ namespace HaRepacker.GUI
                 {
                     return;
                 }
-                AnimationBuilder.ExtractAnimation((WzSubProperty)MainPanel.DataTree.SelectedNode.Tag, dialog.FileName, UserSettings.UseApngIncompatibilityFrame);
+                AnimationBuilder.ExtractAnimation((WzSubProperty)MainPanel.DataTree.SelectedNode.Tag, dialog.FileName,
+                    Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame);
             }
         }
 

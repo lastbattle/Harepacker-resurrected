@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.Configuration;
 using HaRepackerLib;
 using System;
 using System.Windows.Forms;
@@ -16,8 +17,8 @@ namespace HaRepacker.GUI.Input
         {
             InitializeComponent();
 
-            parseImages.Checked = UserSettings.ParseImagesInSearch;
-            searchValues.Checked = UserSettings.SearchStringValues;
+            parseImages.Checked = Program.ConfigurationManager.UserSettings.ParseImagesInSearch;
+            searchValues.Checked = Program.ConfigurationManager.UserSettings.SearchStringValues;
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -27,8 +28,8 @@ namespace HaRepacker.GUI.Input
 
         private void button1_Click(object sender, EventArgs e)
         {
-            UserSettings.ParseImagesInSearch = parseImages.Checked;
-            UserSettings.SearchStringValues = searchValues.Checked;
+            Program.ConfigurationManager.UserSettings.ParseImagesInSearch = parseImages.Checked;
+            Program.ConfigurationManager.UserSettings.SearchStringValues = searchValues.Checked;
             Close();
         }
     }

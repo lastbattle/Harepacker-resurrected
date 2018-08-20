@@ -19,6 +19,7 @@ using System.Windows.Threading;
 using System.Threading.Tasks;
 using HaRepackerLib;
 using HaRepacker.GUI.Panels;
+using HaRepacker.Configuration;
 
 namespace HaRepacker
 {
@@ -112,7 +113,7 @@ namespace HaRepacker
 
             WzNode node = new WzNode(img);
             panel.DataTree.Nodes.Add(node);
-            if (UserSettings.Sort)
+            if (Program.ConfigurationManager.UserSettings.Sort)
             {
                 SortNodesRecursively(node);
             }
@@ -194,7 +195,7 @@ namespace HaRepacker
 
         private void SortNodesRecursively(WzNode parent)
         {
-            if (UserSettings.Sort)
+            if (Program.ConfigurationManager.UserSettings.Sort)
                 parent.TreeView.Sort();
         }
 

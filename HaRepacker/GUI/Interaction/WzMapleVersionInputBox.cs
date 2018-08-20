@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.Configuration;
 using HaRepackerLib;
 using MapleLib.WzLib;
 using System;
@@ -34,7 +35,7 @@ namespace HaRepacker.GUI.Interaction
             Text = title;
 
             MainForm.AddWzEncryptionTypesToComboBox(comboBox_wzEncryptionType);
-            comboBox_wzEncryptionType.SelectedIndex = (int)ApplicationSettings.MapleVersion;
+            comboBox_wzEncryptionType.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
 
             // Localization
             label_wzEncrytionType.Text = HaRepacker.Properties.Resources.InteractionWzMapleVersionInfo;

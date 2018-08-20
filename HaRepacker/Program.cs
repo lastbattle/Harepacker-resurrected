@@ -15,16 +15,28 @@ using System.IO.Pipes;
 using System.IO;
 using System.Security.Principal;
 using System.Globalization;
+using HaRepacker.Configuration;
 
 namespace HaRepacker
 {
     public static class Program
     {
         public const string Version = "4.2.4";
+        public const int Version_ = 424;
+
+        public const int TimeStartAnimateDefault = 60;
+
         public static WzFileManager WzMan = new WzFileManager();
-        public static WzSettingsManager SettingsManager;
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
+
+        private static ConfigurationManager _ConfigurationManager;
+        public static ConfigurationManager ConfigurationManager
+        {
+            get { return _ConfigurationManager; }
+            private set { }
+        }
+
         public const string pipeName = "HaRepacker";
 
         /// <summary>
@@ -92,18 +104,17 @@ namespace HaRepacker
             Environment.Exit(-1);
         }
 
+        /// <summary>
+        /// Gets the local folder path
+        /// </summary>
+        /// <returns></returns>
         public static string GetLocalFolderPath()
         {
             string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string our_folder = Path.Combine(appdata, "HaRepacker");
+            string our_folder = Path.Combine(appdata, pipeName);
             if (!Directory.Exists(our_folder))
                 Directory.CreateDirectory(our_folder);
             return our_folder;
-        }
-
-        public static string GetLocalSettingsPath()
-        {
-            return Path.Combine(GetLocalFolderPath(), "Settings.wz");
         }
 
         public static bool IsUserAdministrator()
@@ -126,34 +137,22 @@ namespace HaRepacker
 
         public static bool PrepareApplication(bool from_internal)
         {
-            SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings));
-            bool loaded = false;
-            for (int i = 0; i < 5; i++)
-            {
-                try
-                {
-                    SettingsManager.Load();
-                    loaded = true;
-                    break;
-                }
-                catch
-                {
-                    Thread.Sleep(1000);
-                }
-            }
+            _ConfigurationManager = new ConfigurationManager(GetLocalFolderPath(), typeof(UserSettings), typeof(ApplicationSettings));
+
+            bool loaded = _ConfigurationManager.Load();
             if (!loaded)
             {
                 Warning.Error(HaRepacker.Properties.Resources.ProgramLoadSettingsError);
                 return true;
             }
-            bool firstRun = ApplicationSettings.FirstRun;
-            if (ApplicationSettings.FirstRun)
+            bool firstRun = Program.ConfigurationManager.ApplicationSettings.FirstRun;
+            if (Program.ConfigurationManager.ApplicationSettings.FirstRun)
             {
                 //new FirstRunForm().ShowDialog();
-                ApplicationSettings.FirstRun = false;
-                SettingsManager.Save();
+                Program.ConfigurationManager.ApplicationSettings.FirstRun = false;
+                _ConfigurationManager.Save();
             }
-            if (UserSettings.AutoAssociate && from_internal && IsUserAdministrator())
+            if (Program.ConfigurationManager.UserSettings.AutoAssociate && from_internal && IsUserAdministrator())
             {
                 string path = Application.ExecutablePath;
                 Registry.ClassesRoot.CreateSubKey(".wz").SetValue("", "WzFile");
@@ -175,7 +174,7 @@ namespace HaRepacker
             {
                 WzMan.Terminate();
             }
-            SettingsManager.Save();
+            _ConfigurationManager.Save();
         }
     }
 }

@@ -58,7 +58,10 @@ namespace HaCreator
             Properties.Resources.Culture = CultureInfo.CurrentCulture;
             InfoManager = new WzInformationManager();
             SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
-            SettingsManager.Load();
+            if (SettingsManager.Load())
+            {
+                // do something
+            }
             MultiBoard.RecalculateSettings();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.Configuration;
 using System.Windows.Forms;
 
 namespace HaRepacker
@@ -12,7 +13,7 @@ namespace HaRepacker
     {
         public static bool Warn(string text)
         {
-            return UserSettings.SuppressWarnings || MessageBox.Show(text, Properties.Resources.Warning, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+            return Program.ConfigurationManager.UserSettings.SuppressWarnings || MessageBox.Show(text, Properties.Resources.Warning, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
         }
 
         public static void Error(string text)

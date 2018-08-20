@@ -136,6 +136,9 @@
     <Reference Include="NAudio, Version=1.8.4.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\NAudio.1.8.4\lib\net35\NAudio.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.11.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
@@ -149,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AnimationBuilder.cs" />
+    <Compile Include="Configuration\ConfigurationManager.cs" />
     <Compile Include="ContextMenuManager.cs" />
     <Compile Include="FHMapper\FHMapper.cs" />
     <Compile Include="GUI\AboutForm.cs">
@@ -335,6 +339,8 @@
       <DependentUpon>XYPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
+    <Compile Include="Configuration\ApplicationSettings.cs" />
+    <Compile Include="Configuration\UserSettings.cs" />
     <Compile Include="SharpApng.cs" />
     <Compile Include="TreeViewMS.cs">
       <SubType>Component</SubType>
@@ -365,7 +371,6 @@
     </Compile>
     <Compile Include="WzMp3Streamer.cs" />
     <Compile Include="WzNode.cs" />
-    <Compile Include="WzSettings.cs" />
     <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
     </EmbeddedResource>

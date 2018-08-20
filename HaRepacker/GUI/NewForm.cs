@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using HaRepackerLib;
 using MapleLib.WzLib;
 using HaRepacker.GUI.Panels;
+using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -23,7 +24,7 @@ namespace HaRepacker.GUI
 
             MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
 
-            encryptionBox.SelectedIndex = (int)ApplicationSettings.MapleVersion;
+            encryptionBox.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
             versionBox.Value = 1;
         }
 

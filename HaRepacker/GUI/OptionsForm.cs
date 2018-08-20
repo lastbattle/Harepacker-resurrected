@@ -9,6 +9,7 @@ using System.Windows.Forms;
 using HaRepackerLib;
 using MapleLib.WzLib.Serialization;
 using HaRepacker.GUI.Panels;
+using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -20,20 +21,20 @@ namespace HaRepacker.GUI
         {
             this.panel = panel;
             InitializeComponent();
-            sortBox.Checked = UserSettings.Sort;
-            apngIncompEnable.Checked = UserSettings.UseApngIncompatibilityFrame;
-            autoAssociateBox.Checked = UserSettings.AutoAssociate;
-            if (UserSettings.DefaultXmlFolder != "") 
+            sortBox.Checked = Program.ConfigurationManager.UserSettings.Sort;
+            apngIncompEnable.Checked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
+            autoAssociateBox.Checked = Program.ConfigurationManager.UserSettings.AutoAssociate;
+            if (Program.ConfigurationManager.UserSettings.DefaultXmlFolder != "") 
             { 
                 defXmlFolderEnable.Checked = true; 
-                defXmlFolderBox.Text = UserSettings.DefaultXmlFolder; 
+                defXmlFolderBox.Text = Program.ConfigurationManager.UserSettings.DefaultXmlFolder; 
             }
-            indentBox.Value = UserSettings.Indentation;
-            lineBreakBox.SelectedIndex = (int)UserSettings.LineBreakType;
-            autoUpdate.Checked = UserSettings.AutoUpdate;
+            indentBox.Value = Program.ConfigurationManager.UserSettings.Indentation;
+            lineBreakBox.SelectedIndex = (int)Program.ConfigurationManager.UserSettings.LineBreakType;
+            autoUpdate.Checked = Program.ConfigurationManager.UserSettings.AutoUpdate;
 
             // Theme color
-            themeColor__comboBox.SelectedIndex = UserSettings.ThemeColor;
+            themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
         }
 
         private void cancelButton_Click(object sender, EventArgs e)
@@ -49,19 +50,19 @@ namespace HaRepacker.GUI
                 return;
             }
 
-            UserSettings.Sort = sortBox.Checked;
-            UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
-            UserSettings.AutoAssociate = autoAssociateBox.Checked;
+            Program.ConfigurationManager.UserSettings.Sort = sortBox.Checked;
+            Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
+            Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
             if (defXmlFolderEnable.Checked)
-                UserSettings.DefaultXmlFolder = defXmlFolderBox.Text;
+                Program.ConfigurationManager.UserSettings.DefaultXmlFolder = defXmlFolderBox.Text;
             else
-                UserSettings.DefaultXmlFolder = "";
-            UserSettings.Indentation = indentBox.Value;
-            UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
-            UserSettings.AutoUpdate = autoUpdate.Checked;
-            UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
+                Program.ConfigurationManager.UserSettings.DefaultXmlFolder = "";
+            Program.ConfigurationManager.UserSettings.Indentation = indentBox.Value;
+            Program.ConfigurationManager.UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
+            Program.ConfigurationManager.UserSettings.AutoUpdate = autoUpdate.Checked;
+            Program.ConfigurationManager.UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
 
-            Program.SettingsManager.Save();
+            Program.ConfigurationManager.Save();
             Close();
         }
 
