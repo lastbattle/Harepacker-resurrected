@@ -11,6 +11,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Collections;
 using System.Drawing;
 using HaRepackerLib;
+using HaRepacker.Comparer;
 
 namespace HaRepacker
 {
@@ -27,8 +28,10 @@ namespace HaRepacker
         {
             this.isWzObjectAddedManually = isWzObjectAddedManually;
             if (isWzObjectAddedManually)
+            {
                 ForeColor = NewObjectForeColor;
-
+            }
+            // Childs
             ParseChilds(SourceObject);
         }
 

@@ -20,11 +20,14 @@ using System.Threading.Tasks;
 using HaRepackerLib;
 using HaRepacker.GUI.Panels;
 using HaRepacker.Configuration;
+using HaRepacker.Comparer;
 
 namespace HaRepacker
 {
     public class WzFileManager
     {
+        private static TreeViewNodeSorter SORTER = new TreeViewNodeSorter();
+
         private List<WzFile> wzFiles = new List<WzFile>();
 
         public WzFileManager()
@@ -196,7 +199,11 @@ namespace HaRepacker
         private void SortNodesRecursively(WzNode parent)
         {
             if (Program.ConfigurationManager.UserSettings.Sort)
+            {
+                parent.TreeView.TreeViewNodeSorter = SORTER;
+
                 parent.TreeView.Sort();
+            }
         }
 
         public void ReloadAll(HaRepackerMainPanel panel)
