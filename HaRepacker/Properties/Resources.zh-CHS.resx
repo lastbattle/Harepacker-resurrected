@@ -147,9 +147,6 @@
   <data name="EnterValidInput" xml:space="preserve">
     <value>请输入有效的內容</value>
   </data>
-  <data name="EnterValidInput1" xml:space="preserve">
-    <value>Please enter valid input</value>
-  </data>
   <data name="Error" xml:space="preserve">
     <value>错误</value>
   </data>
@@ -179,9 +176,6 @@
     <value>Y值</value>
   </data>
   <data name="ImagesFilter" xml:space="preserve">
-    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
-  </data>
-  <data name="ImagesFilter1" xml:space="preserve">
     <value>图片 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
@@ -342,17 +336,11 @@
   <data name="SelectImage" xml:space="preserve">
     <value>選擇圖片</value>
   </data>
-  <data name="SelectImage1" xml:space="preserve">
-    <value>选择图片</value>
-  </data>
   <data name="SelectionType" xml:space="preserve">
     <value>选中类型: {0}</value>
   </data>
   <data name="SelectMp3" xml:space="preserve">
     <value>選擇MP3文件</value>
-  </data>
-  <data name="SelectMp31" xml:space="preserve">
-    <value>选择MP3文件</value>
   </data>
   <data name="SelectOutApng" xml:space="preserve">
     <value>选择动画路径</value>

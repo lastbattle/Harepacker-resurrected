@@ -147,9 +147,6 @@
   <data name="EnterValidInput" xml:space="preserve">
     <value>Please enter valid input</value>
   </data>
-  <data name="EnterValidInput1" xml:space="preserve">
-    <value>Please enter valid input</value>
-  </data>
   <data name="Error" xml:space="preserve">
     <value>Error</value>
   </data>
@@ -189,43 +186,22 @@
   <data name="MainAddCanvas" xml:space="preserve">
     <value>Add canvas</value>
   </data>
-  <data name="MainAddCanvas1" xml:space="preserve">
-    <value>Add canvas</value>
-  </data>
   <data name="MainAddConvex" xml:space="preserve">
-    <value>Add convex</value>
-  </data>
-  <data name="MainAddConvex1" xml:space="preserve">
     <value>Add convex</value>
   </data>
   <data name="MainAddDir" xml:space="preserve">
     <value>Add directory</value>
   </data>
-  <data name="MainAddDir1" xml:space="preserve">
-    <value>Add directory</value>
-  </data>
   <data name="MainAddDouble" xml:space="preserve">
-    <value>Add double</value>
-  </data>
-  <data name="MainAddDouble1" xml:space="preserve">
     <value>Add double</value>
   </data>
   <data name="MainAddFloat" xml:space="preserve">
     <value>Add float</value>
   </data>
-  <data name="MainAddFloat1" xml:space="preserve">
-    <value>Add float</value>
-  </data>
   <data name="MainAddImg" xml:space="preserve">
     <value>Add image</value>
   </data>
-  <data name="MainAddImg1" xml:space="preserve">
-    <value>Add image</value>
-  </data>
   <data name="MainAddInt" xml:space="preserve">
-    <value>Add int</value>
-  </data>
-  <data name="MainAddInt1" xml:space="preserve">
     <value>Add int</value>
   </data>
   <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
@@ -234,46 +210,25 @@
   <data name="MainAddLink" xml:space="preserve">
     <value>Add link</value>
   </data>
-  <data name="MainAddLink1" xml:space="preserve">
-    <value>Add link</value>
-  </data>
   <data name="MainAddNull" xml:space="preserve">
-    <value>Add null</value>
-  </data>
-  <data name="MainAddNull1" xml:space="preserve">
     <value>Add null</value>
   </data>
   <data name="MainAddShort" xml:space="preserve">
     <value>Add short</value>
   </data>
-  <data name="MainAddShort1" xml:space="preserve">
-    <value>Add short</value>
-  </data>
   <data name="MainAddSound" xml:space="preserve">
-    <value>Add sound</value>
-  </data>
-  <data name="MainAddSound1" xml:space="preserve">
     <value>Add sound</value>
   </data>
   <data name="MainAddString" xml:space="preserve">
     <value>Add string</value>
   </data>
-  <data name="MainAddString1" xml:space="preserve">
-    <value>Add string</value>
-  </data>
   <data name="MainAddSub" xml:space="preserve">
-    <value>Add sub</value>
-  </data>
-  <data name="MainAddSub1" xml:space="preserve">
     <value>Add sub</value>
   </data>
   <data name="MainAddTabTitle" xml:space="preserve">
     <value>Add tab</value>
   </data>
   <data name="MainAddVec" xml:space="preserve">
-    <value>Add vector</value>
-  </data>
-  <data name="MainAddVec1" xml:space="preserve">
     <value>Add vector</value>
   </data>
   <data name="MainAnimationFail" xml:space="preserve">

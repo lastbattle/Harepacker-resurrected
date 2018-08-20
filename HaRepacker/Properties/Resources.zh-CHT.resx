@@ -144,9 +144,6 @@
   <data name="EnterValidInput" xml:space="preserve">
     <value>請輸入有效的內容</value>
   </data>
-  <data name="EnterValidInput1" xml:space="preserve">
-    <value>Please enter valid input</value>
-  </data>
   <data name="Error" xml:space="preserve">
     <value>錯誤</value>
   </data>
