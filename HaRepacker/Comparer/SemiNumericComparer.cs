@@ -16,17 +16,23 @@ namespace HaRepacker.Comparer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(Tuple<string, int, PointF, Bitmap> s1, Tuple<string, int, PointF, Bitmap> s2)
         {
-            if (IsNumeric(s1) && IsNumeric(s2))
+            bool isS1Numeric = IsNumeric(s1);
+            bool isS2Numeric = IsNumeric(s2);
+
+            if (isS1Numeric && isS2Numeric)
             {
-                if (Convert.ToInt32(s1.Item1) > Convert.ToInt32(s2.Item1)) return 1;
-                if (Convert.ToInt32(s1.Item1) < Convert.ToInt32(s2.Item1)) return -1;
-                if (Convert.ToInt32(s1.Item1) == Convert.ToInt32(s2.Item1)) return 0;
+                int s1val = Convert.ToInt32(s1.Item1);
+                int s2val = Convert.ToInt32(s2.Item1);
+
+                if (s1val > s2val) return 1;
+                if (s1val < s2val) return -1;
+                if (s1val == s2val) return 0;
             }
 
-            if (IsNumeric(s1) && !IsNumeric(s2))
+            if (isS1Numeric && !isS2Numeric)
                 return -1;
 
-            if (!IsNumeric(s1) && IsNumeric(s2))
+            if (!isS1Numeric && isS2Numeric)
                 return 1;
 
             return string.Compare(s1.Item1, s2.Item1, true);

@@ -13,17 +13,23 @@ namespace HaRepacker.Comparer
             TreeNode s1 = s1_ as TreeNode;
             TreeNode s2 = s2_ as TreeNode;
 
-            if (IsNumeric(s1) && IsNumeric(s2))
+            bool isS1Numeric = IsNumeric(s1);
+            bool isS2Numeric = IsNumeric(s2);
+
+            if (isS1Numeric && isS2Numeric)
             {
-                if (Convert.ToInt32(s1.Text) > Convert.ToInt32(s2.Text)) return 1;
-                if (Convert.ToInt32(s1.Text) < Convert.ToInt32(s2.Text)) return -1;
-                if (Convert.ToInt32(s1.Text) == Convert.ToInt32(s2.Text)) return 0;
+                int s1val = Convert.ToInt32(s1.Text);
+                int s2val = Convert.ToInt32(s2.Text);
+
+                if (s1val > s2val) return 1;
+                if (s1val < s2val) return -1;
+                if (s1val == s2val) return 0;
             }
 
-            if (IsNumeric(s1) && !IsNumeric(s2))
+            if (isS1Numeric && !isS2Numeric)
                 return -1;
 
-            if (!IsNumeric(s1) && IsNumeric(s2))
+            if (!isS1Numeric && isS2Numeric)
                 return 1;
 
             return string.Compare(s1.Text, s2.Text, true);

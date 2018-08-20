@@ -6,20 +6,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Collections;
 using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using System.Windows.Forms;
 using System.IO;
 using MapleLib.WzLib.Util;
-using HaRepackerLib.Controls;
 using System.Windows.Threading;
 using System.Threading.Tasks;
-using HaRepackerLib;
 using HaRepacker.GUI.Panels;
-using HaRepacker.Configuration;
 using HaRepacker.Comparer;
 
 namespace HaRepacker
