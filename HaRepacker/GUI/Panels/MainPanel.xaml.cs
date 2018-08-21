@@ -67,7 +67,13 @@ namespace HaRepacker.GUI.Panels
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
 
-            // SetThemeColor();
+            // Set theme color
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)
+            {
+                VisualStateManager.GoToState(this , "BlackTheme", false);
+                DataTree.BackColor = System.Drawing.Color.Black;
+                DataTree.ForeColor = System.Drawing.Color.White;
+            }
         }
 
         #region Exported Fields
@@ -1225,7 +1231,7 @@ namespace HaRepacker.GUI.Panels
                 // If text is a string property, expand the textbox
                 if (obj is WzStringProperty)
                 {
-                    textPropBox.Height = 300;
+                    textPropBox.Height = 200;
                 }
                 else
                 {
