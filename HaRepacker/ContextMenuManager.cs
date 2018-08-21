@@ -24,7 +24,7 @@ namespace HaRepacker
 {
     public class ContextMenuManager
     {
-        private HaRepackerMainPanel parentPanel;
+        private MainPanel parentPanel;
 
         public ContextMenuStrip WzFileMenu;
         public ContextMenuStrip WzDirectoryMenu;
@@ -71,7 +71,7 @@ namespace HaRepacker
         private ToolStripMenuItem ImportXML;
         private ToolStripMenuItem ImportImgData;*/
 
-        public ContextMenuManager(HaRepackerMainPanel haRepackerMainPanel, UndoRedoManager undoMan)
+        public ContextMenuManager(MainPanel haRepackerMainPanel, UndoRedoManager undoMan)
         {
             this.parentPanel = haRepackerMainPanel;
 
@@ -80,8 +80,7 @@ namespace HaRepacker
                 {
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        HaRepackerMainPanel parent = ((HaRepackerMainPanel)node.TreeView.Parent.Parent.Parent);
-                        new SaveForm(parent, node).ShowDialog();
+                        new SaveForm(parentPanel, node).ShowDialog();
                     }
                 }));
             Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
@@ -114,8 +113,7 @@ namespace HaRepacker
 
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        HaRepackerMainPanel parent = ((HaRepackerMainPanel)node.TreeView.Parent.Parent.Parent);
-                        Program.WzMan.ReloadWzFile((WzFile)node.Tag, parent);
+                        Program.WzMan.ReloadWzFile((WzFile)node.Tag, parentPanel);
                     }
                 }));
 

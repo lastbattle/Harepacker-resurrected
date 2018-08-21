@@ -13,6 +13,7 @@ using System.Windows.Threading;
 using System.Threading.Tasks;
 using HaRepacker.GUI.Panels;
 using HaRepacker.Comparer;
+using System.Diagnostics;
 
 namespace HaRepacker
 {
@@ -74,7 +75,7 @@ namespace HaRepacker
         /// <param name="file"></param>
         /// <param name="panel"></param>
         /// <param name="currentDispatcher"></param>
-        public void ReloadWzFile(WzFile file, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
+        public void ReloadWzFile(WzFile file, MainPanel panel, Dispatcher currentDispatcher = null)
         {
             WzMapleVersion encVersion = file.MapleVersion;
             string path = file.FilePath;
@@ -99,7 +100,7 @@ namespace HaRepacker
         /// <param name="encVersion"></param>
         /// <param name="panel"></param>
         /// <returns></returns>
-        public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel)
+        public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, MainPanel panel)
         {
             FileStream fs = File.Open(path, FileMode.Open);
 
@@ -122,7 +123,7 @@ namespace HaRepacker
         /// <param name="path"></param>
         /// <param name="panel"></param>
         /// <returns></returns>
-        public WzFile LoadWzFile(string path, HaRepackerMainPanel panel)
+        public WzFile LoadWzFile(string path, MainPanel panel)
         {
             short fileVersion = -1;
             bool isList = WzTool.IsListFile(path);
@@ -137,7 +138,7 @@ namespace HaRepacker
         /// <param name="panel"></param>
         /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
-        public WzFile LoadWzFile(string path, WzMapleVersion encVersion, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
+        public WzFile LoadWzFile(string path, WzMapleVersion encVersion, MainPanel panel, Dispatcher currentDispatcher = null)
         {
             return LoadWzFile(path, encVersion, (short)-1, panel, currentDispatcher);
         }
@@ -152,7 +153,7 @@ namespace HaRepacker
         /// <param name="panel"></param>
         /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
-        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, HaRepackerMainPanel panel, Dispatcher currentDispatcher = null)
+        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, MainPanel panel, Dispatcher currentDispatcher = null)
         {
             WzFile newFile;
             if (!OpenWzFile(path, encVersion, version, out newFile))
@@ -176,7 +177,7 @@ namespace HaRepacker
             return newFile;
         }
 
-        public void InsertWzFileUnsafe(WzFile f, HaRepackerMainPanel panel)
+        public void InsertWzFileUnsafe(WzFile f, MainPanel panel)
         {
             lock (wzFiles)
             {
@@ -198,7 +199,7 @@ namespace HaRepacker
             }
         }
 
-        public void ReloadAll(HaRepackerMainPanel panel)
+        public void ReloadAll(MainPanel panel)
         {
             Dispatcher currentThread = Dispatcher.CurrentDispatcher;
             IReadOnlyCollection<WzFile> wzFileListCopy = this.WzFileListReadOnly;

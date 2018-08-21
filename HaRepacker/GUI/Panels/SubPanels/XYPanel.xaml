@@ -1,0 +1,33 @@
+﻿<UserControl x:Class="HaRepacker.GUI.Panels.SubPanels.XYPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
+             mc:Ignorable="d" 
+             d:DesignHeight="200" d:DesignWidth="300">
+
+    <Grid Width="300" Height="200" >
+        <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+            
+            <!-- X -->
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="X: " Foreground="Black" FontSize="17"/>
+                <TextBox x:Name="xBox" Width="200" Margin="20,0,0,0" Text="0" FontSize="17"
+                         InputScope="Number" TextAlignment="Center"
+                         TextChanged="xBox_TextChanged"/>
+            </StackPanel>
+
+            <!-- Y -->
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Text="Y: " Foreground="Black" FontSize="17"/>
+                <TextBox x:Name="yBox" Width="200" Margin="20,0,0,0" Text="0" FontSize="17"
+                         InputScope="Number"  TextAlignment="Center"
+                         TextChanged="yBox_TextChanged"/>
+            </StackPanel>
+        </StackPanel>
+
+        <Button x:Name="button_ApplyChanges" Content="Apply" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="150" Margin="10" Height="30"
+                Click="button_ApplyChanges_Click"/>
+    </Grid>
+</UserControl>

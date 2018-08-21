@@ -15,9 +15,9 @@ namespace HaRepacker.GUI
 {
     public partial class NewForm : Form
     {
-        private HaRepackerMainPanel panel;
+        private MainPanel panel;
 
-        public NewForm(HaRepackerMainPanel panel)
+        public NewForm(MainPanel panel)
         {
             this.panel = panel;
             InitializeComponent();

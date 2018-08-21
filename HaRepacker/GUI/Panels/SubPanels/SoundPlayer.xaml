@@ -1,0 +1,39 @@
+﻿<UserControl x:Class="HaRepacker.GUI.Panels.SubPanels.SoundPlayer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
+             mc:Ignorable="d" 
+             d:DesignHeight="139" d:DesignWidth="465">
+    
+    <Grid Height="139" Width="465" Background="Gray">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="5*"/>
+            <RowDefinition Height="5*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <StackPanel Orientation="Horizontal" Margin="10">
+                <Button x:Name="PauseButton" Content="Play" Width="100" Height="30"
+                    Click="PauseButton_Click"/>
+                <CheckBox x:Name="checkbox_Replay" Content="Loop" Foreground="White" VerticalAlignment="Center" Margin="20,0,0,0"
+                      Checked="checkbox_Replay_Checked" Unchecked="checkbox_Replay_Checked"/>
+            </StackPanel>
+
+            <!-- Time -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,10,0">
+                <TextBlock x:Name="CurrentPositionLabel" Text="00:00" VerticalAlignment="Center"
+                       Foreground="White"/>
+            <TextBlock Text="/" VerticalAlignment="Center" Foreground="White" Margin="10,0,0,0"/>
+            <TextBlock x:Name="LengthLabel" Text="00:00" VerticalAlignment="Center"
+                       Foreground="White" Margin="10,0,0,0"/>
+                </StackPanel>
+
+        </Grid>
+        
+        <Slider x:Name="slider1" Grid.Row="1" Margin="5" Value="0" Maximum="100" Minimum="0"
+                ValueChanged="slider1_ValueChanged"/>
+
+    </Grid>
+</UserControl>

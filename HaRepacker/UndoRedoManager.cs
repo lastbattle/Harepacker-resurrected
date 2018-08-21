@@ -16,9 +16,9 @@ namespace HaRepacker
     {
         public List<UndoRedoBatch> UndoList = new List<UndoRedoBatch>();
         public List<UndoRedoBatch> RedoList = new List<UndoRedoBatch>();
-        private HaRepackerMainPanel parentPanel;
+        private MainPanel parentPanel;
 
-        public UndoRedoManager(HaRepackerMainPanel parentPanel)
+        public UndoRedoManager(MainPanel parentPanel)
         {
             this.parentPanel = parentPanel;
         }

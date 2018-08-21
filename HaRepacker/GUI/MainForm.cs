@@ -67,11 +67,13 @@ namespace HaRepacker.GUI
 
         private bool mainFormLoaded = false;
 
-        private HaRepackerMainPanel MainPanel = null;
+        private MainPanel MainPanel = null;
 
         public MainForm(string wzToLoad, bool usingPipes, bool firstrun)
         {
             InitializeComponent();
+
+            AddTabsInternal("Default");
 
             // Events
             Load += MainForm_Load1;
@@ -87,7 +89,7 @@ namespace HaRepacker.GUI
 
             WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
             Size = new Size(
-                Program.ConfigurationManager.ApplicationSettings.Width, 
+                Program.ConfigurationManager.ApplicationSettings.Width,
                 Program.ConfigurationManager.ApplicationSettings.Height);
 
 
@@ -183,15 +185,15 @@ namespace HaRepacker.GUI
                 this.BackColor = DefaultBackColor;
                 mainMenu.BackColor = DefaultBackColor;
                 mainMenu.ForeColor = Color.Black;
-              
+
                 button_addTab.ForeColor = Color.Black;
                 button_addTab.BackColor = Color.White;
             }
         }
         #endregion
 
-        private delegate void LoadWzFileDelegate(string path, HaRepackerMainPanel panel, bool detectMapleVersion);
-        private void LoadWzFileCallback(string path, HaRepackerMainPanel panel, bool detectMapleVersion)
+        private delegate void LoadWzFileDelegate(string path, MainPanel panel, bool detectMapleVersion);
+        private void LoadWzFileCallback(string path, MainPanel panel, bool detectMapleVersion)
         {
             try
             {
@@ -206,12 +208,16 @@ namespace HaRepacker.GUI
             }
         }
 
-        private void LoadWzFileThreadSafe(string path, HaRepackerMainPanel panel, bool detectMapleVersion)
+        private void LoadWzFileThreadSafe(string path, MainPanel panel, bool detectMapleVersion)
         {
-            if (panel.InvokeRequired)
-                panel.Invoke(new LoadWzFileDelegate(LoadWzFileCallback), path, panel, detectMapleVersion);
-            else
+            /*    if (panel.InvokeRequired)
+                    panel.Invoke(new LoadWzFileDelegate(LoadWzFileCallback), path, panel, detectMapleVersion);
+                else
+                    LoadWzFileCallback(path, panel, detectMapleVersion);*/
+            panel.Dispatcher.Invoke(() =>
+            {
                 LoadWzFileCallback(path, panel, detectMapleVersion);
+            });
         }
 
         private delegate void SetWindowStateDelegate(FormWindowState state);
@@ -300,13 +306,13 @@ namespace HaRepacker.GUI
         /// </summary>
         private void RedockControls()
         {
-         /*   int mainControlHeight = this.Size.Height;
-            int mainControlWidth = this.Size.Width;
+            /*   int mainControlHeight = this.Size.Height;
+               int mainControlWidth = this.Size.Width;
 
-            foreach (TabPage page in tabControl_MainPanels.TabPages)
-            {
-                page.Size = new Size(mainControlWidth, mainControlHeight);
-            }*/
+               foreach (TabPage page in tabControl_MainPanels.TabPages)
+               {
+                   page.Size = new Size(mainControlWidth, mainControlHeight);
+               }*/
         }
 
         private void MainForm_SizeChanged(object sender, EventArgs e)
@@ -409,7 +415,13 @@ namespace HaRepacker.GUI
 
         private void UpdateSelectedMainPanelTab()
         {
-            MainPanel = tabControl_MainPanels.SelectedTab.Controls.OfType<HaRepackerMainPanel>().First();
+            TabPage selectedTab = tabControl_MainPanels.SelectedTab;
+            if (selectedTab != null && selectedTab.Controls.Count > 0)
+            {
+                System.Windows.Forms.Integration.ElementHost elemntHost = (System.Windows.Forms.Integration.ElementHost)selectedTab.Controls[0];
+
+                MainPanel = (MainPanel)elemntHost?.Child;
+            }
         }
 
         /// <summary>
@@ -425,7 +437,7 @@ namespace HaRepacker.GUI
         /// <summary>
         /// Prompts a window to add a new tab
         /// </summary>
-        private void AddTabsInternal()
+        private void AddTabsInternal(string defaultName = null)
         {
             if (tabControl_MainPanels.TabCount > 10)
             {
@@ -434,29 +446,34 @@ namespace HaRepacker.GUI
 
             TabPage tabPage = new TabPage()
             {
-                Padding = new Padding(3, 3, 3, 3),
-                Margin = new Padding(3, 3, 3, 3),
-                Size = new Size(1488, 880),
-                Text = string.Format("Tab {0}", tabControl_MainPanels.TabCount + 1)
+                Margin = new Padding(1, 1, 1, 1)
             };
-            tabPage.Controls.Add(new HaRepackerMainPanel()
-            {
-                Padding = new Padding(0, 0, 0, 0),
-                Margin = new Padding(0, 0, 0, 0),
-                Size = new Size(1492, 884),
-                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right
-            });
+            System.Windows.Forms.Integration.ElementHost elemHost = new System.Windows.Forms.Integration.ElementHost();
+            elemHost.Dock = DockStyle.Fill;
+            elemHost.Child = new MainPanel();
+
+            tabPage.Controls.Add(elemHost);
+
 
             string tabName = null;
-            if (NameInputBox.Show(Properties.Resources.MainAddTabTitle, 25, out tabName))
+            if (defaultName == null)
             {
-                tabPage.Text = tabName;
-
-                tabControl_MainPanels.TabPages.Add(tabPage);
-
-                // Focus on that tab control
-                tabControl_MainPanels.Focus();
+                if (!NameInputBox.Show(Properties.Resources.MainAddTabTitle, 25, out tabName))
+                {
+                    return;
+                }
+                defaultName = tabName;
+            } else
+            {
+                MainPanel = (MainPanel)elemHost.Child;
             }
+
+            tabPage.Text = defaultName;
+
+            tabControl_MainPanels.TabPages.Add(tabPage);
+
+            // Focus on that tab control
+            tabControl_MainPanels.Focus();
         }
 
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -471,12 +488,14 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            using (OpenFileDialog dialog = new OpenFileDialog() {
+            using (OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWz,
                 Filter = string.Format("{0}|*.wz",
                 HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
-            }) {
+            })
+            {
 
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
@@ -538,7 +557,7 @@ namespace HaRepacker.GUI
                 // Load all original WZ files 
                 Parallel.ForEach(wzfilePathsToLoad, filePath =>
                 {
-                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
+                    WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
                     if (f == null)
                     {
                         errorOpeningFile_Admin = true;
@@ -791,7 +810,7 @@ namespace HaRepacker.GUI
         private void ChangeApplicationStateCallback(bool enabled)
         {
             mainMenu.Enabled = enabled;
-            MainPanel.Enabled = enabled;
+            MainPanel.IsEnabled = enabled;
             AbortButton.Visible = !enabled;
         }
         private void ChangeApplicationState(bool enabled)
@@ -801,7 +820,8 @@ namespace HaRepacker.GUI
 
         private void xMLToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            OpenFileDialog dialog = new OpenFileDialog() {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWz,
                 Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true
@@ -809,14 +829,15 @@ namespace HaRepacker.GUI
 
             if (dialog.ShowDialog() != DialogResult.OK)
                 return;
-            FolderBrowserDialog folderDialog = new FolderBrowserDialog() {
+            FolderBrowserDialog folderDialog = new FolderBrowserDialog()
+            {
                 Description = HaRepacker.Properties.Resources.SelectOutDir
             };
             if (folderDialog.ShowDialog() != DialogResult.OK)
                 return;
 
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
-                Program.ConfigurationManager.UserSettings.Indentation, 
+                Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType, false);
             threadDone = false;
             new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start((object)new object[] { dialog.FileNames, folderDialog.SelectedPath, encryptionBox.SelectedIndex, serializer });
@@ -824,7 +845,7 @@ namespace HaRepacker.GUI
         }
 
         private delegate void UpdateProgressBarDelegate(ToolStripProgressBar pbar, int value, bool max, bool absolute); //max for .Maximum, !max for .Value
-        private void UpdateProgressBarCallback(ToolStripProgressBar pbar, int value, bool max, bool absolute)
+        private void UpdateProgressBarCallback(System.Windows.Controls.ProgressBar pbar, int value, bool max, bool absolute)
         {
             if (max)
             {
@@ -839,10 +860,15 @@ namespace HaRepacker.GUI
                 else pbar.Value += value;
             }
         }
-        private void UpdateProgressBar(ToolStripProgressBar pbar, int value, bool max, bool absolute)
+        private void UpdateProgressBar(System.Windows.Controls.ProgressBar pbar, int value, bool max, bool absolute)
         {
-            if (pbar.ProgressBar.InvokeRequired) pbar.ProgressBar.Invoke(new UpdateProgressBarDelegate(UpdateProgressBarCallback), new object[] { pbar, value, max, absolute });
-            else UpdateProgressBarCallback(pbar, value, max, absolute);
+            pbar.Dispatcher.Invoke(() =>
+            {
+                UpdateProgressBarCallback(pbar, value, max, absolute);
+            });
+            /*   if (pbar.ProgressBar.InvokeRequired)
+                   pbar.ProgressBar.Invoke(new UpdateProgressBarDelegate(UpdateProgressBarCallback), new object[] { pbar, value, max, absolute });
+               else UpdateProgressBarCallback(pbar, value, max, absolute);*/
         }
 
 
@@ -891,7 +917,8 @@ namespace HaRepacker.GUI
 
         private void imgToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            OpenFileDialog dialog = new OpenFileDialog() {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWz,
                 Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true
@@ -996,7 +1023,7 @@ namespace HaRepacker.GUI
                 }
             }
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
-                Program.ConfigurationManager.UserSettings.Indentation, 
+                Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType, false);
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
@@ -1316,7 +1343,8 @@ namespace HaRepacker.GUI
             WzFile wzFile = ((WzObject)MainPanel.DataTree.SelectedNode.Tag).WzFileParent;
             if (!(wzFile is WzFile))
                 return;
-            OpenFileDialog dialog = new OpenFileDialog() {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectXml,
                 Filter = string.Format("{0}|*.xml", HaRepacker.Properties.Resources.XmlFilter),
                 Multiselect = true
@@ -1330,7 +1358,7 @@ namespace HaRepacker.GUI
             threadDone = false;
 
             runningThread = new Thread(new ParameterizedThreadStart(WzImporterThread));
-            runningThread.Start(new object[] 
+            runningThread.Start(new object[]
             {
                 deserializer, dialog.FileNames, MainPanel.DataTree.SelectedNode, null
             });
@@ -1353,8 +1381,14 @@ namespace HaRepacker.GUI
 
         private void InsertWzNodeThreadSafe(WzNode node, WzNode parent)
         {
-            if (MainPanel.InvokeRequired) MainPanel.Invoke(new InsertWzNode(InsertWzNodeCallback), node, parent);
-            else InsertWzNodeCallback(node, parent);
+            MainPanel.Dispatcher.Invoke(() =>
+            {
+                InsertWzNodeCallback(node, parent);
+            });
+            /*  if (MainPanel.InvokeRequired)
+                  MainPanel.Invoke(new InsertWzNode(InsertWzNodeCallback), node, parent);
+              else
+                  InsertWzNodeCallback(node, parent);*/
         }
 
         private bool yesToAll = false;
@@ -1418,7 +1452,7 @@ namespace HaRepacker.GUI
                         if (!successfullyParsedImage)
                         {
                             MessageBox.Show(
-                                string.Format(HaRepacker.Properties.Resources.MainErrorImportingWzImageFile, file), 
+                                string.Format(HaRepacker.Properties.Resources.MainErrorImportingWzImageFile, file),
                                 HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                             continue;
                         }
@@ -1456,7 +1490,8 @@ namespace HaRepacker.GUI
             if (!(wzFile is WzFile))
                 return;
 
-            OpenFileDialog dialog = new OpenFileDialog() {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
                 Title = HaRepacker.Properties.Resources.SelectWzImg,
                 Filter = string.Format("{0}|*.img", HaRepacker.Properties.Resources.WzImgFilter),
                 Multiselect = true
@@ -1477,7 +1512,7 @@ namespace HaRepacker.GUI
 
             runningThread = new Thread(new ParameterizedThreadStart(WzImporterThread));
             runningThread.Start(
-                new object[] 
+                new object[]
                 {
                     deserializer, dialog.FileNames, MainPanel.DataTree.SelectedNode, iv
                 });
@@ -1486,7 +1521,7 @@ namespace HaRepacker.GUI
 
         private void searchToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            MainPanel.findStrip.Visible = true;
+            //MainPanel.findStrip.Visible = true;
         }
 
         private static readonly string HelpFile = "Help.htm";

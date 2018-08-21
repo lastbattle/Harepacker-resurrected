@@ -1,0 +1,125 @@
+﻿<UserControl x:Class="HaRepacker.GUI.Panels.MainPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HaRepacker"
+             xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
+             xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
+             
+             mc:Ignorable="d" 
+             
+             d:DesignHeight="661" d:DesignWidth="1599">
+
+    <DockPanel>
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="105" />
+                            <ColumnDefinition Width="105" />
+
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="200" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                    </Grid>
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+
+            <StatusBarItem>
+                <TextBlock x:Name="selectionLabel" Text="Selection Type: None" />
+            </StatusBarItem>
+
+            <Separator Grid.Column="1" />
+
+            <StatusBarItem Grid.Column="2">
+                <ProgressBar x:Name="mainProgressBar" Height="15" Width="100"/>
+            </StatusBarItem>
+            <StatusBarItem Grid.Column="3">
+                <ProgressBar x:Name="secondaryProgressBar" Height="15" Width="100"/>
+            </StatusBarItem>
+
+            <Separator Grid.Column="4" />
+
+            <StatusBarItem Grid.Column="5">
+                <TextBlock x:Name="toolStripStatusLabel_additionalInfo" Text="-"/>
+            </StatusBarItem>
+
+            <StatusBarItem Grid.Column="6" HorizontalAlignment="Right">
+                <TextBlock x:Name="statusBarItemLabel_Others" Text="-" Margin="0,0,30,0"/>
+            </StatusBarItem>
+        </StatusBar>
+
+
+        <Grid Name="gridMain">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="7*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0">
+                <WindowsFormsHost>
+                    <local:TreeViewMS x:Name="DataTree" 
+                                      AfterSelect="DataTree_AfterSelect"
+                                      KeyDown="DataTree_KeyDown"
+                                      DoubleClick="DataTree_DoubleClick"/>
+                </WindowsFormsHost>
+            </Grid>
+
+            <GridSplitter Background="DarkGray"  ResizeDirection="Columns" Grid.Column="1" 
+                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
+                  ResizeBehavior="PreviousAndNext" />
+
+            <Grid Grid.Column="2" Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="40"/>
+                    <RowDefinition Height="Auto" MaxHeight="300"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
+                                                      ButtonClicked="nameBox_ButtonClicked"/>
+                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" />
+                
+
+                <Grid Grid.Row="2">
+                    <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed">
+                        <localSubPanels:FieldLimitPanel x:Name="fieldLimitPanel1" />
+                    </WindowsFormsHost>
+                    <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"/>
+
+                    <localSubPanels:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Image x:Name="canvasPropBox" Grid.Row="0" Stretch="None" />
+                    </Grid>
+
+                    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                Margin="10">
+                        <Button Height="30" Width="150" Content="Animate (F5)" x:Name="button_animateSelectedCanvas" 
+                                Click="button_animateSelectedCanvas_Click_1"/>
+                        <Button Height="30" Width="150" Content="Change Image" x:Name="changeImageButton"
+                                Click="changeImageButton_Click"/>
+                        <Button Height="30" Width="150" Content="Change Sound" x:Name="changeSoundButton"
+                                Click="changeSoundButton_Click"/>
+                        <Button Height="30" Width="150" Content="Save Sound" x:Name="saveSoundButton" 
+                                Click="saveSoundButton_Click"/>
+                        <Button Height="30" Width="150" Content="Save Image" x:Name="saveImageButton"
+                                Click="saveImageButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+    </DockPanel>
+
+
+</UserControl>

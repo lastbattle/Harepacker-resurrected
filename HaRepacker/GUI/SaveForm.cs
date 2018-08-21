@@ -27,9 +27,9 @@ namespace HaRepacker.GUI
         private bool IsRegularWzFile = false; // or data.wz
 
         public string path;
-        private HaRepackerMainPanel panel;
+        private MainPanel panel;
 
-        public SaveForm(HaRepackerMainPanel panel, WzNode wzNode)
+        public SaveForm(MainPanel panel, WzNode wzNode)
         {
             InitializeComponent();
 

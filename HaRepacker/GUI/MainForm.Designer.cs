@@ -95,12 +95,8 @@ namespace HaRepacker.GUI
             this.debugToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
-            this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.haRepackerMainPanel1 = new HaRepackerMainPanel();
             this.button_addTab = new System.Windows.Forms.Button();
             this.mainMenu.SuspendLayout();
-            this.tabControl_MainPanels.SuspendLayout();
-            this.tabPage1.SuspendLayout();
             this.SuspendLayout();
             // 
             // mainMenu
@@ -553,25 +549,11 @@ namespace HaRepacker.GUI
             // 
             // tabControl_MainPanels
             // 
-            this.tabControl_MainPanels.Controls.Add(this.tabPage1);
             resources.ApplyResources(this.tabControl_MainPanels, "tabControl_MainPanels");
             this.tabControl_MainPanels.Name = "tabControl_MainPanels";
             this.tabControl_MainPanels.SelectedIndex = 0;
             this.tabControl_MainPanels.SelectedIndexChanged += new System.EventHandler(this.tabControl_MainPanels_TabIndexChanged);
             this.tabControl_MainPanels.KeyUp += new System.Windows.Forms.KeyEventHandler(this.tabControl_MainPanels_KeyUp);
-            // 
-            // tabPage1
-            // 
-            this.tabPage1.Controls.Add(this.haRepackerMainPanel1);
-            resources.ApplyResources(this.tabPage1, "tabPage1");
-            this.tabPage1.Name = "tabPage1";
-            this.tabPage1.UseVisualStyleBackColor = true;
-            // 
-            // haRepackerMainPanel1
-            // 
-            resources.ApplyResources(this.haRepackerMainPanel1, "haRepackerMainPanel1");
-            this.haRepackerMainPanel1.BackColor = System.Drawing.SystemColors.Control;
-            this.haRepackerMainPanel1.Name = "haRepackerMainPanel1";
             // 
             // button_addTab
             // 
@@ -596,8 +578,6 @@ namespace HaRepacker.GUI
             this.SizeChanged += new System.EventHandler(this.MainForm_SizeChanged);
             this.mainMenu.ResumeLayout(false);
             this.mainMenu.PerformLayout();
-            this.tabControl_MainPanels.ResumeLayout(false);
-            this.tabPage1.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -665,8 +645,6 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
         private System.Windows.Forms.ToolStripTextBox zoomTextBox;
         private System.Windows.Forms.TabControl tabControl_MainPanels;
-        private System.Windows.Forms.TabPage tabPage1;
-        private HaRepackerMainPanel haRepackerMainPanel1;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;

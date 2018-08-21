@@ -22,7 +22,7 @@ namespace HaRepacker.FHMapper
     {
         public static string SettingsPath = Path.Combine(Program.GetLocalFolderPath(), "Settings.ini");
         public List<Object> settings = new List<object>();
-        private HaRepackerMainPanel MainPanel;
+        private MainPanel MainPanel;
         private TreeNode node;
 
         // Fonts
@@ -31,7 +31,7 @@ namespace HaRepacker.FHMapper
         private static Font FONT_DISPLAY_MINIMAP_NOT_AVAILABLE = new Font("Segoe UI", 18);
         private static Font FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD = new Font("Segoe UI", 8);
 
-        public FHMapper(HaRepackerMainPanel MainPanel)
+        public FHMapper(MainPanel MainPanel)
         {
             this.MainPanel = MainPanel;
         }

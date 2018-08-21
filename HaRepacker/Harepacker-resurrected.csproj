@@ -1,6 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.props" Condition="Exists('..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
@@ -125,14 +124,6 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Antlr3.Runtime, Version=3.5.0.2, Culture=neutral, PublicKeyToken=eb42632606e9261f, processorArchitecture=MSIL">
-      <HintPath>..\packages\Antlr.3.5.0.2\lib\Antlr3.Runtime.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="ExpressionEvaluator, Version=2.0.4.0, Culture=neutral, PublicKeyToken=90d9f15d622e2348, processorArchitecture=MSIL">
-      <HintPath>..\packages\ExpressionEvaluator.2.0.4.0\lib\net40\ExpressionEvaluator.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="NAudio, Version=1.8.4.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\NAudio.1.8.4\lib\net35\NAudio.dll</HintPath>
     </Reference>
@@ -140,15 +131,18 @@
       <HintPath>..\packages\Newtonsoft.Json.11.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xaml" />
     <Reference Include="System.Xml" />
     <Reference Include="WeifenLuo.WinFormsUI.Docking, Version=2.1.6643.41644, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\WeifenLuo.WinFormsUI.Docking.2.1.0\lib\net20\WeifenLuo.WinFormsUI.Docking.dll</HintPath>
     </Reference>
     <Reference Include="WindowsBase" />
+    <Reference Include="WindowsFormsIntegration" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AnimationBuilder.cs" />
@@ -156,6 +150,7 @@
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Configuration\ConfigurationManager.cs" />
     <Compile Include="ContextMenuManager.cs" />
+    <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="FHMapper\FHMapper.cs" />
     <Compile Include="GUI\AboutForm.cs">
       <SubType>Form</SubType>
@@ -310,17 +305,11 @@
     <Compile Include="GUI\OptionsForm.Designer.cs">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Panels\HaRepackerMainPanel.cs">
-      <SubType>UserControl</SubType>
+    <Compile Include="GUI\Panels\MainPanel.xaml.cs">
+      <DependentUpon>MainPanel.xaml</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Panels\HaRepackerMainPanel.Designer.cs">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\ChangableTextbox.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\ChangableTextbox.Designer.cs">
-      <DependentUpon>ChangableTextbox.cs</DependentUpon>
+    <Compile Include="GUI\Panels\SubPanels\ChangeableTextBox.xaml.cs">
+      <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.cs">
       <SubType>UserControl</SubType>
@@ -328,17 +317,11 @@
     <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.designer.cs">
       <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.cs">
-      <SubType>UserControl</SubType>
+    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.xaml.cs">
+      <DependentUpon>SoundPlayer.xaml</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.designer.cs">
-      <DependentUpon>SoundPlayer.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\XYPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\XYPanel.Designer.cs">
-      <DependentUpon>XYPanel.cs</DependentUpon>
+    <Compile Include="GUI\Panels\SubPanels\XYPanel.xaml.cs">
+      <DependentUpon>XYPanel.xaml</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
     <Compile Include="Configuration\ApplicationSettings.cs" />
@@ -598,30 +581,6 @@
     <EmbeddedResource Include="GUI\OptionsForm.zh-CHT.resx">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.ja.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.ko.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.zh-CHS.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\HaRepackerMainPanel.zh-CHT.resx">
-      <DependentUpon>HaRepackerMainPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.resx">
-      <DependentUpon>ChangableTextbox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.zh-CHS.resx">
-      <DependentUpon>ChangableTextbox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\ChangableTextbox.zh-CHT.resx">
-      <DependentUpon>ChangableTextbox.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.resx">
       <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </EmbeddedResource>
@@ -630,20 +589,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHT.resx">
       <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.resx">
-      <DependentUpon>SoundPlayer.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.zh-CHS.resx">
-      <DependentUpon>SoundPlayer.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\SoundPlayer.zh-CHT.resx">
-      <DependentUpon>SoundPlayer.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\XYPanel.resx">
-      <DependentUpon>XYPanel.cs</DependentUpon>
-      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\SaveForm.zh-CHS.resx">
       <DependentUpon>SaveForm.cs</DependentUpon>
@@ -682,7 +627,6 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="HaRepacker.res" />
-    <None Include="ILMerge.props" />
     <None Include="packages.config" />
     <None Include="Resources\page_white.png" />
     <None Include="Resources\folder.png" />
@@ -706,6 +650,7 @@
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
+      <Private>True</Private>
     </ProjectReference>
     <ProjectReference Include="..\Win32\Win32.csproj">
       <Project>{638ca88a-8dee-4af4-9b43-7abdfdb074f7}</Project>
@@ -730,7 +675,6 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="ILMergeOrder.txt" />
     <None Include="Resources\Pause_.png" />
     <None Include="Resources\Play.png" />
     <None Include="Resources\207px-Circle-undo.svg.png" />
@@ -744,15 +688,25 @@
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />
   </ItemGroup>
+  <ItemGroup>
+    <Page Include="GUI\Panels\MainPanel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\Panels\SubPanels\ChangeableTextBox.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\Panels\SubPanels\SoundPlayer.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\Panels\SubPanels\XYPanel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.props'))" />
-    <Error Condition="!Exists('..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.targets'))" />
-  </Target>
-  <Import Project="..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.targets" Condition="Exists('..\packages\MSBuild.ILMerge.Task.1.0.5\build\MSBuild.ILMerge.Task.targets')" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">

@@ -14,6 +14,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
     {
         // UI
         private TextBox setTextboxOnFieldLimitChange = null;
+        private ChangeableTextBox setTextboxOnFieldLimitChange_wpf = null;
 
         // misc
         private bool initializingListViewForFieldLimit = false;
@@ -39,6 +40,10 @@ namespace HaRepacker.GUI.Panels.SubPanels
         public void SetTextboxOnFieldLimitChange(TextBox setTextboxOnFieldLimitChange)
         {
             this.setTextboxOnFieldLimitChange = setTextboxOnFieldLimitChange;
+        }
+        public void SetTextboxOnFieldLimitChange(ChangeableTextBox setTextboxOnFieldLimitChange_wpf)
+        {
+            this.setTextboxOnFieldLimitChange_wpf = setTextboxOnFieldLimitChange_wpf;
         }
 
         /// <summary>
@@ -132,7 +137,10 @@ namespace HaRepacker.GUI.Panels.SubPanels
                 }
             }
             //System.Diagnostics.Debug.WriteLine("Result " + fieldLimit);
-            setTextboxOnFieldLimitChange.Text = fieldLimit.ToString();
+            if (setTextboxOnFieldLimitChange != null)
+                setTextboxOnFieldLimitChange.Text = fieldLimit.ToString();
+            if (setTextboxOnFieldLimitChange_wpf != null)
+                setTextboxOnFieldLimitChange_wpf.Text = fieldLimit.ToString();
         }
     }
 }

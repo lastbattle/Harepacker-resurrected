@@ -5,16 +5,17 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Media;
 
 namespace HaRepacker.Comparer
 {
     /// <summary>
     /// Comparer for string names. in ascending order
     /// </summary>
-    public class SemiNumericComparer : IComparer<Tuple<string, int, PointF, Bitmap>>
+    public class SemiNumericComparer : IComparer<Tuple<string, int, PointF, ImageSource>>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Compare(Tuple<string, int, PointF, Bitmap> s1, Tuple<string, int, PointF, Bitmap> s2)
+        public int Compare(Tuple<string, int, PointF, ImageSource> s1, Tuple<string, int, PointF, ImageSource> s2)
         {
             bool isS1Numeric = IsNumeric(s1);
             bool isS2Numeric = IsNumeric(s2);
@@ -39,7 +40,7 @@ namespace HaRepacker.Comparer
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsNumeric(Tuple<string, int, PointF, Bitmap> value)
+        private static bool IsNumeric(Tuple<string, int, PointF, ImageSource> value)
         {
             int parseInt = 0;
             return Int32.TryParse(value.Item1, out parseInt);
