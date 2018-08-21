@@ -158,6 +158,12 @@
     <Compile Include="GUI\AboutForm.Designer.cs">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Input\SearchSelectionForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\SearchSelectionForm.Designer.cs">
+      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
+    </Compile>
     <Compile Include="FHMapper\DisplayMap.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -190,12 +196,6 @@
     </Compile>
     <Compile Include="FHMapper\SpawnpointInfo.designer.cs">
       <DependentUpon>SpawnpointInfo.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\DockableSearchResult.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\DockableSearchResult.Designer.cs">
-      <DependentUpon>DockableSearchResult.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\FirstRunForm.cs">
       <SubType>Form</SubType>
@@ -390,6 +390,16 @@
       <DependentUpon>AboutForm.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
+    <EmbeddedResource Include="GUI\AboutForm.zh-CHS.resx">
+      <DependentUpon>AboutForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\AboutForm.zh-CHT.resx">
+      <DependentUpon>AboutForm.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.resx">
+      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
     <EmbeddedResource Include="FHMapper\DisplayMap.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
     </EmbeddedResource>
@@ -405,20 +415,11 @@
     <EmbeddedResource Include="FHMapper\SpawnpointInfo.resx">
       <DependentUpon>SpawnpointInfo.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\AboutForm.zh-CHS.resx">
-      <DependentUpon>AboutForm.cs</DependentUpon>
+    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.zh-CHS.resx">
+      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\AboutForm.zh-CHT.resx">
-      <DependentUpon>AboutForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\DockableSearchResult.resx">
-      <DependentUpon>DockableSearchResult.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\DockableSearchResult.zh-CHS.resx">
-      <DependentUpon>DockableSearchResult.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\DockableSearchResult.zh-CHT.resx">
-      <DependentUpon>DockableSearchResult.cs</DependentUpon>
+    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.zh-CHT.resx">
+      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\FirstRunForm.resx">
       <DependentUpon>FirstRunForm.cs</DependentUpon>

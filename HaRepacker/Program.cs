@@ -6,7 +6,6 @@
 
 using System;
 using System.Windows.Forms;
-using HaRepackerLib;
 using HaRepacker.GUI;
 using Microsoft.Win32;
 using System.Threading;

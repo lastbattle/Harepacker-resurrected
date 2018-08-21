@@ -44,7 +44,11 @@ namespace HaRepacker.GUI.Panels
             vectorPanel.ButtonClicked += VectorPanel_ButtonClicked;
 
             textPropBox.Visibility = Visibility.Collapsed;
-           //nameBox.Visibility = Visibility.Collapsed;
+            //nameBox.Visibility = Visibility.Collapsed;
+
+            // Storyboard
+            System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
+            sbb.Completed += Storyboard_Find_FadeIn_Completed;
 
             // buttons
             button_animateSelectedCanvas.Visibility = Visibility.Collapsed;
@@ -56,11 +60,12 @@ namespace HaRepacker.GUI.Panels
             Loaded += MainPanelXAML_Loaded;
         }
 
+
         private void MainPanelXAML_Loaded(object sender, RoutedEventArgs e)
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
 
-           // SetThemeColor();
+            // SetThemeColor();
         }
 
         #region Exported Fields
@@ -149,14 +154,15 @@ namespace HaRepacker.GUI.Panels
                         e.Handled = true;
                         e.SuppressKeyPress = true;
                         break;
-                    case System.Windows.Forms.Keys.F:
-                     /*   if (findStrip.Visible == true)
+                    case System.Windows.Forms.Keys.F: // open search box
+                        if (grid_FindPanel.Visibility == Visibility.Collapsed)
                         {
-                            findBox.Focus();
+                            System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
+                            sbb.Begin();
+
+                            e.Handled = true;
+                            e.SuppressKeyPress = true;
                         }
-                        findStrip.Visible = true;*/
-                        e.Handled = true;
-                        e.SuppressKeyPress = true;
                         break;
                     case System.Windows.Forms.Keys.T:
                     case System.Windows.Forms.Keys.O:
@@ -536,7 +542,7 @@ namespace HaRepacker.GUI.Panels
                 timerImgSequence = null;
             }
             timerImgSequence = new DispatcherTimer();
-            timerImgSequence.Interval = new TimeSpan(0,0,0,0, Program.TimeStartAnimateDefault);
+            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, Program.TimeStartAnimateDefault);
             timerImgSequence.Tick += TimerImgSequence_Tick;
 
             if (bCanvasAnimationActive) // currently animating
@@ -659,7 +665,7 @@ namespace HaRepacker.GUI.Panels
             else
                 statusBarItemLabel_Others.Text = "# " + currentNode.Item1 + ", Delay: " + currentNode.Item2 + " ms.";
 
-            timerImgSequence.Interval = new TimeSpan(0,0,0,0, currentNode.Item2);
+            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, currentNode.Item2);
             timerImgSequence.Start();
         }
 
@@ -685,38 +691,38 @@ namespace HaRepacker.GUI.Panels
 
         private void cartesianPlane_checkBox_CheckedChanged(object sender, EventArgs e)
         {
-        /*    if (cartesianPlane_checkBox.Checked)
-                Program.ConfigurationManager.UserSettings.Plane = true;
-            else
-                Program.ConfigurationManager.UserSettings.Plane = false;
+            /*    if (cartesianPlane_checkBox.Checked)
+                    Program.ConfigurationManager.UserSettings.Plane = true;
+                else
+                    Program.ConfigurationManager.UserSettings.Plane = false;
 
-            //cartesianPlaneX.Visible = UserSettings.Plane;
-            //cartesianPlaneY.Visible = UserSettings.Plane;*/
+                //cartesianPlaneX.Visible = UserSettings.Plane;
+                //cartesianPlaneY.Visible = UserSettings.Plane;*/
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-          /* if (nextLoopTime_comboBox == null)
-                return;
+            /* if (nextLoopTime_comboBox == null)
+                  return;
 
-            switch (nextLoopTime_comboBox.SelectedIndex)
-            {
-                case 1:
-                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 1000;
-                    break;
-                case 2:
-                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 2000;
-                    break;
-                case 3:
-                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 5000;
-                    break;
-                case 4:
-                    Program.ConfigurationManager.UserSettings.DelayNextLoop = 10000;
-                    break;
-                default:
-                    Program.ConfigurationManager.UserSettings.DelayNextLoop = Program.TimeStartAnimateDefault;
-                    break;
-            }*/
+              switch (nextLoopTime_comboBox.SelectedIndex)
+              {
+                  case 1:
+                      Program.ConfigurationManager.UserSettings.DelayNextLoop = 1000;
+                      break;
+                  case 2:
+                      Program.ConfigurationManager.UserSettings.DelayNextLoop = 2000;
+                      break;
+                  case 3:
+                      Program.ConfigurationManager.UserSettings.DelayNextLoop = 5000;
+                      break;
+                  case 4:
+                      Program.ConfigurationManager.UserSettings.DelayNextLoop = 10000;
+                      break;
+                  default:
+                      Program.ConfigurationManager.UserSettings.DelayNextLoop = Program.TimeStartAnimateDefault;
+                      break;
+              }*/
         }
 
 
@@ -831,9 +837,11 @@ namespace HaRepacker.GUI.Panels
                 return;
             WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
 
-            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog() {
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
                 Title = "Select where to save the image...",
-                Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3" };
+                Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3"
+            };
             if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                 return;
 
@@ -869,7 +877,8 @@ namespace HaRepacker.GUI.Panels
             if (wzCanvasPropertyObjLocation == null)
                 return; // oops, we're fucked lulz
 
-            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog() {
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
                 Title = "Select where to save the image...",
                 Filter = "Portable Network Grpahics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
             };
@@ -903,12 +912,15 @@ namespace HaRepacker.GUI.Panels
         {
             if (DataTree.SelectedNode.Tag is WzCanvasProperty)
             {
-                System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog() {
-                    Title = "Select the image", Filter = "Supported Image Formats (*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff)|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff"
+                System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
+                {
+                    Title = "Select the image",
+                    Filter = "Supported Image Formats (*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff)|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff"
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
                 System.Windows.Media.Imaging.BitmapImage bmp;
-                try {
+                try
+                {
                     bmp = new BitmapImage(new Uri(dialog.FileName));
                 }
                 catch
@@ -961,7 +973,8 @@ namespace HaRepacker.GUI.Panels
         {
             if (DataTree.SelectedNode.Tag is WzSoundProperty)
             {
-                System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog() {
+                System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
+                {
                     Title = "Select the sound",
                     Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3(*.mp3)|*.mp3"
                 };
@@ -1102,25 +1115,7 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
-        /// <summary>
-        /// On painting PictureBox
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void CanvasPropBox_Paint(object sender, System.Windows.Forms.PaintEventArgs e)
-        {
-        }
-
-        /// <summary>
-        /// Mouse move inside the picture panel
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void panel_pictureOrigin_OnMouseMove(object sender, MouseEventArgs e)
-        {
-
-        }
-
+        #region UI layout
         /// <summary>
         /// Shows the selected data treeview object to UI
         /// </summary>
@@ -1228,8 +1223,9 @@ namespace HaRepacker.GUI.Panels
                 // If text is a string property, expand the textbox
                 if (obj is WzStringProperty)
                 {
-                    textPropBox.Height =300;
-                } else
+                    textPropBox.Height = 300;
+                }
+                else
                 {
                     textPropBox.Height = 35;
                 }
@@ -1278,45 +1274,241 @@ namespace HaRepacker.GUI.Panels
             else
             {
             }
-
-            /*    
-                   // For animate pane
-                   vectorOriginSelected = new PointF(0, 0);
-                   ShowOptionsCanvasAnimate(obj is WzCanvasProperty || obj is WzUOLProperty);
-
-                   // Other panels
-                   if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
-                   {
-                       vectorPanel.Visible = false;
-                   }
-                   else if (obj is WzCanvasProperty)
-                   {
-                       vectorPanel.Visible = false;
-                   }
-                   else if (obj is WzUOLProperty)
-                   {
-                       vectorPanel.Visible = false;
-                   }
-                   else if (obj is WzSoundProperty)
-                   {
-                       vectorPanel.Visible = false;
-                   }
-                   else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty)
-                   {
-                       vectorPanel.Visible = false;
-                   }
-                   else if (obj is WzVectorProperty)
-                   {
-                       canvasPropBox.Visible = false;
-                       pictureBoxPanel.Visible = false;
-                       mp3Player.Visible = false;
-                       vectorPanel.Visible = true;
-                       vectorPanel.X = ((WzVectorProperty)obj).X.Value;
-                       vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;
-                   }
-                   else
-                   {
-                   }*/
         }
+        #endregion
+
+        #region Search
+
+        /// <summary>
+        /// On search box fade in completed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Storyboard_Find_FadeIn_Completed(object sender, EventArgs e)
+        {
+            findBox.Focus();
+        }
+
+        private int searchidx = 0;
+        private bool finished = false;
+        private bool listSearchResults = false;
+        private List<string> searchResultsList = new List<string>();
+        private bool searchValues = true;
+        private WzNode coloredNode = null;
+        private int currentidx = 0;
+        private string searchText = "";
+        private bool extractImages = false;
+
+        /// <summary>
+        /// Close search box
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_closeSearch_Click(object sender, RoutedEventArgs e)
+        {
+            System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeOut"));
+            sbb.Begin();
+        }
+
+        private void SearchWzProperties(IPropertyContainer parent)
+        {
+            foreach (WzImageProperty prop in parent.WzProperties)
+            {
+                if ((0 <= prop.Name.IndexOf(searchText, StringComparison.InvariantCultureIgnoreCase)) || (searchValues && prop is WzStringProperty && (0 <= ((WzStringProperty)prop).Value.IndexOf(searchText, StringComparison.InvariantCultureIgnoreCase))))
+                {
+                    if (listSearchResults)
+                        searchResultsList.Add(prop.FullPath.Replace(";", @"\"));
+                    else if (currentidx == searchidx)
+                    {
+                        if (prop.HRTag == null)
+                            ((WzNode)prop.ParentImage.HRTag).Reparse();
+                        WzNode node = (WzNode)prop.HRTag;
+                        //if (node.Style == null) node.Style = new ElementStyle();
+                        node.BackColor = System.Drawing.Color.Yellow;
+                        coloredNode = node;
+                        node.EnsureVisible();
+                        //DataTree.Focus();
+                        finished = true;
+                        searchidx++;
+                        return;
+                    }
+                    else
+                        currentidx++;
+                }
+                if (prop is IPropertyContainer && prop.WzProperties.Count != 0)
+                {
+                    SearchWzProperties((IPropertyContainer)prop);
+                    if (finished)
+                        return;
+                }
+            }
+        }
+
+        private void SearchTV(WzNode node)
+        {
+            foreach (WzNode subnode in node.Nodes)
+            {
+                if (0 <= subnode.Text.IndexOf(searchText, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    if (listSearchResults)
+                        searchResultsList.Add(subnode.FullPath.Replace(";", @"\"));
+                    else if (currentidx == searchidx)
+                    {
+                        //if (subnode.Style == null) subnode.Style = new ElementStyle();
+                        subnode.BackColor = System.Drawing.Color.Yellow;
+                        coloredNode = subnode;
+                        subnode.EnsureVisible();
+                        //DataTree.Focus();
+                        finished = true;
+                        searchidx++;
+                        return;
+                    }
+                    else
+                        currentidx++;
+                }
+                if (subnode.Tag is WzImage)
+                {
+                    WzImage img = (WzImage)subnode.Tag;
+                    if (img.Parsed)
+                        SearchWzProperties(img);
+                    else if (extractImages)
+                    {
+                        img.ParseImage();
+                        SearchWzProperties(img);
+                    }
+                    if (finished) return;
+                }
+                else SearchTV(subnode);
+            }
+        }
+
+        /// <summary>
+        /// Find all
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_allSearch_Click(object sender, RoutedEventArgs e)
+        {
+            if (coloredNode != null)
+            {
+                coloredNode.BackColor = System.Drawing.Color.White;
+                coloredNode = null;
+            }
+            if (findBox.Text == "" || DataTree.Nodes.Count == 0)
+                return;
+            if (DataTree.SelectedNode == null)
+                DataTree.SelectedNode = DataTree.Nodes[0];
+
+            finished = false;
+            listSearchResults = true;
+            searchResultsList.Clear();
+            //searchResultsBox.Items.Clear();
+            searchValues = Program.ConfigurationManager.UserSettings.SearchStringValues;
+            currentidx = 0;
+            searchText = findBox.Text;
+            extractImages = Program.ConfigurationManager.UserSettings.ParseImagesInSearch;
+            foreach (WzNode node in DataTree.SelectedNodes)
+            {
+                if (node.Tag is WzImageProperty)
+                    continue;
+                else if (node.Tag is IPropertyContainer)
+                    SearchWzProperties((IPropertyContainer)node.Tag);
+                else
+                    SearchTV(node);
+            }
+
+            SearchSelectionForm form = SearchSelectionForm.Show(searchResultsList);
+            form.OnSelectionChanged += Form_OnSelectionChanged;
+
+            /*   HaRepackerLib.Controls.DockableSearchResult dsr = new HaRepackerLib.Controls.DockableSearchResult();
+               dsr.SelectedIndexChanged += new EventHandler(searchResultsBox_SelectedIndexChanged);
+               foreach (string result in searchResultsList)
+               {
+                   dsr.searchResultsBox.Items.Add(result);
+               }
+               dsr.Show(MainDockPanel);
+               dsr.DockState = WeifenLuo.WinFormsUI.Docking.DockState.DockBottom;
+               */
+            findBox.Focus();
+        }
+
+        private void Form_OnSelectionChanged(string str)
+        {
+            string[] splitPath = str.Split(@"\".ToCharArray());
+            WzNode node = null;
+            System.Windows.Forms.TreeNodeCollection collection = DataTree.Nodes;
+            for (int i = 0; i < splitPath.Length; i++)
+            {
+                node = GetNodeByName(collection, splitPath[i]);
+                if (node.Tag is WzImage && !((WzImage)node.Tag).Parsed && i != splitPath.Length - 1)
+                {
+                    ((WzImage)node.Tag).ParseImage();
+                    node.Reparse();
+                }
+                collection = node.Nodes;
+            }
+            if (node != null)
+            {
+                DataTree.SelectedNode = node;
+                node.EnsureVisible();
+                DataTree.RefreshSelectedNodes();
+            }
+        }
+
+        private WzNode GetNodeByName(System.Windows.Forms.TreeNodeCollection collection, string name)
+        {
+            foreach (WzNode node in collection)
+                if (node.Text == name)
+                    return node;
+            return null;
+        }
+
+        /// <summary>
+        /// Find next
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_nextSearch_Click(object sender, RoutedEventArgs e)
+        {
+            if (coloredNode != null)
+            {
+                coloredNode.BackColor = System.Drawing.Color.White;
+                coloredNode = null;
+            }
+            if (findBox.Text == "" || DataTree.Nodes.Count == 0) return;
+            if (DataTree.SelectedNode == null) DataTree.SelectedNode = DataTree.Nodes[0];
+            finished = false;
+            listSearchResults = false;
+            searchResultsList.Clear();
+            searchValues = Program.ConfigurationManager.UserSettings.SearchStringValues;
+            currentidx = 0;
+            searchText = findBox.Text;
+            extractImages = Program.ConfigurationManager.UserSettings.ParseImagesInSearch;
+            foreach (WzNode node in DataTree.SelectedNodes)
+            {
+                if (node.Tag is IPropertyContainer)
+                    SearchWzProperties((IPropertyContainer)node.Tag);
+                else if (node.Tag is WzImageProperty) continue;
+                else SearchTV(node);
+                if (finished) break;
+            }
+            if (!finished) { MessageBox.Show(Properties.Resources.MainTreeEnd); searchidx = 0; DataTree.SelectedNode.EnsureVisible(); }
+            findBox.Focus();
+        }
+
+        private void findBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                button_nextSearch_Click(null, null);
+                e.Handled = true;
+            }
+        }
+
+        private void findBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            searchidx = 0;
+        }
+        #endregion
     }
 }

@@ -4,12 +4,48 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HaRepacker"
+              xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
              xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
              
              mc:Ignorable="d" 
              
              d:DesignHeight="661" d:DesignWidth="1599">
+    <UserControl.Resources>
+        <Storyboard x:Key="Storyboard_Find_FadeIn">
+            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Visibility)" Storyboard.TargetName="grid_FindPanel">
+                <DiscreteObjectKeyFrame KeyTime="0" Value="{x:Static Visibility.Visible}"/>
+            </ObjectAnimationUsingKeyFrames>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Opacity)" Storyboard.TargetName="grid_FindPanel">
+                <EasingDoubleKeyFrame KeyTime="0" Value="80"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="1"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[3].(TranslateTransform.Y)" Storyboard.TargetName="grid_FindPanel">
+                <EasingDoubleKeyFrame KeyTime="0" Value="80"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="0"/>
+            </DoubleAnimationUsingKeyFrames>
+        </Storyboard>
+        <Storyboard x:Key="Storyboard_Find_FadeOut">
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Opacity)" Storyboard.TargetName="grid_FindPanel">
+                <EasingDoubleKeyFrame KeyTime="0" Value="100"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="50"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[3].(TranslateTransform.Y)" Storyboard.TargetName="grid_FindPanel">
+                <EasingDoubleKeyFrame KeyTime="0" Value="0"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="80"/>
+            </DoubleAnimationUsingKeyFrames>
+            <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.Visibility)" Storyboard.TargetName="grid_FindPanel">
+                <DiscreteObjectKeyFrame KeyTime="0" Value="{x:Static Visibility.Visible}"/>
+                <DiscreteObjectKeyFrame KeyTime="0:0:0.3" Value="{x:Static Visibility.Collapsed}"/>
+            </ObjectAnimationUsingKeyFrames>
+        </Storyboard>
+    </UserControl.Resources>
+    <UserControl.Triggers>
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource Storyboard_Find_FadeIn}"/>
+            <BeginStoryboard Storyboard="{StaticResource Storyboard_Find_FadeOut}"/>
+        </EventTrigger>
+    </UserControl.Triggers>
 
     <DockPanel>
         <StatusBar DockPanel.Dock="Bottom">
@@ -63,12 +99,54 @@
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
-                <WindowsFormsHost>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <WindowsFormsHost Grid.Row="0">
                     <local:TreeViewMS x:Name="DataTree" 
                                       AfterSelect="DataTree_AfterSelect"
                                       KeyDown="DataTree_KeyDown"
                                       DoubleClick="DataTree_DoubleClick"/>
                 </WindowsFormsHost>
+
+                <!-- Find panel -->
+                <Grid x:Name="grid_FindPanel" Grid.Row="1" Grid.RowSpan="2" Opacity="1"
+                      Margin="0,0,0,0" Background="White" Height="40" VerticalAlignment="Top"
+                      Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
+                    <Grid.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform/>
+                            <SkewTransform/>
+                            <RotateTransform/>
+                            <TranslateTransform/>
+                        </TransformGroup>
+                    </Grid.RenderTransform>
+
+                    <Grid Margin="0,0,0,5">
+                        <TextBox x:Name="findBox" Text="" FontSize="15"  Margin="5,5,120,0" Height="27"
+                             KeyDown="findBox_KeyDown"
+                             TextChanged="findBox_TextChanged"/>
+
+                        <StackPanel  Margin="0,5,5,0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Button x:Name="button_nextSearch" Background="White" Foreground="Black"
+                                FontFamily="Segoe MDL2 Assets"  Content="&#xE721;"
+                                Width="27" Height="27" 
+                                Click="button_nextSearch_Click"/>
+
+                            <Button x:Name="button_allSearch" Background="White" Foreground="Black"
+                                FontFamily="Segoe MDL2 Assets"  Content="&#xE71D;"
+                                Width="27" Height="27" Margin="16,0,7,0"
+                                Click="button_allSearch_Click"/>
+
+                            <Button x:Name="button_closeSearch" Background="White" Foreground="Black"
+                                FontFamily="Segoe MDL2 Assets"  Content="&#xE711;"
+                                Width="27" Height="27"
+                                Click="button_closeSearch_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
             </Grid>
 
             <GridSplitter Background="DarkGray"  ResizeDirection="Columns" Grid.Column="1" 
@@ -85,7 +163,7 @@
                 <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
                                                       ButtonClicked="nameBox_ButtonClicked"/>
                 <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" />
-                
+
 
                 <Grid Grid.Row="2">
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed">

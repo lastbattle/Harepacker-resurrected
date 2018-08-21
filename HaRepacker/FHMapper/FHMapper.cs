@@ -1,5 +1,4 @@
 ﻿using Footholds;
-using HaRepackerLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -10,7 +9,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
-using HaRepackerLib.Controls;
 using System.Security.Cryptography;
 using System.Diagnostics;
 using MapleLib;

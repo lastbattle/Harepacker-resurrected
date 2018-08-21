@@ -5,7 +5,6 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaRepacker.Configuration;
-using HaRepackerLib;
 using MapleLib.WzLib;
 using System;
 using System.Drawing;

@@ -9,8 +9,6 @@ using System.Windows.Forms;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.IO;
-using HaRepackerLib;
-using HaRepackerLib.Controls;
 using MapleLib.WzLib.Util;
 using System.Diagnostics;
 using HaRepacker.GUI.Panels;

@@ -7,7 +7,6 @@
 using System;
 using System.Windows.Forms;
 using HaRepacker.Configuration;
-using HaRepackerLib;
 
 namespace HaRepacker.GUI
 {

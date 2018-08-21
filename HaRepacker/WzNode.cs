@@ -10,7 +10,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Collections;
 using System.Drawing;
-using HaRepackerLib;
 using HaRepacker.Comparer;
 
 namespace HaRepacker
