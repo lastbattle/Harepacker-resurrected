@@ -278,7 +278,7 @@ namespace HaRepacker.GUI.Panels
 
                 WzNode newInsertedNode = wzNode.AddObject(canvas, UndoRedoMan);
                 // Add an additional WzVectorProperty with X Y of 0,0
-                newInsertedNode.AddObject(new WzVectorProperty(name, new WzIntProperty("X", 0), new WzIntProperty("Y", 0)), UndoRedoMan);
+                newInsertedNode.AddObject(new WzVectorProperty(WzCanvasProperty.OriginPropertyName, new WzIntProperty("X", 0), new WzIntProperty("Y", 0)), UndoRedoMan);
 
                 i++;
             }

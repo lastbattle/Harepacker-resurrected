@@ -32,7 +32,7 @@ namespace HaRepacker.Converter
         {
             using (MemoryStream stream = new MemoryStream())
             {
-                bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Bmp);
+                bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Jpeg);
 
                 stream.Position = 0;
                 BitmapImage result = new BitmapImage();
