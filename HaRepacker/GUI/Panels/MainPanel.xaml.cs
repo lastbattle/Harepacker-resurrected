@@ -36,7 +36,9 @@ namespace HaRepacker.GUI.Panels
         {
             InitializeComponent();
 
-            //undoRedoMan = new UndoRedoManager(this);
+            // undo redo
+            undoRedoMan = new UndoRedoManager(this);
+
             nameBox.Header = "Key";
             textPropBox.Header = "Value";
             textPropBox.ButtonClicked += applyChangesButton_Click;
@@ -1420,18 +1422,13 @@ namespace HaRepacker.GUI.Panels
             SearchSelectionForm form = SearchSelectionForm.Show(searchResultsList);
             form.OnSelectionChanged += Form_OnSelectionChanged;
 
-            /*   HaRepackerLib.Controls.DockableSearchResult dsr = new HaRepackerLib.Controls.DockableSearchResult();
-               dsr.SelectedIndexChanged += new EventHandler(searchResultsBox_SelectedIndexChanged);
-               foreach (string result in searchResultsList)
-               {
-                   dsr.searchResultsBox.Items.Add(result);
-               }
-               dsr.Show(MainDockPanel);
-               dsr.DockState = WeifenLuo.WinFormsUI.Docking.DockState.DockBottom;
-               */
             findBox.Focus();
         }
 
+        /// <summary>
+        /// On search selection from SearchSelectionForm list changed
+        /// </summary>
+        /// <param name="str"></param>
         private void Form_OnSelectionChanged(string str)
         {
             string[] splitPath = str.Split(@"\".ToCharArray());
