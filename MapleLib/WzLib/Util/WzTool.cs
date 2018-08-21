@@ -121,7 +121,7 @@ namespace MapleLib.WzLib.Util
             return result;
         }
 
-        private static double GetDecryptionSuccessRate(string wzPath, WzMapleVersion encVersion, ref int? version)
+        private static double GetDecryptionSuccessRate(string wzPath, WzMapleVersion encVersion, ref short? version)
         {
             WzFile wzf;
             if (version == null)
@@ -129,8 +129,7 @@ namespace MapleLib.WzLib.Util
             else
                 wzf = new WzFile(wzPath, (short)version, encVersion);
             wzf.ParseWzFile();
-            if (version == null)
-                version = wzf.Version;
+            if (version == null) version = wzf.Version;
             int recognizedChars = 0;
             int totalChars = 0;
             foreach (WzDirectory wzdir in wzf.WzDirectory.WzDirectories)
@@ -150,7 +149,7 @@ namespace MapleLib.WzLib.Util
         public static WzMapleVersion DetectMapleVersion(string wzFilePath, out short fileVersion)
         {
             Hashtable mapleVersionSuccessRates = new Hashtable();
-            int? version = null;
+            short? version = null;
             mapleVersionSuccessRates.Add(WzMapleVersion.GMS, GetDecryptionSuccessRate(wzFilePath, WzMapleVersion.GMS, ref version));
             mapleVersionSuccessRates.Add(WzMapleVersion.EMS, GetDecryptionSuccessRate(wzFilePath, WzMapleVersion.EMS, ref version));
             mapleVersionSuccessRates.Add(WzMapleVersion.BMS, GetDecryptionSuccessRate(wzFilePath, WzMapleVersion.BMS, ref version));

@@ -145,15 +145,13 @@ namespace HaRepacker.GUI.Input
         /// <returns></returns>
         private static Bitmap BitmapFromSource(BitmapSource bitmapsource)
         {
-            Bitmap bitmap;
             using (var outStream = new MemoryStream())
             {
                 BitmapEncoder enc = new BmpBitmapEncoder();
                 enc.Frames.Add(BitmapFrame.Create(bitmapsource));
                 enc.Save(outStream);
-                bitmap = new Bitmap(outStream);
+                return new Bitmap(outStream);
             }
-            return bitmap;
         }
 
         /// <summary>

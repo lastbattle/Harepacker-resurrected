@@ -79,7 +79,7 @@ namespace HaRepacker
         {
             WzMapleVersion encVersion = file.MapleVersion;
             string path = file.FilePath;
-            int version = ((WzFile)file).Version;
+            short version = ((WzFile)file).Version;
             if (currentDispatcher != null)
             {
                 currentDispatcher.BeginInvoke((Action)(() =>
