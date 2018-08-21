@@ -17,33 +17,37 @@ namespace HaRepacker.Comparer
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(Tuple<string, int, PointF, ImageSource> s1, Tuple<string, int, PointF, ImageSource> s2)
         {
-            bool isS1Numeric = IsNumeric(s1);
-            bool isS2Numeric = IsNumeric(s2);
+            string s1Text = s1.Item1;
+            string s2Text = s2.Item1;
+
+            bool isS1Numeric = IsNumeric(s1Text);
+            bool isS2Numeric = IsNumeric(s2Text);
 
             if (isS1Numeric && isS2Numeric)
             {
-                int s1val = Convert.ToInt32(s1.Item1);
-                int s2val = Convert.ToInt32(s2.Item1);
+                int s1val = Convert.ToInt32(s1Text);
+                int s2val = Convert.ToInt32(s2Text);
 
-                if (s1val > s2val) return 1;
-                if (s1val < s2val) return -1;
-                if (s1val == s2val) return 0;
+                if (s1val > s2val)
+                    return 1;
+                else if (s1val < s2val)
+                    return -1;
+                else if (s1val == s2val)
+                    return 0;
             }
-
-            if (isS1Numeric && !isS2Numeric)
+            else if (isS1Numeric && !isS2Numeric)
                 return -1;
-
-            if (!isS1Numeric && isS2Numeric)
+            else if (!isS1Numeric && isS2Numeric)
                 return 1;
 
-            return string.Compare(s1.Item1, s2.Item1, true);
+            return string.Compare(s1Text, s2Text, true);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsNumeric(Tuple<string, int, PointF, ImageSource> value)
+        private static bool IsNumeric(string value)
         {
             int parseInt = 0;
-            return Int32.TryParse(value.Item1, out parseInt);
+            return Int32.TryParse(value, out parseInt);
         }
     }
 }

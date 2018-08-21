@@ -6,6 +6,7 @@ using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -1443,12 +1444,15 @@ namespace HaRepacker.GUI.Panels
             for (int i = 0; i < splitPath.Length; i++)
             {
                 node = GetNodeByName(collection, splitPath[i]);
-                if (node.Tag is WzImage && !((WzImage)node.Tag).Parsed && i != splitPath.Length - 1)
+                if (node != null)
                 {
-                    ((WzImage)node.Tag).ParseImage();
-                    node.Reparse();
+                    if (node.Tag is WzImage && !((WzImage)node.Tag).Parsed && i != splitPath.Length - 1)
+                    {
+                        ((WzImage)node.Tag).ParseImage();
+                        node.Reparse();
+                    }
+                    collection = node.Nodes;
                 }
-                collection = node.Nodes;
             }
             if (node != null)
             {
@@ -1458,6 +1462,7 @@ namespace HaRepacker.GUI.Panels
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private WzNode GetNodeByName(System.Windows.Forms.TreeNodeCollection collection, string name)
         {
             foreach (WzNode node in collection)
