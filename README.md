@@ -25,7 +25,7 @@ This is purely community driven and at my time, please dont expect me to fix thi
 If there are any bugs, describe it clearly.
 
 
-### Credits
+##### Credits
  - haha01haha
  - Koolk
  - Diamondo25
@@ -33,6 +33,11 @@ If there are any bugs, describe it clearly.
  - Novak
  - Erick https://github.com/ertrii   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
  - and many others that contributed too! 
+##### MapleLib2 by haha01haha01;
+ - based on MapleLib by Snow;
+ - based on WzLib by JonyLeeson;
+ - based on information from Fiel\Koolk.
+
 
 License
 ----
