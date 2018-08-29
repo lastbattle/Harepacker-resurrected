@@ -27,6 +27,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
             this.DataContext = this; // set data binding to self.
         }
 
+        #region Exported Fields
         private string _Header = "";
         public string Header
         {
@@ -45,6 +46,14 @@ namespace HaRepacker.GUI.Panels.SubPanels
             get { return applyButton.IsEnabled; }
             set { applyButton.IsEnabled = value; }
         }
+
+        private TextWrapping _TextWrap;
+        public TextWrapping TextWrap
+        {
+            get { return _TextWrap; }
+            set { this._TextWrap = value; }
+        }
+        #endregion
 
         public event EventHandler ButtonClicked;
         private void applyButton_Click(object sender, RoutedEventArgs e)

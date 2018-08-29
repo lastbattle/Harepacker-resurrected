@@ -102,7 +102,7 @@ namespace HaRepacker
                     item.Delete();
                     break;
                 case UndoRedoType.ObjectRemoved:
-                    parent.AddNode(item);
+                    parent.AddNode(item, true);
                     break;
             }
         }

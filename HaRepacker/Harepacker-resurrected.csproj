@@ -679,6 +679,7 @@
     <None Include="Resources\Pause_.png" />
     <None Include="Resources\Play.png" />
     <None Include="Resources\207px-Circle-undo.svg.png" />
+    <None Include="Resources\8800000_attack_10.png" />
     <Content Include="Resources\arrow_left.png" />
     <None Include="Resources\red_x1.png" />
     <None Include="Resources\rename.png" />

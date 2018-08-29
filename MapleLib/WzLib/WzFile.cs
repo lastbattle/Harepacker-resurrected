@@ -20,6 +20,7 @@ using System.Text.RegularExpressions;
 using System;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
+using System.Threading.Tasks;
 
 namespace MapleLib.WzLib
 {
@@ -185,7 +186,6 @@ namespace MapleLib.WzLib
             }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
-
             this.Header = new WzHeader();
             this.Header.Ident = reader.ReadString(4);
             this.Header.FSize = reader.ReadUInt64();
@@ -255,7 +255,7 @@ namespace MapleLib.WzLib
             }
         }
 
-        private uint GetVersionHash(int encver, int realver)
+        private static uint GetVersionHash(int encver, int realver)
         {
             int EncryptedVersionNumber = encver;
             int VersionNumber = realver;

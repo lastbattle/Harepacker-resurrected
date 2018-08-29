@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,14 +32,24 @@ namespace HaRepacker.GUI.Panels
         private UndoRedoManager undoRedoMan;
 
         private bool isSelectingWzMapFieldLimit = false;
-
+        private bool isLoading = false;
 
         public MainPanel()
         {
             InitializeComponent();
 
+            isLoading = true;
+
             // undo redo
             undoRedoMan = new UndoRedoManager(this);
+
+            // Set theme color
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)
+            {
+                VisualStateManager.GoToState(this, "BlackTheme", false);
+                DataTree.BackColor = System.Drawing.Color.Black;
+                DataTree.ForeColor = System.Drawing.Color.White;
+            }
 
             nameBox.Header = "Key";
             textPropBox.Header = "Value";
@@ -48,6 +59,19 @@ namespace HaRepacker.GUI.Panels
 
             textPropBox.Visibility = Visibility.Collapsed;
             //nameBox.Visibility = Visibility.Collapsed;
+
+            bool planeEnable = Program.ConfigurationManager.UserSettings.Plane;
+            cartesianPlane_checkBox.IsChecked = planeEnable;
+            grid_planVisibility.Visibility = planeEnable ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (ComboBoxItem comboboxItem in planePosition_comboBox.Items)
+            {
+                if (Program.ConfigurationManager.UserSettings.PlanePosition == comboboxItem.Tag as string)
+                {
+                    planePosition_comboBox.SelectedItem = comboboxItem;
+                    break;
+                }
+            }
 
             // Storyboard
             System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
@@ -61,20 +85,15 @@ namespace HaRepacker.GUI.Panels
             saveImageButton.Visibility = Visibility.Collapsed;
 
             Loaded += MainPanelXAML_Loaded;
+
+
+            isLoading = false;
         }
 
 
         private void MainPanelXAML_Loaded(object sender, RoutedEventArgs e)
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
-
-            // Set theme color
-            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)
-            {
-                VisualStateManager.GoToState(this , "BlackTheme", false);
-                DataTree.BackColor = System.Drawing.Color.Black;
-                DataTree.ForeColor = System.Drawing.Color.White;
-            }
         }
 
         #region Exported Fields
@@ -87,7 +106,7 @@ namespace HaRepacker.GUI.Panels
         {
             if (DataTree.SelectedNode != null && DataTree.SelectedNode.Tag is WzImage && DataTree.SelectedNode.Nodes.Count == 0)
             {
-                ParseOnDataTreeSelectedItem(((WzNode)DataTree.SelectedNode));
+                ParseOnDataTreeSelectedItem(((WzNode)DataTree.SelectedNode), true);
             }
         }
 
@@ -106,12 +125,17 @@ namespace HaRepacker.GUI.Panels
         /// Parse the data tree selected item on double clicking, or copy pasting into it.
         /// </summary>
         /// <param name="selectedNode"></param>
-        private static void ParseOnDataTreeSelectedItem(WzNode selectedNode)
+        private static void ParseOnDataTreeSelectedItem(WzNode selectedNode, bool expandDataTree = true)
         {
-            if (!((WzImage)selectedNode.Tag).Parsed)
-                ((WzImage)selectedNode.Tag).ParseImage();
+            WzImage wzImage = (WzImage)selectedNode.Tag;
+
+            if (!wzImage.Parsed)
+                wzImage.ParseImage();
             selectedNode.Reparse();
-            selectedNode.Expand();
+            if (expandDataTree)
+            {
+                selectedNode.Expand();
+            }
         }
 
         private void DataTree_KeyDown(object sender, System.Windows.Forms.KeyEventArgs e)
@@ -525,7 +549,129 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
+        #region X Y Center Plane
+        /// <summary>
+        /// Show cartesian plane Checked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void cartesianPlane_checkBox_CheckUnchecked(object sender, RoutedEventArgs e)
+        {
+            if (isLoading || cartesianPlane_checkBox == null)
+                return;
+
+            bool enable = cartesianPlane_checkBox.IsChecked == true;
+
+            Program.ConfigurationManager.UserSettings.Plane = enable;
+
+            grid_planVisibility.Visibility = enable ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Plane alignment
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void planePosition_comboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isLoading || planePosition_comboBox.SelectedItem == null)
+                return;
+
+            Program.ConfigurationManager.UserSettings.PlanePosition = ((ComboBoxItem)planePosition_comboBox.SelectedItem).Tag as string;
+            //   planePosition();
+            UpdateCartesianPlanePosition(new System.Drawing.PointF());
+        }
+
+        private void UpdateCartesianPlanePosition(System.Drawing.PointF vectorSelected)
+        {
+            if (vectorSelected == null || isLoading || cartesianPlaneX == null || cartesianPlaneY == null)
+                return;
+
+            double xCenter = Grid_ImageDisplay.ActualWidth / 2d;
+            double yCenter = Grid_ImageDisplay.ActualWidth / 2d;
+            double imageWidth = canvasPropBox.ActualWidth;
+            double imageHeight = canvasPropBox.ActualHeight;
+
+            canvasPropBox.Margin = new Thickness(imageWidth, imageHeight, 0, 0);
+
+            switch (Program.ConfigurationManager.UserSettings.PlanePosition)
+            {
+                case "Top":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
+                    break;
+                case "Bottom":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
+                    break;
+                case "Right":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
+                    break;
+                case "Left":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
+                    break;
+                case "Top-Left":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
+                    break;
+                case "Top-Right":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
+                    break;
+                case "Bottom-Left":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
+                    break;
+                case "Bottom-Right":
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
+                    break;
+                case "Center":
+                default:
+                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
+                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+
+                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
+                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
+                    break;
+            }
+
+            canvasPropBox.Margin = new Thickness(
+                vectorOriginSelected.X,  // Left
+                vectorOriginSelected.Y,  // Top
+                0,  // Right
+                0);
+        }
+        #endregion
+
         #region Animate
+        private System.Drawing.PointF vectorOriginSelected;
         /// <summary>
         /// On button click for animating canvas
         /// </summary>
@@ -635,7 +781,7 @@ namespace HaRepacker.GUI.Panels
                     bCanvasAnimationActive = true; // flag
 
                     timerImgSequence.Start();
-                    button_animateSelectedCanvas.Content = "Stop";
+                    button_animateSelectedCanvas.Content = "Stop (F5)";
                 }
             }
             else
@@ -663,7 +809,6 @@ namespace HaRepacker.GUI.Panels
 
             // Set vector origin
             vectorOriginSelected = currentNode.Item3;
-            RefreshCanvasLocation();
 
             // Set current image
             canvasPropBox.Source = currentNode.Item4;
@@ -698,17 +843,6 @@ namespace HaRepacker.GUI.Panels
             bCanvasAnimationActive = false; // flag
         }
 
-        private void cartesianPlane_checkBox_CheckedChanged(object sender, EventArgs e)
-        {
-            /*    if (cartesianPlane_checkBox.Checked)
-                    Program.ConfigurationManager.UserSettings.Plane = true;
-                else
-                    Program.ConfigurationManager.UserSettings.Plane = false;
-
-                //cartesianPlaneX.Visible = UserSettings.Plane;
-                //cartesianPlaneY.Visible = UserSettings.Plane;*/
-        }
-
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             /* if (nextLoopTime_comboBox == null)
@@ -732,15 +866,6 @@ namespace HaRepacker.GUI.Panels
                       Program.ConfigurationManager.UserSettings.DelayNextLoop = Program.TimeStartAnimateDefault;
                       break;
               }*/
-        }
-
-
-        private System.Drawing.PointF vectorOriginSelected;
-        private void RefreshCanvasLocation()
-        {
-            if (Program.ConfigurationManager.UserSettings.DevImgSequences && vectorOriginSelected != null)
-            {
-            }
         }
         #endregion
 
@@ -1009,7 +1134,13 @@ namespace HaRepacker.GUI.Panels
         #endregion
 
         #region Copy & Paste
-        public WzObject CloneWzObject(WzObject obj)
+        /// <summary>
+        /// Clones a WZ object
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private WzObject CloneWzObject(WzObject obj)
         {
             if (obj is WzDirectory)
             {
@@ -1032,20 +1163,26 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
+        /// Flag to determine if a copy task is currently active.
+        /// </summary>
+        private bool
+            bPasteTaskActive = false;
+
+        /// <summary>
         /// Copies from the selected Wz object
         /// </summary>
         public void DoCopy()
         {
-            if (!Warning.Warn(Properties.Resources.MainConfirmCopy))
+            if (!Warning.Warn(Properties.Resources.MainConfirmCopy) || bPasteTaskActive)
                 return;
 
             clipboard.Clear();
-            foreach (WzNode node in DataTree.SelectedNodes)
+            Parallel.ForEach(DataTree.SelectedNodes.ToArray(), node =>
             {
-                WzObject clone = CloneWzObject((WzObject)node.Tag);
+                WzObject clone = CloneWzObject((WzObject) ((WzNode)node).Tag);
                 if (clone != null)
                     clipboard.Add(clone);
-            }
+            });
         }
 
         private ReplaceResult replaceBoxResult = ReplaceResult.NoneSelectedYet;
@@ -1058,68 +1195,76 @@ namespace HaRepacker.GUI.Panels
             if (!Warning.Warn(Properties.Resources.MainConfirmPaste))
                 return;
 
-            // Reset replace option
-            replaceBoxResult = ReplaceResult.NoneSelectedYet;
-
-            WzNode parent = (WzNode)DataTree.SelectedNode;
-            WzObject parentObj = (WzObject)parent.Tag;
-
-            if (parent != null && parent.Tag is WzImage && parent.Nodes.Count == 0)
+            bPasteTaskActive = true;
+            try
             {
-                ParseOnDataTreeSelectedItem(parent);
-            }
+                // Reset replace option
+                replaceBoxResult = ReplaceResult.NoneSelectedYet;
 
-            if (parentObj is WzFile)
-                parentObj = ((WzFile)parentObj).WzDirectory;
+                WzNode parent = (WzNode)DataTree.SelectedNode;
+                WzObject parentObj = (WzObject)parent.Tag;
 
-            bool bNoToAllComplete = false;
-            foreach (WzObject obj in clipboard)
-            {
-                if (((obj is WzDirectory || obj is WzImage) && parentObj is WzDirectory) || (obj is WzImageProperty && parentObj is IPropertyContainer))
+                if (parent != null && parent.Tag is WzImage && parent.Nodes.Count == 0)
                 {
-                    WzObject clone = CloneWzObject(obj);
-                    if (clone == null)
-                        continue;
-                    WzNode node = new WzNode(clone, true);
+                    ParseOnDataTreeSelectedItem(parent); // only parse the main node.
+                }
 
-                    WzNode child = WzNode.GetChildNode(parent, node.Text);
-                    if (child != null) // A Child already exist
+                if (parentObj is WzFile)
+                    parentObj = ((WzFile)parentObj).WzDirectory;
+
+                bool bNoToAllComplete = false;
+                foreach (WzObject obj in clipboard)
+                {
+                    if (((obj is WzDirectory || obj is WzImage) && parentObj is WzDirectory) || (obj is WzImageProperty && parentObj is IPropertyContainer))
                     {
-                        if (replaceBoxResult == ReplaceResult.NoneSelectedYet)
+                        WzObject clone = CloneWzObject(obj);
+                        if (clone == null)
+                            continue;
+
+                        WzNode node = new WzNode(clone, true);
+                        WzNode child = WzNode.GetChildNode(parent, node.Text);
+                        if (child != null) // A Child already exist
                         {
-                            ReplaceBox.Show(node.Text, out replaceBoxResult);
-                        }
+                            if (replaceBoxResult == ReplaceResult.NoneSelectedYet)
+                            {
+                                ReplaceBox.Show(node.Text, out replaceBoxResult);
+                            }
 
-                        switch (replaceBoxResult)
+                            switch (replaceBoxResult)
+                            {
+                                case ReplaceResult.No: // Skip just this
+                                    replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
+                                    break;
+
+                                case ReplaceResult.Yes: // Replace just this
+                                    child.Delete();
+                                    parent.AddNode(node, false);
+                                    replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
+                                    break;
+
+                                case ReplaceResult.NoToAll:
+                                    bNoToAllComplete = true;
+                                    break;
+
+                                case ReplaceResult.YesToAll:
+                                    child.Delete();
+                                    parent.AddNode(node, false);
+                                    break;
+                            }
+
+                            if (bNoToAllComplete)
+                                break;
+                        }
+                        else // not not in this 
                         {
-                            case ReplaceResult.No: // Skip just this
-                                replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
-                                break;
-
-                            case ReplaceResult.Yes: // Replace just this
-                                child.Delete();
-                                parent.AddNode(node);
-                                replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
-                                break;
-
-                            case ReplaceResult.NoToAll:
-                                bNoToAllComplete = true;
-                                break;
-
-                            case ReplaceResult.YesToAll:
-                                child.Delete();
-                                parent.AddNode(node);
-                                break;
+                            parent.AddNode(node, false);
                         }
-
-                        if (bNoToAllComplete)
-                            break;
-                    }
-                    else // not not in this 
-                    {
-                        parent.AddNode(node);
                     }
                 }
+            }
+            finally
+            {
+                bPasteTaskActive = false;
             }
         }
         #endregion
@@ -1198,6 +1343,10 @@ namespace HaRepacker.GUI.Panels
                 else
                     canvasPropBox.Source = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
 
+                // origin
+                System.Drawing.PointF origin = canvas.GetCanvasVectorPosition();
+                vectorOriginSelected = origin;
+
                 canvasPropBox.Visibility = Visibility.Visible;
             }
             else if (obj is WzUOLProperty)
@@ -1209,6 +1358,10 @@ namespace HaRepacker.GUI.Panels
                     canvasPropBox.Visibility = Visibility.Visible;
                     canvasPropBox.Source = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
                     saveImageButton.Visibility = Visibility.Visible;
+
+                    // origin
+                    System.Drawing.PointF origin = ((WzCanvasProperty)linkValue).GetCanvasVectorPosition();
+                    vectorOriginSelected = origin;
                 }
 
                 // Value
@@ -1448,8 +1601,7 @@ namespace HaRepacker.GUI.Panels
                 {
                     if (node.Tag is WzImage && !((WzImage)node.Tag).Parsed && i != splitPath.Length - 1)
                     {
-                        ((WzImage)node.Tag).ParseImage();
-                        node.Reparse();
+                        ParseOnDataTreeSelectedItem(node, false);
                     }
                     collection = node.Nodes;
                 }

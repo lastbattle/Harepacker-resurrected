@@ -20,7 +20,7 @@
                        Foreground="Gray"/>
             
             <TextBox x:Name="textBox" Grid.Column="1"
-                             Background="White" BorderBrush="White" FontSize="16" 
+                             Background="White" BorderBrush="White" FontSize="16" TextWrapping="{Binding TextWrap}"
                      TextChanged="textBox_TextChanged"/>
             
             <Button x:Name="applyButton" Content="Apply" Grid.Column="2" MaxHeight="40" MinHeight="30" VerticalAlignment="Top"

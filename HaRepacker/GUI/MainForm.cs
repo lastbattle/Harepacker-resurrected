@@ -1374,7 +1374,7 @@ namespace HaRepacker.GUI
                     child.Delete();
                 else return;
             }
-            parent.AddNode(node);
+            parent.AddNode(node, true);
         }
 
         private void InsertWzNodeThreadSafe(WzNode node, WzNode parent)

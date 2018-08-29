@@ -78,7 +78,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
                 {
                     Text = "",
                     Name = "col1",
-                    Width = 450,
+                    Width = 550,
                 });
 
                 int i_index = 0;

@@ -53,7 +53,7 @@
             <VisualStateGroup x:Name="VisualStateGroup">
                 <VisualState x:Name="Default">
                 </VisualState>
-                
+
                 <VisualState x:Name="BlackTheme">
                     <Storyboard>
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="button_animateSelectedCanvas">
@@ -113,6 +113,9 @@
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button_nextSearch">
                             <EasingColorKeyFrame KeyTime="0" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="cartesianPlane_checkBox">
+                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        </ColorAnimationUsingKeyFrames>
                         <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background)" Storyboard.TargetName="grid">
                             <DiscreteObjectKeyFrame KeyTime="0">
                                 <DiscreteObjectKeyFrame.Value>
@@ -127,7 +130,7 @@
                                 </DiscreteObjectKeyFrame.Value>
                             </DiscreteObjectKeyFrame>
                         </ObjectAnimationUsingKeyFrames>
-                  <!--      <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="statusBar">
+                        <!--      <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="statusBar">
                             <EasingColorKeyFrame KeyTime="0" Value="Black"/>
                         </ColorAnimationUsingKeyFrames>
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="selectionLabel">
@@ -260,7 +263,7 @@
 
                 <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
                                                       ButtonClicked="nameBox_ButtonClicked"/>
-                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" />
+                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" TextWrap="Wrap"/>
 
 
                 <Grid x:Name="grid1" Grid.Row="2">
@@ -271,12 +274,46 @@
 
                     <localSubPanels:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 
-                    <Grid>
+                    <Grid x:Name="Grid_ImageDisplay" Margin="10">
+
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <Image x:Name="canvasPropBox" Grid.Row="0" Stretch="None" />
+                        <Grid Grid.Row="0">
+                            <Image x:Name="canvasPropBox" Stretch="None" Margin="300,100,0,0"
+                               VerticalAlignment="Center" HorizontalAlignment="Center" Source="pack://siteoforigin:,,,/Resources/8800000_attack_10.png">
+                            </Image>
+
+                            <Grid x:Name="grid_planVisibility">
+                                <Grid x:Name="cartesianPlaneX" Height="2" Background="Gray" Visibility="Collapsed">
+                                    <Grid Background="White" Height="1"/>
+                                </Grid>
+                                <Grid x:Name="cartesianPlaneY" Width="2" Background="Gray" Visibility="Collapsed">
+                                    <Grid Background="White" Width="1"/>
+                                </Grid>
+                            </Grid>
+
+                            <!-- plane UI. Put this above the image -->
+                            <!-- Not done yet -->
+                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20"
+                                        Visibility="Collapsed">
+                                <CheckBox x:Name="cartesianPlane_checkBox" Content="Plane" 
+                                      Checked="cartesianPlane_checkBox_CheckUnchecked" Unchecked="cartesianPlane_checkBox_CheckUnchecked"/>
+                                <ComboBox x:Name="planePosition_comboBox" Width="100" SelectedIndex="0" 
+                                          SelectionChanged="planePosition_comboBox_SelectionChanged">
+                                    <ComboBoxItem Content="Center" Tag="Center"/>
+                                    <ComboBoxItem Content="Top" Tag="Top"/>
+                                    <ComboBoxItem Content="Bottom" Tag="Bottom"/>
+                                    <ComboBoxItem Content="Left" Tag="Left"/>
+                                    <ComboBoxItem Content="Right" Tag="Right"/>
+                                    <ComboBoxItem Content="Top-Left" Tag="Top-Left"/>
+                                    <ComboBoxItem Content="Top-Right" Tag="Top-Right"/>
+                                    <ComboBoxItem Content="Bottom-Left" Tag="Bottom-Left"/>
+                                    <ComboBoxItem Content="Bottom-Right" Tag="Bottom-Right"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
                     </Grid>
 
                     <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right"

@@ -56,7 +56,7 @@ namespace HaRepacker.Configuration
         public bool Plane = true;
 
         [JsonProperty(PropertyName = "PlanePosition")]
-        public int PlanePosition = 0;//center
+        public string PlanePosition = "Center";
 
         // Themes
         [JsonProperty(PropertyName = "ThemeColor")]

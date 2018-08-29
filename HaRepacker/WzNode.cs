@@ -141,11 +141,16 @@ namespace HaRepacker
             return true;
         }
 
-        public bool AddNode(WzNode node)
+        /// <summary>
+        /// Adds a node
+        /// </summary>
+        /// <param name="node"></param>
+        /// <returns></returns>
+        public bool AddNode(WzNode node, bool reparseImage)
         {
             if (CanNodeBeInserted(this, node.Text))
             {
-                TryParseImage();
+                TryParseImage(reparseImage);
                 this.Nodes.Add(node);
                 addObjInternal((WzObject)node.Tag);
                 return true;
@@ -160,12 +165,15 @@ namespace HaRepacker
         /// <summary>
         /// Try parsing the WzImage if it have not been loaded
         /// </summary>
-        private void TryParseImage()
+        private void TryParseImage(bool reparseImage = true)
         {
             if (Tag is WzImage)
             {
                 ((WzImage)Tag).ParseImage();
-                Reparse();
+                if (reparseImage)
+                {
+                    Reparse();
+                }
             }
         }
 
