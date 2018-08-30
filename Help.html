@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
+		<title>HaSuite Help</title>
+		<style type="text/css">
+			*{
+				padding: 0;
+				margin: 0;
+				box-sizing: border-box;
+			}
+			body{
+				color: #484036;
+				font-family: sans-serif;
+				background-color: #EEE;
+			}
+			::selection{
+				background-color: #484848;
+				color: #EEE;
+			}
+			nav{			
+				padding: 15px 5px;
+				background-color: #484848;
+			}
+			nav div{
+				width: 775px;
+				margin: auto;
+				padding: 0 25px;
+			}
+			nav div h1{
+				color: #EEE;
+				font-size: 16pt;
+			}
+			nav div h1 .sub-title{
+				font-size: 15pt;
+				color: #FE973A;
+				font-family: serif;
+				font-style: oblique;
+				text-decoration: underline;
+			}
+			span{
+				font-style: oblique;
+				font-weight: bold;
+			}
+			.content{
+				margin: 50px auto 0 auto;
+				width: 100%;
+				max-width: 775px;
+				padding: 0 25px;
+			}
+			.content .article{
+				margin-top: 25px;
+				margin-bottom: 25px;
+			}
+			.content .article p{
+				padding-bottom: 10px;
+				font-size: 10pt;
+			}
+
+			strong{
+				color: #FE973A;
+			}
+
+
+			.article h2{
+				font-size: 15pt;
+			}
+			.disclaimer h2, .harepacker h2, .hacreator h2{
+				border-bottom: 2px solid white;
+			}
+			.disclaimer h2{
+				margin-bottom: 10px;
+			}
+
+			.requirements ul, .harepacker ul, .hacreator ul{
+				padding-left: 25px;
+			}
+
+			.requirements ul li{
+				padding: 2px 0;
+			}
+			.requirements ul li a{
+				font-size: 10pt;
+				color: #FE973A;
+				text-decoration: none;
+			}
+			.requirements ul li a:hover{
+				text-decoration: underline;
+			}
+
+			.harepacker h2, .hacreator h2{
+				margin-top: 50px;
+			}
+
+			.harepacker h3, .hacreator h3{
+				padding-top: 10px;
+				padding-bottom: 10px;
+				text-decoration: underline;
+				text-decoration-color: #FE973A;
+				font-size: 11pt;
+			}
+			.harepacker ul li, .hacreator ul li{
+				font-size: 10pt;
+				padding-bottom: 15px;
+			}
+			aside img{
+				margin: 0 auto;
+				display: block;
+			}
+			footer{
+				background-color: #484848;
+				color: #EEE;
+				padding: 50px 0;
+			}
+			footer div{
+				margin-left: auto;
+				margin-right: auto;
+				padding: 0 25px;
+				width: 100%;
+				max-width: 750px;
+				text-align: center;
+			}
+			footer h2{
+				margin-bottom: 15px;
+			}
+			footer div p{				
+				font-size: 9pt;
+			}
+			footer div ul{
+				display: flex;
+				flex-wrap: wrap;
+				justify-content: center;
+				margin-top: 10px;
+				list-style: none;
+			}
+			footer div ul li{
+				margin: 0 25px;
+			}
+			footer div ul li a{
+				color: #FE973A;
+				font-size: 9pt;
+				text-decoration: none;
+			}
+			footer div ul li a:hover{
+				text-decoration: underline;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="container">
+			<nav>
+				<div>
+					<h1>HaSuite: <span class="sub-title">help</span></h1>
+				</div>
+			</nav>
+			<main class="content">
+				<article class=" article disclaimer">
+					<h2>Disclaimer</h2>
+					<p>This program and all libraries included with it are provided free of charge and for educational and testing purposes only. You may not use any of this program or any files included with it to commit any action which is illegal in the United States or where you reside.</p>
+					<p>This	program is licensed under the Mozilla Public License (MPL), with some parts under different licenses, includeing the GNU General Public License (GPL), Microsoft Public License (Ms-PL) and MIT License. See the source code repository and the relevant LICENSE files in it for details.</p>
+				</article>
+				<article class=" article requirements">
+					<h4>System Requirements:</h4>
+					<ul>
+						<li><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40773" target="_blank">NET Framework 4.5.1</a></li>
+						<li><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40784" target="_blank">Visual C++ Redistributable Packages for Visual Studio 2013</a></li>
+					</ul>
+				</article>
+
+				<article class=" article harepacker">
+					<h2>HaRepacker</h2>					
+
+					<h3>Shortcut Keys:</h3>					
+					<ul>
+						<li><strong>Delet(Supr): </strong>delete all currently selected nodes.</li>
+						<li><strong>Ctrl+C \ Ctrl+V: </strong> copy\paste.</li>
+						<li><strong>Ctrl+F: </strong>the search bar.</li>
+						<li><strong>Ctrl+T: </strong>Create an empty WZ file.</li>
+						<li><strong>Ctl+A / F5: </strong>Animate all selected Canvas and UOL property.</li>
+						<li><strong>Ctl+P: </strong>Stop animating.</li>
+						<li><strong>Ctl+O: </strong>Hotkey for opening a new WZ file.</li>
+					</ul>
+					<h3>WZ Serialization (aka dumping & importing):</h3>
+					<p>HaRepacker 4 provides a few different methods for serializing WZ data. Most of them can also be deserialized (returned to WZ data form). Additionally, most methods can be performed either on the selected nodes or on a group of not-yet-loaded files. When using the second option, it is important to make sure the file is NOT loaded into HaRepacker yet.</p>
+
+					<h3>Serialization methods:</h3>
+					<ul>
+						<li><strong>XML –> Private server XML:</strong> Separate XML files intended to <span>be used inside an OdinMS based server’s WZ directory</span>. It can only serialize WZ files, directories or images. WZ directories and files turn into actual directories, while WZ images turn into XML files. This type of XML <span>cannot be deserialized</span> back to WZ form (aka imported)</li>
+						<li><strong>XML –> Classic:</strong> This serialization method works exactly like the previous one, but it includes png and sound data in the XML and therefore <span>can be deserialized</span>. Since this type of XML has all the information the previous one has, it <span>can also be used inside a server’s WZ directory</span> (however, this is not a recommended practice because this type of XMLs take a lot of space).</li>
+						<li><strong>XML –> New:</strong> This is the new type of serialization into XML, which was only partially available in the previous versions. This serialization method <span>only works with HaRepacker</span> and is intended purely for information storage. This serialization method will <span>export any amount of WZ properties, images or directories into a single XML file</span>. The only data it cannot serialize is List.wz data. This type of XML <span>can be deserialized</span>.</li>
+						<li><strong>PNG\MP3:</strong> Dumps only the PNG and MP3 data to disk. WZ directories and images turn into real directories, and all PNGs and MP3 files are saved to their image’s directory. <span>Cannot be deserialized</span>.</li>
+						<li><strong>IMG Files:</strong> Dumps the WZ images into *.img files. This method can only serialize WZ files, directories and images, <span>can be deserialized</span> and is  the <span>recommended method of dumping and storing information</span> as it is the fastest, most compact and most memory efficient serialization method. When an IMG file is deserialized, the file is left open and <span>cannot be moved, changed, renamed or deleted</span> until the WZ file holding the image is closed.</li>
+					</ul>
+				</article>
+
+				<article class=" article hacreator">
+					<h2>HaCreator</h2>
+					<h3>B.Shortcut Keys:</h3>
+					<ul>
+						<li><strong>Left mouse button: </strong>select objects (either from map or from the objects panel)</li>
+						<li><strong>Right mouse button: </strong>release selected objects (while adding items from the objects panel), show the menu (when used on existing objects), edit map options (when used on the map tab)</li>
+						<li><strong>Double click: </strong>new foothold anchor (while adding footholds), show instance editor (when used on existing objects)</li>
+						<li><strong>Escape:</strong> deselect everything</li>
+						<li><strong>Arrow Keys: </strong> move selected items</li>
+						<li><strong>Ctrl+F: </strong>flip item</li>
+						<li><strong>Ctrl+A: </strong>select all</li>
+						<li><strong>Ctrl+Z\Y: </strong>undo\redo</li>
+						<li><strong>Numpad +\-: </strong>increase\decrease Z value</li>
+						<li><strong>Ctrl+C\V: </strong>Copy\Paste</li>
+						<li><strong>Ctrl+S: </strong>Save to HAM file</li>
+						<li><strong>Ctrl+O: </strong>Open another map</li>
+					</ul>
+				</article>
+				<aside >
+					<img src="https://media.giphy.com/media/Bxd5ulAo0R7Fu/giphy.gif" title="^_^" alt="Mushroom">
+				</aside>
+			</main>
+		</div>
+		<footer>
+			<div>
+				<h2>HaSuite</H2>
+				<p>Want to contribute? Great! Fork it, create pull request!</p>
+				<p>This is purely community driven and at my time, please dont expect me to fix things for you immediately. If there are any bugs, describe it clearly.</p>
+				<ul>
+					<li><a href="https://github.com/eaxvac/Harepacker-resurrected" target="_blank">Repository</a></li>
+					<li><a href="https://github.com/eaxvac/Harepacker-resurrected/blob/master/LICENSE" target="_blank">License</a></li>
+					<li><a href="https://github.com/eaxvac/Harepacker-resurrected/releases" target="_black">Release</a></li>
+				</ul>
+			</div>
+		</footer>
+	</body>
+</html>
