@@ -83,7 +83,10 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 timer.Stop();
 
-                currAudio.Pause();
+                if (currAudio != null)
+                {
+                    currAudio.Pause();
+                }
 
                 PauseButton.Content = "Play";
             } else
@@ -112,18 +115,21 @@ namespace HaRepacker.GUI.Panels.SubPanels
 
         private void UpdateTimerLabel()
         {
-            isUpdatingTimeLabel = true; // flag
+            if (currAudio != null && !currAudio.Disposed) 
+            {
+                isUpdatingTimeLabel = true; // flag
 
-            slider1.Value = (int)(currAudio.Position / (float)currAudio.Length * 100f);
-            TimeSpan time = TimeSpan.FromSeconds(currAudio.Position);
-            CurrentPositionLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0');
+                slider1.Value = (int)(currAudio.Position / (float)currAudio.Length * 100f);
+                TimeSpan time = TimeSpan.FromSeconds(currAudio.Position);
+                CurrentPositionLabel.Text = Convert.ToString(time.Minutes).PadLeft(2, '0') + ":" + Convert.ToString(time.Seconds).PadLeft(2, '0');
 
-            isUpdatingTimeLabel = false; // flag
+                isUpdatingTimeLabel = false; // flag
+            }
         }
 
         private void PrepareAudioForPlayback()
         {
-            if (currAudio == null)
+            if (currAudio == null && soundProp != null)
             {
                 currAudio = new WzMp3Streamer(soundProp, checkbox_Replay.IsChecked == true);
             }
@@ -154,8 +160,12 @@ namespace HaRepacker.GUI.Panels.SubPanels
                 soundProp = value;
 
                 if (currAudio != null && !currAudio.Disposed)
+                {
                     currAudio.Dispose();
+                }
+                isPlaying = false;
                 currAudio = null;
+                PauseButton.Content = "Play";
 
                 if (soundProp != null)
                 {
