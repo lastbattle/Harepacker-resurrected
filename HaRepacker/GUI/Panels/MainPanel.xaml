@@ -7,7 +7,7 @@
               xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
              xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
-             
+
              mc:Ignorable="d" 
              
              d:DesignHeight="661" d:DesignWidth="1599">
@@ -262,8 +262,10 @@
                 </Grid.RowDefinitions>
 
                 <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
+                                                  AcceptsReturn="False"
                                                       ButtonClicked="nameBox_ButtonClicked"/>
-                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" TextWrap="Wrap"/>
+                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" 
+                                                  TextWrap="Wrap" />
 
 
                 <Grid x:Name="grid1" Grid.Row="2">
@@ -280,7 +282,8 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <Grid Grid.Row="0">
+
+                        <Grid Grid.Row="0" x:Name="Grid_ImageRender">
                             <Image x:Name="canvasPropBox" Stretch="None" Margin="300,100,0,0"
                                VerticalAlignment="Center" HorizontalAlignment="Center" Source="pack://siteoforigin:,,,/Resources/8800000_attack_10.png">
                             </Image>

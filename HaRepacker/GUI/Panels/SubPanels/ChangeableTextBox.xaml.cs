@@ -53,6 +53,13 @@ namespace HaRepacker.GUI.Panels.SubPanels
             get { return _TextWrap; }
             set { this._TextWrap = value; }
         }
+
+        private bool _AcceptsReturn = false;
+        public bool AcceptsReturn
+        {
+            get { return _AcceptsReturn; }
+            set { this._AcceptsReturn = value; }
+        }
         #endregion
 
         public event EventHandler ButtonClicked;

@@ -1385,10 +1385,12 @@ namespace HaRepacker.GUI.Panels
                 // If text is a string property, expand the textbox
                 if (obj is WzStringProperty)
                 {
+                    textPropBox.AcceptsReturn = true;
                     textPropBox.Height = 200;
                 }
                 else
                 {
+                    textPropBox.AcceptsReturn = false;
                     textPropBox.Height = 35;
                 }
 
