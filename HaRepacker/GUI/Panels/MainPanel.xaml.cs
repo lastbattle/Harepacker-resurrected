@@ -869,6 +869,7 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
+
         #region Buttons
         private void nameBox_ButtonClicked(object sender, EventArgs e)
         {
@@ -973,6 +974,7 @@ namespace HaRepacker.GUI.Panels
 
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
+                FileName = mp3.Name,
                 Title = "Select where to save the image...",
                 Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3"
             };
@@ -995,15 +997,23 @@ namespace HaRepacker.GUI.Panels
             }
 
             System.Drawing.Bitmap wzCanvasPropertyObjLocation = null;
+            string fileName = string.Empty;
 
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty)
-                wzCanvasPropertyObjLocation = ((WzCanvasProperty)DataTree.SelectedNode.Tag).GetLinkedWzCanvasBitmap();
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty) {
+                WzCanvasProperty canvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
+
+                wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
+                fileName = canvas.Name;
+            }
             else
             {
                 WzObject linkValue = ((WzUOLProperty)DataTree.SelectedNode.Tag).LinkValue;
                 if (linkValue is WzCanvasProperty)
                 {
-                    wzCanvasPropertyObjLocation = ((WzCanvasProperty)linkValue).GetLinkedWzCanvasBitmap();
+                    WzCanvasProperty canvas = (WzCanvasProperty)linkValue;
+
+                    wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
+                    fileName = canvas.Name;
                 }
                 else
                     return;
@@ -1013,6 +1023,7 @@ namespace HaRepacker.GUI.Panels
 
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
+                FileName = fileName,
                 Title = "Select where to save the image...",
                 Filter = "Portable Network Grpahics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
             };

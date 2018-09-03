@@ -1130,7 +1130,10 @@ namespace HaRepacker.GUI
                 Warning.Error(HaRepacker.Properties.Resources.MainAnimationFail);
             else
             {
-                SaveFileDialog dialog = new SaveFileDialog() { Title = HaRepacker.Properties.Resources.SelectOutApng, Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter) };
+                SaveFileDialog dialog = new SaveFileDialog() {
+                    Title = HaRepacker.Properties.Resources.SelectOutApng,
+                    Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter)
+                };
                 if (dialog.ShowDialog() != DialogResult.OK)
                 {
                     return;
