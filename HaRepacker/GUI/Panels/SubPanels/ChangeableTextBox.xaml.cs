@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -18,7 +19,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
     /// <summary>
     /// Interaction logic for ChangeableTextBoxXAML.xaml
     /// </summary>
-    public partial class ChangeableTextBox : UserControl
+    public partial class ChangeableTextBox : UserControl, INotifyPropertyChanged
     {
         public ChangeableTextBox()
         {
@@ -32,33 +33,48 @@ namespace HaRepacker.GUI.Panels.SubPanels
         public string Header
         {
             get { return _Header; }
-            set { _Header = value; }
+            set {
+                _Header = value;
+                OnPropertyChanged("Header");
+            }
         }
 
         public string Text
         {
             get { return textBox.Text; }
-            set { textBox.Text = value; }
+            set {
+                textBox.Text = value;
+                OnPropertyChanged("Text");
+            }
         }
 
         public bool ButtonEnabled
         {
             get { return applyButton.IsEnabled; }
-            set { applyButton.IsEnabled = value; }
+            set {
+                applyButton.IsEnabled = value;
+                OnPropertyChanged("ButtonEnabled");
+            }
         }
 
         private TextWrapping _TextWrap;
         public TextWrapping TextWrap
         {
             get { return _TextWrap; }
-            set { this._TextWrap = value; }
+            set {
+                this._TextWrap = value;
+                OnPropertyChanged("TextWrap");
+            }
         }
 
         private bool _AcceptsReturn = false;
         public bool AcceptsReturn
         {
             get { return _AcceptsReturn; }
-            set { this._AcceptsReturn = value; }
+            set {
+                this._AcceptsReturn = value;
+                OnPropertyChanged("AcceptsReturn");
+            }
         }
         #endregion
 
@@ -80,5 +96,17 @@ namespace HaRepacker.GUI.Panels.SubPanels
         {
             applyButton.IsEnabled = true;
         }
+
+        #region PropertyChanged
+        /// <summary>
+        /// Property changed event handler to trigger update UI
+        /// </summary>
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChangedEventHandler handler = PropertyChanged;
+            if (handler != null) handler(this, new PropertyChangedEventArgs(propertyName));
+        }
+        #endregion
     }
 }
