@@ -1341,12 +1341,16 @@ namespace HaRepacker.GUI
 
         private void expandAllToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            MainPanel.DataTree.BeginUpdate();
             MainPanel.DataTree.ExpandAll();
+            MainPanel.DataTree.EndUpdate();
         }
 
         private void collapseAllToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            MainPanel.DataTree.BeginUpdate();
             MainPanel.DataTree.CollapseAll();
+            MainPanel.DataTree.EndUpdate();
         }
 
         private void xMLToolStripMenuItem2_Click(object sender, EventArgs e)
