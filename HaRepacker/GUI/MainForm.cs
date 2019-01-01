@@ -547,6 +547,18 @@ namespace HaRepacker.GUI
                                 }
                             }
                         }
+                        else if (filePathLowerCase.EndsWith("skill.wz"))  // Now pre-load the other part of Skill.wz
+                        {
+                            string[] otherSkillWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Skill*.wz");
+                            foreach (string filePath_Others in otherSkillWzFiles)
+                            {
+                                if (filePath_Others != filePath &&
+                                    filePath_Others.EndsWith("Skill001.wz"))
+                                {
+                                    wzfilePathsToLoad.Add(filePath_Others);
+                                }
+                            }
+                        }
                     }
                 }
 
