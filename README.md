@@ -1,7 +1,7 @@
 
 # HaSuite 
 
-HaSuite is a collection of tools for MapleStory.
+HaSuite is a collection of tools for MapleStory, i.e file/level editor for MapleStory .wz game files.
 
 [![N|Solid](https://user-images.githubusercontent.com/4586194/41190431-cd2d7146-6c10-11e8-90ac-b5d5a6fdaeb3.png)](https://github.com/eaxvac/Harepacker-resurrected)
 
@@ -31,7 +31,9 @@ If there are any bugs, describe it clearly.
  - Diamondo25
  - LastBattle
  - Novak
- - Erick https://github.com/ertrii   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
+ - [@Erick](https://github.com/ertrii)   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
+ - [@RajanGrewa](https://github.com/RajanGrewal) https://github.com/eaxvac/Harepacker-resurrected/pull/8
+ - [@shavitush](https://github.com/shavitush) https://github.com/eaxvac/Harepacker-resurrected/pull/5
  - and many others that contributed too! 
 ##### MapleLib2 by haha01haha01;
  - based on MapleLib by Snow;
