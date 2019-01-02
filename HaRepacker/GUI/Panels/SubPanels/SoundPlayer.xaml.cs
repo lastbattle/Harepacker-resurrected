@@ -102,6 +102,21 @@ namespace HaRepacker.GUI.Panels.SubPanels
         }
         #endregion
 
+        #region Volume control
+        /// <summary>
+        /// On volume value change
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void slider_volume_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (currAudio == null)
+                return;
+
+            currAudio.Volume = (float) (slider_volume.Value / 100f);
+        }
+        #endregion
+
         #region Etc
 
         private void Timer_Tick(object sender, EventArgs e)

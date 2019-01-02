@@ -54,6 +54,7 @@ namespace HaRepacker
                 }
                 //InvalidDataException
             }
+            Volume = 0.5f; // default volume
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
         }
 
@@ -129,6 +130,21 @@ namespace HaRepacker
         public int Length
         {
             get { return sound.Length / 1000; }
+        }
+
+        public float Volume
+        {
+            get
+            {
+                return wavePlayer.Volume;
+            }
+            set {
+                if (value >= 0 && value <= 1.0)
+                {
+                    this.wavePlayer.Volume = value;
+                }
+            }
+
         }
 
         public int Position
