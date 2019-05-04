@@ -1063,10 +1063,10 @@ namespace HaRepacker.GUI.Panels
                     Filter = "Supported Image Formats (*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff)|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff"
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                System.Windows.Media.Imaging.BitmapImage bmp;
+                System.Drawing.Bitmap bmp;
                 try
                 {
-                    bmp = new BitmapImage(new Uri(dialog.FileName));
+                    bmp = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(dialog.FileName);
                 }
                 catch
                 {
@@ -1076,6 +1076,7 @@ namespace HaRepacker.GUI.Panels
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
                 WzCanvasProperty selectedWzCanvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
+
                 if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
@@ -1097,17 +1098,12 @@ namespace HaRepacker.GUI.Panels
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
                 }
-                else
-                {
 
-                }
-                System.Drawing.Bitmap image = BitmapToImageSource.ToWinFormsBitmap(bmp);
-
-                selectedWzCanvas.PngProperty.SetPNG(image);
+                selectedWzCanvas.PngProperty.SetPNG(bmp);
 
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
-                canvasPropBox.Source = bmp;
+                canvasPropBox.Source = new BitmapImage(new Uri(dialog.FileName));
 
                 // Add undo actions
                 //UndoRedoMan.AddUndoBatch(actions);
