@@ -147,6 +147,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
             if (currAudio == null && soundProp != null)
             {
                 currAudio = new WzMp3Streamer(soundProp, checkbox_Replay.IsChecked == true);
+                currAudio.Volume = (float)(slider_volume.Value / 100f);
             }
         }
         #endregion

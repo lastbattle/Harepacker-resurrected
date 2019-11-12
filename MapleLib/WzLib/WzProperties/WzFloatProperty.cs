@@ -91,7 +91,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// <summary>
 		/// The value of the property
 		/// </summary>
-		public float Value { get { return val; } set { val = Value; } }
+		public float Value { get { return val; } set { val = value; } }
 		/// <summary>
 		/// Creates a blank WzByteFloatProperty
 		/// </summary>
