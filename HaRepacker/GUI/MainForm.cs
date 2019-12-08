@@ -9,16 +9,12 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
-using System.Text.RegularExpressions;
-using Footholds;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.Serialization;
 using System.Threading;
 using HaRepacker.GUI.Interaction;
 using MapleLib.WzLib.Util;
-using System.Runtime.InteropServices;
-using MapleLib.WzLib.WzStructure;
 using System.Net;
 using System.Text;
 using System.Diagnostics;
@@ -29,7 +25,6 @@ using System.Windows.Threading;
 using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
-using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -484,7 +479,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        private async void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
@@ -562,23 +557,32 @@ namespace HaRepacker.GUI
                     }
                 }
 
+                // Show splash screen
+                MainPanel.OnSetPanelLoading();
+
+                //
                 Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
-
                 // Load all original WZ files 
-                Parallel.ForEach(wzfilePathsToLoad, filePath =>
+                await Task.Run(() =>
                 {
-                    WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
-                    if (f == null)
+                    Parallel.ForEach(wzfilePathsToLoad, filePath =>
                     {
-                        errorOpeningFile_Admin = true;
-                    }
-                });
+                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
+                        if (f == null)
+                        {
+                            errorOpeningFile_Admin = true;
+                        }
+                    });
 
-                // error opening one of the files
-                if (errorOpeningFile_Admin)
-                {
-                    MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
-                }
+                    // error opening one of the files
+                    if (errorOpeningFile_Admin)
+                    {
+                        MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                    }
+                }); // load complete
+
+                // Hide panel splash sdcreen
+                MainPanel.OnSetPanelLoadingCompleted();
             }
         }
 

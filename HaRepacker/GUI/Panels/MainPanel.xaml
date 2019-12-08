@@ -149,6 +149,7 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
+        
         <StatusBar x:Name="statusBar" DockPanel.Dock="Bottom">
             <StatusBar.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -198,7 +199,8 @@
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="7*"/>
             </Grid.ColumnDefinitions>
-
+            
+            <!-- Main panel-->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
@@ -282,6 +284,16 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
+            <!--            <Grid Grid.Row="0" x:Name="Grid_ImageOpenGLRender" Visibility="Collapsed">
+                            <DockPanel>
+                                <sharpGL:OpenGLControl x:Name="openGLControl" DrawFPS="True"
+                                    OpenGLInitialized="OpenGLControl_OpenGLInitialized"  
+                                    Resized="OpenGLControl_Resized" 
+                                    OpenGLDraw="OpenGLControl_OpenGLDraw"
+                                    >
+                                </sharpGL:OpenGLControl>
+                            </DockPanel>
+                        </Grid>-->
 
                         <Grid Grid.Row="0" x:Name="Grid_ImageRender">
                             <Image x:Name="canvasPropBox" Stretch="None" Margin="300,100,0,0"
@@ -333,6 +345,12 @@
                                 Click="saveImageButton_Click"/>
                     </StackPanel>
                 </Grid>
+            </Grid>
+
+            <!-- Loading panel-->
+            <Grid x:Name="grid_LoadingPanel" Visibility="Collapsed"
+                  Grid.Column="0" Grid.ColumnSpan="3" Background="White">
+                <localSubPanels:LoadingPanel x:Name="loadingPanel" Height="350"/>
             </Grid>
         </Grid>
     </DockPanel>

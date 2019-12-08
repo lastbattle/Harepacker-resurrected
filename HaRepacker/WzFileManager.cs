@@ -157,7 +157,9 @@ namespace HaRepacker
         {
             WzFile newFile;
             if (!OpenWzFile(path, encVersion, version, out newFile))
+            {
                 return null;
+            }
             WzNode node = new WzNode(newFile);
 
             // execute in main thread
@@ -165,14 +167,20 @@ namespace HaRepacker
             {
                 currentDispatcher.BeginInvoke((Action)(() =>
                 {
+                    panel.DataTree.BeginUpdate();
                     panel.DataTree.Nodes.Add(node);
                     SortNodesRecursively(node);
+
+                    panel.DataTree.EndUpdate();
                 }));
             }
             else
             {
+                panel.DataTree.BeginUpdate();
                 panel.DataTree.Nodes.Add(node);
                 SortNodesRecursively(node);
+
+                panel.DataTree.EndUpdate();
             }
             return newFile;
         }

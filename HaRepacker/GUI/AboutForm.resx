@@ -289,7 +289,7 @@ Copyright (C) 2009-2015 haha01haha01</value>
     <value>5</value>
   </data>
   <data name="label5.Text" xml:space="preserve">
-    <value>Forked by LastBattle. https://github.com/eaxvac</value>
+    <value>Forked. https://github.com/lastbattle</value>
   </data>
   <data name="label5.TextAlign" type="System.Drawing.ContentAlignment, System.Drawing">
     <value>MiddleCenter</value>

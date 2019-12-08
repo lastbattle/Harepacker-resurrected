@@ -16,7 +16,7 @@
                 <ColumnDefinition Width="70"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="{Binding Header}" VerticalAlignment="Top" Grid.Column="0"
+            <TextBlock Text="{Binding Header}" VerticalAlignment="Center" Grid.Column="0" FontSize="20"
                        Foreground="Gray"/>
             
             <TextBox x:Name="textBox" Grid.Column="1"

@@ -28,6 +28,11 @@ namespace HaRepacker.GUI.Panels
     /// </summary>
     public partial class MainPanel : UserControl
     {
+        // Constants
+        private const string FIELD_LIMIT_OBJ_NAME = "fieldLimit";
+        private const string PORTAL_NAME_OBJ_NAME = "pn";
+
+        // Etc
         private static List<WzObject> clipboard = new List<WzObject>();
         private UndoRedoManager undoRedoMan;
 
@@ -549,6 +554,34 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
+        #region Panel Loading Events
+        /// <summary>
+        /// Set panel loading splash screen from MainForm.cs
+        /// </summary>
+        public void OnSetPanelLoading()
+        {
+            Action action = () =>
+            {
+                loadingPanel.OnStartAnimate();
+                grid_LoadingPanel.Visibility = Visibility.Visible;
+            };
+            grid_LoadingPanel.Dispatcher.BeginInvoke(action);
+        }
+
+        /// <summary>
+        /// Remove panel loading splash screen from MainForm.cs
+        /// </summary>
+        public void OnSetPanelLoadingCompleted()
+        {
+            Action action = () =>
+            {
+                loadingPanel.OnPauseAnimate();
+                grid_LoadingPanel.Visibility = Visibility.Collapsed;
+            };
+            grid_LoadingPanel.Dispatcher.BeginInvoke(action);
+        }
+        #endregion
+
         #region X Y Center Plane
         /// <summary>
         /// Show cartesian plane Checked
@@ -868,7 +901,6 @@ namespace HaRepacker.GUI.Panels
               }*/
         }
         #endregion
-
 
         #region Buttons
         private void nameBox_ButtonClicked(object sender, EventArgs e)
@@ -1407,7 +1439,7 @@ namespace HaRepacker.GUI.Panels
                     WzStringProperty stringObj = (WzStringProperty)obj;
 
                     // Portal type name display
-                    if (stringObj.Name == "pn") // "pn" = portal name
+                    if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // "pn" = portal name
                     {
                         if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
                         {
@@ -1424,7 +1456,7 @@ namespace HaRepacker.GUI.Panels
                 {
                     WzIntProperty intProperty = (WzIntProperty)obj;
 
-                    if (intProperty.Name == "fieldLimit")
+                    if (intProperty.Name == FIELD_LIMIT_OBJ_NAME)
                     {
                         isSelectingWzMapFieldLimit = true;
 
