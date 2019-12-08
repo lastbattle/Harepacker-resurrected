@@ -19,10 +19,10 @@ namespace HaRepacker.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    internal class Resources {
+    public class Resources {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
@@ -36,7 +36,7 @@ namespace HaRepacker.Properties {
         ///   Returns the cached ResourceManager instance used by this class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        internal static global::System.Resources.ResourceManager ResourceManager {
+        public static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
                     global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("HaRepacker.Properties.Resources", typeof(Resources).Assembly);
@@ -51,7 +51,7 @@ namespace HaRepacker.Properties {
         ///   resource lookups using this strongly typed resource class.
         /// </summary>
         [global::System.ComponentModel.EditorBrowsableAttribute(global::System.ComponentModel.EditorBrowsableState.Advanced)]
-        internal static global::System.Globalization.CultureInfo Culture {
+        public static global::System.Globalization.CultureInfo Culture {
             get {
                 return resourceCulture;
             }
@@ -63,7 +63,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap _8800000_attack_10 {
+        public static System.Drawing.Bitmap _8800000_attack_10 {
             get {
                 object obj = ResourceManager.GetObject("_8800000_attack_10", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -73,7 +73,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap add {
+        public static System.Drawing.Bitmap add {
             get {
                 object obj = ResourceManager.GetObject("add", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -83,7 +83,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox..
         /// </summary>
-        internal static string AnimCompatMessage {
+        public static string AnimCompatMessage {
             get {
                 return ResourceManager.GetString("AnimCompatMessage", resourceCulture);
             }
@@ -92,7 +92,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Error at animation builder, frame {0}.
         /// </summary>
-        internal static string AnimError {
+        public static string AnimError {
             get {
                 return ResourceManager.GetString("AnimError", resourceCulture);
             }
@@ -101,7 +101,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Animated Portable Network Graphics (*.png).
         /// </summary>
-        internal static string ApngFilter {
+        public static string ApngFilter {
             get {
                 return ResourceManager.GetString("ApngFilter", resourceCulture);
             }
@@ -110,7 +110,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap arrow_left {
+        public static System.Drawing.Bitmap arrow_left {
             get {
                 object obj = ResourceManager.GetObject("arrow_left", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -120,7 +120,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap arrow_refresh {
+        public static System.Drawing.Bitmap arrow_refresh {
             get {
                 object obj = ResourceManager.GetObject("arrow_refresh", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -130,7 +130,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap arrow_right {
+        public static System.Drawing.Bitmap arrow_right {
             get {
                 object obj = ResourceManager.GetObject("arrow_right", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -140,7 +140,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap cog {
+        public static System.Drawing.Bitmap cog {
             get {
                 object obj = ResourceManager.GetObject("cog", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -150,7 +150,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap delete {
+        public static System.Drawing.Bitmap delete {
             get {
                 object obj = ResourceManager.GetObject("delete", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -160,7 +160,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap disk {
+        public static System.Drawing.Bitmap disk {
             get {
                 object obj = ResourceManager.GetObject("disk", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -170,7 +170,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Foothold.
         /// </summary>
-        internal static string EditFoothold {
+        public static string EditFoothold {
             get {
                 return ResourceManager.GetString("EditFoothold", resourceCulture);
             }
@@ -179,7 +179,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Portal.
         /// </summary>
-        internal static string EditPortal {
+        public static string EditPortal {
             get {
                 return ResourceManager.GetString("EditPortal", resourceCulture);
             }
@@ -188,7 +188,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Mob spawnpoint.
         /// </summary>
-        internal static string EditSP {
+        public static string EditSP {
             get {
                 return ResourceManager.GetString("EditSP", resourceCulture);
             }
@@ -197,7 +197,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to GMS (old).
         /// </summary>
-        internal static string EncTypeGMS {
+        public static string EncTypeGMS {
             get {
                 return ResourceManager.GetString("EncTypeGMS", resourceCulture);
             }
@@ -206,7 +206,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to MSEA/Taiwan (old).
         /// </summary>
-        internal static string EncTypeMSEA {
+        public static string EncTypeMSEA {
             get {
                 return ResourceManager.GetString("EncTypeMSEA", resourceCulture);
             }
@@ -215,7 +215,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to BMS/GMS/MapleSEA/メイプルストーリー/메이플스토리.
         /// </summary>
-        internal static string EncTypeNone {
+        public static string EncTypeNone {
             get {
                 return ResourceManager.GetString("EncTypeNone", resourceCulture);
             }
@@ -224,7 +224,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Please enter valid input.
         /// </summary>
-        internal static string EnterValidInput {
+        public static string EnterValidInput {
             get {
                 return ResourceManager.GetString("EnterValidInput", resourceCulture);
             }
@@ -233,7 +233,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Please enter valid input.
         /// </summary>
-        internal static string EnterValidInput1 {
+        public static string EnterValidInput1 {
             get {
                 return ResourceManager.GetString("EnterValidInput1", resourceCulture);
             }
@@ -242,7 +242,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Error.
         /// </summary>
-        internal static string Error {
+        public static string Error {
             get {
                 return ResourceManager.GetString("Error", resourceCulture);
             }
@@ -252,7 +252,7 @@ namespace HaRepacker.Properties {
         ///   Looks up a localized string similar to Input was invalid.
         ///Please provide valid values before confirming..
         /// </summary>
-        internal static string FHMapperInvalidInput {
+        public static string FHMapperInvalidInput {
             get {
                 return ResourceManager.GetString("FHMapperInvalidInput", resourceCulture);
             }
@@ -261,7 +261,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to force value.
         /// </summary>
-        internal static string FHSettingsForceValue {
+        public static string FHSettingsForceValue {
             get {
                 return ResourceManager.GetString("FHSettingsForceValue", resourceCulture);
             }
@@ -271,7 +271,7 @@ namespace HaRepacker.Properties {
         ///   Looks up a localized string similar to The {0} was invalid.
         ///Please make sure all values are valid before confirming..
         /// </summary>
-        internal static string FHSettingsInvalidMessage {
+        public static string FHSettingsInvalidMessage {
             get {
                 return ResourceManager.GetString("FHSettingsInvalidMessage", resourceCulture);
             }
@@ -280,7 +280,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to next value.
         /// </summary>
-        internal static string FHSettingsNextValue {
+        public static string FHSettingsNextValue {
             get {
                 return ResourceManager.GetString("FHSettingsNextValue", resourceCulture);
             }
@@ -289,7 +289,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to portal type value.
         /// </summary>
-        internal static string FHSettingsPortalValue {
+        public static string FHSettingsPortalValue {
             get {
                 return ResourceManager.GetString("FHSettingsPortalValue", resourceCulture);
             }
@@ -298,7 +298,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to prev value.
         /// </summary>
-        internal static string FHSettingsPrevValue {
+        public static string FHSettingsPrevValue {
             get {
                 return ResourceManager.GetString("FHSettingsPrevValue", resourceCulture);
             }
@@ -307,7 +307,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to X value.
         /// </summary>
-        internal static string FHSettingsXValue {
+        public static string FHSettingsXValue {
             get {
                 return ResourceManager.GetString("FHSettingsXValue", resourceCulture);
             }
@@ -316,7 +316,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Y value.
         /// </summary>
-        internal static string FHSettingsYValue {
+        public static string FHSettingsYValue {
             get {
                 return ResourceManager.GetString("FHSettingsYValue", resourceCulture);
             }
@@ -325,7 +325,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap find {
+        public static System.Drawing.Bitmap find {
             get {
                 object obj = ResourceManager.GetObject("find", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -335,7 +335,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap folder {
+        public static System.Drawing.Bitmap folder {
             get {
                 object obj = ResourceManager.GetObject("folder", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -345,7 +345,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap folder_add {
+        public static System.Drawing.Bitmap folder_add {
             get {
                 object obj = ResourceManager.GetObject("folder_add", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -355,7 +355,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap folder_go {
+        public static System.Drawing.Bitmap folder_go {
             get {
                 object obj = ResourceManager.GetObject("folder_go", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -365,7 +365,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap help {
+        public static System.Drawing.Bitmap help {
             get {
                 object obj = ResourceManager.GetObject("help", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -375,7 +375,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Images (*.jpg;*.bmp;*.png;*.gif;*.tiff).
         /// </summary>
-        internal static string ImagesFilter {
+        public static string ImagesFilter {
             get {
                 return ResourceManager.GetString("ImagesFilter", resourceCulture);
             }
@@ -384,7 +384,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap img_default {
+        public static System.Drawing.Bitmap img_default {
             get {
                 object obj = ResourceManager.GetObject("img_default", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -394,7 +394,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap information {
+        public static System.Drawing.Bitmap information {
             get {
                 object obj = ResourceManager.GetObject("information", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -404,7 +404,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the WZ encryption used:.
         /// </summary>
-        internal static string InteractionWzMapleVersionInfo {
+        public static string InteractionWzMapleVersionInfo {
             get {
                 return ResourceManager.GetString("InteractionWzMapleVersionInfo", resourceCulture);
             }
@@ -413,7 +413,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to WZ Encryption.
         /// </summary>
-        internal static string InteractionWzMapleVersionTitle {
+        public static string InteractionWzMapleVersionTitle {
             get {
                 return ResourceManager.GetString("InteractionWzMapleVersionTitle", resourceCulture);
             }
@@ -422,7 +422,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap lightning {
+        public static System.Drawing.Bitmap lightning {
             get {
                 object obj = ResourceManager.GetObject("lightning", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -432,7 +432,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add canvas.
         /// </summary>
-        internal static string MainAddCanvas {
+        public static string MainAddCanvas {
             get {
                 return ResourceManager.GetString("MainAddCanvas", resourceCulture);
             }
@@ -441,7 +441,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add convex.
         /// </summary>
-        internal static string MainAddConvex {
+        public static string MainAddConvex {
             get {
                 return ResourceManager.GetString("MainAddConvex", resourceCulture);
             }
@@ -450,7 +450,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add directory.
         /// </summary>
-        internal static string MainAddDir {
+        public static string MainAddDir {
             get {
                 return ResourceManager.GetString("MainAddDir", resourceCulture);
             }
@@ -459,7 +459,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add double.
         /// </summary>
-        internal static string MainAddDouble {
+        public static string MainAddDouble {
             get {
                 return ResourceManager.GetString("MainAddDouble", resourceCulture);
             }
@@ -468,7 +468,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add float.
         /// </summary>
-        internal static string MainAddFloat {
+        public static string MainAddFloat {
             get {
                 return ResourceManager.GetString("MainAddFloat", resourceCulture);
             }
@@ -477,7 +477,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add image.
         /// </summary>
-        internal static string MainAddImg {
+        public static string MainAddImg {
             get {
                 return ResourceManager.GetString("MainAddImg", resourceCulture);
             }
@@ -486,7 +486,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add int.
         /// </summary>
-        internal static string MainAddInt {
+        public static string MainAddInt {
             get {
                 return ResourceManager.GetString("MainAddInt", resourceCulture);
             }
@@ -495,7 +495,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Portal Type: {0}.
         /// </summary>
-        internal static string MainAdditionalInfo_PortalType {
+        public static string MainAdditionalInfo_PortalType {
             get {
                 return ResourceManager.GetString("MainAdditionalInfo_PortalType", resourceCulture);
             }
@@ -504,7 +504,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add link.
         /// </summary>
-        internal static string MainAddLink {
+        public static string MainAddLink {
             get {
                 return ResourceManager.GetString("MainAddLink", resourceCulture);
             }
@@ -513,7 +513,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add null.
         /// </summary>
-        internal static string MainAddNull {
+        public static string MainAddNull {
             get {
                 return ResourceManager.GetString("MainAddNull", resourceCulture);
             }
@@ -522,7 +522,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add short.
         /// </summary>
-        internal static string MainAddShort {
+        public static string MainAddShort {
             get {
                 return ResourceManager.GetString("MainAddShort", resourceCulture);
             }
@@ -531,7 +531,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add sound.
         /// </summary>
-        internal static string MainAddSound {
+        public static string MainAddSound {
             get {
                 return ResourceManager.GetString("MainAddSound", resourceCulture);
             }
@@ -540,7 +540,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add string.
         /// </summary>
-        internal static string MainAddString {
+        public static string MainAddString {
             get {
                 return ResourceManager.GetString("MainAddString", resourceCulture);
             }
@@ -549,7 +549,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add sub.
         /// </summary>
-        internal static string MainAddSub {
+        public static string MainAddSub {
             get {
                 return ResourceManager.GetString("MainAddSub", resourceCulture);
             }
@@ -558,7 +558,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add Tab.
         /// </summary>
-        internal static string MainAddTabTitle {
+        public static string MainAddTabTitle {
             get {
                 return ResourceManager.GetString("MainAddTabTitle", resourceCulture);
             }
@@ -567,7 +567,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Add vector.
         /// </summary>
-        internal static string MainAddVec {
+        public static string MainAddVec {
             get {
                 return ResourceManager.GetString("MainAddVec", resourceCulture);
             }
@@ -576,7 +576,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to This item is not an animation..
         /// </summary>
-        internal static string MainAnimationFail {
+        public static string MainAnimationFail {
             get {
                 return ResourceManager.GetString("MainAnimationFail", resourceCulture);
             }
@@ -585,7 +585,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Cannot insert selected object into this type of wz node..
         /// </summary>
-        internal static string MainCannotInsertToNode {
+        public static string MainCannotInsertToNode {
             get {
                 return ResourceManager.GetString("MainCannotInsertToNode", resourceCulture);
             }
@@ -594,7 +594,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to abort the current operation?.
         /// </summary>
-        internal static string MainConfirmAbort {
+        public static string MainConfirmAbort {
             get {
                 return ResourceManager.GetString("MainConfirmAbort", resourceCulture);
             }
@@ -603,7 +603,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Copy WZ nodes to clipboard? (warning - can take a lot of time if many nodes are selected).
         /// </summary>
-        internal static string MainConfirmCopy {
+        public static string MainConfirmCopy {
             get {
                 return ResourceManager.GetString("MainConfirmCopy", resourceCulture);
             }
@@ -612,7 +612,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to exit?.
         /// </summary>
-        internal static string MainConfirmExit {
+        public static string MainConfirmExit {
             get {
                 return ResourceManager.GetString("MainConfirmExit", resourceCulture);
             }
@@ -621,7 +621,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Paste WZ nodes from clipboard? (warning - can take a lot of time if many nodes are pasted).
         /// </summary>
-        internal static string MainConfirmPaste {
+        public static string MainConfirmPaste {
             get {
                 return ResourceManager.GetString("MainConfirmPaste", resourceCulture);
             }
@@ -630,7 +630,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to remove this node?.
         /// </summary>
-        internal static string MainConfirmRemove {
+        public static string MainConfirmRemove {
             get {
                 return ResourceManager.GetString("MainConfirmRemove", resourceCulture);
             }
@@ -639,7 +639,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to remove this node?.
         /// </summary>
-        internal static string MainConfirmRemoveNode {
+        public static string MainConfirmRemoveNode {
             get {
                 return ResourceManager.GetString("MainConfirmRemoveNode", resourceCulture);
             }
@@ -648,7 +648,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Rename.
         /// </summary>
-        internal static string MainConfirmRename {
+        public static string MainConfirmRename {
             get {
                 return ResourceManager.GetString("MainConfirmRename", resourceCulture);
             }
@@ -657,7 +657,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Could not convert &quot;{0}&quot; to the required type.
         /// </summary>
-        internal static string MainConversionError {
+        public static string MainConversionError {
             get {
                 return ResourceManager.GetString("MainConversionError", resourceCulture);
             }
@@ -666,7 +666,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to You can&apos;t copy directories because they require too much memory.
         /// </summary>
-        internal static string MainCopyDirError {
+        public static string MainCopyDirError {
             get {
                 return ResourceManager.GetString("MainCopyDirError", resourceCulture);
             }
@@ -675,7 +675,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Could not open WZ file &quot;{0}&quot;.
         /// </summary>
-        internal static string MainCouldntOpenWZ {
+        public static string MainCouldntOpenWZ {
             get {
                 return ResourceManager.GetString("MainCouldntOpenWZ", resourceCulture);
             }
@@ -684,7 +684,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?.
         /// </summary>
-        internal static string MainErrorImportingWzImageFile {
+        public static string MainErrorImportingWzImageFile {
             get {
                 return ResourceManager.GetString("MainErrorImportingWzImageFile", resourceCulture);
             }
@@ -693,7 +693,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Unable to open/save to the specified file path. Please run as an Administrator instead..
         /// </summary>
-        internal static string MainFileOpenFail {
+        public static string MainFileOpenFail {
             get {
                 return ResourceManager.GetString("MainFileOpenFail", resourceCulture);
             }
@@ -702,7 +702,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Help could not be shown because the help file ({0}) was not found.
         /// </summary>
-        internal static string MainHelpOpenFail {
+        public static string MainHelpOpenFail {
             get {
                 return ResourceManager.GetString("MainHelpOpenFail", resourceCulture);
             }
@@ -711,7 +711,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Could not load image.
         /// </summary>
-        internal static string MainImageLoadError {
+        public static string MainImageLoadError {
             get {
                 return ResourceManager.GetString("MainImageLoadError", resourceCulture);
             }
@@ -720,7 +720,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The file &quot;{0}&quot; is invalid and will be skipped. Error: {1}.
         /// </summary>
-        internal static string MainInvalidFileError {
+        public static string MainInvalidFileError {
             get {
                 return ResourceManager.GetString("MainInvalidFileError", resourceCulture);
             }
@@ -729,7 +729,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The file at {0} is a List.wz file and will be skipped..
         /// </summary>
-        internal static string MainListWzDetected {
+        public static string MainListWzDetected {
             get {
                 return ResourceManager.GetString("MainListWzDetected", resourceCulture);
             }
@@ -738,7 +738,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to A node with that name already exists. Please choose a different name.
         /// </summary>
-        internal static string MainNodeExists {
+        public static string MainNodeExists {
             get {
                 return ResourceManager.GetString("MainNodeExists", resourceCulture);
             }
@@ -747,7 +747,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to reload all files?.
         /// </summary>
-        internal static string MainReloadAll {
+        public static string MainReloadAll {
             get {
                 return ResourceManager.GetString("MainReloadAll", resourceCulture);
             }
@@ -756,7 +756,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Please select the WZ file to save.
         /// </summary>
-        internal static string MainSelectWzFolder {
+        public static string MainSelectWzFolder {
             get {
                 return ResourceManager.GetString("MainSelectWzFolder", resourceCulture);
             }
@@ -765,7 +765,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Couldn&apos;t find a parent WzFile to add this WzDirectoryProperty..
         /// </summary>
-        internal static string MainTreeAddDirError {
+        public static string MainTreeAddDirError {
             get {
                 return ResourceManager.GetString("MainTreeAddDirError", resourceCulture);
             }
@@ -774,7 +774,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Reached the end of the tree.
         /// </summary>
-        internal static string MainTreeEnd {
+        public static string MainTreeEnd {
             get {
                 return ResourceManager.GetString("MainTreeEnd", resourceCulture);
             }
@@ -783,7 +783,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Are you sure you want to unload all files?.
         /// </summary>
-        internal static string MainUnloadAll {
+        public static string MainUnloadAll {
             get {
                 return ResourceManager.GetString("MainUnloadAll", resourceCulture);
             }
@@ -794,7 +794,7 @@ namespace HaRepacker.Properties {
         ///
         ///Click &quot;Yes&quot; to download the new version..
         /// </summary>
-        internal static string MainUpdateAvailable {
+        public static string MainUpdateAvailable {
             get {
                 return ResourceManager.GetString("MainUpdateAvailable", resourceCulture);
             }
@@ -803,7 +803,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to New Version.
         /// </summary>
-        internal static string MainUpdateTitle {
+        public static string MainUpdateTitle {
             get {
                 return ResourceManager.GetString("MainUpdateTitle", resourceCulture);
             }
@@ -812,7 +812,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Export directory not found. Please specify it under Tools -&gt; Options.
         /// </summary>
-        internal static string MainWzExportError {
+        public static string MainWzExportError {
             get {
                 return ResourceManager.GetString("MainWzExportError", resourceCulture);
             }
@@ -821,7 +821,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap map {
+        public static System.Drawing.Bitmap map {
             get {
                 object obj = ResourceManager.GetObject("map", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -831,7 +831,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to MPEG-1 Audio Layer 3 (*.mp3).
         /// </summary>
-        internal static string Mp3Filter {
+        public static string Mp3Filter {
             get {
                 return ResourceManager.GetString("Mp3Filter", resourceCulture);
             }
@@ -840,7 +840,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Indent must be above 0.
         /// </summary>
-        internal static string OptionsIndentError {
+        public static string OptionsIndentError {
             get {
                 return ResourceManager.GetString("OptionsIndentError", resourceCulture);
             }
@@ -849,7 +849,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap orangeMushroom_Jump {
+        public static System.Drawing.Bitmap orangeMushroom_Jump {
             get {
                 object obj = ResourceManager.GetObject("orangeMushroom_Jump", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -859,7 +859,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap orangeMushroom_Stand {
+        public static System.Drawing.Bitmap orangeMushroom_Stand {
             get {
                 object obj = ResourceManager.GetObject("orangeMushroom_Stand", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -869,7 +869,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap page_add {
+        public static System.Drawing.Bitmap page_add {
             get {
                 object obj = ResourceManager.GetObject("page_add", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -879,7 +879,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap page_edit {
+        public static System.Drawing.Bitmap page_edit {
             get {
                 object obj = ResourceManager.GetObject("page_edit", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -889,7 +889,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap page_go {
+        public static System.Drawing.Bitmap page_go {
             get {
                 object obj = ResourceManager.GetObject("page_go", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -899,7 +899,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap page_white {
+        public static System.Drawing.Bitmap page_white {
             get {
                 object obj = ResourceManager.GetObject("page_white", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -909,7 +909,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap Pause {
+        public static System.Drawing.Bitmap Pause {
             get {
                 object obj = ResourceManager.GetObject("Pause", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -919,7 +919,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap Pause_ {
+        public static System.Drawing.Bitmap Pause_ {
             get {
                 object obj = ResourceManager.GetObject("Pause_", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -929,7 +929,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap play_ {
+        public static System.Drawing.Bitmap play_ {
             get {
                 object obj = ResourceManager.GetObject("play_", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -939,7 +939,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Could not load settings file, make sure it is not in use. If it is not, delete it and try again..
         /// </summary>
-        internal static string ProgramLoadSettingsError {
+        public static string ProgramLoadSettingsError {
             get {
                 return ResourceManager.GetString("ProgramLoadSettingsError", resourceCulture);
             }
@@ -948,7 +948,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap red_x1 {
+        public static System.Drawing.Bitmap red_x1 {
             get {
                 object obj = ResourceManager.GetObject("red_x1", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -958,7 +958,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap rename {
+        public static System.Drawing.Bitmap rename {
             get {
                 object obj = ResourceManager.GetObject("rename", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -968,7 +968,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The node &quot;{0}&quot; already exists. Do you want it to be replaced?.
         /// </summary>
-        internal static string ReplaceConfirm {
+        public static string ReplaceConfirm {
             get {
                 return ResourceManager.GetString("ReplaceConfirm", resourceCulture);
             }
@@ -977,7 +977,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Version must be above 0.
         /// </summary>
-        internal static string SaveVersionError {
+        public static string SaveVersionError {
             get {
                 return ResourceManager.GetString("SaveVersionError", resourceCulture);
             }
@@ -986,7 +986,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select default XML folder.
         /// </summary>
-        internal static string SelectDefaultXmlFolder {
+        public static string SelectDefaultXmlFolder {
             get {
                 return ResourceManager.GetString("SelectDefaultXmlFolder", resourceCulture);
             }
@@ -995,7 +995,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the image.
         /// </summary>
-        internal static string SelectImage {
+        public static string SelectImage {
             get {
                 return ResourceManager.GetString("SelectImage", resourceCulture);
             }
@@ -1004,7 +1004,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Selection Type: {0}.
         /// </summary>
-        internal static string SelectionType {
+        public static string SelectionType {
             get {
                 return ResourceManager.GetString("SelectionType", resourceCulture);
             }
@@ -1013,7 +1013,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select MP3 File.
         /// </summary>
-        internal static string SelectMp3 {
+        public static string SelectMp3 {
             get {
                 return ResourceManager.GetString("SelectMp3", resourceCulture);
             }
@@ -1022,7 +1022,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select where to save the animation.
         /// </summary>
-        internal static string SelectOutApng {
+        public static string SelectOutApng {
             get {
                 return ResourceManager.GetString("SelectOutApng", resourceCulture);
             }
@@ -1031,7 +1031,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the output directory.
         /// </summary>
-        internal static string SelectOutDir {
+        public static string SelectOutDir {
             get {
                 return ResourceManager.GetString("SelectOutDir", resourceCulture);
             }
@@ -1040,7 +1040,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select where to save the file.
         /// </summary>
-        internal static string SelectOutWz {
+        public static string SelectOutWz {
             get {
                 return ResourceManager.GetString("SelectOutWz", resourceCulture);
             }
@@ -1049,7 +1049,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select where to save the XML.
         /// </summary>
-        internal static string SelectOutXml {
+        public static string SelectOutXml {
             get {
                 return ResourceManager.GetString("SelectOutXml", resourceCulture);
             }
@@ -1058,7 +1058,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the WZ File.
         /// </summary>
-        internal static string SelectWz {
+        public static string SelectWz {
             get {
                 return ResourceManager.GetString("SelectWz", resourceCulture);
             }
@@ -1067,7 +1067,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the IMG files.
         /// </summary>
-        internal static string SelectWzImg {
+        public static string SelectWzImg {
             get {
                 return ResourceManager.GetString("SelectWzImg", resourceCulture);
             }
@@ -1076,16 +1076,25 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Select the XML files.
         /// </summary>
-        internal static string SelectXml {
+        public static string SelectXml {
             get {
                 return ResourceManager.GetString("SelectXml", resourceCulture);
             }
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Loading....
+        /// </summary>
+        public static string Subpanel_Loading {
+            get {
+                return ResourceManager.GetString("Subpanel_Loading", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap undo {
+        public static System.Drawing.Bitmap undo {
             get {
                 object obj = ResourceManager.GetObject("undo", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
@@ -1095,7 +1104,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to Warning.
         /// </summary>
-        internal static string Warning {
+        public static string Warning {
             get {
                 return ResourceManager.GetString("Warning", resourceCulture);
             }
@@ -1104,7 +1113,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to WZ File (*.wz).
         /// </summary>
-        internal static string WzFilter {
+        public static string WzFilter {
             get {
                 return ResourceManager.GetString("WzFilter", resourceCulture);
             }
@@ -1113,7 +1122,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to WZ Image Files (*.img).
         /// </summary>
-        internal static string WzImgFilter {
+        public static string WzImgFilter {
             get {
                 return ResourceManager.GetString("WzImgFilter", resourceCulture);
             }
@@ -1122,7 +1131,7 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized string similar to eXtended Markup Language (*.xml).
         /// </summary>
-        internal static string XmlFilter {
+        public static string XmlFilter {
             get {
                 return ResourceManager.GetString("XmlFilter", resourceCulture);
             }

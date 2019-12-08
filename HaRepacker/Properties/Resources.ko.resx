@@ -369,4 +369,7 @@
   <data name="XmlFilter" xml:space="preserve">
     <value>eXtended Markup Language (*.xml)</value>
   </data>
+  <data name="Subpanel_Loading" xml:space="preserve">
+    <value>로딩</value>
+  </data>
 </root>
