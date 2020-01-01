@@ -27,6 +27,7 @@ using System.Xml;
 using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace MapleLib.WzLib.Serialization
 {
@@ -39,7 +40,9 @@ namespace MapleLib.WzLib.Serialization
 
         protected static void createDirSafe(ref string path)
         {
-            if (path.Substring(path.Length - 1, 1) == @"\") path = path.Substring(0, path.Length - 1);
+            if (path.Substring(path.Length - 1, 1) == @"\") 
+                path = path.Substring(0, path.Length - 1);
+
             string basePath = path;
             int curridx = 0;
             while (Directory.Exists(path) || File.Exists(path))
@@ -48,6 +51,17 @@ namespace MapleLib.WzLib.Serialization
                 path = basePath + curridx;
             }
             Directory.CreateDirectory(path);
+        }
+
+        private static string regexSearch = new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
+        private static Regex regex_invalidPath = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
+        /// <summary>
+        /// Escapes invalid file name and paths (if nexon uses any illegal character that causes issue during saving)
+        /// </summary>
+        /// <param name="path"></param>
+        public static string EscapeInvalidFilePathNames(string path)
+        {
+            return regex_invalidPath.Replace(path, "");
         }
     }
 
@@ -252,6 +266,7 @@ namespace MapleLib.WzLib.Serialization
             {
                 outPath += ".img";
             }
+
             using (FileStream stream = File.Create(outPath))
             {
                 using (WzBinaryWriter wzWriter = new WzBinaryWriter(stream, ((WzDirectory)img.parent).WzIv))
@@ -265,6 +280,7 @@ namespace MapleLib.WzLib.Serialization
         {
             total = dir.CountImages();
             curr = 0;
+
             if (!Directory.Exists(outPath))
                 WzXmlSerializer.createDirSafe(ref outPath);
 
@@ -365,8 +381,14 @@ namespace MapleLib.WzLib.Serialization
             //imagesToUnparse.Clear();
             total = 0; curr = 0;
             this.outPath = outPath;
-            if (!Directory.Exists(outPath)) WzXmlSerializer.createDirSafe(ref outPath);
-            if (outPath.Substring(outPath.Length - 1, 1) != @"\") outPath += @"\";
+            if (!Directory.Exists(outPath))
+            {
+                WzXmlSerializer.createDirSafe(ref outPath);
+            }
+
+            if (outPath.Substring(outPath.Length - 1, 1) != @"\") 
+                outPath += @"\";
+
             total = CalculateTotal(obj);
             ExportRecursion(obj, outPath);
             /*foreach (WzImage img in imagesToUnparse)
@@ -405,34 +427,47 @@ namespace MapleLib.WzLib.Serialization
                 ExportRecursion(((WzFile)currObj).WzDirectory, outPath);
             else if (currObj is WzDirectory)
             {
-                outPath += currObj.Name + @"\";
-                if (!Directory.Exists(outPath)) Directory.CreateDirectory(outPath);
+                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
+                if (!Directory.Exists(outPath)) 
+                    Directory.CreateDirectory(outPath);
                 foreach (WzDirectory subdir in ((WzDirectory)currObj).WzDirectories)
+                {
                     ExportRecursion(subdir, outPath + subdir.Name + @"\");
+                }
                 foreach (WzImage subimg in ((WzDirectory)currObj).WzImages)
+                {
                     ExportRecursion(subimg, outPath + subimg.Name + @"\");
+                }
             }
             else if (currObj is WzCanvasProperty)
             {
                 Bitmap bmp = ((WzCanvasProperty)currObj).PngProperty.GetPNG(false);
-                string path = outPath + currObj.Name + ".png";
+
+                string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".png";
+
                 bmp.Save(path, ImageFormat.Png);
                 //curr++;
             }
             else if (currObj is WzSoundProperty)
             {
-                string path = outPath + currObj.Name + ".mp3";
+                string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".mp3";
                 ((WzSoundProperty)currObj).SaveToFile(path);
             }
             else if (currObj is WzImage)
             {
-                outPath += currObj.Name + @"\";
-                if (!Directory.Exists(outPath)) Directory.CreateDirectory(outPath);
+                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
+                if (!Directory.Exists(outPath)) 
+                    Directory.CreateDirectory(outPath);
+
                 bool parse = ((WzImage)currObj).Parsed || ((WzImage)currObj).Changed;
-                if (!parse) ((WzImage)currObj).ParseImage();
+                if (!parse) 
+                    ((WzImage)currObj).ParseImage();
                 foreach (WzImageProperty subprop in ((IPropertyContainer)currObj).WzProperties)
+                {
                     ExportRecursion(subprop, outPath);
-                if (!parse) ((WzImage)currObj).UnparseImage();
+                }
+                if (!parse) 
+                    ((WzImage)currObj).UnparseImage();
                 curr++;
             }
             else if (currObj is IPropertyContainer)
@@ -459,7 +494,6 @@ namespace MapleLib.WzLib.Serialization
                 img.ParseImage();
             curr++;
 
-
             using (TextWriter tw = new StreamWriter(File.Create(path)))
             {
                 tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
@@ -483,11 +517,11 @@ namespace MapleLib.WzLib.Serialization
 
             foreach (WzDirectory subdir in dir.WzDirectories)
             {
-                exportDirXmlInternal(subdir, path + subdir.name + @"\");
+                exportDirXmlInternal(subdir, path + ProgressingWzSerializer.EscapeInvalidFilePathNames(subdir.name) + @"\");
             }
             foreach (WzImage subimg in dir.WzImages)
             {
-                exportXmlInternal(subimg, path + subimg.Name + ".xml");
+                exportXmlInternal(subimg, path + ProgressingWzSerializer.EscapeInvalidFilePathNames(subimg.Name) + ".xml");
             }
         }
 

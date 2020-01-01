@@ -776,12 +776,16 @@ namespace HaRepacker.GUI
 
             foreach (WzImage img in imgsToDump)
             {
-                serializer.SerializeImage(img, Path.Combine(baseDir, img.Name));
+                string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(img.Name));
+
+                serializer.SerializeImage(img, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
             foreach (WzDirectory dir in dirsToDump)
             {
-                serializer.SerializeDirectory(dir, Path.Combine(baseDir, dir.Name));
+                string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(dir.Name));
+
+                serializer.SerializeDirectory(dir, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
             threadDone = true;
