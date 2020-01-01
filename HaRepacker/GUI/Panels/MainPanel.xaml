@@ -278,70 +278,53 @@
 
                     <localSubPanels:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 
-                    <Grid x:Name="Grid_ImageDisplay" Margin="10">
 
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" x:Name="Grid_ImageRender" Margin="10">
+                        <localSubPanels:ImageRenderViewer x:Name="canvasPropBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
-            <!--            <Grid Grid.Row="0" x:Name="Grid_ImageOpenGLRender" Visibility="Collapsed">
-                            <DockPanel>
-                                <sharpGL:OpenGLControl x:Name="openGLControl" DrawFPS="True"
-                                    OpenGLInitialized="OpenGLControl_OpenGLInitialized"  
-                                    Resized="OpenGLControl_Resized" 
-                                    OpenGLDraw="OpenGLControl_OpenGLDraw"
-                                    >
-                                </sharpGL:OpenGLControl>
-                            </DockPanel>
-                        </Grid>-->
+                        </localSubPanels:ImageRenderViewer>
 
-                        <Grid Grid.Row="0" x:Name="Grid_ImageRender">
-                            <Image x:Name="canvasPropBox" Stretch="None" Margin="300,100,0,0"
-                               VerticalAlignment="Center" HorizontalAlignment="Center" Source="pack://siteoforigin:,,,/Resources/8800000_attack_10.png">
-                            </Image>
-
-                            <Grid x:Name="grid_planVisibility">
-                                <Grid x:Name="cartesianPlaneX" Height="2" Background="Gray" Visibility="Collapsed">
-                                    <Grid Background="White" Height="1"/>
-                                </Grid>
-                                <Grid x:Name="cartesianPlaneY" Width="2" Background="Gray" Visibility="Collapsed">
-                                    <Grid Background="White" Width="1"/>
-                                </Grid>
+                        <Grid x:Name="grid_planVisibility">
+                            <Grid x:Name="cartesianPlaneX" Height="2" Background="Gray" Visibility="Collapsed">
+                                <Grid Background="White" Height="1"/>
                             </Grid>
-
-                            <!-- plane UI. Put this above the image -->
-                            <!-- Not done yet -->
-                            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20"
-                                        Visibility="Collapsed">
-                                <CheckBox x:Name="cartesianPlane_checkBox" Content="Plane" 
-                                      Checked="cartesianPlane_checkBox_CheckUnchecked" Unchecked="cartesianPlane_checkBox_CheckUnchecked"/>
-                                <ComboBox x:Name="planePosition_comboBox" Width="100" SelectedIndex="0" 
-                                          SelectionChanged="planePosition_comboBox_SelectionChanged">
-                                    <ComboBoxItem Content="Center" Tag="Center"/>
-                                    <ComboBoxItem Content="Top" Tag="Top"/>
-                                    <ComboBoxItem Content="Bottom" Tag="Bottom"/>
-                                    <ComboBoxItem Content="Left" Tag="Left"/>
-                                    <ComboBoxItem Content="Right" Tag="Right"/>
-                                    <ComboBoxItem Content="Top-Left" Tag="Top-Left"/>
-                                    <ComboBoxItem Content="Top-Right" Tag="Top-Right"/>
-                                    <ComboBoxItem Content="Bottom-Left" Tag="Bottom-Left"/>
-                                    <ComboBoxItem Content="Bottom-Right" Tag="Bottom-Right"/>
-                                </ComboBox>
-                            </StackPanel>
+                            <Grid x:Name="cartesianPlaneY" Width="2" Background="Gray" Visibility="Collapsed">
+                                <Grid Background="White" Width="1"/>
+                            </Grid>
                         </Grid>
+
+                        <!-- plane UI. Put this above the image -->
+                        <!-- Not done yet -->
+                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20"
+                                        Visibility="Collapsed">
+                            <CheckBox x:Name="cartesianPlane_checkBox" Content="Plane" 
+                                      Checked="cartesianPlane_checkBox_CheckUnchecked" Unchecked="cartesianPlane_checkBox_CheckUnchecked"/>
+                            <ComboBox x:Name="planePosition_comboBox" Width="100" SelectedIndex="0" 
+                                          SelectionChanged="planePosition_comboBox_SelectionChanged">
+                                <ComboBoxItem Content="Center" Tag="Center"/>
+                                <ComboBoxItem Content="Top" Tag="Top"/>
+                                <ComboBoxItem Content="Bottom" Tag="Bottom"/>
+                                <ComboBoxItem Content="Left" Tag="Left"/>
+                                <ComboBoxItem Content="Right" Tag="Right"/>
+                                <ComboBoxItem Content="Top-Left" Tag="Top-Left"/>
+                                <ComboBoxItem Content="Top-Right" Tag="Top-Right"/>
+                                <ComboBoxItem Content="Bottom-Left" Tag="Bottom-Left"/>
+                                <ComboBoxItem Content="Bottom-Right" Tag="Bottom-Right"/>
+                            </ComboBox>
+                        </StackPanel>
                     </Grid>
 
-                    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right"
                                 Margin="10">
-                        <Button Height="30" Width="150" Content="Animate (F5)" x:Name="button_animateSelectedCanvas" 
+                        <Button Height="30" Width="100" Content="Animate (F5)" BorderBrush="Transparent" x:Name="button_animateSelectedCanvas" 
                                 Click="button_animateSelectedCanvas_Click_1"/>
-                        <Button Height="30" Width="150" Content="Change Image" x:Name="changeImageButton"
+                        <Button Height="30" Width="100" Content="Change Image" BorderBrush="Transparent" x:Name="changeImageButton"
                                 Click="changeImageButton_Click"/>
-                        <Button Height="30" Width="150" Content="Change Sound" x:Name="changeSoundButton"
+                        <Button Height="30" Width="100" Content="Change Sound" BorderBrush="Transparent" x:Name="changeSoundButton"
                                 Click="changeSoundButton_Click"/>
-                        <Button Height="30" Width="150" Content="Save Sound" x:Name="saveSoundButton" 
+                        <Button Height="30" Width="100" Content="Save Sound" BorderBrush="Transparent" x:Name="saveSoundButton" 
                                 Click="saveSoundButton_Click"/>
-                        <Button Height="30" Width="150" Content="Save Image" x:Name="saveImageButton"
+                        <Button Height="30" Width="100" Content="Save Image" BorderBrush="Transparent" x:Name="saveImageButton"
                                 Click="saveImageButton_Click"/>
                     </StackPanel>
                 </Grid>

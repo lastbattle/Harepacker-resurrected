@@ -163,6 +163,7 @@
     <Compile Include="Configuration\ConfigurationManager.cs" />
     <Compile Include="ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
+    <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
     <Compile Include="FHMapper\FHMapper.cs" />
     <Compile Include="GUI\AboutForm.cs">
       <SubType>Form</SubType>
@@ -328,6 +329,9 @@
     </Compile>
     <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.designer.cs">
       <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml.cs">
+      <DependentUpon>ImageRenderViewer.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\Panels\SubPanels\LoadingPanel.xaml.cs">
       <DependentUpon>LoadingPanel.xaml</DependentUpon>
@@ -749,6 +753,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="GUI\Panels\SubPanels\ChangeableTextBox.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

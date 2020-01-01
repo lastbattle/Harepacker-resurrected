@@ -620,8 +620,8 @@ namespace HaRepacker.GUI.Panels
             if (vectorSelected == null || isLoading || cartesianPlaneX == null || cartesianPlaneY == null)
                 return;
 
-            double xCenter = Grid_ImageDisplay.ActualWidth / 2d;
-            double yCenter = Grid_ImageDisplay.ActualWidth / 2d;
+            double xCenter = Grid_ImageRender.ActualWidth / 2d;
+            double yCenter = Grid_ImageRender.ActualWidth / 2d;
             double imageWidth = canvasPropBox.ActualWidth;
             double imageHeight = canvasPropBox.ActualHeight;
 
@@ -630,65 +630,65 @@ namespace HaRepacker.GUI.Panels
             switch (Program.ConfigurationManager.UserSettings.PlanePosition)
             {
                 case "Top":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
                     break;
                 case "Bottom":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
                     break;
                 case "Right":
                     canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
                     break;
                 case "Left":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
                     break;
                 case "Top-Left":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
                     break;
                 case "Top-Right":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
                     break;
                 case "Bottom-Left":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
                     break;
                 case "Bottom-Right":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
                     break;
                 case "Center":
                 default:
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
+                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
+                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
 
                     cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
                     cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
@@ -844,7 +844,7 @@ namespace HaRepacker.GUI.Panels
             vectorOriginSelected = currentNode.Item3;
 
             // Set current image
-            canvasPropBox.Source = currentNode.Item4;
+            canvasPropBox.Image = currentNode.Item4;
 
             // Set tooltip text
             if (i_animateCanvasNode == animate_PreLoadImages.Count)
@@ -1135,7 +1135,7 @@ namespace HaRepacker.GUI.Panels
 
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
-                canvasPropBox.Source = new BitmapImage(new Uri(dialog.FileName));
+                canvasPropBox.Image = new BitmapImage(new Uri(dialog.FileName));
 
                 // Add undo actions
                 //UndoRedoMan.AddUndoBatch(actions);
@@ -1377,10 +1377,10 @@ namespace HaRepacker.GUI.Panels
                 {
                     System.Drawing.Image img = canvas.GetLinkedWzCanvasBitmap();
                     if (img != null)
-                        canvasPropBox.Source = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
+                        canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
                 }
                 else
-                    canvasPropBox.Source = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
 
                 // origin
                 System.Drawing.PointF origin = canvas.GetCanvasVectorPosition();
@@ -1395,7 +1395,7 @@ namespace HaRepacker.GUI.Panels
                 if (linkValue is WzCanvasProperty)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Source = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
                     saveImageButton.Visibility = Visibility.Visible;
 
                     // origin

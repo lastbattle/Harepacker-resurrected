@@ -1,0 +1,54 @@
+﻿<UserControl x:Class="HaRepacker.GUI.Panels.SubPanels.ImageRenderViewer"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
+             xmlns:converter="clr-namespace:HaRepacker.Converter"
+             mc:Ignorable="d" 
+             d:DesignHeight="450" d:DesignWidth="800">
+    
+    <UserControl.Resources>
+        <converter:ImageSizeDoubleToIntegerConverter x:Key="imageSizeConverter" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="30"/>
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="grid_Picture" Grid.Row="0">
+            <!-- small details about the photo at the top right-->
+            <Grid x:Name="grid_pictureInfo" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="10" 
+                  Background="#FFEDEDED" Opacity="0.6">
+                <StackPanel Orientation="Vertical" Margin="10">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Size: "/>
+                        <TextBlock Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}"/>
+                        <TextBlock Text=" x " Margin="3,0,3,0"/>
+                        <TextBlock Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <Grid Height="{Binding ElementName=ZoomSlider, Path='Value'}"
+                   Width="{Binding ElementName=ZoomSlider, Path='Value'}">
+                <!-- Source="pack://siteoforigin:,,,/Resources/8800000_attack_10.png" -->
+                <Image x:Name="canvasPropBox" Source="{Binding Image}">
+            </Image>
+            </Grid>
+        </Grid>
+
+        <Grid x:Name="grid_zoom" Grid.Row="1" VerticalAlignment="Bottom">
+            <Slider Name="ZoomSlider"
+                        Margin="10,0,10,0"
+                        Minimum="50"
+                        Maximum="1000"
+                        Value="200"
+                        TickFrequency="100"
+                        SmallChange="10"
+                        LargeChange="50" />
+        </Grid>
+    </Grid>
+</UserControl>
