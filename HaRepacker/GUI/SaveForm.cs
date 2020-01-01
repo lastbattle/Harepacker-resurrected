@@ -100,7 +100,9 @@ namespace HaRepacker.GUI
                     }
 
                     // Reload the new file
-                    Program.WzMan.LoadWzFile(dialog.FileName, (WzMapleVersion)encryptionBox.SelectedIndex, panel);
+                    WzFile loadedWzFile = Program.WzMan.LoadWzFile(dialog.FileName, (WzMapleVersion)encryptionBox.SelectedIndex);
+                    if (loadedWzFile != null)
+                        Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
                 }
                 else
                 {

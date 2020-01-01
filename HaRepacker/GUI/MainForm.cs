@@ -190,10 +190,14 @@ namespace HaRepacker.GUI
         {
             try
             {
+                WzFile loadedWzFile;
                 if (detectMapleVersion)
-                    Program.WzMan.LoadWzFile(path, panel);
+                    loadedWzFile = Program.WzMan.LoadWzFile(path);
                 else
-                    Program.WzMan.LoadWzFile(path, (WzMapleVersion)encryptionBox.SelectedIndex, MainPanel);
+                    loadedWzFile = Program.WzMan.LoadWzFile(path, (WzMapleVersion)encryptionBox.SelectedIndex);
+
+                if (loadedWzFile != null)
+                    Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
             }
             catch
             {
@@ -565,14 +569,31 @@ namespace HaRepacker.GUI
                 // Load all original WZ files 
                 await Task.Run(() =>
                 {
-                    Parallel.ForEach(wzfilePathsToLoad, filePath =>
+                    List<WzFile> loadedWzFiles = new List<WzFile>();
+                    ParallelLoopResult loop = Parallel.ForEach(wzfilePathsToLoad, filePath =>
                     {
-                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected, MainPanel, currentDispatcher);
+                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected);
                         if (f == null)
                         {
                             errorOpeningFile_Admin = true;
                         }
+                        else
+                        {
+                            lock (loadedWzFiles)
+                            {
+                                loadedWzFiles.Add(f);
+                            }
+                        }
                     });
+                    while (!loop.IsCompleted)
+                    {
+                        Thread.Sleep(500);
+                    }
+
+                    foreach (WzFile wzFile in loadedWzFiles) // add later, once everything is loaded to memory
+                    {
+                        Program.WzMan.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
+                    }
 
                     // error opening one of the files
                     if (errorOpeningFile_Admin)

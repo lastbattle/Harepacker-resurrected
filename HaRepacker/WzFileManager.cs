@@ -90,7 +90,9 @@ namespace HaRepacker
             else
                 UnloadWzFile(file);
 
-            LoadWzFile(path, encVersion, (short)-1, panel, currentDispatcher);
+            WzFile loadedWzFile = LoadWzFile(path, encVersion, (short)-1);
+            if (loadedWzFile != null)
+                Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel, currentDispatcher);
         }
 
         /// <summary>
@@ -121,13 +123,12 @@ namespace HaRepacker
         /// Load a WZ file from path
         /// </summary>
         /// <param name="path"></param>
-        /// <param name="panel"></param>
         /// <returns></returns>
-        public WzFile LoadWzFile(string path, MainPanel panel)
+        public WzFile LoadWzFile(string path)
         {
             short fileVersion = -1;
             bool isList = WzTool.IsListFile(path);
-            return LoadWzFile(path, WzTool.DetectMapleVersion(path, out fileVersion), fileVersion, panel);
+            return LoadWzFile(path, WzTool.DetectMapleVersion(path, out fileVersion), fileVersion);
         }
 
         /// <summary>
@@ -138,9 +139,9 @@ namespace HaRepacker
         /// <param name="panel"></param>
         /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
-        public WzFile LoadWzFile(string path, WzMapleVersion encVersion, MainPanel panel, Dispatcher currentDispatcher = null)
+        public WzFile LoadWzFile(string path, WzMapleVersion encVersion)
         {
-            return LoadWzFile(path, encVersion, (short)-1, panel, currentDispatcher);
+            return LoadWzFile(path, encVersion, (short)-1);
         }
 
         /// <summary>
@@ -153,13 +154,25 @@ namespace HaRepacker
         /// <param name="panel"></param>
         /// <param name="currentDispatcher">Dispatcher thread</param>
         /// <returns></returns>
-        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version, MainPanel panel, Dispatcher currentDispatcher = null)
+        private WzFile LoadWzFile(string path, WzMapleVersion encVersion, short version)
         {
             WzFile newFile;
             if (!OpenWzFile(path, encVersion, version, out newFile))
             {
                 return null;
             }
+            return newFile;
+        }
+
+        /// <summary>
+        /// Delayed loading of the loaded WzFile to the TreeNode panel
+        /// This primarily fixes some performance issue when loading multiple WZ concurrently.
+        /// </summary>
+        /// <param name="newFile"></param>
+        /// <param name="panel"></param>
+        /// <param name="currentDispatcher"></param>
+        public void AddLoadedWzFileToMainPanel(WzFile newFile, MainPanel panel, Dispatcher currentDispatcher = null)
+        {
             WzNode node = new WzNode(newFile);
 
             // execute in main thread
@@ -182,7 +195,6 @@ namespace HaRepacker
 
                 panel.DataTree.EndUpdate();
             }
-            return newFile;
         }
 
         public void InsertWzFileUnsafe(WzFile f, MainPanel panel)
