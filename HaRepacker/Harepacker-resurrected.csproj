@@ -737,6 +737,8 @@
     <Content Include="Resources\arrow_right.png" />
     <None Include="Resources\img_default.png" />
     <Resource Include="Resources\loading.gif" />
+    <None Include="Resources\expand.png" />
+    <None Include="Resources\collapse.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />

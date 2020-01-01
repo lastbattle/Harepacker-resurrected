@@ -34,6 +34,8 @@ namespace HaRepacker
         private ToolStripMenuItem Remove;
         private ToolStripMenuItem Unload;
         private ToolStripMenuItem Reload;
+        private ToolStripMenuItem CollapseAllChildNode;
+        private ToolStripMenuItem ExpandAllChildNode;
 
         private ToolStripMenuItem AddPropsSubMenu;
         private ToolStripMenuItem AddDirsSubMenu;
@@ -112,6 +114,23 @@ namespace HaRepacker
                     foreach (WzNode node in GetNodes(sender))
                     {
                         Program.WzMan.ReloadWzFile((WzFile)node.Tag, parentPanel);
+                    }
+                }));
+            CollapseAllChildNode = new ToolStripMenuItem("Collapse All", Properties.Resources.collapse, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    foreach (WzNode node in GetNodes(sender))
+                    {
+                        node.Collapse();
+                    }
+                }));
+            ExpandAllChildNode = new ToolStripMenuItem("Expand all", Properties.Resources.expand, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    foreach (WzNode node in GetNodes(sender))
+                    {
+
+                        node.ExpandAll();
                     }
                 }));
 
@@ -315,33 +334,53 @@ namespace HaRepacker
             SubPropertyMenu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
         }
 
+        /// <summary>
+        /// Toolstrip menu when right clicking on nodes
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="Tag"></param>
+        /// <returns></returns>
         public ContextMenuStrip CreateMenu(WzNode node, WzObject Tag)
         {
             int currentDataTreeSelectedCount = parentPanel.DataTree.SelectedNodes.Count;
 
+            List<ToolStripItem> toolStripmenuItems = new List<ToolStripItem>();
+
             ContextMenuStrip menu = new ContextMenuStrip();
             if (Tag is WzImage || Tag is IPropertyContainer)
             {
-                if (Tag is WzSubProperty)
-                {
-                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
-                }
-                else
-                {
-                    menu.Items.AddRange(new ToolStripItem[] { AddPropsSubMenu, Rename, /*export, import,*/Remove });
-                }
+                toolStripmenuItems.Add(AddPropsSubMenu);
+                toolStripmenuItems.Add(Rename);
+                // export, import
+                toolStripmenuItems.Add(Remove);
             }
             else if (Tag is WzImageProperty)
             {
-                menu.Items.AddRange(new ToolStripItem[] { Rename, /*export, import,*/Remove });
+                toolStripmenuItems.Add(Rename);
+                toolStripmenuItems.Add(Remove);
             }
             else if (Tag is WzDirectory)
             {
-                menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, Rename, /*export, import,*/Remove });
+                toolStripmenuItems.Add(AddDirsSubMenu);
+                toolStripmenuItems.Add(Rename);
+                toolStripmenuItems.Add(Remove);
             }
             else if (Tag is WzFile)
             {
-                menu.Items.AddRange(new ToolStripItem[] { AddDirsSubMenu, SaveFile, Unload, Reload });
+                toolStripmenuItems.Add(AddDirsSubMenu);
+                toolStripmenuItems.Add(SaveFile);
+                toolStripmenuItems.Add(Unload);
+                toolStripmenuItems.Add(Reload);
+            }
+
+            toolStripmenuItems.Add(ExpandAllChildNode);
+            toolStripmenuItems.Add(CollapseAllChildNode);
+
+
+            // Add
+            foreach (ToolStripItem toolStripItem in toolStripmenuItems)
+            {
+                menu.Items.Add(toolStripItem);
             }
 
             currNode = node;

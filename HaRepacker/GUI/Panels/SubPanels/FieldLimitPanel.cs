@@ -1,5 +1,5 @@
 ﻿/* Copyright (C) 2018 LastBattle
-https://github.com/eaxvac/Harepacker-resurrected
+https://github.com/lastbattle/Harepacker-resurrected
 */
 
 using System;
