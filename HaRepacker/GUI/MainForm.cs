@@ -536,7 +536,7 @@ namespace HaRepacker.GUI
                             foreach (string filePath_Others in otherMobWzFiles)
                             {
                                 if (filePath_Others != filePath &&
-                                    filePath_Others.EndsWith("Mob2.wz"))
+                                    (filePath_Others.EndsWith("Mob001.wz") || filePath_Others.EndsWith("Mob2.wz")))
                                 {
                                     wzfilePathsToLoad.Add(filePath_Others);
                                 }
