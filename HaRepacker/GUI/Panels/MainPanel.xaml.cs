@@ -564,6 +564,7 @@ namespace HaRepacker.GUI.Panels
             {
                 loadingPanel.OnStartAnimate();
                 grid_LoadingPanel.Visibility = Visibility.Visible;
+                treeView_WinFormsHost.Visibility = Visibility.Collapsed;
             };
             grid_LoadingPanel.Dispatcher.BeginInvoke(action);
         }
@@ -577,6 +578,7 @@ namespace HaRepacker.GUI.Panels
             {
                 loadingPanel.OnPauseAnimate();
                 grid_LoadingPanel.Visibility = Visibility.Collapsed;
+                treeView_WinFormsHost.Visibility = Visibility.Visible;
             };
             grid_LoadingPanel.Dispatcher.BeginInvoke(action);
         }

@@ -207,13 +207,13 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <WindowsFormsHost Grid.Row="0">
+                <WindowsFormsHost x:Name="treeView_WinFormsHost" Grid.Row="0">
                     <local:TreeViewMS x:Name="DataTree" 
                                       AfterSelect="DataTree_AfterSelect"
                                       KeyDown="DataTree_KeyDown"
                                       DoubleClick="DataTree_DoubleClick"/>
                 </WindowsFormsHost>
-
+                
                 <!-- Find panel -->
                 <Grid x:Name="grid_FindPanel" Grid.Row="1" Grid.RowSpan="2" Opacity="1"
                       Margin="0,0,0,0" Background="White" Height="40" VerticalAlignment="Top"
@@ -316,27 +316,32 @@
 
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right"
                                 Margin="10">
-                        <Button Height="30" Width="100" Content="Animate (F5)" BorderBrush="Transparent" x:Name="button_animateSelectedCanvas" 
+                        <Button Height="30" Width="100" Content="Animate (F5)" BorderBrush="#FFCBCBCB" x:Name="button_animateSelectedCanvas" 
                                 Click="button_animateSelectedCanvas_Click_1"/>
-                        <Button Height="30" Width="100" Content="Change Image" BorderBrush="Transparent" x:Name="changeImageButton"
+                        <Button Height="30" Width="100" Content="Change Image" BorderBrush="#FFCBCBCB" x:Name="changeImageButton"
                                 Click="changeImageButton_Click"/>
-                        <Button Height="30" Width="100" Content="Change Sound" BorderBrush="Transparent" x:Name="changeSoundButton"
+                        <Button Height="30" Width="100" Content="Change Sound" BorderBrush="#FFCBCBCB" x:Name="changeSoundButton"
                                 Click="changeSoundButton_Click"/>
-                        <Button Height="30" Width="100" Content="Save Sound" BorderBrush="Transparent" x:Name="saveSoundButton" 
+                        <Button Height="30" Width="100" Content="Save Sound" BorderBrush="#FFCBCBCB" x:Name="saveSoundButton" 
                                 Click="saveSoundButton_Click"/>
-                        <Button Height="30" Width="100" Content="Save Image" BorderBrush="Transparent" x:Name="saveImageButton"
+                        <Button Height="30" Width="100" Content="Save Image" BorderBrush="#FFCBCBCB" x:Name="saveImageButton"
                                 Click="saveImageButton_Click"/>
                     </StackPanel>
                 </Grid>
             </Grid>
 
+
             <!-- Loading panel-->
             <Grid x:Name="grid_LoadingPanel" Visibility="Collapsed"
-                  Grid.Column="0" Grid.ColumnSpan="3" Background="White">
-                <localSubPanels:LoadingPanel x:Name="loadingPanel" Height="350"/>
+                      Grid.Column="0" Grid.ColumnSpan="3"
+                      Background="White">
+                <localSubPanels:LoadingPanel x:Name="loadingPanel" Height="350" Background="White"/>
             </Grid>
+
         </Grid>
+
     </DockPanel>
+
 
 
 </UserControl>
