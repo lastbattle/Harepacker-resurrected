@@ -14,6 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using static HaRepacker.Configuration.UserSettings;
 
 namespace HaRepacker.GUI.Panels.SubPanels
 {
@@ -29,6 +30,12 @@ namespace HaRepacker.GUI.Panels.SubPanels
             isLoading = true; // set isloading 
 
             InitializeComponent();
+
+            // Set theme color
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int)UserSettingsThemeColor.Dark)
+            {
+                VisualStateManager.GoToState(this, "BlackTheme", false);
+            }
 
             this.DataContext = this; // set data binding to self.
 

@@ -14,7 +14,35 @@
         <converter:CheckboxToVisibilityConverter x:Key="checkboxToVisibilityConverter"/>
         <converter:ImageWidthOrHeightToScreenDPIConverter x:Key="imageWidthOrHeightToScreenDPIConverter"/>
         <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
+        <Storyboard x:Key="BlackTheme">
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock1">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock2">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock3">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock4">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock5">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+            <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="checkbox_crosshair">
+                <EasingColorKeyFrame KeyTime="0" Value="White"/>
+            </ColorAnimationUsingKeyFrames>
+        </Storyboard>
     </UserControl.Resources>
+    <UserControl.Triggers>
+        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard Storyboard="{StaticResource BlackTheme}"/>
+        </EventTrigger>
+    </UserControl.Triggers>
 
     <Grid>
         <Grid.RowDefinitions>
@@ -54,8 +82,8 @@
                             <!-- Grid to compensate for the crosshair length-->
                             <!-- Crosshair must always only be 1/2 of the image width and height-->
                             <Grid  Margin="-5,0,0,-5">
-                                <Grid Width="0.5" Height="10" Background="Red"/>
-                                <Grid Height="0.5" Width="10" Background="Red"/>
+                                <Grid Width="0.5" Height="10" Background="DarkCyan"/>
+                                <Grid Height="0.5" Width="10" Background="DarkCyan"/>
                             </Grid>
                         </Grid>
                     </Grid>
@@ -66,9 +94,9 @@
             <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
                 Margin="0,80,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Width: " FontSize="10"/>
-                    <TextBlock Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
-                    <TextBlock Text="px " Margin="3,0,0,0" FontSize="10"/>
+                    <TextBlock x:Name="textBlock" Text="Width: " FontSize="10" FontWeight="Bold"/>
+                    <TextBlock x:Name="textBlock1" Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
+                    <TextBlock x:Name="textBlock2" Text="px " Margin="3,0,0,0" FontSize="10"/>
                 </StackPanel>
             </StackPanel>
 
@@ -76,15 +104,15 @@
             <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
                 Margin="80,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Height: " FontSize="10"/>
-                    <TextBlock Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
-                    <TextBlock Text="px " Margin="3,0,0,0" FontSize="10"/>
+                    <TextBlock x:Name="textBlock3" Text="Height: " FontSize="10" FontWeight="Bold"/>
+                    <TextBlock x:Name="textBlock4" Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
+                    <TextBlock x:Name="textBlock5" Text="px " Margin="3,0,0,0" FontSize="10"/>
                 </StackPanel>
             </StackPanel>
 
             <!-- Checkbox to enable crosshair or not-->
-            <Grid VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,80,10,0">
-                <CheckBox x:Name="checkbox_crosshair" Content="Enable Cross Hair"
+            <Grid VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,60,10,0">
+                <CheckBox x:Name="checkbox_crosshair" Content="Enable Crosshair"
                           Checked="checkbox_crosshair_Checked" Unchecked="checkbox_crosshair_Checked"/>
             </Grid>
 
@@ -92,8 +120,8 @@
             <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
                 Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
                     Orientation="Horizontal" Margin="0,70,0,0">
-                <TextBlock Text="Image origin = " Margin="70,0,0,0" FontSize="10"/>
-                <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"/>
+                <TextBlock Text="Image origin " Margin="70,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
+                <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"/>
             </StackPanel>
         </Grid>
 

@@ -25,6 +25,7 @@ using System.Windows.Threading;
 using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
+using static HaRepacker.Configuration.UserSettings;
 
 namespace HaRepacker.GUI
 {
@@ -147,7 +148,7 @@ namespace HaRepacker.GUI
         #region Theme colors
         public void SetThemeColor()
         {
-            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)//black
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int) UserSettingsThemeColor.Dark)//black
             {
                 this.BackColor = Color.Black;
                 mainMenu.BackColor = Color.Black;

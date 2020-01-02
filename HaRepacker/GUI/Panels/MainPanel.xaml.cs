@@ -20,6 +20,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using static HaRepacker.Configuration.UserSettings;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -49,7 +50,7 @@ namespace HaRepacker.GUI.Panels
             undoRedoMan = new UndoRedoManager(this);
 
             // Set theme color
-            if (Program.ConfigurationManager.UserSettings.ThemeColor == 0)
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int) UserSettingsThemeColor.Dark)
             {
                 VisualStateManager.GoToState(this, "BlackTheme", false);
                 DataTree.BackColor = System.Drawing.Color.Black;

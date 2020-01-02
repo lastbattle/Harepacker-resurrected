@@ -11,6 +11,12 @@ namespace HaRepacker.Configuration
 {
     public class UserSettings
     {
+        public enum UserSettingsThemeColor
+        {
+            Dark = 0,
+            Light = 1
+        }
+
         [JsonProperty(PropertyName = "Indentation")]
         public int Indentation = 0;
 
@@ -60,7 +66,7 @@ namespace HaRepacker.Configuration
 
         // Themes
         [JsonProperty(PropertyName = "ThemeColor")]
-        public int ThemeColor = 1;//white = 1, black = 0
+        public int ThemeColor = (int) UserSettingsThemeColor.Light;//white = 1, black = 0
 
 
         // Settings not shown on the settings page
