@@ -22,8 +22,12 @@ namespace HaRepacker.GUI.Panels.SubPanels
     /// </summary>
     public partial class ImageRenderViewer : UserControl, INotifyPropertyChanged
     {
+        private bool isLoading = false;
+
         public ImageRenderViewer()
         {
+            isLoading = true; // set isloading 
+
             InitializeComponent();
 
             this.DataContext = this; // set data binding to self.
@@ -38,8 +42,16 @@ namespace HaRepacker.GUI.Panels.SubPanels
         /// <param name="e"></param>
         private void ImageRenderViewer_Loaded(object sender, RoutedEventArgs e)
         {
-            // Set via app settings
-            checkbox_crosshair.IsChecked = Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation;
+            try
+            {
+                // Set via app settings
+                checkbox_crosshair.IsChecked = Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation;
+
+                ZoomSlider.Value = Program.ConfigurationManager.UserSettings.ImageZoomLevel;
+            } finally
+            {
+                isLoading = false;
+            }
         }
 
         #region Exported Fields
@@ -122,6 +134,9 @@ namespace HaRepacker.GUI.Panels.SubPanels
         /// <param name="e"></param>
         private void checkbox_crosshair_Checked(object sender, RoutedEventArgs e)
         {
+            if (isLoading)
+                return;
+
             CheckBox checkbox = (CheckBox)sender;
             if (checkbox.IsChecked == true)
             {
@@ -130,6 +145,20 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation = false;
             }
+        }
+
+        /// <summary>
+        /// Image zoom level on value changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (isLoading)
+                return;
+
+            Slider zoomSlider = (Slider)sender;
+            Program.ConfigurationManager.UserSettings.ImageZoomLevel = zoomSlider.Value;
         }
         #endregion
     }

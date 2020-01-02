@@ -31,7 +31,6 @@ namespace HaRepacker.Converter
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			// cant really convert back here anyway
 			double value_ = (double)value;
 			double imageWidthOrHeight = value_ *  ScreenDPI.GetScreenScaleFactor();
 

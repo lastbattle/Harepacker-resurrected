@@ -101,11 +101,13 @@
             <Slider Name="ZoomSlider"
                         Margin="10,0,10,0"
                         Minimum="0.1"
-                        Maximum="10"
+                        Maximum="20"
                         Value="3"
                         TickFrequency="0.05"
                         SmallChange="0.05"
-                        LargeChange="0.1" />
+                        LargeChange="0.1" 
+                    ValueChanged="ZoomSlider_ValueChanged"
+                    />
         </Grid>
     </Grid>
 </UserControl>

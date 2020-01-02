@@ -26,9 +26,6 @@ namespace HaRepacker.Converter
 		{
 			PointF originValue = (PointF)value;
 
-			// get DPI.
-			//PresentationSource source = PresentationSource.FromVisual(this);
-
 			// converted
 			// its always -50, as it is 50px wide, as specified in the xaml
 			Thickness margin = new Thickness(originValue.X / ScreenDPI.GetScreenScaleFactor(), originValue.Y / ScreenDPI.GetScreenScaleFactor(), 0, 0); // 20,75
@@ -39,7 +36,6 @@ namespace HaRepacker.Converter
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			// cant really convert back here anyway
 			Thickness value_ = (Thickness)value;
 
 			// converted

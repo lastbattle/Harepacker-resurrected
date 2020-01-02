@@ -63,9 +63,11 @@ namespace HaRepacker.Configuration
         public int ThemeColor = 1;//white = 1, black = 0
 
 
-        // Settings not shown on this page
-
+        // Settings not shown on the settings page
         [JsonProperty(PropertyName = "EnableCrossHairDebugInformation")]
         public bool EnableCrossHairDebugInformation = true;
+
+        [JsonProperty(PropertyName = "ImageZoomLevel")]
+        public double ImageZoomLevel = 3.0f;
     }
 }

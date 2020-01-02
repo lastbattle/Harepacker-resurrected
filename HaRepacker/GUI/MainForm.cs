@@ -728,6 +728,12 @@ namespace HaRepacker.GUI
         {
             Program.ConfigurationManager.ApplicationSettings.WindowMaximized = WindowState == FormWindowState.Maximized;
             e.Cancel = !Warning.Warn(HaRepacker.Properties.Resources.MainConfirmExit);
+
+            // Save app settings quickly
+            if (!e.Cancel)
+            {
+                Program.ConfigurationManager.Save();
+            }
         }
         #endregion
 

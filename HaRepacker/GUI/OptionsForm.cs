@@ -20,6 +20,7 @@ namespace HaRepacker.GUI
         {
             this.panel = panel;
             InitializeComponent();
+
             sortBox.Checked = Program.ConfigurationManager.UserSettings.Sort;
             apngIncompEnable.Checked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
             autoAssociateBox.Checked = Program.ConfigurationManager.UserSettings.AutoAssociate;
