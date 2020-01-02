@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -26,6 +27,19 @@ namespace HaRepacker.GUI.Panels.SubPanels
             InitializeComponent();
 
             this.DataContext = this; // set data binding to self.
+
+            Loaded += ImageRenderViewer_Loaded;
+        }
+
+        /// <summary>
+        /// When the page loads
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ImageRenderViewer_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Set via app settings
+            checkbox_crosshair.IsChecked = Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation;
         }
 
         #region Exported Fields
@@ -44,6 +58,20 @@ namespace HaRepacker.GUI.Panels.SubPanels
                 // Update image width and height too.
                 ImageWidth = _Image.Width;
                 ImageHeight = _Image.Height;
+            }
+        }
+
+        private PointF _CanvasVectorOrigin = new PointF(0, 0);
+        /// <summary>
+        /// Origin to center the crosshair
+        /// </summary>
+        public PointF CanvasVectorOrigin
+        {
+            get { return _CanvasVectorOrigin; }
+            set
+            {
+                _CanvasVectorOrigin = value;
+                OnPropertyChanged("CanvasVectorOrigin");
             }
         }
 
@@ -67,7 +95,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
         public double ImageHeight
         {
             get { return _ImageHeight; }
-            set { 
+            set {
                 this._ImageHeight = value;
                 OnPropertyChanged("ImageHeight");
             }
@@ -83,6 +111,25 @@ namespace HaRepacker.GUI.Panels.SubPanels
         {
             PropertyChangedEventHandler handler = PropertyChanged;
             if (handler != null) handler(this, new PropertyChangedEventArgs(propertyName));
+        }
+        #endregion
+
+        #region UI Events
+        /// <summary>
+        /// Checkbox for crosshair
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void checkbox_crosshair_Checked(object sender, RoutedEventArgs e)
+        {
+            CheckBox checkbox = (CheckBox)sender;
+            if (checkbox.IsChecked == true)
+            {
+                Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation = true;
+            } else
+            {
+                Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation = false;
+            }
         }
         #endregion
     }

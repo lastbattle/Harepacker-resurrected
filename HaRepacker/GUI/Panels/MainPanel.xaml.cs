@@ -848,6 +848,9 @@ namespace HaRepacker.GUI.Panels
             // Set current image
             canvasPropBox.Image = currentNode.Item4;
 
+            // Set origin to canvas xaml
+            canvasPropBox.CanvasVectorOrigin = vectorOriginSelected;
+
             // Set tooltip text
             if (i_animateCanvasNode == animate_PreLoadImages.Count)
                 statusBarItemLabel_Others.Text = "# " + currentNode.Item1 + ", Delay: " + currentNode.Item2 + " ms. Repeating Animate.";
@@ -1388,6 +1391,9 @@ namespace HaRepacker.GUI.Panels
                 System.Drawing.PointF origin = canvas.GetCanvasVectorPosition();
                 vectorOriginSelected = origin;
 
+                // Set origin to canvas xaml
+                canvasPropBox.CanvasVectorOrigin = origin;
+
                 canvasPropBox.Visibility = Visibility.Visible;
             }
             else if (obj is WzUOLProperty)
@@ -1403,6 +1409,9 @@ namespace HaRepacker.GUI.Panels
                     // origin
                     System.Drawing.PointF origin = ((WzCanvasProperty)linkValue).GetCanvasVectorPosition();
                     vectorOriginSelected = origin;
+
+                    // Set origin to canvas xaml
+                    canvasPropBox.CanvasVectorOrigin = origin;
                 }
 
                 // Value

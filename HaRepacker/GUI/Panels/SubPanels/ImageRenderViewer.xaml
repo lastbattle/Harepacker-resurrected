@@ -7,9 +7,13 @@
              xmlns:converter="clr-namespace:HaRepacker.Converter"
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
-    
+
     <UserControl.Resources>
         <converter:ImageSizeDoubleToIntegerConverter x:Key="imageSizeConverter" />
+        <converter:VectorOriginPointFToMarginConverter x:Key="vectorOriginConverter" />
+        <converter:CheckboxToVisibilityConverter x:Key="checkboxToVisibilityConverter"/>
+        <converter:ImageWidthOrHeightToScreenDPIConverter x:Key="imageWidthOrHeightToScreenDPIConverter"/>
+        <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
     </UserControl.Resources>
 
     <Grid>
@@ -18,37 +22,90 @@
             <RowDefinition Height="30"/>
         </Grid.RowDefinitions>
 
-        <Grid x:Name="grid_Picture" Grid.Row="0">
-            <!-- small details about the photo at the top right-->
-            <Grid x:Name="grid_pictureInfo" VerticalAlignment="Top" HorizontalAlignment="Right" Margin="10" 
-                  Background="#FFEDEDED" Opacity="0.6">
-                <StackPanel Orientation="Vertical" Margin="10">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Size: "/>
-                        <TextBlock Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}"/>
-                        <TextBlock Text=" x " Margin="3,0,3,0"/>
-                        <TextBlock Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}"/>
-                    </StackPanel>
-                </StackPanel>
+        <Grid Grid.Row="0">
+            <!-- Image and borders-->
+            <Grid Width="{Binding ImageWidth}" 
+                  Height="{Binding ImageHeight}" 
+                VerticalAlignment="Top" HorizontalAlignment="Left" Margin="80,50,0,0">
+
+                <Border  BorderBrush="Red" BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Border.RenderTransform>
+                        <ScaleTransform 
+                                ScaleX="{Binding ElementName=ZoomSlider, Path='Value'}" 
+                                ScaleY="{Binding ElementName=ZoomSlider, Path='Value'}"/>
+                    </Border.RenderTransform>
+
+                    <Grid>
+                        <!-- Source="pack://siteoforigin:,,,/Resources/ladyboss_test_attack2_0.png" -->
+                        <!-- Source="{Binding Image}"  -->
+                        <Image x:Name="canvasPropBox" 
+                               Source="{Binding Image}"
+                               Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"
+                               />
+
+                        <!-- Crosshair for vector origin-->
+                        <!-- Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"
+                        -->
+                        <Grid x:Name="gridCrossHair" 
+                              Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                              HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                              Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"  >
+
+                            <!-- Grid to compensate for the crosshair length-->
+                            <!-- Crosshair must always only be 1/2 of the image width and height-->
+                            <Grid  Margin="-5,0,0,-5">
+                                <Grid Width="0.5" Height="10" Background="Red"/>
+                                <Grid Height="0.5" Width="10" Background="Red"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
             </Grid>
 
-            <Grid Height="{Binding ElementName=ZoomSlider, Path='Value'}"
-                   Width="{Binding ElementName=ZoomSlider, Path='Value'}">
-                <!-- Source="pack://siteoforigin:,,,/Resources/8800000_attack_10.png" -->
-                <Image x:Name="canvasPropBox" Source="{Binding Image}">
-            </Image>
+            <!-- Image width-->
+            <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                Margin="0,80,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Width: " FontSize="10"/>
+                    <TextBlock Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
+                    <TextBlock Text="px " Margin="3,0,0,0" FontSize="10"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Image height -->
+            <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                Margin="80,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Height: " FontSize="10"/>
+                    <TextBlock Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
+                    <TextBlock Text="px " Margin="3,0,0,0" FontSize="10"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Checkbox to enable crosshair or not-->
+            <Grid VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,80,10,0">
+                <CheckBox x:Name="checkbox_crosshair" Content="Enable Cross Hair"
+                          Checked="checkbox_crosshair_Checked" Unchecked="checkbox_crosshair_Checked"/>
             </Grid>
+
+            <!-- Displays the origin-->
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                    Orientation="Horizontal" Margin="0,70,0,0">
+                <TextBlock Text="Image origin = " Margin="70,0,0,0" FontSize="10"/>
+                <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"/>
+            </StackPanel>
         </Grid>
 
         <Grid x:Name="grid_zoom" Grid.Row="1" VerticalAlignment="Bottom">
             <Slider Name="ZoomSlider"
                         Margin="10,0,10,0"
-                        Minimum="50"
-                        Maximum="1000"
-                        Value="200"
-                        TickFrequency="100"
-                        SmallChange="10"
-                        LargeChange="50" />
+                        Minimum="0.1"
+                        Maximum="10"
+                        Value="3"
+                        TickFrequency="0.05"
+                        SmallChange="0.05"
+                        LargeChange="0.1" />
         </Grid>
     </Grid>
 </UserControl>

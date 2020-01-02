@@ -5,6 +5,8 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+
+using HaRepacker.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,24 +16,26 @@ using System.Windows.Data;
 
 namespace HaRepacker.Converter
 {
-    /// <summary>
-    /// Converts the double value of an image size to integer
-    /// </summary>
-    public class ImageSizeDoubleToIntegerConverter : IValueConverter
-    {
+	/// <summary>
+	/// Converts the image (x, y) width or height to the correct size according to the screen's DPI scaling factor
+	/// </summary>
+    public class ImageWidthOrHeightToScreenDPIConverter : IValueConverter
+	{
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double value_ = (double)value;
+			double widthOrHeight = (double)value;
+			double realWidthOrHeightToDisplay = widthOrHeight / ScreenDPI.GetScreenScaleFactor();
 
-			return (int)value_;
+			return realWidthOrHeightToDisplay;
 		}
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
 			// cant really convert back here anyway
 			double value_ = (double)value;
+			double imageWidthOrHeight = value_ *  ScreenDPI.GetScreenScaleFactor();
 
-			return (int)value_;
+			return imageWidthOrHeight;
 		}
 	}
 }

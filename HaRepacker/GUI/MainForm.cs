@@ -594,13 +594,13 @@ namespace HaRepacker.GUI
                     {
                         Program.WzMan.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
                     }
-
-                    // error opening one of the files
-                    if (errorOpeningFile_Admin)
-                    {
-                        MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
-                    }
                 }); // load complete
+
+                // error opening one of the files
+                if (errorOpeningFile_Admin) // got to be called after await Task.run()
+                {
+                    MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                }
 
                 // Hide panel splash sdcreen
                 MainPanel.OnSetPanelLoadingCompleted();

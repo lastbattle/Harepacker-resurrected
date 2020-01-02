@@ -61,5 +61,11 @@ namespace HaRepacker.Configuration
         // Themes
         [JsonProperty(PropertyName = "ThemeColor")]
         public int ThemeColor = 1;//white = 1, black = 0
+
+
+        // Settings not shown on this page
+
+        [JsonProperty(PropertyName = "EnableCrossHairDebugInformation")]
+        public bool EnableCrossHairDebugInformation = true;
     }
 }

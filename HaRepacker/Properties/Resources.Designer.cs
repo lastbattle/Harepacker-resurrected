@@ -442,6 +442,16 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        public static System.Drawing.Bitmap ladyboss_test_attack2_0 {
+            get {
+                object obj = ResourceManager.GetObject("ladyboss_test_attack2_0", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         public static System.Drawing.Bitmap lightning {
             get {
                 object obj = ResourceManager.GetObject("lightning", resourceCulture);

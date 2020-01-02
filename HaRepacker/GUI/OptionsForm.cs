@@ -48,7 +48,7 @@ namespace HaRepacker.GUI
                 Warning.Error(HaRepacker.Properties.Resources.OptionsIndentError);
                 return;
             }
-
+            
             Program.ConfigurationManager.UserSettings.Sort = sortBox.Checked;
             Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
             Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
