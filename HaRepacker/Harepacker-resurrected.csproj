@@ -167,6 +167,7 @@
     <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
     <Compile Include="Converter\ImageWidthOrHeightToScreenDPIConverter.cs" />
     <Compile Include="Converter\PointFOriginToStringConverter.cs" />
+    <Compile Include="Converter\PointFToVisiblityConverter.cs" />
     <Compile Include="Converter\VectorOriginPointFToMarginConverter.cs" />
     <Compile Include="FHMapper\FHMapper.cs" />
     <Compile Include="GUI\AboutForm.cs">

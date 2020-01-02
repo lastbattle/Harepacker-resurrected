@@ -14,6 +14,8 @@
         <converter:CheckboxToVisibilityConverter x:Key="checkboxToVisibilityConverter"/>
         <converter:ImageWidthOrHeightToScreenDPIConverter x:Key="imageWidthOrHeightToScreenDPIConverter"/>
         <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
+        <converter:PointFToVisiblityConverter x:Key="pointFToVisiblityConverter"/>
+
         <Storyboard x:Key="BlackTheme">
             <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock">
                 <EasingColorKeyFrame KeyTime="0" Value="White"/>
@@ -81,9 +83,25 @@
 
                             <!-- Grid to compensate for the crosshair length-->
                             <!-- Crosshair must always only be 1/2 of the image width and height-->
-                            <Grid  Margin="-5,0,0,-5">
+                            <Grid  Margin="-5,0,0,-5"
+                                   Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
                                 <Grid Width="0.5" Height="10" Background="DarkCyan"/>
                                 <Grid Height="0.5" Width="10" Background="DarkCyan"/>
+                            </Grid>
+                        </Grid>
+
+                        <!-- Grid for head crosshair-->
+                        <Grid x:Name="gridHeadOriginCrossHair" 
+                              Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                              HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                              Margin="{Binding CanvasVectorHead, Converter={StaticResource vectorOriginConverter}}"  >
+
+                            <!-- Grid to compensate for the crosshair length-->
+                            <!-- Crosshair must always only be 1/2 of the image width and height-->
+                            <Grid  Margin="-5,0,0,-5"
+                                   Visibility="{Binding CanvasVectorHead, Converter={StaticResource pointFToVisiblityConverter}}">
+                                <Grid Width="0.5" Height="10" Background="DarkOrange"/>
+                                <Grid Height="0.5" Width="10" Background="DarkOrange"/>
                             </Grid>
                         </Grid>
                     </Grid>
@@ -118,10 +136,21 @@
 
             <!-- Displays the origin-->
             <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
-                Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                    Orientation="Horizontal" Margin="0,70,0,0">
-                <TextBlock Text="Image origin " Margin="70,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
-                <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"/>
+                        Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                        Orientation="Vertical" Margin="70,70,0,0">
+                <!-- 'origin' -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
+                    <TextBlock Text="origin " Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"/>
+                </StackPanel>
+
+                <!-- 'head' -->
+                <StackPanel Orientation="Horizontal" 
+                            Visibility="{Binding CanvasVectorHead, Converter={StaticResource pointFToVisiblityConverter}}">
+                    <TextBlock Text="Head " Margin="0,0,0,0" FontSize="10" Foreground="DarkOrange" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding CanvasVectorHead, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkOrange"/>
+                </StackPanel>
             </StackPanel>
         </Grid>
 

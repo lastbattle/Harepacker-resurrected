@@ -94,6 +94,20 @@ namespace HaRepacker.GUI.Panels.SubPanels
             }
         }
 
+        private PointF _CanvasVectorHead = new PointF(0, 0);
+        /// <summary>
+        /// Head vector (Hit targets for mobs?)
+        /// </summary>
+        public PointF CanvasVectorHead
+        {
+            get { return _CanvasVectorHead; }
+            set
+            {
+                _CanvasVectorHead = value;
+                OnPropertyChanged("CanvasVectorHead");
+            }
+        }
+
         private double _ImageWidth = 0;
         /// <summary>
         /// The width of the image currently displayed on the canvas

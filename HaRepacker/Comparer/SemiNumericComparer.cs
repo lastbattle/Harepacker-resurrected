@@ -12,10 +12,10 @@ namespace HaRepacker.Comparer
     /// <summary>
     /// Comparer for string names. in ascending order
     /// </summary>
-    public class SemiNumericComparer : IComparer<Tuple<string, int, PointF, ImageSource>>
+    public class SemiNumericComparer : IComparer<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>>
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Compare(Tuple<string, int, PointF, ImageSource> s1, Tuple<string, int, PointF, ImageSource> s2)
+        public int Compare(Tuple<string, int, Tuple<PointF, PointF>, ImageSource> s1, Tuple<string, int, Tuple<PointF, PointF>, ImageSource> s2)
         {
             string s1Text = s1.Item1;
             string s2Text = s2.Item1;
