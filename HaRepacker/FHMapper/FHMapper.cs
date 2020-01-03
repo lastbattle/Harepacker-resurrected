@@ -175,7 +175,7 @@ namespace HaRepacker.FHMapper
                         {
                             drewPortalImg = true;
 
-                            PointF canvasOriginPosition = portalEditorCanvas.GetCanvasOriginVectorPosition();
+                            PointF canvasOriginPosition = portalEditorCanvas.GetCanvasOriginPosition();
                             drawBuf.DrawImage(portalEditorCanvas.GetLinkedWzCanvasBitmap(), x - canvasOriginPosition.X, y - canvasOriginPosition.Y);
                         }
                     }
@@ -253,7 +253,7 @@ namespace HaRepacker.FHMapper
                                 WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzMan.WzFileListReadOnly);
                                 if (lifeImg != null)
                                 {
-                                    PointF canvasOriginPosition = lifeImg.GetCanvasOriginVectorPosition();
+                                    PointF canvasOriginPosition = lifeImg.GetCanvasOriginPosition();
                                     PointF renderXY = new PointF(x - canvasOriginPosition.X, y - canvasOriginPosition.Y);
 
                                     Bitmap renderMobbitmap = lifeImg.GetLinkedWzCanvasBitmap();
@@ -357,7 +357,7 @@ namespace HaRepacker.FHMapper
                         WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzMan.WzFileListReadOnly);
                         if (wzBgCanvas != null)
                         {
-                            PointF canvasOriginPosition = wzBgCanvas.GetCanvasOriginVectorPosition();
+                            PointF canvasOriginPosition = wzBgCanvas.GetCanvasOriginPosition();
                             PointF renderXY = new PointF(x + canvasOriginPosition.X + center.X, y + canvasOriginPosition.X + center.Y);
 
                             Bitmap drawImage = wzBgCanvas.GetLinkedWzCanvasBitmap();
@@ -458,7 +458,7 @@ namespace HaRepacker.FHMapper
                             if (objData is WzCanvasProperty)
                             {
                                 png = ((WzCanvasProperty)objData);
-                                origin = ((WzCanvasProperty)objData).GetCanvasOriginVectorPosition();
+                                origin = ((WzCanvasProperty)objData).GetCanvasOriginPosition();
                             }
                             else if (objData is WzUOLProperty)
                             {
@@ -536,7 +536,7 @@ namespace HaRepacker.FHMapper
                         {
                             errorList.Add(string.Format("Tile {0}, ID: {1} is not found.", tilePackName, tileID));
                         }
-                        PointF tileVector = tileCanvas.GetCanvasOriginVectorPosition();
+                        PointF tileVector = tileCanvas.GetCanvasOriginPosition();
                         tileBuf.DrawImage(tileCanvas.GetBitmap(), x - tileVector.X, y - tileVector.Y);
                     }
                 }

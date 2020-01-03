@@ -51,7 +51,7 @@ namespace HaRepacker.GUI.Panels
             undoRedoMan = new UndoRedoManager(this);
 
             // Set theme color
-            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int) UserSettingsThemeColor.Dark)
+            if (Program.ConfigurationManager.UserSettings.ThemeColor == (int)UserSettingsThemeColor.Dark)
             {
                 VisualStateManager.GoToState(this, "BlackTheme", false);
                 DataTree.BackColor = System.Drawing.Color.Black;
@@ -710,6 +710,7 @@ namespace HaRepacker.GUI.Panels
         #region Animate
         private System.Drawing.PointF vectorOriginSelected;
         private System.Drawing.PointF vectorHeadSelected;
+        private System.Drawing.PointF vectorltSelected;
         /// <summary>
         /// On button click for animating canvas
         /// </summary>
@@ -723,8 +724,7 @@ namespace HaRepacker.GUI.Panels
         private DispatcherTimer timerImgSequence;
         private int i_animateCanvasNode = 0;
         private bool bCanvasAnimationActive = false;
-        private List<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>> animate_PreLoadImages = 
-                                new List<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>>(); // list of pre-loaded images for animation [Image name, delay, origin, image]
+        private List<CanvasAnimationFrame> animate_PreLoadImages = new List<CanvasAnimationFrame>(); // list of pre-loaded images for animation [Image name, delay, origin, image]
         /// <summary>
         /// Animate the list of selected canvases
         /// </summary>
@@ -745,7 +745,7 @@ namespace HaRepacker.GUI.Panels
             }
             else if (DataTree.SelectedNodes.Count >= 1)
             {
-                List<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>> load_animate_PreLoadImages = new List<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>>();
+                List<CanvasAnimationFrame> load_animate_PreLoadImages = new List<CanvasAnimationFrame>();
 
                 // Check all selected nodes, make sure they're all images.
                 // and add to a list
@@ -789,11 +789,16 @@ namespace HaRepacker.GUI.Panels
                         if (delay == null)
                             delay = 0;
 
-                        PointF pointOrigin = canvasProperty.GetCanvasOriginVectorPosition();
-                        PointF pointHead = canvasProperty.GetCanvasHeadVectorPosition();
-
                         // Add to the list of images to render
-                        load_animate_PreLoadImages.Add(new Tuple<string, int, Tuple<PointF, PointF>, ImageSource>(obj.Name, (int)delay, new Tuple<PointF, PointF>(pointOrigin, pointHead), BitmapToImageSource.ToWpfBitmap(image)));
+                        load_animate_PreLoadImages.Add(new CanvasAnimationFrame()
+                        {
+                            Name = obj.Name,
+                            Delay = (int)delay,
+                            origin = canvasProperty.GetCanvasOriginPosition(),
+                            head = canvasProperty.GetCanvasHeadPosition(),
+                            lt = canvasProperty.GetCanvasLtPosition(),
+                            Image = BitmapToImageSource.ToWpfBitmap(image)
+                        });
                     }
                     else
                     {
@@ -813,7 +818,7 @@ namespace HaRepacker.GUI.Panels
                         animate_PreLoadImages.Clear();
 
                     // Sort by image name
-                    IOrderedEnumerable<Tuple<string, int, Tuple<PointF, PointF>, ImageSource>> sorted = load_animate_PreLoadImages.OrderBy(x => x, new SemiNumericComparer());
+                    IOrderedEnumerable<CanvasAnimationFrame> sorted = load_animate_PreLoadImages.OrderBy(x => x, new SemiNumericComparer());
                     animate_PreLoadImages.Clear(); // clear existing
                     animate_PreLoadImages.AddRange(sorted);
 
@@ -844,28 +849,18 @@ namespace HaRepacker.GUI.Panels
                 i_animateCanvasNode = 0;
             }
 
-            Tuple<string, int, Tuple<PointF, PointF>, ImageSource> currentNode = animate_PreLoadImages[i_animateCanvasNode];
+            CanvasAnimationFrame currentSelectedFrame = animate_PreLoadImages[i_animateCanvasNode];
             i_animateCanvasNode++; // increment 1
 
-            // Set vector origin
-            Tuple<PointF, PointF> pointVectors = currentNode.Item3;
-            vectorOriginSelected = pointVectors.Item1;
-            vectorHeadSelected = pointVectors.Item2;
-
-            // Set current image
-            canvasPropBox.Image = currentNode.Item4;
-
-            // Set XY point to canvas xaml
-            canvasPropBox.CanvasVectorOrigin = vectorOriginSelected;
-            canvasPropBox.CanvasVectorHead = vectorHeadSelected;
+            SetImageRenderView(null, currentSelectedFrame);
 
             // Set tooltip text
             if (i_animateCanvasNode == animate_PreLoadImages.Count)
-                statusBarItemLabel_Others.Text = "# " + currentNode.Item1 + ", Delay: " + currentNode.Item2 + " ms. Repeating Animate.";
+                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms. Repeating Animate.";
             else
-                statusBarItemLabel_Others.Text = "# " + currentNode.Item1 + ", Delay: " + currentNode.Item2 + " ms.";
+                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms.";
 
-            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, currentNode.Item2);
+            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, currentSelectedFrame.Delay);
             timerImgSequence.Start();
         }
 
@@ -887,6 +882,57 @@ namespace HaRepacker.GUI.Panels
             animate_PreLoadImages.Clear();
 
             bCanvasAnimationActive = false; // flag
+        }
+
+        private class CanvasAnimationFrame
+        {
+            public string Name;
+            public int Delay;
+            public PointF origin, head, lt;
+            public ImageSource Image;
+        }
+
+        /// <summary>
+        /// Comparer for string names. in ascending order
+        /// Compares by Numeric when possible, so it does not sort by name.
+        /// </summary>
+        private class SemiNumericComparer : IComparer<CanvasAnimationFrame>
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public int Compare(CanvasAnimationFrame s1, CanvasAnimationFrame s2)
+            {
+                string s1Text = s1.Name;
+                string s2Text = s2.Name;
+
+                bool isS1Numeric = IsNumeric(s1Text);
+                bool isS2Numeric = IsNumeric(s2Text);
+
+                if (isS1Numeric && isS2Numeric)
+                {
+                    int s1val = Convert.ToInt32(s1Text);
+                    int s2val = Convert.ToInt32(s2Text);
+
+                    if (s1val > s2val)
+                        return 1;
+                    else if (s1val < s2val)
+                        return -1;
+                    else if (s1val == s2val)
+                        return 0;
+                }
+                else if (isS1Numeric && !isS2Numeric)
+                    return -1;
+                else if (!isS1Numeric && isS2Numeric)
+                    return 1;
+
+                return string.Compare(s1Text, s2Text, true);
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool IsNumeric(string value)
+            {
+                int parseInt = 0;
+                return Int32.TryParse(value, out parseInt);
+            }
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -1044,7 +1090,8 @@ namespace HaRepacker.GUI.Panels
             System.Drawing.Bitmap wzCanvasPropertyObjLocation = null;
             string fileName = string.Empty;
 
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty) {
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty)
+            {
                 WzCanvasProperty canvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
 
                 wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
@@ -1155,6 +1202,11 @@ namespace HaRepacker.GUI.Panels
             }
         }
 
+        /// <summary>
+        /// Change sound button onClicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void changeSoundButton_Click(object sender, RoutedEventArgs e)
         {
             if (DataTree.SelectedNode.Tag is WzSoundProperty)
@@ -1231,7 +1283,7 @@ namespace HaRepacker.GUI.Panels
             clipboard.Clear();
             Parallel.ForEach(DataTree.SelectedNodes.ToArray(), node =>
             {
-                WzObject clone = CloneWzObject((WzObject) ((WzNode)node).Tag);
+                WzObject clone = CloneWzObject((WzObject)((WzNode)node).Tag);
                 if (clone != null)
                     clipboard.Add(clone);
             });
@@ -1395,18 +1447,7 @@ namespace HaRepacker.GUI.Panels
                 else
                     canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
 
-                // origin
-                PointF originVector = canvas.GetCanvasOriginVectorPosition();
-                PointF headVector = canvas.GetCanvasHeadVectorPosition();
-
-                vectorOriginSelected = originVector;
-                vectorHeadSelected = headVector;
-
-                // Set XY point to canvas xaml
-                canvasPropBox.CanvasVectorOrigin = originVector;
-                canvasPropBox.CanvasVectorHead = headVector;
-
-                canvasPropBox.Visibility = Visibility.Visible;
+                SetImageRenderView(canvas, null);
             }
             else if (obj is WzUOLProperty)
             {
@@ -1418,16 +1459,9 @@ namespace HaRepacker.GUI.Panels
                     canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
                     saveImageButton.Visibility = Visibility.Visible;
 
-                    // origin
-                    PointF originVector = ((WzCanvasProperty)linkValue).GetCanvasOriginVectorPosition();
-                    PointF headVector = ((WzCanvasProperty)linkValue).GetCanvasHeadVectorPosition();
+                    WzCanvasProperty linkProperty = ((WzCanvasProperty)linkValue);
 
-                    vectorOriginSelected = originVector;
-                    vectorHeadSelected = headVector;
-
-                    // Set XY point to canvas xaml
-                    canvasPropBox.CanvasVectorOrigin = originVector;
-                    canvasPropBox.CanvasVectorHead = headVector;
+                    SetImageRenderView(linkProperty, null);
                 }
 
                 // Value
@@ -1504,6 +1538,46 @@ namespace HaRepacker.GUI.Panels
             else
             {
             }
+        }
+
+        /// <summary>
+        ///  Sets the ImageRender view on clicked, or via animation tick
+        /// </summary>
+        /// <param name="canvas"></param>
+        /// <param name="animationFrame"></param>
+        private void SetImageRenderView(WzCanvasProperty canvas, CanvasAnimationFrame animationFrame)
+        {
+            if (animationFrame != null)
+            {
+                vectorOriginSelected = animationFrame.origin;
+                vectorHeadSelected = animationFrame.head;
+                vectorltSelected = animationFrame.lt;
+
+                // Set XY point to canvas xaml
+                canvasPropBox.CanvasVectorOrigin = animationFrame.origin;
+                canvasPropBox.CanvasVectorHead = animationFrame.head;
+                canvasPropBox.CanvasVectorLt = animationFrame.lt;
+
+                // Set image
+                canvasPropBox.Image = animationFrame.Image;
+            }
+            else
+            {
+                // origin
+                PointF originVector = canvas.GetCanvasOriginPosition();
+                PointF headVector = canvas.GetCanvasHeadPosition();
+                PointF ltVector = canvas.GetCanvasLtPosition();
+
+                vectorOriginSelected = originVector;
+                vectorHeadSelected = headVector;
+                vectorltSelected = ltVector;
+
+                // Set XY point to canvas xaml
+                canvasPropBox.CanvasVectorOrigin = originVector;
+                canvasPropBox.CanvasVectorHead = headVector;
+                canvasPropBox.CanvasVectorLt = ltVector;
+            }
+            canvasPropBox.Visibility = Visibility.Visible;
         }
         #endregion
 

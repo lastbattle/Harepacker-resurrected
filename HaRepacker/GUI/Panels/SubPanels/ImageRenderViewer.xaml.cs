@@ -96,7 +96,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
 
         private PointF _CanvasVectorHead = new PointF(0, 0);
         /// <summary>
-        /// Head vector (Hit targets for mobs?)
+        /// Head vector (Hit positioning for mobs?)
         /// </summary>
         public PointF CanvasVectorHead
         {
@@ -105,6 +105,20 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 _CanvasVectorHead = value;
                 OnPropertyChanged("CanvasVectorHead");
+            }
+        }
+
+        private PointF _CanvasVectorLt = new PointF(0, 0);
+        /// <summary>
+        /// lt vector
+        /// </summary>
+        public PointF CanvasVectorLt
+        {
+            get { return _CanvasVectorLt; }
+            set
+            {
+                _CanvasVectorLt = value;
+                OnPropertyChanged("CanvasVectorLt");
             }
         }
 
