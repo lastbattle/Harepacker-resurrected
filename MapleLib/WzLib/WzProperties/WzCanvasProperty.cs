@@ -34,6 +34,8 @@ namespace MapleLib.WzLib.WzProperties
         public const string InlinkPropertyName = "_inlink";
         public const string OutlinkPropertyName = "_outlink";
         public const string OriginPropertyName = "origin";
+        public const string HeadPropertyName = "head";
+        public const string LtPropertyName = "lt";
         public const string AnimationDelayPropertyName = "delay";
         #endregion
 
@@ -212,15 +214,43 @@ namespace MapleLib.WzLib.WzProperties
 
         #region Custom Members
         /// <summary>
-        /// Gets the 'origin' vector position of the Canvas
+        /// Gets the 'origin' position of the Canvas
         /// If not available, it defaults to xy of 0, 0
         /// </summary>
         /// <returns></returns>
-        public PointF GetCanvasVectorPosition()
+        public PointF GetCanvasOriginPosition()
         {
             WzVectorProperty originPos = (WzVectorProperty)this[OriginPropertyName];
             if (originPos != null)
                 return new PointF(originPos.X.Value, originPos.Y.Value);
+
+            return new PointF(0, 0);
+        }
+
+        /// <summary>
+        /// Gets the 'head' position of the Canvas
+        /// If not available, it defaults to xy of 0, 0
+        /// </summary>
+        /// <returns></returns>
+        public PointF GetCanvasHeadPosition()
+        {
+            WzVectorProperty headPos = (WzVectorProperty)this[HeadPropertyName];
+            if (headPos != null)
+                return new PointF(headPos.X.Value, headPos.Y.Value);
+
+            return new PointF(0, 0);
+        }
+
+        /// <summary>
+        /// Gets the 'head' position of the Canvas
+        /// If not available, it defaults to xy of 0, 0
+        /// </summary>
+        /// <returns></returns>
+        public PointF GetCanvasLtPosition()
+        {
+            WzVectorProperty headPos = (WzVectorProperty)this[LtPropertyName];
+            if (headPos != null)
+                return new PointF(headPos.X.Value, headPos.Y.Value);
 
             return new PointF(0, 0);
         }

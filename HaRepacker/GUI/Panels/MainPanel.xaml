@@ -113,9 +113,6 @@
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button_nextSearch">
                             <EasingColorKeyFrame KeyTime="0" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="cartesianPlane_checkBox">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
                         <ObjectAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background)" Storyboard.TargetName="grid">
                             <DiscreteObjectKeyFrame KeyTime="0">
                                 <DiscreteObjectKeyFrame.Value>
@@ -283,35 +280,6 @@
                         <localSubPanels:ImageRenderViewer x:Name="canvasPropBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
 
                         </localSubPanels:ImageRenderViewer>
-
-                        <Grid x:Name="grid_planVisibility">
-                            <Grid x:Name="cartesianPlaneX" Height="2" Background="Gray" Visibility="Collapsed">
-                                <Grid Background="White" Height="1"/>
-                            </Grid>
-                            <Grid x:Name="cartesianPlaneY" Width="2" Background="Gray" Visibility="Collapsed">
-                                <Grid Background="White" Width="1"/>
-                            </Grid>
-                        </Grid>
-
-                        <!-- plane UI. Put this above the image -->
-                        <!-- Not done yet -->
-                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="20"
-                                        Visibility="Collapsed">
-                            <CheckBox x:Name="cartesianPlane_checkBox" Content="Plane" 
-                                      Checked="cartesianPlane_checkBox_CheckUnchecked" Unchecked="cartesianPlane_checkBox_CheckUnchecked"/>
-                            <ComboBox x:Name="planePosition_comboBox" Width="100" SelectedIndex="0" 
-                                          SelectionChanged="planePosition_comboBox_SelectionChanged">
-                                <ComboBoxItem Content="Center" Tag="Center"/>
-                                <ComboBoxItem Content="Top" Tag="Top"/>
-                                <ComboBoxItem Content="Bottom" Tag="Bottom"/>
-                                <ComboBoxItem Content="Left" Tag="Left"/>
-                                <ComboBoxItem Content="Right" Tag="Right"/>
-                                <ComboBoxItem Content="Top-Left" Tag="Top-Left"/>
-                                <ComboBoxItem Content="Top-Right" Tag="Top-Right"/>
-                                <ComboBoxItem Content="Bottom-Left" Tag="Bottom-Left"/>
-                                <ComboBoxItem Content="Bottom-Right" Tag="Bottom-Right"/>
-                            </ComboBox>
-                        </StackPanel>
                     </Grid>
 
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right"

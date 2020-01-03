@@ -67,19 +67,6 @@ namespace HaRepacker.GUI.Panels
             textPropBox.Visibility = Visibility.Collapsed;
             //nameBox.Visibility = Visibility.Collapsed;
 
-            bool planeEnable = Program.ConfigurationManager.UserSettings.Plane;
-            cartesianPlane_checkBox.IsChecked = planeEnable;
-            grid_planVisibility.Visibility = planeEnable ? Visibility.Visible : Visibility.Collapsed;
-
-            foreach (ComboBoxItem comboboxItem in planePosition_comboBox.Items)
-            {
-                if (Program.ConfigurationManager.UserSettings.PlanePosition == comboboxItem.Tag as string)
-                {
-                    planePosition_comboBox.SelectedItem = comboboxItem;
-                    break;
-                }
-            }
-
             // Storyboard
             System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
             sbb.Completed += Storyboard_Find_FadeIn_Completed;
@@ -586,131 +573,7 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
-        #region X Y Center Plane
-        /// <summary>
-        /// Show cartesian plane Checked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void cartesianPlane_checkBox_CheckUnchecked(object sender, RoutedEventArgs e)
-        {
-            if (isLoading || cartesianPlane_checkBox == null)
-                return;
-
-            bool enable = cartesianPlane_checkBox.IsChecked == true;
-
-            Program.ConfigurationManager.UserSettings.Plane = enable;
-
-            grid_planVisibility.Visibility = enable ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        /// <summary>
-        /// Plane alignment
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void planePosition_comboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (isLoading || planePosition_comboBox.SelectedItem == null)
-                return;
-
-            Program.ConfigurationManager.UserSettings.PlanePosition = ((ComboBoxItem)planePosition_comboBox.SelectedItem).Tag as string;
-            //   planePosition();
-            UpdateCartesianPlanePosition(new System.Drawing.PointF());
-        }
-
-        private void UpdateCartesianPlanePosition(System.Drawing.PointF vectorSelected)
-        {
-            if (vectorSelected == null || isLoading || cartesianPlaneX == null || cartesianPlaneY == null)
-                return;
-
-            double xCenter = Grid_ImageRender.ActualWidth / 2d;
-            double yCenter = Grid_ImageRender.ActualWidth / 2d;
-            double imageWidth = canvasPropBox.ActualWidth;
-            double imageHeight = canvasPropBox.ActualHeight;
-
-            canvasPropBox.Margin = new Thickness(imageWidth, imageHeight, 0, 0);
-
-            switch (Program.ConfigurationManager.UserSettings.PlanePosition)
-            {
-                case "Top":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
-                    break;
-                case "Bottom":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
-                    break;
-                case "Right":
-                    canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
-                    break;
-                case "Left":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
-                    break;
-                case "Top-Left":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
-                    break;
-                case "Top-Right":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Top;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Top;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
-                    break;
-                case "Bottom-Left":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Left;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Left;
-                    break;
-                case "Bottom-Right":
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Bottom;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Right;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Bottom;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Right;
-                    break;
-                case "Center":
-                default:
-                    //canvasPropBox.VerticalAlignment = VerticalAlignment.Center;
-                    //canvasPropBox.HorizontalAlignment = HorizontalAlignment.Center;
-
-                    cartesianPlaneX.VerticalAlignment = VerticalAlignment.Center;
-                    cartesianPlaneY.HorizontalAlignment = HorizontalAlignment.Center;
-                    break;
-            }
-
-            canvasPropBox.Margin = new Thickness(
-                vectorOriginSelected.X,  // Left
-                vectorOriginSelected.Y,  // Top
-                0,  // Right
-                0);
-        }
-        #endregion
-
         #region Animate
-        private System.Drawing.PointF vectorOriginSelected;
-        private System.Drawing.PointF vectorHeadSelected;
-        private System.Drawing.PointF vectorltSelected;
         /// <summary>
         /// On button click for animating canvas
         /// </summary>
@@ -1390,8 +1253,6 @@ namespace HaRepacker.GUI.Panels
                 isSelectingWzMapFieldLimit = false;
             }
 
-            vectorOriginSelected = new System.Drawing.PointF(0, 0);
-
             // Canvas animation
             if (DataTree.SelectedNodes.Count <= 1)
                 button_animateSelectedCanvas.Visibility = Visibility.Collapsed; // set invisible regardless if none of the nodes are selected.
@@ -1549,10 +1410,6 @@ namespace HaRepacker.GUI.Panels
         {
             if (animationFrame != null)
             {
-                vectorOriginSelected = animationFrame.origin;
-                vectorHeadSelected = animationFrame.head;
-                vectorltSelected = animationFrame.lt;
-
                 // Set XY point to canvas xaml
                 canvasPropBox.CanvasVectorOrigin = animationFrame.origin;
                 canvasPropBox.CanvasVectorHead = animationFrame.head;
@@ -1567,10 +1424,6 @@ namespace HaRepacker.GUI.Panels
                 PointF originVector = canvas.GetCanvasOriginPosition();
                 PointF headVector = canvas.GetCanvasHeadPosition();
                 PointF ltVector = canvas.GetCanvasLtPosition();
-
-                vectorOriginSelected = originVector;
-                vectorHeadSelected = headVector;
-                vectorltSelected = ltVector;
 
                 // Set XY point to canvas xaml
                 canvasPropBox.CanvasVectorOrigin = originVector;

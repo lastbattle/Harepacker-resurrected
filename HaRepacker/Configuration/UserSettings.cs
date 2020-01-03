@@ -58,9 +58,6 @@ namespace HaRepacker.Configuration
         [JsonProperty(PropertyName = "DelayNextLoop")]
         public int DelayNextLoop = 60;
 
-        [JsonProperty(PropertyName = "Plane")]
-        public bool Plane = true;
-
         [JsonProperty(PropertyName = "PlanePosition")]
         public string PlanePosition = "Center";
 
