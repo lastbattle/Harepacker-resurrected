@@ -277,7 +277,9 @@
 
 
                     <Grid Grid.Row="0" x:Name="Grid_ImageRender" Margin="10">
-                        <localSubPanels:ImageRenderViewer x:Name="canvasPropBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <localSubPanels:ImageRenderViewer x:Name="canvasPropBox"
+                                                          HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                          Visibility="Collapsed">
 
                         </localSubPanels:ImageRenderViewer>
                     </Grid>

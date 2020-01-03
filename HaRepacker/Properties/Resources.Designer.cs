@@ -259,6 +259,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This is only available under the x86 version of HaRepacker, please get the alternative version..
+        /// </summary>
+        public static string ExecutingAssemblyError {
+            get {
+                return ResourceManager.GetString("ExecutingAssemblyError", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap expand {

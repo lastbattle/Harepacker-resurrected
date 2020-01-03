@@ -26,6 +26,7 @@ using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
 using static HaRepacker.Configuration.UserSettings;
+using System.Reflection;
 
 namespace HaRepacker.GUI
 {
@@ -105,12 +106,15 @@ namespace HaRepacker.GUI
                     {
                         try
                         {
-                            NamedPipeClientStream clientPipe = new NamedPipeClientStream(".", Program.pipeName, PipeDirection.Out);
-                            clientPipe.Connect(0);
-                            StreamWriter sw = new StreamWriter(clientPipe);
-                            sw.WriteLine(wzToLoad);
-                            clientPipe.WaitForPipeDrain();
-                            sw.Close();
+                            using (NamedPipeClientStream clientPipe = new NamedPipeClientStream(".", Program.pipeName, PipeDirection.Out))
+                            {
+                                clientPipe.Connect(0);
+                                using (StreamWriter sw = new StreamWriter(clientPipe))
+                                {
+                                    sw.WriteLine(wzToLoad);
+                                }
+                                clientPipe.WaitForPipeDrain();
+                            }
                             Environment.Exit(0);
                         }
                         catch (TimeoutException)
@@ -1215,11 +1219,21 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void toolStripMenuItem_WzEncryption_Click(object sender, EventArgs e)
         {
-            ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-            bool opened = form.OpenZLZDllFile();
+            AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
+            //similarly to find process architecture  
+            var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
 
-            if (opened)
-                form.Show();
+            if (assemblyArchitecture == ProcessorArchitecture.X86)
+            {
+                ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
+                bool opened = form.OpenZLZDllFile();
+
+                if (opened)
+                    form.Show();
+            } else
+            {
+                MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
+            }
         }
         #endregion
 

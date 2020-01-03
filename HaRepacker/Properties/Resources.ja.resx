@@ -375,4 +375,7 @@
   <data name="Subpanel_Loading" xml:space="preserve">
     <value>読み込み中</value>
   </data>
+  <data name="ExecutingAssemblyError" xml:space="preserve">
+    <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>
+  </data>
 </root>
