@@ -59,8 +59,8 @@
 
         <Grid Grid.Row="0">
             <!-- Image and borders-->
-            <Grid Width="{Binding ImageWidth}" 
-                  Height="{Binding ImageHeight}" 
+            <Grid Width="{Binding ImageWidth, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
+                  Height="{Binding ImageHeight, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                 VerticalAlignment="Top" HorizontalAlignment="Left" Margin="80,50,0,0">
 
                 <Border  BorderBrush="Red" BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -83,7 +83,7 @@
                         -->
                         <Grid x:Name="gridCrossHair" 
                               Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                              HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                              HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"  >
 
                             <!-- Grid to compensate for the crosshair length-->
@@ -96,9 +96,9 @@
                         </Grid>
 
                         <!-- Grid for head crosshair-->
-                        <Grid x:Name="gridHeadOriginCrossHair" 
+                        <Grid x:Name="gridHeadCrossHair" 
                               Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                              HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                              HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorHead, Converter={StaticResource vectorOriginConverter}}"  >
 
                             <!-- Grid to compensate for the crosshair length-->
@@ -146,7 +146,7 @@
                 <!-- 'origin' -->
                 <StackPanel Orientation="Horizontal"
                             Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
-                    <TextBlock Text="origin " Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
+                    <TextBlock Text="Origin " Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
                     <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"/>
                 </StackPanel>
 

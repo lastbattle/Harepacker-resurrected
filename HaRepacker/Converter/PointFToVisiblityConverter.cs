@@ -27,10 +27,10 @@ namespace HaRepacker.Converter
 		{
 			PointF point = (PointF)value;
 
-			if (point.X != 0 && point.Y != 0)
-				return Visibility.Visible;
+			if (point.X == 0 && point.Y == 0)
+				return Visibility.Collapsed;
 
-			return Visibility.Collapsed;
+			return Visibility.Visible;
 		}
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)

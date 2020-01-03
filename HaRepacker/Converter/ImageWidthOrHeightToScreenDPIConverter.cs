@@ -24,7 +24,7 @@ namespace HaRepacker.Converter
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
 			double widthOrHeight = (double)value;
-			double realWidthOrHeightToDisplay = widthOrHeight / ScreenDPI.GetScreenScaleFactor();
+			double realWidthOrHeightToDisplay = widthOrHeight * ScreenDPI.GetScreenScaleFactor();
 
 			return realWidthOrHeightToDisplay;
 		}
@@ -32,7 +32,7 @@ namespace HaRepacker.Converter
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
 			double value_ = (double)value;
-			double imageWidthOrHeight = value_ *  ScreenDPI.GetScreenScaleFactor();
+			double imageWidthOrHeight = value_ /  ScreenDPI.GetScreenScaleFactor();
 
 			return imageWidthOrHeight;
 		}
