@@ -285,7 +285,7 @@
                     </Grid>
 
                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right"
-                                Margin="10">
+                                Margin="10,10,20,10">
                         <Button Height="30" Width="100" Content="Animate (F5)" BorderBrush="#FFCBCBCB" x:Name="button_animateSelectedCanvas" 
                                 Click="button_animateSelectedCanvas_Click_1"/>
                         <Button Height="30" Width="100" Content="Change Image" BorderBrush="#FFCBCBCB" x:Name="changeImageButton"
