@@ -193,7 +193,7 @@ namespace HaCreator.Wz
 
         public void ExtractBackgroundSets()
         {
-            WzDirectory bgParent = (WzDirectory)this["map001"]["Back"];
+            WzDirectory bgParent = (WzDirectory)this["map"]["Back"];
             foreach (WzImage bgset in bgParent.WzImages)
                 Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
         }

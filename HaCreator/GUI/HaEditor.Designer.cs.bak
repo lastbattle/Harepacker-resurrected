@@ -106,7 +106,7 @@
             dockPaneStripToolWindowGradient1.InactiveTabGradient = tabGradient7;
             dockPaneStripSkin1.ToolWindowGradient = dockPaneStripToolWindowGradient1;
             this.dockPanel.TabIndex = 4;
-            //this.dockPanel.Theme = this.vS2012LightTheme;
+            this.dockPanel.Theme = this.vS2012LightTheme;
             // 
             // panel1
             // 

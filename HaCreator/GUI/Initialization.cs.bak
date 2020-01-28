@@ -47,9 +47,6 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
-#if DEBUG
-            wzPath = @"G:\Games\Meadow316";
-#endif
             if (wzPath == "Select Maple Folder")
             {
                 MessageBox.Show("Please select the maple folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -138,9 +135,6 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
-                textBox2.Text = "Initializing Map001.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("map001");
                 Program.WzManager.ExtractBackgroundSets();
                 textBox2.Text = "Initializing UI.wz...";
                 Application.DoEvents();

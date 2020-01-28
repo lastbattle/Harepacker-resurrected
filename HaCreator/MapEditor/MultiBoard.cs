@@ -11,19 +11,25 @@
 // #define FPS_TEST
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Windows.Forms;
-using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Content;
-using Microsoft.Xna.Framework.Graphics;
-using MapleLib.WzLib.WzStructure.Data;
-using System.Threading;
+using System.ComponentModel;
+using System.Drawing;
 using System.IO;
-using HaCreator.MapEditor.Text;
+using System.Threading;
+using System.Windows.Forms;
 using HaCreator.Collections;
+using HaCreator.GUI;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Text;
+using HaRepackerLib;
+using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Color = Microsoft.Xna.Framework.Color;
+using Point = Microsoft.Xna.Framework.Point;
+using Rectangle = Microsoft.Xna.Framework.Rectangle;
+using SpriteBatch = Microsoft.Xna.Framework.Graphics.SpriteBatch;
 
 namespace HaCreator.MapEditor
 {
@@ -31,9 +37,9 @@ namespace HaCreator.MapEditor
     {
         private bool deviceReady = false;
         private GraphicsDevice DxDevice;
-        private SpriteBatch sprite;
+        private Microsoft.Xna.Framework.Graphics.SpriteBatch sprite;
         private PresentationParameters pParams = new PresentationParameters();
-        private Texture2D pixel;
+        private Microsoft.Xna.Framework.Graphics.Texture2D pixel;
         private List<Board> boards = new List<Board>();
         private Board selectedBoard = null;
         private FontEngine fontEngine;
@@ -92,8 +98,8 @@ namespace HaCreator.MapEditor
             Dictionary<Action, int> clientList = new Dictionary<Action, int>();
             clientList.Add(delegate
             {
-                if (BackupCheck != null)
-                    BackupCheck.Invoke();
+                //if (BackupCheck != null)
+                //    BackupCheck.Invoke();
             }, 1000);
             scheduler = new Scheduler(clientList);
         }
@@ -111,11 +117,12 @@ namespace HaCreator.MapEditor
             }
         }
 
-        public static GraphicsDevice CreateGraphicsDevice(PresentationParameters pParams)
+        public static Microsoft.Xna.Framework.Graphics.GraphicsDevice CreateGraphicsDevice(PresentationParameters pParams)
         {
+            Microsoft.Xna.Framework.Graphics.GraphicsDevice result;
             try
             {
-                return new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.HiDef, pParams);
+                result =  new Microsoft.Xna.Framework.Graphics.GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.HiDef, pParams);
             }
             catch (Exception e)
             {
@@ -124,6 +131,7 @@ namespace HaCreator.MapEditor
                 // This code will never be reached, but VS still requires this path to end
                 throw;
             }
+            return result;
         }
 
         private void PrepareDevice()
@@ -135,7 +143,7 @@ namespace HaCreator.MapEditor
             pParams.DeviceWindowHandle = dxHandle;
             pParams.IsFullScreen = false;
             //pParams.PresentationInterval = PresentInterval.Immediate;
-            DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
+            DxDevice = CreateGraphicsDevice(pParams);
             fontEngine = new FontEngine(UserSettings.FontName, UserSettings.FontStyle, UserSettings.FontSize, DxDevice);
             sprite = new SpriteBatch(DxDevice);
         }
@@ -155,14 +163,14 @@ namespace HaCreator.MapEditor
                 BoardRemoved.Invoke(board, null);
         }
 
-        private Texture2D CreatePixel()
+        private Microsoft.Xna.Framework.Graphics.Texture2D CreatePixel()
         {
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
             return BoardItem.TextureFromBitmap(DxDevice, bmp);
         }
 
-        public Board CreateBoard(Point mapSize, Point centerPoint, int layers, ContextMenuStrip menu)
+        public Board CreateBoard(Microsoft.Xna.Framework.Point mapSize, Point centerPoint, int layers, ContextMenuStrip menu)
         {
             lock (this)
             {
@@ -230,7 +238,7 @@ namespace HaCreator.MapEditor
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
-            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
+            sprite.Begin(SpriteSortMode.Immediate, Microsoft.Xna.Framework.Graphics.BlendState.NonPremultiplied);
 #endif
             lock (this)
             {
