@@ -79,6 +79,8 @@ namespace MapleLib.WzLib.WzStructure
 
         public static bool GetBool(WzImageProperty source)
         {
+            if (source == null) 
+                return false;
             return source.GetInt() == 1;
         }
 

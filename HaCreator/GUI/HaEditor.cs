@@ -35,6 +35,9 @@ namespace HaCreator.GUI
 
         public HaEditor()
         {
+            //if you get an error at this line unironically just rename the dll in 
+            //..\packages\WeifenLuo.WinFormsUI.Docking.2.1.0\lib\net20
+            //ie remove the dots -> WeifenLuoWinFormsUIDocking.dll
             InitializeComponent();
             InitializeComponentCustom();
             RedockControls();

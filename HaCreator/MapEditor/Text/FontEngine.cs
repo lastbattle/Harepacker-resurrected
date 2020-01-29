@@ -92,6 +92,11 @@ namespace HaCreator.MapEditor.Text
             int xOffs = 0;
             foreach (char c in str.ToCharArray())
             {
+                if (c > 256)
+                {
+                    //hack to stop attempting to draw languages other than english
+                    return;
+                }
                 int w = characters[c].w;
                 int h = characters[c].h;
                 sprite.Draw(characters[c].texture, new Microsoft.Xna.Framework.Rectangle(position.X + xOffs, position.Y, w, h), color);
