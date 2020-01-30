@@ -25,7 +25,7 @@ namespace HaCreator
     {
         public static WzFileManager WzManager;
         public static WzInformationManager InfoManager;
-        //public static WzSettingsManager SettingsManager;
+        public static WzSettingsManager SettingsManager;
         public const string Version = "2.2.0";
         public static bool AbortThreads = false;
         public static bool Restarting;
@@ -57,11 +57,9 @@ namespace HaCreator
 
             Properties.Resources.Culture = CultureInfo.CurrentCulture;
             InfoManager = new WzInformationManager();
-           /* SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
-            if (SettingsManager.Load())
-            {
-                // do something
-            }*/
+            SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
+            SettingsManager.Load();
+           
             MultiBoard.RecalculateSettings();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -74,11 +72,11 @@ namespace HaCreator
             // Shutdown
             if (initForm.editor != null)
                 initForm.editor.hcsm.backupMan.ClearBackups();
-           /* SettingsManager.Save();
+            SettingsManager.Save();
             if (Restarting)
             {
                 Application.Restart();
-            }*/
+            }
         }
         private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {

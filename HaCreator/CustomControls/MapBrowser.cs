@@ -120,7 +120,15 @@ namespace HaCreator.CustomControls
             {
                 string mapid = ((string)mapNamesBox.SelectedItem).Substring(0, 9);
                 string mapcat = "Map" + mapid.Substring(0, 1);
-                WzImage mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
+                WzImage mapImage = null;
+                if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much
+                {
+                    mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid + ".img"];
+                }
+                else
+                {
+                    mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
+                }
                 if (mapImage == null)
                 {
                     linkLabel.Visible = false;

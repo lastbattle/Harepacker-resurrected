@@ -47,9 +47,7 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
-#if DEBUG
-            wzPath = @"G:\Games\Meadow316";
-#endif
+
             if (wzPath == "Select Maple Folder")
             {
                 MessageBox.Show("Please select the maple folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -60,8 +58,8 @@ namespace HaCreator.GUI
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
             }
             WzMapleVersion fileVersion;
-            short version = -1;
-            if (versionBox.SelectedIndex == 3)
+           /* short version = -1;
+            if (versionBox.SelectedIndex != 3)
             {
                 string testFile = File.Exists(Path.Combine(wzPath, "Data.wz")) ? "Data.wz" : "Item.wz";
                 try
@@ -75,9 +73,9 @@ namespace HaCreator.GUI
                 }
             }
             else
-            {
+            {*/
                 fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            }
+          //  }
 
             InitializeWzFiles(wzPath, fileVersion);
 
@@ -91,7 +89,7 @@ namespace HaCreator.GUI
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
-            if (Program.WzManager.HasDataFile)
+            if (Program.WzManager.HasDataFile)//Always false
             {
                 textBox2.Text = "Initializing Data.wz...";
                 Application.DoEvents();
@@ -114,7 +112,6 @@ namespace HaCreator.GUI
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("string");
                 Program.WzManager.ExtractMaps();
-                //Program.WzManager.ExtractItems();
                 textBox2.Text = "Initializing Mob.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("mob");
@@ -139,9 +136,29 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
                 textBox2.Text = "Initializing Map001.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("map001");
-                Program.WzManager.ExtractBackgroundSets();
+                
+                if (Program.WzManager.LoadWzFile("map001"))
+                {
+                    Application.DoEvents();
+                    Program.WzManager.ExtractBackgroundSets();
+                    Program.WzManager.ExtractObjSets();
+                }
+                textBox2.Text = "Initializing Map002.wz...";
+
+                if (Program.WzManager.LoadWzFile("map002"))
+                {
+                    Application.DoEvents();
+                    Program.WzManager.ExtractBackgroundSets();
+                    Program.WzManager.ExtractObjSets();
+                }
+                textBox2.Text = "Initializing Map2.wz...";
+               
+                if (Program.WzManager.LoadWzFile("map2"))
+                {
+                    Application.DoEvents();
+                    Program.WzManager.ExtractBackgroundSets();
+                    Program.WzManager.ExtractObjSets();
+                }
                 textBox2.Text = "Initializing UI.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("ui");

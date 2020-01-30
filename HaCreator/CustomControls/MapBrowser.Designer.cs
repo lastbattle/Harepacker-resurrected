@@ -42,7 +42,7 @@
             this.mapNamesBox.FormattingEnabled = true;
             this.mapNamesBox.Location = new System.Drawing.Point(0, 3);
             this.mapNamesBox.Name = "mapNamesBox";
-            this.mapNamesBox.Size = new System.Drawing.Size(253, 199);
+            this.mapNamesBox.Size = new System.Drawing.Size(253, 399);
             this.mapNamesBox.TabIndex = 19;
             this.mapNamesBox.SelectedIndexChanged += new System.EventHandler(this.mapNamesBox_SelectedIndexChanged);
             // 

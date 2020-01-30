@@ -30,7 +30,7 @@ namespace HaCreator.GUI.InstanceEditor
         {
             InitializeComponent();
             int portalTypes = Program.InfoManager.PortalTypeById.Count;
-            ArrayList portals = new ArrayList();//object[portalTypes];
+            ArrayList portals = new ArrayList();
             for (int i = 0; i < portalTypes; i++)
             {
                 try

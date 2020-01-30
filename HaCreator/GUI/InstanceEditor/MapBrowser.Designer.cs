@@ -38,7 +38,7 @@
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             this.loadButton.Enabled = false;
-            this.loadButton.Location = new System.Drawing.Point(65, 259);
+            this.loadButton.Location = new System.Drawing.Point(65, 434);
             this.loadButton.Name = "loadButton";
             this.loadButton.Size = new System.Drawing.Size(200, 30);
             this.loadButton.TabIndex = 2;
@@ -48,7 +48,7 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(285, 259);
+            this.cancelButton.Location = new System.Drawing.Point(271, 434);
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.Size = new System.Drawing.Size(200, 30);
             this.cancelButton.TabIndex = 3;
@@ -66,7 +66,7 @@
             // 
             this.mapBrowserCtrl.Location = new System.Drawing.Point(12, 38);
             this.mapBrowserCtrl.Name = "mapBrowserCtrl";
-            this.mapBrowserCtrl.Size = new System.Drawing.Size(533, 208);
+            this.mapBrowserCtrl.Size = new System.Drawing.Size(533, 390);
             this.mapBrowserCtrl.TabIndex = 1;
             this.mapBrowserCtrl.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowserCtrl_SelectionChanged);
             // 
@@ -74,7 +74,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(563, 301);
+            this.ClientSize = new System.Drawing.Size(563, 476);
             this.Controls.Add(this.mapBrowserCtrl);
             this.Controls.Add(this.searchBox);
             this.Controls.Add(this.cancelButton);
