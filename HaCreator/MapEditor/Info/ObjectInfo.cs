@@ -75,10 +75,13 @@ namespace HaCreator.MapEditor.Info
             }
             else if (prop is WzSubProperty)
             {
-                foreach (WzConvexProperty offsetSet in prop.WzProperties)
+                try
                 {
-                    result.Add(ParsePropToOffsetList(offsetSet));
-                }
+                    foreach (WzConvexProperty offsetSet in prop.WzProperties)
+                    {
+                        result.Add(ParsePropToOffsetList(offsetSet));
+                    }
+                }catch(InvalidCastException exc) {  }
             }
             else
             {

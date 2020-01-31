@@ -54,21 +54,25 @@ namespace HaCreator.Wz
         {
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                string cat = "Map" + image.Name.Substring(0, 1);
-                WzDirectory mapDir = (WzDirectory)Program.WzManager["map"]["Map"];
-                WzDirectory catDir = (WzDirectory)mapDir[cat];
-                if (catDir == null)
+                try
                 {
-                    catDir = new WzDirectory(cat);
-                    mapDir.AddDirectory(catDir);
+                    string cat = "Map" + image.Name.Substring(0, 1);
+                    WzDirectory mapDir = (WzDirectory)Program.WzManager["map"]["Map"];
+                    WzDirectory catDir = (WzDirectory)mapDir[cat];
+                    if (catDir == null)
+                    {
+                        catDir = new WzDirectory(cat);
+                        mapDir.AddDirectory(catDir);
+                    }
+                    WzImage mapImg = (WzImage)catDir[image.Name];
+                    if (mapImg != null)
+                    {
+                        mapImg.Remove();
+                    }
+                    catDir.AddImage(image);
+                    Program.WzManager.SetUpdated("map", image);
                 }
-                WzImage mapImg = (WzImage)catDir[image.Name];
-                if (mapImg != null)
-                {
-                    mapImg.Remove();
-                }
-                catDir.AddImage(image);
-                Program.WzManager.SetUpdated("map", image);
+                catch(NullReferenceException exp) { throw new Exception("Map img must exist in wz file / evil kms hellworld map002 error"); }
             }
             else
             {
