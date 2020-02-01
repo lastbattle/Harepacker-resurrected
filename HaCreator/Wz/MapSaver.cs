@@ -58,6 +58,10 @@ namespace HaCreator.Wz
                 {
                     string cat = "Map" + image.Name.Substring(0, 1);
                     WzDirectory mapDir = (WzDirectory)Program.WzManager["map"]["Map"];
+                    if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much
+                    {
+                        mapDir = (WzDirectory)Program.WzManager["map002"]["Map"];
+                    }
                     WzDirectory catDir = (WzDirectory)mapDir[cat];
                     if (catDir == null)
                     {

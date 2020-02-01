@@ -108,7 +108,7 @@ namespace HaCreator.Wz
 
         public WzDirectory this[string name]
         {
-            get { return (wzDirs.ContainsKey(name.ToLower()) ? wzDirs[name.ToLower()].MainDir : null); }
+            get { return (wzDirs.ContainsKey(name.ToLower()) ? wzDirs[name.ToLower()].MainDir : null); }    //really not very useful to return null in this case
         }
 
         public WzDirectory String

@@ -132,7 +132,8 @@ namespace MapleLib.WzLib.WzStructure.Data
             PORTALTYPE_SCRIPT_HIDDEN = "psh",
             PORTALTYPE_COLLISION_VERTICAL_JUMP = "pcj",
             PORTALTYPE_COLLISION_CUSTOM_IMPACT = "pci",
-            PORTALTYPE_COLLISION_UNKNOWN_PCIG = "pcig";
+            PORTALTYPE_COLLISION_UNKNOWN_PCIG = "pcig",
+            PORTALTYPE_SCRIPT_HIDDEN_UNG = "pshg";
     }
 
     public enum MapType

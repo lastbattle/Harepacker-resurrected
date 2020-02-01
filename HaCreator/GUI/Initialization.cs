@@ -89,7 +89,7 @@ namespace HaCreator.GUI
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
-            if (Program.WzManager.HasDataFile)//Always false
+            if (Program.WzManager.HasDataFile)//currently always false
             {
                 textBox2.Text = "Initializing Data.wz...";
                 Application.DoEvents();
@@ -135,26 +135,26 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
-                textBox2.Text = "Initializing Map001.wz...";
                 
                 if (Program.WzManager.LoadWzFile("map001"))
                 {
+                    textBox2.Text = "Initializing Map001.wz...";
                     Application.DoEvents();
                     Program.WzManager.ExtractBackgroundSets();
                     Program.WzManager.ExtractObjSets();
                 }
-                textBox2.Text = "Initializing Map002.wz...";
 
-                if (Program.WzManager.LoadWzFile("map002"))
+                if (Program.WzManager.LoadWzFile("map002")) //kms now stores main map key here
                 {
+                    textBox2.Text = "Initializing Map002.wz...";
                     Application.DoEvents();
                     Program.WzManager.ExtractBackgroundSets();
                     Program.WzManager.ExtractObjSets();
                 }
-                textBox2.Text = "Initializing Map2.wz...";
-               
+                
                 if (Program.WzManager.LoadWzFile("map2"))
                 {
+                    textBox2.Text = "Initializing Map2.wz...";
                     Application.DoEvents();
                     Program.WzManager.ExtractBackgroundSets();
                     Program.WzManager.ExtractObjSets();
