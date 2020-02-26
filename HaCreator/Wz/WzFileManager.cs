@@ -306,7 +306,7 @@ namespace HaCreator.Wz
                 Program.InfoManager.PortalTypeById.Add(portal.Name);
                 PortalInfo.Load(portal);
             }
-            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
             foreach (WzSubProperty portal in gameParent.WzProperties)
             {
                 if (portal.WzProperties[0] is WzSubProperty)
@@ -315,15 +315,33 @@ namespace HaCreator.Wz
                     Bitmap defaultImage = null;
                     foreach (WzSubProperty image in portal.WzProperties)
                     {
-                        WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                        if (portalContinue == null) continue;
-                        Bitmap portalImage = portalContinue["0"].GetBitmap();
+                        //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                        //if (portalContinue == null) continue;
+                        Bitmap portalImage = image["0"].GetBitmap();
                         if (image.Name == "default")
                             defaultImage = portalImage;
                         else
                             images.Add(image.Name, portalImage);
                     }
                     Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                }
+                else if(portal.WzProperties[0] is WzCanvasProperty)
+                {
+                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
+                    Bitmap defaultImage = null;
+                    try
+                    {
+                        foreach (WzCanvasProperty image in portal.WzProperties)
+                        {
+                            //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                            //if (portalContinue == null) continue;
+                            Bitmap portalImage = image.GetBitmap();
+                            defaultImage = portalImage;
+                            images.Add(image.Name, portalImage);
+                        }
+                        Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                    }
+                    catch (InvalidCastException) { continue; } //nexon likes to toss ints in here zType etc
                 }
             }
 

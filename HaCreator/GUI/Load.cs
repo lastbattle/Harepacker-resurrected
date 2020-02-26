@@ -180,7 +180,7 @@ namespace HaCreator.GUI
                 {
                     string mapid = mapBrowser.SelectedItem.Substring(0, 9);
                     string mapcat = "Map" + mapid.Substring(0, 1);
-                    if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much
+                    if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much  
                     {
                         mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid + ".img"];
                     }

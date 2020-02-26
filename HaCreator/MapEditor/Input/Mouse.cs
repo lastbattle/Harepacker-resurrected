@@ -277,9 +277,16 @@ namespace HaCreator.MapEditor.Input
                 if (newInfo.Image == null) 
                     ((MapleExtractableInfo)newInfo).ParseImage();
                 currAddedInfo = newInfo;
+               
                 currAddedObj = newInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - newInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - newInfo.Image.Height / 2, 50, false);
                 Board.BoardItems.Add(currAddedObj, false);
+                
                 BindItem(currAddedObj, new Microsoft.Xna.Framework.Point(newInfo.Origin.X - newInfo.Image.Width / 2, newInfo.Origin.Y - newInfo.Image.Height / 2));
+            /*    if (currAddedInfo.Image.Width == 1 && currAddedInfo.Image.Height == 1)
+                {
+                    //case occurs for things like life/mob objects, //tbd investigate how wzR2 handles
+                    currAddedInfo.Image = global::HaCreator.Properties.Resources.placeholder;
+                }*/
                 state = MouseState.StaticObjectAdding;
             }
         }

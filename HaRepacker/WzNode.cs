@@ -62,7 +62,10 @@ namespace HaRepacker
 
         public void Delete()
         {
-            Remove();
+            try
+            {
+                Remove();
+            }catch(Exception e) { throw new Exception("Cannot remove/replace an inlinked node"); }
             if (Tag is WzImageProperty)
                 ((WzImageProperty)Tag).ParentImage.Changed = true;
             ((WzObject)Tag).Remove();

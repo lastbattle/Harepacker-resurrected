@@ -99,6 +99,10 @@ namespace HaCreator.MapEditor
 
         public static Texture2D TextureFromBitmap(GraphicsDevice device, System.Drawing.Bitmap bitmap)
         {
+            if (bitmap == null)
+            {
+                return null; //todo handle this in a useful way
+            }
             Texture2D texture;
             using (System.IO.MemoryStream s = new System.IO.MemoryStream())
             {

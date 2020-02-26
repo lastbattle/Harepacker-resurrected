@@ -82,6 +82,7 @@ namespace HaCreator.MapEditor
             {
                 foreach (BoardItem item in list)
                 {
+                    
                     if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
                         item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
                 }
