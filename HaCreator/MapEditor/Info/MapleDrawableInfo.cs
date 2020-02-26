@@ -33,7 +33,7 @@ namespace HaCreator.MapEditor.Info
 
         public void CreateTexture(GraphicsDevice device)
         {
-            if (image.Width == 1 && image.Height == 1)
+            if (image!=null && image.Width == 1 && image.Height == 1)
                 texture = BoardItem.TextureFromBitmap(device, global::HaCreator.Properties.Resources.placeholder);
             else
                 texture = BoardItem.TextureFromBitmap(device, image);

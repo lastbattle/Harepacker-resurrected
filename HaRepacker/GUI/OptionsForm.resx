@@ -123,14 +123,10 @@
   </data>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="sortBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 19</value>
-  </data>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
-  <data name="sortBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 12</value>
   </data>
   <data name="sortBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>132, 25</value>
+    <value>96, 17</value>
   </data>
   <data name="sortBox.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -150,14 +146,39 @@
   <data name="&gt;&gt;sortBox.ZOrder" xml:space="preserve">
     <value>14</value>
   </data>
-  <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>-1, 408</value>
+  <data name="loadRelated.Location" type="System.Drawing.Point, System.Drawing">
+    <value>153, 12</value>
   </data>
-  <data name="okButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="loadRelated.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
+    <value>2, 2, 2, 2</value>
+  </data>
+  <data name="loadRelated.Size" type="System.Drawing.Size, System.Drawing">
+    <value>150, 18</value>
+  </data>
+  <data name="loadRelated.TabIndex" type="System.Int32, mscorlib">
+    <value>19</value>
+  </data>
+  <data name="loadRelated.Text" xml:space="preserve">
+    <value>Autoload Grouped Wz</value>
+  </data>
+  <data name="&gt;&gt;loadRelated.Name" xml:space="preserve">
+    <value>loadRelated</value>
+  </data>
+  <data name="&gt;&gt;loadRelated.Type" xml:space="preserve">
+    <value>System.Windows.Forms.CheckBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;loadRelated.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;loadRelated.ZOrder" xml:space="preserve">
+    <value>3</value>
+  </data>
+  <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
+    <value>-1, 253</value>
   </data>
   <data name="okButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>236, 54</value>
+    <value>157, 33</value>
   </data>
   <data name="okButton.TabIndex" type="System.Int32, mscorlib">
     <value>2</value>
@@ -178,13 +199,10 @@
     <value>13</value>
   </data>
   <data name="cancelButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>248, 408</value>
-  </data>
-  <data name="cancelButton.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>165, 253</value>
   </data>
   <data name="cancelButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>236, 54</value>
+    <value>157, 33</value>
   </data>
   <data name="cancelButton.TabIndex" type="System.Int32, mscorlib">
     <value>3</value>
@@ -204,44 +222,14 @@
   <data name="&gt;&gt;cancelButton.ZOrder" xml:space="preserve">
     <value>12</value>
   </data>
-  <data name="indentBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>117, 273</value>
-  </data>
-  <data name="indentBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
-  </data>
-  <data name="indentBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>354, 29</value>
-  </data>
-  <data name="indentBox.TabIndex" type="System.Int32, mscorlib">
-    <value>4</value>
-  </data>
-  <data name="indentBox.Text" xml:space="preserve">
-    <value>0</value>
-  </data>
-  <data name="&gt;&gt;indentBox.Name" xml:space="preserve">
-    <value>indentBox</value>
-  </data>
-  <data name="&gt;&gt;indentBox.Type" xml:space="preserve">
-    <value>HaRepackerLib.Controls.IntegerInput, HaRepackerLib, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
-  </data>
-  <data name="&gt;&gt;indentBox.Parent" xml:space="preserve">
-    <value>$this</value>
-  </data>
-  <data name="&gt;&gt;indentBox.ZOrder" xml:space="preserve">
-    <value>11</value>
-  </data>
   <data name="label1.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="label1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 278</value>
-  </data>
-  <data name="label1.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 0, 4, 0</value>
+    <value>12, 172</value>
   </data>
   <data name="label1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>89, 21</value>
+    <value>68, 13</value>
   </data>
   <data name="label1.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
@@ -259,7 +247,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;label1.ZOrder" xml:space="preserve">
-    <value>10</value>
+    <value>11</value>
   </data>
   <data name="lineBreakBox.Items" xml:space="preserve">
     <value>None</value>
@@ -271,13 +259,10 @@
     <value>Unix</value>
   </data>
   <data name="lineBreakBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>117, 315</value>
-  </data>
-  <data name="lineBreakBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>78, 195</value>
   </data>
   <data name="lineBreakBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>356, 29</value>
+    <value>239, 21</value>
   </data>
   <data name="lineBreakBox.TabIndex" type="System.Int32, mscorlib">
     <value>6</value>
@@ -292,19 +277,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;lineBreakBox.ZOrder" xml:space="preserve">
-    <value>9</value>
+    <value>10</value>
   </data>
   <data name="label2.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="label2.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 320</value>
-  </data>
-  <data name="label2.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 0, 4, 0</value>
+    <value>12, 198</value>
   </data>
   <data name="label2.Size" type="System.Drawing.Size, System.Drawing">
-    <value>82, 21</value>
+    <value>60, 13</value>
   </data>
   <data name="label2.TabIndex" type="System.Int32, mscorlib">
     <value>7</value>
@@ -322,19 +304,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;label2.ZOrder" xml:space="preserve">
-    <value>8</value>
+    <value>9</value>
   </data>
   <data name="apngIncompEnable.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="apngIncompEnable.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 57</value>
-  </data>
-  <data name="apngIncompEnable.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 35</value>
   </data>
   <data name="apngIncompEnable.Size" type="System.Drawing.Size, System.Drawing">
-    <value>260, 25</value>
+    <value>188, 17</value>
   </data>
   <data name="apngIncompEnable.TabIndex" type="System.Int32, mscorlib">
     <value>8</value>
@@ -352,19 +331,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;apngIncompEnable.ZOrder" xml:space="preserve">
-    <value>7</value>
+    <value>8</value>
   </data>
   <data name="defXmlFolderEnable.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="defXmlFolderEnable.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 194</value>
-  </data>
-  <data name="defXmlFolderEnable.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 120</value>
   </data>
   <data name="defXmlFolderEnable.Size" type="System.Drawing.Size, System.Drawing">
-    <value>172, 25</value>
+    <value>127, 17</value>
   </data>
   <data name="defXmlFolderEnable.TabIndex" type="System.Int32, mscorlib">
     <value>9</value>
@@ -382,19 +358,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;defXmlFolderEnable.ZOrder" xml:space="preserve">
-    <value>6</value>
+    <value>7</value>
   </data>
   <data name="defXmlFolderBox.Enabled" type="System.Boolean, mscorlib">
     <value>False</value>
   </data>
   <data name="defXmlFolderBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 231</value>
-  </data>
-  <data name="defXmlFolderBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 143</value>
   </data>
   <data name="defXmlFolderBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>399, 29</value>
+    <value>267, 22</value>
   </data>
   <data name="defXmlFolderBox.TabIndex" type="System.Int32, mscorlib">
     <value>10</value>
@@ -409,19 +382,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;defXmlFolderBox.ZOrder" xml:space="preserve">
-    <value>5</value>
+    <value>6</value>
   </data>
   <data name="browse.Enabled" type="System.Boolean, mscorlib">
     <value>False</value>
   </data>
   <data name="browse.Location" type="System.Drawing.Point, System.Drawing">
-    <value>425, 231</value>
-  </data>
-  <data name="browse.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>283, 143</value>
   </data>
   <data name="browse.Size" type="System.Drawing.Size, System.Drawing">
-    <value>46, 30</value>
+    <value>31, 19</value>
   </data>
   <data name="browse.TabIndex" type="System.Int32, mscorlib">
     <value>11</value>
@@ -439,19 +409,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;browse.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="autoAssociateBox.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="autoAssociateBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 93</value>
-  </data>
-  <data name="autoAssociateBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 58</value>
   </data>
   <data name="autoAssociateBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>379, 25</value>
+    <value>279, 17</value>
   </data>
   <data name="autoAssociateBox.TabIndex" type="System.Int32, mscorlib">
     <value>12</value>
@@ -469,19 +436,16 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;autoAssociateBox.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="autoUpdate.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="autoUpdate.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 131</value>
-  </data>
-  <data name="autoUpdate.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>12, 81</value>
   </data>
   <data name="autoUpdate.Size" type="System.Drawing.Size, System.Drawing">
-    <value>450, 25</value>
+    <value>335, 17</value>
   </data>
   <data name="autoUpdate.TabIndex" type="System.Int32, mscorlib">
     <value>13</value>
@@ -511,13 +475,10 @@
     <value>White</value>
   </data>
   <data name="themeColor__comboBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>298, 358</value>
-  </data>
-  <data name="themeColor__comboBox.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
+    <value>199, 222</value>
   </data>
   <data name="themeColor__comboBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>175, 29</value>
+    <value>118, 21</value>
   </data>
   <data name="themeColor__comboBox.TabIndex" type="System.Int32, mscorlib">
     <value>18</value>
@@ -541,13 +502,10 @@
     <value>NoControl</value>
   </data>
   <data name="label3.Location" type="System.Drawing.Point, System.Drawing">
-    <value>18, 362</value>
-  </data>
-  <data name="label3.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 0, 4, 0</value>
+    <value>12, 224</value>
   </data>
   <data name="label3.Size" type="System.Drawing.Size, System.Drawing">
-    <value>102, 21</value>
+    <value>75, 13</value>
   </data>
   <data name="label3.TabIndex" type="System.Int32, mscorlib">
     <value>17</value>
@@ -571,16 +529,13 @@
     <value>True</value>
   </metadata>
   <data name="$this.AutoScaleDimensions" type="System.Drawing.SizeF, System.Drawing">
-    <value>9, 21</value>
+    <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>484, 463</value>
+    <value>323, 287</value>
   </data>
   <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>
-  </data>
-  <data name="$this.Margin" type="System.Windows.Forms.Padding, System.Windows.Forms">
-    <value>4, 5, 4, 5</value>
   </data>
   <data name="$this.StartPosition" type="System.Windows.Forms.FormStartPosition, System.Windows.Forms">
     <value>CenterParent</value>

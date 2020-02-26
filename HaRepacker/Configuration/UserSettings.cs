@@ -34,7 +34,7 @@ namespace HaRepacker.Configuration
         public bool AutoAssociate = true;
 
         [JsonProperty(PropertyName = "AutoUpdate")]
-        public bool AutoUpdate = true;
+        public bool AutoUpdate = false;
 
         [JsonProperty(PropertyName = "Sort")]
         public bool Sort = true;
@@ -72,5 +72,8 @@ namespace HaRepacker.Configuration
 
         [JsonProperty(PropertyName = "ImageZoomLevel")]
         public double ImageZoomLevel = 3.0f;
+
+        [JsonProperty(PropertyName = "AutoloadRelatedWzFiles")]
+        public bool AutoloadRelatedWzFiles = false;
     }
 }

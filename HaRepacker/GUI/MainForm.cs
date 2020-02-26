@@ -527,7 +527,7 @@ namespace HaRepacker.GUI
                     {
                         wzfilePathsToLoad.Add(filePath); // add to list, so we can load it concurrently
 
-                        if (filePathLowerCase.EndsWith("map.wz"))
+                        if (filePathLowerCase.EndsWith("map.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)
                         {
                             string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Map*.wz");
                             foreach (string filePath_Others in otherMapWzFiles)
@@ -539,7 +539,7 @@ namespace HaRepacker.GUI
                                 }
                             }
                         }
-                        else if (filePathLowerCase.EndsWith("mob.wz"))  // Now pre-load the other part of Mob.wz
+                        else if (filePathLowerCase.EndsWith("mob.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)  // Now pre-load the other part of Mob.wz
                         {
                             string[] otherMobWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Mob*.wz");
                             foreach (string filePath_Others in otherMobWzFiles)
@@ -551,7 +551,7 @@ namespace HaRepacker.GUI
                                 }
                             }
                         }
-                        else if (filePathLowerCase.EndsWith("skill.wz"))  // Now pre-load the other part of Skill.wz
+                        else if (filePathLowerCase.EndsWith("skill.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)  // Now pre-load the other part of Skill.wz
                         {
                             string[] otherSkillWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Skill*.wz");
                             foreach (string filePath_Others in otherSkillWzFiles)
@@ -592,7 +592,7 @@ namespace HaRepacker.GUI
                     });
                     while (!loop.IsCompleted)
                     {
-                        Thread.Sleep(500);
+                        Thread.Sleep(100); //?
                     }
 
                     foreach (WzFile wzFile in loadedWzFiles) // add later, once everything is loaded to memory
