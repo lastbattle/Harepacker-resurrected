@@ -104,17 +104,21 @@ namespace HaRepacker
         /// <returns></returns>
         public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, MainPanel panel)
         {
-            FileStream fs = File.Open(path, FileMode.Open);
+            WzImage img;
 
-            WzImage img = new WzImage(Path.GetFileName(path), fs, encVersion);
-            img.ParseImage(true);
-
-            WzNode node = new WzNode(img);
-            panel.DataTree.Nodes.Add(node);
-            if (Program.ConfigurationManager.UserSettings.Sort)
+            using (FileStream fs = File.Open(path, FileMode.Open))
             {
-                SortNodesRecursively(node);
+                img = new WzImage(Path.GetFileName(path), fs, encVersion);
+                img.ParseImage(true);
+
+                WzNode node = new WzNode(img);
+                panel.DataTree.Nodes.Add(node);
+                if (Program.ConfigurationManager.UserSettings.Sort)
+                {
+                    SortNodesRecursively(node);
+                }
             }
+
             return img;
 
         }
