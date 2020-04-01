@@ -22,13 +22,15 @@ namespace HaRepacker.Converter
 	/// </summary>
     public class VectorOriginPointFToMarginConverter : IValueConverter
 	{
+		private float fCrossHairWidthHeight = 10f / 2f;
+
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
 			PointF originValue = (PointF)value;
 
 			// converted
 			// its always -50, as it is 50px wide, as specified in the xaml
-			Thickness margin = new Thickness(originValue.X / ScreenDPI.GetScreenScaleFactor(), originValue.Y / ScreenDPI.GetScreenScaleFactor(), 0, 0); // 20,75
+			Thickness margin = new Thickness((originValue.X) / ScreenDPI.GetScreenScaleFactor(), (originValue.Y - fCrossHairWidthHeight) / ScreenDPI.GetScreenScaleFactor(), 0, 0); // 20,75
 
 
 			return margin;
@@ -39,7 +41,7 @@ namespace HaRepacker.Converter
 			Thickness value_ = (Thickness)value;
 
 			// converted
-			PointF originValue = new PointF((float) (value_.Left * ScreenDPI.GetScreenScaleFactor()), (float) (value_.Top *  ScreenDPI.GetScreenScaleFactor()));
+			PointF originValue = new PointF((float) ((value_.Left) * ScreenDPI.GetScreenScaleFactor()), (float) ((value_.Top + fCrossHairWidthHeight) *  ScreenDPI.GetScreenScaleFactor()));
 			return originValue;
 		}
 	}

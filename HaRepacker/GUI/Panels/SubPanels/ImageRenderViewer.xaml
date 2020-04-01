@@ -509,13 +509,13 @@
 
         <ScrollViewer Grid.Row="0" 
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}">
-            <Grid Height="2000" Width="2000">
+            <Grid Height="2000" Width="2000" Margin="100,50,0,0">
                 <!-- Image and borders-->
                 <Grid Width="{Binding ImageWidth, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                   Height="{Binding ImageHeight, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                 VerticalAlignment="Top" HorizontalAlignment="Left" Margin="80,50,0,0">
 
-                    <Border  BorderBrush="Red" BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Border BorderBrush="Red" BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Border.RenderTransform>
                             <ScaleTransform 
                                 ScaleX="{Binding ElementName=ZoomSlider, Path='Value'}" 
@@ -526,14 +526,14 @@
                             <!-- Source="pack://siteoforigin:,,,/Resources/ladyboss_test_attack2_0.png" -->
                             <!-- Source="{Binding Image}"  -->
                             <Image x:Name="canvasPropBox" 
-                               Source="{Binding Image}"
+                               Source="{Binding Image}" 
                                Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"
                                />
 
                             <!-- Crosshair for vector origin-->
                             <!-- Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"
                         -->
-                            <Grid
+                            <Grid 
                               Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
                               HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"  >
