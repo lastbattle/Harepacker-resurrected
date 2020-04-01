@@ -370,8 +370,6 @@
     <Compile Include="Configuration\ApplicationSettings.cs" />
     <Compile Include="Configuration\UserSettings.cs" />
     <Compile Include="SharpApng.cs" />
-    <Compile Include="Spine\SpriteBatchItem.cs" />
-    <Compile Include="Spine\VertexPositionColorTexture.cs" />
     <Compile Include="TreeViewMS.cs">
       <SubType>Component</SubType>
     </Compile>
