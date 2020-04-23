@@ -609,14 +609,18 @@ namespace HaRepacker.GUI
                 wzKeyBruteforceCompleted = false;
 
 
-                int processorCount = Environment.ProcessorCount / 2; // dont want hyperthread
+                int processorCount = Environment.ProcessorCount * 3; // 8 core = 16 (with ht, smt)
                 List<int> cpuIds = new List<int>();
                 for (int cpuId_ = 0; cpuId_ < processorCount; cpuId_++)
                 {
                     cpuIds.Add(cpuId_);
                 }
 
-                ParallelLoopResult loop = Parallel.ForEach(cpuIds, cpuId =>
+                var parallelOption = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = processorCount,
+                };
+                ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
                 {
                     wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
                 });
@@ -654,16 +658,18 @@ namespace HaRepacker.GUI
                 if (wzKeyBruteforceCompleted)
                     break;
 
-                PacketWriter writer = new PacketWriter(4);
-                writer.WriteInt((int)i);
-
-                bool tryDecrypt = WzTool.TryBruteforcingWzIVKey(dialog.FileName, writer.ToArray());
-               // Debug.WriteLine("{0} = {1}", cpuId, HexTool.ToString(writer.ToArray()));
+                byte[] bytes = new byte[4];
+                unsafe
+                {
+                    fixed (byte* pbytes = &bytes[0])
+                    {
+                        *(int*)pbytes = (int) i;
+                    }
+                }
+                bool tryDecrypt = WzTool.TryBruteforcingWzIVKey(dialog.FileName, bytes);
+                //Debug.WriteLine("{0} = {1}", cpuId, HexTool.ToString(new PacketWriter(bytes).ToArray()));
                 if (tryDecrypt)
                 {
-                    MessageBox.Show("Found the encryption key to the WZ file:\r\n" + HexTool.ToString(writer.ToArray()), "Success");
-                    Debug.WriteLine("Found key. Key = " + HexTool.ToString(writer.ToArray()));
-
                     wzKeyBruteforceCompleted = true;
 
                     // Hide panel splash sdcreen
@@ -672,6 +678,13 @@ namespace HaRepacker.GUI
                         MainPanel.OnSetPanelLoadingCompleted();
                     };
                     currentDispatcher.BeginInvoke(action);
+
+
+                    PacketWriter writer = new PacketWriter(4);
+                    writer.WriteBytes(bytes);
+                    MessageBox.Show("Found the encryption key to the WZ file:\r\n" + HexTool.ToString(writer.ToArray()), "Success");
+                    Debug.WriteLine("Found key. Key = " + HexTool.ToString(writer.ToArray()));
+
                     break;
                 }
                 wzKeyBruteforceTries++;

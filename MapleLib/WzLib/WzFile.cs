@@ -98,8 +98,6 @@ namespace MapleLib.WzLib
             path = null;
             name = null;
             WzDirectory.Dispose();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
         }
 
         /// <summary>
@@ -176,8 +174,6 @@ namespace MapleLib.WzLib
                 this.WzIv = WzIv;
             }
             bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage);
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
 
             return parseSuccess;
         }

@@ -59,7 +59,7 @@ namespace HaRepacker
             CultureInfo.DefaultThreadCurrentUICulture = ci;
 
             // Threads
-            ThreadPool.SetMaxThreads(Environment.ProcessorCount, Environment.ProcessorCount); // This includes hyper-threading(Intel)/SMT (AMD) count.
+            ThreadPool.SetMaxThreads(Environment.ProcessorCount * 5, Environment.ProcessorCount * 5); // This includes hyper-threading(Intel)/SMT (AMD) count.
 
             // App
             Application.EnableVisualStyles();
