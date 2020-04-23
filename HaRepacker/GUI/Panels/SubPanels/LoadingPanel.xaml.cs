@@ -37,7 +37,6 @@ namespace HaRepacker.GUI.Panels.SubPanels
         private void ImageLoadingGif_AnimationLoaded(object sender, RoutedEventArgs e)
         {
             imageController = ImageBehavior.GetAnimationController(imageLoadingGif);
-            imageController.Pause(); // pause by default
         }
 
         /// <summary>
@@ -45,7 +44,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
         /// </summary>
         public void OnStartAnimate()
         {
-            imageController.Play();
+            //imageController.Play(); // doesnt animate when Visibility is collapsed anyway.
         }
 
         /// <summary>
@@ -53,7 +52,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
         /// </summary>
         public void OnPauseAnimate()
         {
-            imageController.Pause();
+            //imageController.Pause();
         }
     }
 }

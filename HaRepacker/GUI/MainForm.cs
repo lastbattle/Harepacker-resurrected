@@ -605,7 +605,8 @@ namespace HaRepacker.GUI
                     return;
 
                 // Show splash screen
-                MainPanel.OnSetPanelLoading();
+                MainPanel.OnSetPanelLoading(currentDispatcher);
+
 
                 // Reset variables
                 wzKeyBruteforceTries = 0;
@@ -620,16 +621,19 @@ namespace HaRepacker.GUI
                     cpuIds.Add(cpuId_);
                 }
 
-                var parallelOption = new ParallelOptions
+                Task.Run(() =>
                 {
-                    MaxDegreeOfParallelism = processorCount,
-                };
-                ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
-                {
-                    wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
-                });
+                    Thread.Sleep(3000); // delay 3 seconds before starting
 
-                // load complete
+                    var parallelOption = new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = processorCount,
+                    };
+                    ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
+                    {
+                        wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
+                    });
+                });
             }
         }
         
@@ -679,7 +683,7 @@ namespace HaRepacker.GUI
                     // Hide panel splash sdcreen
                     Action action = () =>
                     {
-                        MainPanel.OnSetPanelLoadingCompleted();
+                        MainPanel.OnSetPanelLoadingCompleted(currentDispatcher);
                     };
                     currentDispatcher.BeginInvoke(action);
 
