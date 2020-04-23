@@ -23,7 +23,7 @@ namespace HaRepacker.GUI
 
             MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
 
-            encryptionBox.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
+            encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
             versionBox.Value = 1;
         }
 
