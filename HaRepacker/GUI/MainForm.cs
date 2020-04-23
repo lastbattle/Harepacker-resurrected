@@ -214,7 +214,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="selectedIndex"></param>
         /// <returns></returns>
-        public WzMapleVersion GetWzMapleVersionByWzEncryptionBoxSelection(int selectedIndex)
+        public static WzMapleVersion GetWzMapleVersionByWzEncryptionBoxSelection(int selectedIndex)
         {
             WzMapleVersion wzMapleVer = WzMapleVersion.CUSTOM;
             switch (selectedIndex)
@@ -239,10 +239,11 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
-        /// Sets the ComboBox selection index by WzMapleVersion enum
+        /// Gets the Combobox selection index by WzMapleVersion
         /// </summary>
         /// <param name="versionSelected"></param>
-        private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
+        /// <returns></returns>
+        public static int GetIndexByWzMapleVersion(WzMapleVersion versionSelected)
         {
             int setIndex = 0;
             switch (versionSelected)
@@ -260,8 +261,16 @@ namespace HaRepacker.GUI
                     setIndex = 3;
                     break;
             }
+            return setIndex;
+        }
 
-            encryptionBox.SelectedIndex = setIndex;
+        /// <summary>
+        /// Sets the ComboBox selection index by WzMapleVersion enum
+        /// </summary>
+        /// <param name="versionSelected"></param>
+        private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
+        {
+            encryptionBox.SelectedIndex = GetIndexByWzMapleVersion(versionSelected);
         }
         #endregion
 

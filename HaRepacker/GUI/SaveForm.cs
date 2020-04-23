@@ -158,12 +158,12 @@ namespace HaRepacker.GUI
         {
             if (this.IsRegularWzFile)
             {
-                encryptionBox.SelectedIndex = (int)wzf.MapleVersion;
+                encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
                 versionBox.Value = wzf.Version;
             }
             else
             { // Data.wz uses BMS encryption... no sepcific version indicated
-                encryptionBox.SelectedIndex = 2;
+                encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(WzMapleVersion.BMS);
             }
         }
     }
