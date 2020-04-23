@@ -148,33 +148,33 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Parses the wz file, if the wz file is a list.wz file, WzDirectory will be a WzListDirectory, if not, it'll simply be a WzDirectory
         /// </summary>
-        public void ParseWzFile()
+        /// <param name="WzIv">WzIv is not set if null (Use existing iv)</param>
+        public bool ParseWzFile(out string parseErrorMessage, byte[] WzIv = null)
         {
-            if (maplepLocalVersion == WzMapleVersion.GENERATE)
-                throw new InvalidOperationException("Cannot call ParseWzFile() if WZ file type is GENERATE");
-            ParseMainWzDirectory();
+            /*if (maplepLocalVersion != WzMapleVersion.GENERATE)
+            {
+                parseErrorMessage = ("Cannot call ParseWzFile() if WZ file type is not GENERATE. Have you entered an invalid WZ key? ");
+                return false;
+            }*/
+            if (WzIv != null)
+            {
+                this.WzIv = WzIv;
+            }
+            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage);
             GC.Collect();
             GC.WaitForPendingFinalizers();
-        }
 
-        public void ParseWzFile(byte[] WzIv)
-        {
-            if (maplepLocalVersion != WzMapleVersion.GENERATE)
-                throw new InvalidOperationException(
-                    "Cannot call ParseWzFile(byte[] generateKey) if WZ file type is not GENERATE");
-            this.WzIv = WzIv;
-            ParseMainWzDirectory();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
+            return parseSuccess;
         }
 
 
-        internal void ParseMainWzDirectory()
+        internal bool ParseMainWzDirectory(out string parseErrorMessage)
         {
             if (this.path == null)
             {
                 Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "[Error] Path is null");
-                return;
+                parseErrorMessage = "[Error] Path is null";
+                return false;
             }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
@@ -224,7 +224,9 @@ namespace MapleLib.WzLib
                                         WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                                         directory.ParseDirectory();
                                         this.wzDir = directory;
-                                        return;
+
+                                        parseErrorMessage = "Success";
+                                        return true;
                                     }
                             }
                             reader.BaseStream.Position = position;
@@ -235,7 +237,7 @@ namespace MapleLib.WzLib
                         }
                     }
                 }
-                throw new Exception("Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself");
+                parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
             }
             else
             {
@@ -245,6 +247,9 @@ namespace MapleLib.WzLib
                 directory.ParseDirectory();
                 this.wzDir = directory;
             }
+
+            parseErrorMessage = "Success";
+            return true;
         }
 
         private static uint GetVersionHash(int encver, int realver)

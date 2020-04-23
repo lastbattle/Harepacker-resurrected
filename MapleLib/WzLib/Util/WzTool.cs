@@ -151,7 +151,10 @@ namespace MapleLib.WzLib.Util
                 wzf = new WzFile(wzPath, encVersion);
             else
                 wzf = new WzFile(wzPath, (short)version, encVersion);
-            wzf.ParseWzFile();
+
+            string parseErrorMessage = string.Empty;
+            bool parsedSuccessfully = wzf.ParseWzFile(out parseErrorMessage);
+
             if (version == null) version = wzf.Version;
             int recognizedChars = 0;
             int totalChars = 0;

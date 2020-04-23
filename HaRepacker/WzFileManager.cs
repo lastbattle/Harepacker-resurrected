@@ -45,13 +45,21 @@ namespace HaRepacker
                 {
                     wzFiles.Add(f);
                 }
-                f.ParseWzFile();
+                string parseErrorMessage = string.Empty;
+                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
+                if (!parseSuccess)
+                {
+                    file = null;
+                    Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + parseErrorMessage + ").");
+                    return false;
+                }
+
                 file = f;
                 return true;
             }
             catch (Exception e)
             {
-                Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
+                Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + e.Message + ").\r\nAlso, check that the directory is valid and the file is not in use.");
                 file = null;
                 return false;
             }

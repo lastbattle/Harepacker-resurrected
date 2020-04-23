@@ -580,7 +580,6 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
-                bool errorOpeningFile_Admin = false;
                 List<string> wzfilePathsToLoad = new List<string>();
 
                 WzMapleVersion MapleVersionEncryptionSelected = GetWzMapleVersionByWzEncryptionBoxSelection( encryptionBox.SelectedIndex);
@@ -593,7 +592,7 @@ namespace HaRepacker.GUI
                         WzImage img = Program.WzMan.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
                         if (img == null)
                         {
-                            errorOpeningFile_Admin = true;
+                            MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
                             break;
                         }
                     }
@@ -649,6 +648,9 @@ namespace HaRepacker.GUI
 
                 //
                 Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+
+                // Try opening one, to see if the user is having the right priviledge
+
                 // Load all original WZ files 
                 await Task.Run(() =>
                 {
@@ -658,7 +660,7 @@ namespace HaRepacker.GUI
                         WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected);
                         if (f == null)
                         {
-                            errorOpeningFile_Admin = true;
+                            // error should be thrown 
                         }
                         else
                         {
@@ -678,12 +680,6 @@ namespace HaRepacker.GUI
                         Program.WzMan.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
                     }
                 }); // load complete
-
-                // error opening one of the files
-                if (errorOpeningFile_Admin) // got to be called after await Task.run()
-                {
-                    MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
-                }
 
                 // Hide panel splash sdcreen
                 MainPanel.OnSetPanelLoadingCompleted();
@@ -864,7 +860,10 @@ namespace HaRepacker.GUI
                     continue;
                 }
                 WzFile f = new WzFile(wzpath, version);
-                f.ParseWzFile();
+
+                string parseErrorMessage = string.Empty;
+                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
+
                 serializer.SerializeFile(f, Path.Combine(baseDir, f.Name));
                 f.Dispose();
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);

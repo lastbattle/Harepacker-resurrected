@@ -319,12 +319,20 @@ namespace HaRepacker.GUI
                         if (Info.Extension != ".wz")
                             continue;
                         WzFile File = new WzFile(Name, WzMapleVersion);
-                        File.ParseWzFile();
 
-                        this.Files.Add(Info.Name, File);
+                        string parseErrorMessage = string.Empty;
+                        bool parseSuccess = File.ParseWzFile(out parseErrorMessage);
 
-                        if (LoadedVersion == string.Empty)
-                            LoadedVersion = "MapleStory v." + File.Version + " WZ version: " + File.MapleVersion.ToString();
+                        if (parseSuccess)
+                        {
+                            this.Files.Add(Info.Name, File);
+
+                            if (LoadedVersion == string.Empty)
+                                LoadedVersion = "MapleStory v." + File.Version + " WZ version: " + File.MapleVersion.ToString();
+                        } else
+                        {
+                            MessageBox.Show(parseErrorMessage, Properties.Resources.Error);
+                        }
                     }
                     ParseWZFiles();
 

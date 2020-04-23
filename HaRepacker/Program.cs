@@ -116,6 +116,7 @@ namespace HaRepacker
             return our_folder;
         }
 
+
         public static bool IsUserAdministrator()
         {
             //bool value to hold our return value

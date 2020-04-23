@@ -57,7 +57,10 @@ namespace HaCreator.Wz
             try
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
-                wzf.ParseWzFile();
+
+                string parseErrorMessage = string.Empty;
+                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+
                 name = name.ToLower();
                 wzFiles[name] = wzf;
                 wzFilesUpdated[wzf] = false;
@@ -76,7 +79,10 @@ namespace HaCreator.Wz
             try
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
-                wzf.ParseWzFile();
+
+                string parseErrorMessage = string.Empty;
+                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+
                 name = name.ToLower();
                 wzFiles[name] = wzf;
                 wzFilesUpdated[wzf] = false;
