@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -19,13 +20,15 @@ namespace HaRepacker.GUI.Panels.SubPanels
     /// <summary>
     /// Interaction logic for LoadingPanel.xaml
     /// </summary>
-    public partial class LoadingPanel : UserControl
+    public partial class LoadingPanel : UserControl, INotifyPropertyChanged
     {
         private ImageAnimationController imageController = null;
 
         public LoadingPanel()
         {
             InitializeComponent();
+
+            this.DataContext = this; // set data binding to self.
         }
 
 
@@ -54,5 +57,52 @@ namespace HaRepacker.GUI.Panels.SubPanels
         {
             //imageController.Pause();
         }
+
+        /// <summary>
+        /// Sets the visibility for the stats on wzIv bruteforcing
+        /// </summary>
+        /// <param name="visibility"></param>
+        public void SetWzIvBruteforceStackpanelVisiblity(Visibility visibility)
+        {
+            stackPanel_wzIvBruteforceStat.Visibility = visibility;
+        }
+
+        #region Exported Fields
+        private ulong _WzIvKeyTries = 0;
+        public ulong WzIvKeyTries
+        {
+            get { return _WzIvKeyTries; }
+            set
+            {
+                _WzIvKeyTries = value;
+                OnPropertyChanged("WzIvKeyTries");
+            }
+        }
+
+        private long _WzIvKeyDuration = 0; // number of ticks
+        public long WzIvKeyDuration
+        {
+            get { return _WzIvKeyDuration; }
+            set
+            {
+                _WzIvKeyDuration = value;
+                OnPropertyChanged("WzIvKeyDuration");
+            }
+        }
+        #endregion
+
+
+        #region PropertyChanged
+        /// <summary>
+        /// Property changed event handler to trigger update UI
+        /// </summary>
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChangedEventHandler handler = PropertyChanged;
+            if (handler != null) 
+                handler(this, new PropertyChangedEventArgs(propertyName));
+        }
+        #endregion
     }
 }
