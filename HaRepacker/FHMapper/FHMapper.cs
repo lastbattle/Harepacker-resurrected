@@ -13,12 +13,13 @@ using System.Security.Cryptography;
 using System.Diagnostics;
 using MapleLib;
 using HaRepacker.GUI.Panels;
+using HaRepacker.Configuration;
 
 namespace HaRepacker.FHMapper
 {
     public class FHMapper
     {
-        public static string SettingsPath = Path.Combine(Program.GetLocalFolderPath(), "Settings.ini");
+        public static string SettingsPath = Path.Combine(ConfigurationManager.GetLocalFolderPath(), "Settings.ini");
         public List<Object> settings = new List<object>();
         private MainPanel MainPanel;
         private TreeNode node;

@@ -160,7 +160,6 @@
   <ItemGroup>
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
-    <Compile Include="Configuration\ConfigurationManager.cs" />
     <Compile Include="ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
@@ -347,6 +346,12 @@
     <Compile Include="GUI\Panels\SubPanels\XYPanel.xaml.cs">
       <DependentUpon>XYPanel.xaml</DependentUpon>
     </Compile>
+    <Compile Include="GUI\CustomWZEncryptionInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\CustomWZEncryptionInputBox.designer.cs">
+      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
+    </Compile>
     <Compile Include="Properties\Resources.ja.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -368,8 +373,6 @@
       <DependentUpon>Resources.zh-CHT.resx</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
-    <Compile Include="Configuration\ApplicationSettings.cs" />
-    <Compile Include="Configuration\UserSettings.cs" />
     <Compile Include="SharpApng.cs" />
     <Compile Include="TreeViewMS.cs">
       <SubType>Component</SubType>
@@ -635,6 +638,16 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHT.resx">
       <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.resx">
+      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.zh-CHS.resx">
+      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.zh-CHT.resx">
+      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\SaveForm.zh-CHS.resx">
       <DependentUpon>SaveForm.cs</DependentUpon>

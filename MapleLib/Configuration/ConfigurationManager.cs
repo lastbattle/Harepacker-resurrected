@@ -25,6 +25,8 @@ namespace HaRepacker.Configuration
     {
         private const string SETTINGS_FILE_USER = "Settings.txt";
         private const string SETTINGS_FILE_APPLICATION = "ApplicationSettings.txt";
+        public const string configPipeName = "HaRepacker";
+
 
         private string folderPath;
 
@@ -42,9 +44,22 @@ namespace HaRepacker.Configuration
             private set { }
         }
 
-        public ConfigurationManager(string folderPath)
+        public ConfigurationManager()
         {
-            this.folderPath = folderPath;
+            this.folderPath = GetLocalFolderPath();
+        }
+
+        /// <summary>
+        /// Gets the local folder path
+        /// </summary>
+        /// <returns></returns>
+        public static string GetLocalFolderPath()
+        {
+            string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string our_folder = Path.Combine(appdata, configPipeName);
+            if (!Directory.Exists(our_folder))
+                Directory.CreateDirectory(our_folder);
+            return our_folder;
         }
 
         /// <summary>

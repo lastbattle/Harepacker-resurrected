@@ -12,6 +12,7 @@ namespace HaRepacker.Configuration
 {
     public class ApplicationSettings
     {
+        #region Window
         [JsonProperty(PropertyName = "WindowMaximized")]
         public bool WindowMaximized = false;
 
@@ -19,18 +20,28 @@ namespace HaRepacker.Configuration
         public int Width = 1024;
         [JsonProperty(PropertyName = "WindowHeight")]
         public int Height = 768;
+        #endregion
 
+        #region Etc
         [JsonProperty(PropertyName = "FirstRun")]
         public bool FirstRun = true;
 
         [JsonProperty(PropertyName = "LastBrowserPath")]
         public string LastBrowserPath = "";
+        #endregion
 
+        #region Encryption
         [JsonProperty(PropertyName = "MapleStoryVersion") ]
         [JsonConverter(typeof(StringEnumConverter))]
         public WzMapleVersion MapleVersion = WzMapleVersion.BMS;
 
+        [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
+        public string MapleVersion_EncryptionBytes = "0x00-0x00-0x00-0x00";
+        #endregion
+
+        #region Auto update
         [JsonProperty(PropertyName = "UpdateServerURL")]
         public string UpdateServer = "";
+        #endregion
     }
 }

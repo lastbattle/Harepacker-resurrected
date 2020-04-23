@@ -27,6 +27,11 @@ namespace HaRepacker.GUI
         public string path;
         private MainPanel panel;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="panel"></param>
+        /// <param name="wzNode"></param>
         public SaveForm(MainPanel panel, WzNode wzNode)
         {
             InitializeComponent();

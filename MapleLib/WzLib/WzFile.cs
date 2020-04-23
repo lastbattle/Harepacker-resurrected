@@ -21,6 +21,8 @@ using System;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using System.Threading.Tasks;
+using MapleLib.PacketLib;
+using HaRepacker.Configuration;
 
 namespace MapleLib.WzLib
 {
@@ -119,19 +121,8 @@ namespace MapleLib.WzLib
         /// Open a wz file from a file on the disk
         /// </summary>
         /// <param name="filePath">Path to the wz file</param>
-        public WzFile(string filePath, WzMapleVersion version)
+        public WzFile(string filePath, WzMapleVersion version) : this(filePath, -1, version) 
         {
-            name = Path.GetFileName(filePath);
-            path = filePath;
-            mapleStoryPatchVersion = -1;
-            maplepLocalVersion = version;
-            if (version == WzMapleVersion.GETFROMZLZ)
-            {
-                FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll"));
-                WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
-                zlzStream.Close();
-            }
-            else WzIv = WzTool.GetIvByMapleVersion(version);
         }
 
         /// <summary>
@@ -144,11 +135,29 @@ namespace MapleLib.WzLib
             path = filePath;
             mapleStoryPatchVersion = gameVersion;
             maplepLocalVersion = version;
+
             if (version == WzMapleVersion.GETFROMZLZ)
             {
                 FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll"));
                 WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
                 zlzStream.Close();
+            } else if (version == WzMapleVersion.CUSTOM) // custom WZ encryption bytes from stored app setting
+            {
+                ConfigurationManager config = new ConfigurationManager();
+                bool loaded = config.Load();
+                if (loaded)
+                {
+                    string storedCustomEnc = config.ApplicationSettings.MapleVersion_EncryptionBytes;
+                    byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
+
+                    if (bytes.Length == 4)
+                    {
+                        WzIv = bytes;
+                    } else
+                    {
+                        WzIv = WzTool.GetIvByMapleVersion(WzMapleVersion.BMS); // fallback
+                    }
+                }
             }
             else WzIv = WzTool.GetIvByMapleVersion(version);
         }

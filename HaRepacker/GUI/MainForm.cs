@@ -27,39 +27,12 @@ using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
 using static HaRepacker.Configuration.UserSettings;
 using System.Reflection;
+using HaRepacker.GUI.Panels.SubPanels;
 
 namespace HaRepacker.GUI
 {
     public partial class MainForm : Form
     {
-        /// <summary>
-        /// Adds the WZ encryption types to ToolstripComboBox.
-        /// Shared code between WzMapleVersionInputBox.cs
-        /// </summary>
-        /// <param name="encryptionBox"></param>
-        public static void AddWzEncryptionTypesToComboBox(object encryptionBox)
-        {
-            string[] resources = {
-                HaRepacker.Properties.Resources.EncTypeGMS,
-                HaRepacker.Properties.Resources.EncTypeMSEA,
-                HaRepacker.Properties.Resources.EncTypeNone
-            };
-            if (encryptionBox is ToolStripComboBox)
-            {
-                foreach (string res in resources)
-                {
-                    ((ToolStripComboBox)encryptionBox).Items.Add(res);
-                }
-            }
-            else
-            {
-                foreach (string res in resources)
-                {
-                    ((ComboBox)encryptionBox).Items.Add(res);
-                }
-            }
-        }
-
         private bool mainFormLoaded = false;
 
         private MainPanel MainPanel = null;
@@ -71,7 +44,6 @@ namespace HaRepacker.GUI
             AddTabsInternal("Default");
 
             // Events
-            Load += MainForm_Load1;
 #if DEBUG
             debugToolStripMenuItem.Visible = true;
 #endif
@@ -81,6 +53,9 @@ namespace HaRepacker.GUI
 
             // encryptions
             AddWzEncryptionTypesToComboBox(encryptionBox);
+            // Set encryption box
+            SetWzEncryptionBoxSelectionByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
+
 
             WindowState = Program.ConfigurationManager.ApplicationSettings.WindowMaximized ? FormWindowState.Maximized : FormWindowState.Normal;
             Size = new Size(
@@ -127,7 +102,8 @@ namespace HaRepacker.GUI
             {
                 short version;
                 WzMapleVersion encVersion = WzTool.DetectMapleVersion(wzToLoad, out version);
-                encryptionBox.SelectedIndex = (int)encVersion;
+                SetWzEncryptionBoxSelectionByWzMapleVersion(encVersion);
+
                 LoadWzFileThreadSafe(wzToLoad, MainPanel, false);
             }
             ContextMenuManager manager = new ContextMenuManager(MainPanel, MainPanel.UndoRedoMan);
@@ -138,10 +114,6 @@ namespace HaRepacker.GUI
 
             // flag. loaded
             mainFormLoaded = true;
-        }
-
-        private void MainForm_Load1(object sender, EventArgs e)
-        {
         }
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
@@ -190,6 +162,109 @@ namespace HaRepacker.GUI
         }
         #endregion
 
+        #region Wz Encryption selection combobox
+        /// <summary>
+        /// Adds the WZ encryption types to ToolstripComboBox.
+        /// Shared code between WzMapleVersionInputBox.cs
+        /// </summary>
+        /// <param name="encryptionBox"></param>
+        public static void AddWzEncryptionTypesToComboBox(object encryptionBox)
+        {
+            string[] resources = {
+                HaRepacker.Properties.Resources.EncTypeGMS,
+                HaRepacker.Properties.Resources.EncTypeMSEA,
+                HaRepacker.Properties.Resources.EncTypeNone,
+                HaRepacker.Properties.Resources.EncTypeCustom
+            };
+            bool isToolStripComboBox = encryptionBox is ToolStripComboBox;
+            foreach (string res in resources)
+            {
+                if (isToolStripComboBox) 
+                    ((ToolStripComboBox)encryptionBox).Items.Add(res); // in mainform
+                else
+                    ((ComboBox)encryptionBox).Items.Add(res); // in saveForm
+            }
+        }
+
+        /// <summary>
+        /// On encryption box selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (!mainFormLoaded) // first run during app startup
+            {
+                return;
+            }
+
+            int selectedIndex = encryptionBox.SelectedIndex;
+            WzMapleVersion wzMapleVer = GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion = wzMapleVer;
+
+            if (wzMapleVer == WzMapleVersion.CUSTOM)
+            {
+                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox(MainPanel);
+                customWzInputBox.ShowDialog();
+            }
+        }
+
+        /// <summary>
+        /// Gets the WzMapleVersion enum by encryptionBox selection index
+        /// </summary>
+        /// <param name="selectedIndex"></param>
+        /// <returns></returns>
+        public WzMapleVersion GetWzMapleVersionByWzEncryptionBoxSelection(int selectedIndex)
+        {
+            WzMapleVersion wzMapleVer = WzMapleVersion.CUSTOM;
+            switch (selectedIndex)
+            {
+                case 0:
+                    wzMapleVer = WzMapleVersion.GMS;
+                    break;
+                case 1:
+                    wzMapleVer = WzMapleVersion.EMS;
+                    break;
+                case 2:
+                    wzMapleVer = WzMapleVersion.BMS;
+                    break;
+                case 3:
+                    wzMapleVer = WzMapleVersion.CUSTOM;
+                    break;
+                default: // hmm?
+                    wzMapleVer = WzMapleVersion.BMS; // just default anyway to modern maplestory
+                    break;
+            }
+            return wzMapleVer;
+        }
+
+        /// <summary>
+        /// Sets the ComboBox selection index by WzMapleVersion enum
+        /// </summary>
+        /// <param name="versionSelected"></param>
+        private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
+        {
+            int setIndex = 0;
+            switch (versionSelected)
+            {
+                case WzMapleVersion.GMS:
+                    setIndex = 0;
+                    break;
+                case WzMapleVersion.EMS:
+                    setIndex = 1;
+                    break;
+                case WzMapleVersion.BMS:
+                    setIndex = 2;
+                    break;
+                case WzMapleVersion.CUSTOM:
+                    setIndex = 3;
+                    break;
+            }
+
+            encryptionBox.SelectedIndex = setIndex;
+        }
+        #endregion
+
         private delegate void LoadWzFileDelegate(string path, MainPanel panel, bool detectMapleVersion);
         private void LoadWzFileCallback(string path, MainPanel panel, bool detectMapleVersion)
         {
@@ -199,7 +274,7 @@ namespace HaRepacker.GUI
                 if (detectMapleVersion)
                     loadedWzFile = Program.WzMan.LoadWzFile(path);
                 else
-                    loadedWzFile = Program.WzMan.LoadWzFile(path, (WzMapleVersion)encryptionBox.SelectedIndex);
+                    loadedWzFile = Program.WzMan.LoadWzFile(path, (WzMapleVersion) GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex));
 
                 if (loadedWzFile != null)
                     Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
@@ -294,7 +369,6 @@ namespace HaRepacker.GUI
         #region Handlers
         private void MainForm_Load(object sender, EventArgs e)
         {
-            encryptionBox.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
             if (Program.ConfigurationManager.UserSettings.AutoUpdate && Program.ConfigurationManager.ApplicationSettings.UpdateServer != "")
             {
                 updater = new Thread(new ThreadStart(UpdaterThread));
@@ -478,11 +552,6 @@ namespace HaRepacker.GUI
             tabControl_MainPanels.Focus();
         }
 
-        private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            Program.ConfigurationManager.ApplicationSettings.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
-        }
-
         /// <summary>
         /// Open file
         /// </summary>
@@ -505,7 +574,7 @@ namespace HaRepacker.GUI
                 bool errorOpeningFile_Admin = false;
                 List<string> wzfilePathsToLoad = new List<string>();
 
-                WzMapleVersion MapleVersionEncryptionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
+                WzMapleVersion MapleVersionEncryptionSelected = GetWzMapleVersionByWzEncryptionBoxSelection( encryptionBox.SelectedIndex);
                 foreach (string filePath in dialog.FileNames)
                 {
                     string filePathLowerCase = filePath.ToLower();
@@ -624,10 +693,16 @@ namespace HaRepacker.GUI
                 Program.WzMan.ReloadAll(MainPanel);
         }
 
+        /// <summary>
+        /// Field/ map rendering
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void renderMapToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (MainPanel.DataTree.SelectedNode == null)
                 return;
+
             if (MainPanel.DataTree.SelectedNode.Tag is WzImage)
             {
                 double zoomLevel = double.Parse(zoomTextBox.TextBox.Text);
@@ -762,7 +837,7 @@ namespace HaRepacker.GUI
 
             string[] wzFilesToDump = (string[])((object[])param)[0];
             string baseDir = (string)((object[])param)[1];
-            WzMapleVersion version = (WzMapleVersion)((object[])param)[2];
+            WzMapleVersion version = GetWzMapleVersionByWzEncryptionBoxSelection( ((int[])param)[2]);
             IWzFileSerializer serializer = (IWzFileSerializer)((object[])param)[3];
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, wzFilesToDump.Length, true, true);
@@ -1204,7 +1279,7 @@ namespace HaRepacker.GUI
         {
             // Map name load
             string loadedWzVersion;
-            WzStringSearchFormDataCache dataCache = new WzStringSearchFormDataCache((WzMapleVersion)encryptionBox.SelectedIndex);
+            WzStringSearchFormDataCache dataCache = new WzStringSearchFormDataCache(GetWzMapleVersionByWzEncryptionBoxSelection( encryptionBox.SelectedIndex));
             if (dataCache.OpenBaseWZFile(out loadedWzVersion))
             {
                 WzStringSearchForm form = new WzStringSearchForm(dataCache, loadedWzVersion);

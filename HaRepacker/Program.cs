@@ -29,7 +29,7 @@ namespace HaRepacker
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 
-        private static ConfigurationManager _ConfigurationManager = new ConfigurationManager(string.Empty); // default for VS UI designer
+        private static ConfigurationManager _ConfigurationManager; // default for VS UI designer
         public static ConfigurationManager ConfigurationManager
         {
             get { return _ConfigurationManager; }
@@ -136,7 +136,7 @@ namespace HaRepacker
 
         public static bool PrepareApplication(bool from_internal)
         {
-            _ConfigurationManager = new ConfigurationManager(GetLocalFolderPath());
+            _ConfigurationManager = new ConfigurationManager();
 
             bool loaded = _ConfigurationManager.Load();
             if (!loaded)

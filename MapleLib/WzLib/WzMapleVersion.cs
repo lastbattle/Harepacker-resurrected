@@ -28,6 +28,7 @@ namespace MapleLib.WzLib
         BMS = 2,
         CLASSIC = 3,
         GENERATE = 4,
-        GETFROMZLZ = 5
+        GETFROMZLZ = 5,
+        CUSTOM = 6, // input bytes, for private servers
     }
 }

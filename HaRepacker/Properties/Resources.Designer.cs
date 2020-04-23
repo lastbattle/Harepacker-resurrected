@@ -205,6 +205,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Use custom encryption key.
+        /// </summary>
+        public static string EncTypeCustom {
+            get {
+                return ResourceManager.GetString("EncTypeCustom", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to GMS (old).
         /// </summary>
         public static string EncTypeGMS {

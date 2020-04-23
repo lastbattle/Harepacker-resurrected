@@ -378,4 +378,7 @@
   <data name="ExecutingAssemblyError" xml:space="preserve">
     <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>
   </data>
+  <data name="EncTypeCustom" xml:space="preserve">
+    <value>カスタム暗号化を使用する</value>
+  </data>
 </root>
