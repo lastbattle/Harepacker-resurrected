@@ -27,6 +27,9 @@ namespace HaRepacker.GUI
         public string path;
         private MainPanel panel;
 
+
+        private bool _isLoading = false;
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -55,14 +58,56 @@ namespace HaRepacker.GUI
             this.panel = panel;
         }
 
-        public void PrepareAllImgs(WzDirectory dir)
+        /// <summary>
+        /// On loading
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void SaveForm_Load(object sender, EventArgs e)
         {
-            foreach (WzImage img in dir.WzImages)
-                img.Changed = true;
-            foreach (WzDirectory subdir in dir.WzDirectories)
-                PrepareAllImgs(subdir);
+            _isLoading = true;
+
+            try
+            {
+                if (this.IsRegularWzFile)
+                {
+                    encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
+                    versionBox.Value = wzf.Version;
+                }
+                else
+                { // Data.wz uses BMS encryption... no sepcific version indicated
+                    encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(WzMapleVersion.BMS);
+                }
+            } finally
+            {
+                _isLoading = false;
+            }
         }
 
+        /// <summary>
+        /// On encryption box selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_isLoading)
+                return;
+
+            int selectedIndex = encryptionBox.SelectedIndex;
+            WzMapleVersion wzMapleVersion = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
+            if (wzMapleVersion == WzMapleVersion.CUSTOM)
+            {
+                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
+                customWzInputBox.ShowDialog();
+            }
+        }
+
+        /// <summary>
+        /// On save button clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void saveButton_Click(object sender, EventArgs e)
         {
             if (versionBox.Value < 0)
@@ -82,13 +127,13 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
 
-                WzMapleVersion wzMapleVersionSelected = (WzMapleVersion)encryptionBox.SelectedIndex;
+                WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
                 if (this.IsRegularWzFile)
                 {
                     if (wzf is WzFile && wzf.MapleVersion != wzMapleVersionSelected)
                         PrepareAllImgs(((WzFile)wzf).WzDirectory);
 
-                    wzf.MapleVersion = (WzMapleVersion)encryptionBox.SelectedIndex;
+                    wzf.MapleVersion = wzMapleVersionSelected;
                     if (wzf is WzFile)
                         ((WzFile)wzf).Version = (short)versionBox.Value;
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
@@ -105,7 +150,7 @@ namespace HaRepacker.GUI
                     }
 
                     // Reload the new file
-                    WzFile loadedWzFile = Program.WzMan.LoadWzFile(dialog.FileName, (WzMapleVersion)encryptionBox.SelectedIndex);
+                    WzFile loadedWzFile = Program.WzMan.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
                     if (loadedWzFile != null)
                         Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
                 }
@@ -154,17 +199,13 @@ namespace HaRepacker.GUI
             Close();
         }
 
-        private void SaveForm_Load(object sender, EventArgs e)
+
+        private void PrepareAllImgs(WzDirectory dir)
         {
-            if (this.IsRegularWzFile)
-            {
-                encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
-                versionBox.Value = wzf.Version;
-            }
-            else
-            { // Data.wz uses BMS encryption... no sepcific version indicated
-                encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(WzMapleVersion.BMS);
-            }
+            foreach (WzImage img in dir.WzImages)
+                img.Changed = true;
+            foreach (WzDirectory subdir in dir.WzDirectories)
+                PrepareAllImgs(subdir);
         }
     }
 }

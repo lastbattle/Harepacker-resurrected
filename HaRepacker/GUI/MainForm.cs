@@ -204,7 +204,7 @@ namespace HaRepacker.GUI
 
             if (wzMapleVer == WzMapleVersion.CUSTOM)
             {
-                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox(MainPanel);
+                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
             }
         }

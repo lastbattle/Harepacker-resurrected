@@ -24,7 +24,7 @@ namespace HaRepacker.GUI
         /// Constructor
         /// </summary>
         /// <param name="panel"></param>
-        public CustomWZEncryptionInputBox(MainPanel panel)
+        public CustomWZEncryptionInputBox()
         {
             InitializeComponent();
         }
@@ -39,7 +39,7 @@ namespace HaRepacker.GUI
         { 
             // Load from settings
             string storedCustomEnc = Program.ConfigurationManager.ApplicationSettings.MapleVersion_EncryptionBytes;
-            string[] splitBytes = storedCustomEnc.Split('-');
+            string[] splitBytes = storedCustomEnc.Split(' ');
 
             bool parsed = true;
             if (splitBytes.Length == 4)

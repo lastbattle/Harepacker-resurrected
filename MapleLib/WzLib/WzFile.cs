@@ -141,23 +141,6 @@ namespace MapleLib.WzLib
                 FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll"));
                 WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
                 zlzStream.Close();
-            } else if (version == WzMapleVersion.CUSTOM) // custom WZ encryption bytes from stored app setting
-            {
-                ConfigurationManager config = new ConfigurationManager();
-                bool loaded = config.Load();
-                if (loaded)
-                {
-                    string storedCustomEnc = config.ApplicationSettings.MapleVersion_EncryptionBytes;
-                    byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
-
-                    if (bytes.Length == 4)
-                    {
-                        WzIv = bytes;
-                    } else
-                    {
-                        WzIv = WzTool.GetIvByMapleVersion(WzMapleVersion.BMS); // fallback
-                    }
-                }
             }
             else WzIv = WzTool.GetIvByMapleVersion(version);
         }
