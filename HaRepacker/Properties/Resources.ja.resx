@@ -381,4 +381,7 @@
   <data name="EncTypeCustom" xml:space="preserve">
     <value>カスタム暗号化を使用する</value>
   </data>
+  <data name="EncTypeGenerate" xml:space="preserve">
+    <value>Bruteforce AESキー（生成）</value>
+  </data>
 </root>

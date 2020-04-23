@@ -136,6 +136,7 @@ namespace HaRepacker
         {
             short fileVersion = -1;
             bool isList = WzTool.IsListFile(path);
+
             return LoadWzFile(path, WzTool.DetectMapleVersion(path, out fileVersion), fileVersion);
         }
 

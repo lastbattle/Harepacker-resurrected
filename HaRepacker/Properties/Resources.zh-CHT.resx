@@ -376,4 +376,7 @@
   <data name="EncTypeCustom" xml:space="preserve">
     <value>使用自定義編碼</value>
   </data>
+  <data name="EncTypeGenerate" xml:space="preserve">
+    <value>Bruteforce AES密鑰（生成）</value>
+  </data>
 </root>

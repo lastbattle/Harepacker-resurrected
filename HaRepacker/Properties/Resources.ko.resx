@@ -378,4 +378,7 @@
   <data name="EncTypeCustom" xml:space="preserve">
     <value>Use custom encryption key</value>
   </data>
+  <data name="EncTypeGenerate" xml:space="preserve">
+    <value>Bruteforce AES key (Generate)</value>
+  </data>
 </root>

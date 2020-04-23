@@ -118,6 +118,7 @@
     <Compile Include="Configuration\UserSettings.cs" />
     <Compile Include="Helpers\ByteUtils.cs" />
     <Compile Include="Helpers\ErrorLogger.cs" />
+    <Compile Include="PacketLib\HexTool.cs" />
     <Compile Include="WzDataReader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />
     <Compile Include="WzLib\WzExtended.cs" />

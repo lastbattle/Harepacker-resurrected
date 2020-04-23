@@ -139,10 +139,25 @@ namespace MapleLib.WzLib
             if (version == WzMapleVersion.GETFROMZLZ)
             {
                 FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll"));
-                WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
+                this.WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
                 zlzStream.Close();
             }
-            else WzIv = WzTool.GetIvByMapleVersion(version);
+            else
+                this.WzIv = WzTool.GetIvByMapleVersion(version);
+        }
+
+        /// <summary>
+        /// Open a wz file from a file on the disk with a custom WzIv key
+        /// </summary>
+        /// <param name="filePath">Path to the wz file</param>
+        public WzFile(string filePath, byte[] wzIv)
+        {
+            name = Path.GetFileName(filePath);
+            path = filePath;
+            mapleStoryPatchVersion = -1;
+            maplepLocalVersion = WzMapleVersion.CUSTOM;
+
+            this.WzIv = wzIv;
         }
 
         /// <summary>

@@ -214,6 +214,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Bruteforce AES key (Generate).
+        /// </summary>
+        public static string EncTypeGenerate {
+            get {
+                return ResourceManager.GetString("EncTypeGenerate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to GMS (old).
         /// </summary>
         public static string EncTypeGMS {

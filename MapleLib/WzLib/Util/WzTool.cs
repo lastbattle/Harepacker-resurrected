@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections;
+using System.Diagnostics;
 using System.IO;
 using HaRepacker.Configuration;
 using MapleLib.MapleCryptoLib;
@@ -128,6 +129,9 @@ namespace MapleLib.WzLib.Util
                         }
                         return new byte[4]; // fallback with BMS
                     }
+                case WzMapleVersion.GENERATE: // dont fill anything with GENERATE, it is not supposed to load anything
+                    return new byte[4]; 
+
                 case WzMapleVersion.BMS:
                 case WzMapleVersion.CLASSIC:
                 default:
@@ -142,6 +146,35 @@ namespace MapleLib.WzLib.Util
                 if (0x20 <= c && c <= 0x7E)
                     result++;
             return result;
+        }
+
+        
+        /// <summary>
+        /// Attempts to bruteforce the WzKey with a given WZ file
+        /// </summary>
+        /// <param name="wzPath"></param>
+        /// <param name="wzIvKey"></param>
+        /// <returns>The probability. Normalized to 100</returns>
+        public static bool TryBruteforcingWzIVKey(string wzPath, byte[] wzIvKey)
+        {
+            using (WzFile wzf = new WzFile(wzPath, wzIvKey))
+            {
+                string parseErrorMessage = string.Empty;
+                bool parsedSuccessfully = wzf.ParseWzFile(out parseErrorMessage);
+                if (!parsedSuccessfully)
+                {
+                    wzf.Dispose();
+                    return false;
+                }
+                if (wzf.WzDirectory.WzImages.Count > 0 && wzf.WzDirectory.WzImages[0].Name.EndsWith(".img"))
+                {
+                    wzf.Dispose();
+                    return true;
+                }
+
+                wzf.Dispose();
+            }
+            return false;
         }
 
         private static double GetDecryptionSuccessRate(string wzPath, WzMapleVersion encVersion, ref short? version)
