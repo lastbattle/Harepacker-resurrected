@@ -609,7 +609,7 @@ namespace HaRepacker.GUI
                 wzKeyBruteforceCompleted = false;
 
 
-                int processorCount = Environment.ProcessorCount * 3; // 8 core = 16 (with ht, smt)
+                int processorCount = Environment.ProcessorCount * 3; // 8 core = 16 (with ht, smt) , multiply by 3 seems to be the magic number. it falls off after 4
                 List<int> cpuIds = new List<int>();
                 for (int cpuId_ = 0; cpuId_ < processorCount; cpuId_++)
                 {

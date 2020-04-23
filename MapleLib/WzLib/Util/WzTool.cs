@@ -160,7 +160,7 @@ namespace MapleLib.WzLib.Util
             using (WzFile wzf = new WzFile(wzPath, wzIvKey))
             {
                 string parseErrorMessage = string.Empty;
-                bool parsedSuccessfully = wzf.ParseWzFile(out parseErrorMessage);
+                bool parsedSuccessfully = wzf.LazyParseWzFile(out parseErrorMessage);
                 if (!parsedSuccessfully)
                 {
                     wzf.Dispose();

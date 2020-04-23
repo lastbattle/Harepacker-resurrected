@@ -173,13 +173,30 @@ namespace MapleLib.WzLib
             {
                 this.WzIv = WzIv;
             }
-            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage);
+            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage, false);
 
             return parseSuccess;
         }
 
+        /// <summary>
+        /// Lazly parses the wz file, for faster bruteforcing
+        /// </summary>
+        /// <param name="parseErrorMessage"></param>
+        /// <returns></returns>
+        public bool LazyParseWzFile(out string parseErrorMessage)
+        {
+            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage, true);
+            return parseSuccess;
+        }
 
-        internal bool ParseMainWzDirectory(out string parseErrorMessage)
+
+        /// <summary>
+        /// Parse directories in the WZ file
+        /// </summary>
+        /// <param name="parseErrorMessage"></param>
+        /// <param name="lazyParse">Only load the firt WzDirectory found if true</param>
+        /// <returns></returns>
+        internal bool ParseMainWzDirectory(out string parseErrorMessage, bool lazyParse = false)
         {
             if (this.path == null)
             {
@@ -212,7 +229,7 @@ namespace MapleLib.WzLib
                         try
                         {
                             testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                            testDirectory.ParseDirectory();
+                            testDirectory.ParseDirectory(lazyParse);
                         }
                         catch
                         {
@@ -233,7 +250,7 @@ namespace MapleLib.WzLib
                                 case 0x1b:
                                     {
                                         WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                                        directory.ParseDirectory();
+                                        directory.ParseDirectory(lazyParse);
                                         this.wzDir = directory;
 
                                         parseErrorMessage = "Success";

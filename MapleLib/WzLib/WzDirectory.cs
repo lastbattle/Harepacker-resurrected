@@ -172,8 +172,9 @@ namespace MapleLib.WzLib
 
         /// <summary>
         /// Parses the WzDirectory
+        /// <paramref name="lazyParse">Only parses the first directory</paramref>
         /// </summary>
-        internal void ParseDirectory()
+        internal void ParseDirectory(bool lazyParse = false)
         {
             int entryCount = reader.ReadCompressedInt();
             for (int i = 0; i < entryCount; i++)
@@ -220,6 +221,9 @@ namespace MapleLib.WzLib
                     subDir.Offset = offset;
                     subDir.Parent = this;
                     subDirs.Add(subDir);
+
+                    if (lazyParse)
+                        break;
                 }
                 else
                 {
@@ -229,6 +233,9 @@ namespace MapleLib.WzLib
                     img.Offset = offset;
                     img.Parent = this;
                     images.Add(img);
+
+                    if (lazyParse)
+                        break;
                 }
             }
 
