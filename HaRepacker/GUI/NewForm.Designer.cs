@@ -44,7 +44,7 @@ namespace HaRepacker.GUI
             this.label5 = new System.Windows.Forms.Label();
             this.label6 = new System.Windows.Forms.Label();
             this.encryptionBox = new System.Windows.Forms.ComboBox();
-            this.versionBox = new IntegerInput();
+            this.versionBox = new HaRepacker.GUI.Input.IntegerInput();
             this.radioButton_hotfix = new System.Windows.Forms.RadioButton();
             this.SuspendLayout();
             // 
@@ -123,6 +123,7 @@ namespace HaRepacker.GUI
             this.encryptionBox.FormattingEnabled = true;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
+            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.encryptionBox_SelectionChanged);
             // 
             // versionBox
             // 

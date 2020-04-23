@@ -28,7 +28,7 @@ namespace HaRepacker.GUI
         private MainPanel panel;
 
 
-        private bool _isLoading = false;
+        private bool bIsLoading = false;
 
         /// <summary>
         /// Constructor
@@ -65,7 +65,7 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void SaveForm_Load(object sender, EventArgs e)
         {
-            _isLoading = true;
+            bIsLoading = true;
 
             try
             {
@@ -80,7 +80,7 @@ namespace HaRepacker.GUI
                 }
             } finally
             {
-                _isLoading = false;
+                bIsLoading = false;
             }
         }
 
@@ -91,7 +91,7 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_isLoading)
+            if (bIsLoading)
                 return;
 
             int selectedIndex = encryptionBox.SelectedIndex;

@@ -16,15 +16,47 @@ namespace HaRepacker.GUI
     {
         private MainPanel panel;
 
+        private bool bIsLoading;
         public NewForm(MainPanel panel)
         {
             this.panel = panel;
             InitializeComponent();
 
-            MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
+            Load += NewForm_Load;
+        }
 
-            encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion, true);
-            versionBox.Value = 1;
+        private void NewForm_Load(object sender, EventArgs e)
+        {
+            bIsLoading = true;
+            try
+            {
+                MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
+
+                encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion, true);
+                versionBox.Value = 1;
+            } finally
+            {
+                bIsLoading = false;
+            }
+        }
+
+        /// <summary>
+        /// On combobox selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void encryptionBox_SelectionChanged(object sender, EventArgs e)
+        {
+            if (bIsLoading)
+                return;
+
+            int selectedIndex = encryptionBox.SelectedIndex;
+            WzMapleVersion wzMapleVersion = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
+            if (wzMapleVersion == WzMapleVersion.CUSTOM)
+            {
+                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
+                customWzInputBox.ShowDialog();
+            }
         }
 
         /// <summary>
