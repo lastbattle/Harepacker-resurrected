@@ -255,8 +255,9 @@ namespace HaRepacker.GUI
         /// Gets the Combobox selection index by WzMapleVersion
         /// </summary>
         /// <param name="versionSelected"></param>
+        /// <param name="fromNewForm">Called from NewForm.cs</param>
         /// <returns></returns>
-        public static int GetIndexByWzMapleVersion(WzMapleVersion versionSelected)
+        public static int GetIndexByWzMapleVersion(WzMapleVersion versionSelected, bool fromNewForm = false)
         {
             int setIndex = 0;
             switch (versionSelected)
@@ -274,7 +275,10 @@ namespace HaRepacker.GUI
                     setIndex = 3;
                     break;
                 case WzMapleVersion.GENERATE:
-                    setIndex = 4;
+                    if (fromNewForm) // dont return GENERATE, as that option is unavailable when creating a new WZ via NewForm.
+                        setIndex = 2; // BMS
+                    else 
+                        setIndex = 4;
                     break;
             }
             return setIndex;
@@ -630,7 +634,7 @@ namespace HaRepacker.GUI
         }
         
         /// <summary>
-        /// Internal compute task
+        /// Internal compute task for figuring out the WzKey automaticagically 
         /// </summary>
         /// <param name="cpuId_"></param>
         /// <param name="processorCount"></param>
