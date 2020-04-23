@@ -29,6 +29,7 @@ using static HaRepacker.Configuration.UserSettings;
 using System.Reflection;
 using HaRepacker.GUI.Panels.SubPanels;
 using MapleLib.PacketLib;
+using System.Timers;
 
 namespace HaRepacker.GUI
 {
@@ -587,6 +588,8 @@ namespace HaRepacker.GUI
         private DateTime wzKeyBruteforceStartTime = DateTime.Now;
         private bool wzKeyBruteforceCompleted = false;
 
+        private System.Timers.Timer aTimer_wzKeyBruteforce = null;
+
         /// <summary>
         /// Find needles in a haystack o_O
         /// </summary>
@@ -605,7 +608,9 @@ namespace HaRepacker.GUI
                     return;
 
                 // Show splash screen
-                MainPanel.OnSetPanelLoading();
+                MainPanel.OnSetPanelLoading(currentDispatcher);
+                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Visible);
+
 
                 // Reset variables
                 wzKeyBruteforceTries = 0;
@@ -620,19 +625,56 @@ namespace HaRepacker.GUI
                     cpuIds.Add(cpuId_);
                 }
 
-                var parallelOption = new ParallelOptions
+                // UI update thread
+                if (aTimer_wzKeyBruteforce != null)
                 {
-                    MaxDegreeOfParallelism = processorCount,
-                };
-                ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
-                {
-                    wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
-                });
+                    aTimer_wzKeyBruteforce.Stop();
+                    aTimer_wzKeyBruteforce = null;
+                }
+                aTimer_wzKeyBruteforce = new System.Timers.Timer();
+                aTimer_wzKeyBruteforce.Elapsed += new ElapsedEventHandler(OnWzIVKeyUIUpdateEvent);
+                aTimer_wzKeyBruteforce.Interval = 5000;
+                aTimer_wzKeyBruteforce.Enabled = true;
 
-                // load complete
+
+                // Key finder thread
+                Task.Run(() =>
+                {
+                    Thread.Sleep(3000); // delay 3 seconds before starting
+
+                    var parallelOption = new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = processorCount,
+                    };
+                    ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
+                    {
+                        wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
+                    });
+                });
             }
         }
-        
+
+        /// <summary>
+        /// UI Updating thread
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="e"></param>
+        private void OnWzIVKeyUIUpdateEvent(object source, ElapsedEventArgs e)
+        {
+            if (aTimer_wzKeyBruteforce == null)
+                return;
+            if (wzKeyBruteforceCompleted)
+            {
+                aTimer_wzKeyBruteforce.Stop();
+                aTimer_wzKeyBruteforce = null;
+
+                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
+            }
+
+            MainPanel.loadingPanel.WzIvKeyDuration = DateTime.Now.Ticks - wzKeyBruteforceStartTime.Ticks;
+            MainPanel.loadingPanel.WzIvKeyTries = wzKeyBruteforceTries;
+        }
+
         /// <summary>
         /// Internal compute task for figuring out the WzKey automaticagically 
         /// </summary>
@@ -679,7 +721,8 @@ namespace HaRepacker.GUI
                     // Hide panel splash sdcreen
                     Action action = () =>
                     {
-                        MainPanel.OnSetPanelLoadingCompleted();
+                        MainPanel.OnSetPanelLoadingCompleted(currentDispatcher);
+                        MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
                     };
                     currentDispatcher.BeginInvoke(action);
 
