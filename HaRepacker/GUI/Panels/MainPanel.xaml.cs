@@ -727,7 +727,7 @@ namespace HaRepacker.GUI.Panels
 
             // Set tooltip text
             if (i_animateCanvasNode == animate_PreLoadImages.Count)
-                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms. Repeating Animate.";
+                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms. Repeating animation.";
             else
                 statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms.";
 
@@ -1438,7 +1438,8 @@ namespace HaRepacker.GUI.Panels
                 canvasPropBox.CanvasVectorHead = headVector;
                 canvasPropBox.CanvasVectorLt = ltVector;
             }
-            canvasPropBox.Visibility = Visibility.Visible;
+            if (canvasPropBox.Visibility != Visibility.Visible)
+                canvasPropBox.Visibility = Visibility.Visible;
         }
         #endregion
 
