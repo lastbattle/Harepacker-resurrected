@@ -19,6 +19,7 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System;
 using System.Diagnostics;
+using MapleLib.PacketLib;
 
 namespace MapleLib.WzLib
 {
@@ -176,6 +177,9 @@ namespace MapleLib.WzLib
         /// </summary>
         internal void ParseDirectory(bool lazyParse = false)
         {
+            //Debug.WriteLine(HexTool.ToString( reader.ReadBytes(20)));
+            //reader.BaseStream.Position = reader.BaseStream.Position - 20;
+
             int entryCount = reader.ReadCompressedInt();
             for (int i = 0; i < entryCount; i++)
             {

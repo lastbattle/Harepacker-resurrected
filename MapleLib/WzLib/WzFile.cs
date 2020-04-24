@@ -92,7 +92,8 @@ namespace MapleLib.WzLib
 
         public override void Dispose()
         {
-            if (wzDir.reader == null) return;
+            if (wzDir == null || wzDir.reader == null)
+                return;
             wzDir.reader.Close();
             Header = null;
             path = null;
@@ -119,7 +120,7 @@ namespace MapleLib.WzLib
         /// Open a wz file from a file on the disk
         /// </summary>
         /// <param name="filePath">Path to the wz file</param>
-        public WzFile(string filePath, WzMapleVersion version) : this(filePath, -1, version) 
+        public WzFile(string filePath, WzMapleVersion version) : this(filePath, -1, version)
         {
         }
 
@@ -221,22 +222,28 @@ namespace MapleLib.WzLib
                 {
                     this.mapleStoryPatchVersion = (short)j;
                     this.versionHash = GetVersionHash(version, mapleStoryPatchVersion);
-                    if (this.versionHash != 0)
+                    if (this.versionHash == 0)
                     {
-                        reader.Hash = this.versionHash;
-                        long position = reader.BaseStream.Position;
-                        WzDirectory testDirectory = null;
-                        try
-                        {
-                            testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                            testDirectory.ParseDirectory(lazyParse);
-                        }
-                        catch
-                        {
-                            reader.BaseStream.Position = position;
-                            continue;
-                        }
-                        WzImage testImage = testDirectory.GetChildImages()[0];
+                        continue;
+                    }
+                    reader.Hash = this.versionHash;
+                    long position = reader.BaseStream.Position; // save position to rollback to 
+                    WzDirectory testDirectory = null;
+                    try
+                    {
+                        testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
+                        testDirectory.ParseDirectory(lazyParse);
+                    }
+                    catch
+                    {
+                        reader.BaseStream.Position = position;
+                        continue;
+                    }
+
+                    List<WzImage> childImages = testDirectory.GetChildImages();
+                    if (childImages.Count > 0) // coincidentally in msea v194 Map001.wz, the hash matches exactly, and it fails to decrypt later on (probably 1 in a million chance). mapleStoryPatchVersion used = 113
+                    {
+                        WzImage testImage = childImages[0];
 
                         try
                         {
@@ -257,12 +264,16 @@ namespace MapleLib.WzLib
                                         return true;
                                     }
                             }
-                            reader.BaseStream.Position = position;
+                            reader.BaseStream.Position = position; // reset
                         }
                         catch
                         {
-                            reader.BaseStream.Position = position;
+                            reader.BaseStream.Position = position; // reset
                         }
+                    } else
+                    {
+                        reader.BaseStream.Position = position; // reset
+                        continue; 
                     }
                 }
                 parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
