@@ -1331,6 +1331,14 @@ namespace HaRepacker.GUI.Panels
                     WzCanvasProperty linkProperty = ((WzCanvasProperty)linkValue);
 
                     SetImageRenderView(linkProperty, null);
+                } 
+                else if (linkValue is WzSoundProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
+                {
+                    mp3Player.Visibility = Visibility.Visible;
+                    mp3Player.SoundProperty = (WzSoundProperty)linkValue;
+
+                    changeSoundButton.Visibility = Visibility.Visible;
+                    saveSoundButton.Visibility = Visibility.Visible;
                 }
 
                 // Value
