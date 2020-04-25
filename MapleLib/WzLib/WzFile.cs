@@ -218,7 +218,9 @@ namespace MapleLib.WzLib
 
             if (mapleStoryPatchVersion == -1)
             {
-                for (int j = 0; j < short.MaxValue; j++)
+                const short MAX_PATCH_VERSION = 10000; // wont be reached for the forseeable future.
+
+                for (int j = 0; j < MAX_PATCH_VERSION; j++)
                 {
                     this.mapleStoryPatchVersion = (short)j;
                     this.versionHash = GetVersionHash(version, mapleStoryPatchVersion);
@@ -227,8 +229,8 @@ namespace MapleLib.WzLib
                         continue;
                     }
                     reader.Hash = this.versionHash;
-                    long position = reader.BaseStream.Position; // save position to rollback to 
-                    WzDirectory testDirectory = null;
+                    long position = reader.BaseStream.Position; // save position to rollback to, if should parsing fail from here
+                    WzDirectory testDirectory;
                     try
                     {
                         testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
@@ -240,9 +242,14 @@ namespace MapleLib.WzLib
                         continue;
                     }
 
-                    List<WzImage> childImages = testDirectory.GetChildImages();
-                    if (childImages.Count > 0) // coincidentally in msea v194 Map001.wz, the hash matches exactly, and it fails to decrypt later on (probably 1 in a million chance). mapleStoryPatchVersion used = 113
+                    try
                     {
+                        List<WzImage> childImages = testDirectory.GetChildImages();
+                        if (childImages.Count == 0) // coincidentally in msea v194 Map001.wz, the hash matches exactly using mapleStoryPatchVersion of 113, and it fails to decrypt later on (probably 1 in a million chance).
+                        {
+                            reader.BaseStream.Position = position; // reset
+                            continue;
+                        }
                         WzImage testImage = childImages[0];
 
                         try
@@ -250,7 +257,7 @@ namespace MapleLib.WzLib
                             reader.BaseStream.Position = testImage.Offset;
                             byte checkByte = reader.ReadByte();
                             reader.BaseStream.Position = position;
-                            testDirectory.Dispose();
+
                             switch (checkByte)
                             {
                                 case 0x73:
@@ -270,10 +277,10 @@ namespace MapleLib.WzLib
                         {
                             reader.BaseStream.Position = position; // reset
                         }
-                    } else
+                    }
+                    finally
                     {
-                        reader.BaseStream.Position = position; // reset
-                        continue; 
+                        testDirectory.Dispose();
                     }
                 }
                 parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
@@ -291,36 +298,29 @@ namespace MapleLib.WzLib
             return true;
         }
 
-        private static uint GetVersionHash(int encver, int realver)
+        private static uint GetVersionHash(int EncryptedVersionNumber, int realver)
         {
-            int EncryptedVersionNumber = encver;
             int VersionNumber = realver;
             int VersionHash = 0;
-            int DecryptedVersionNumber = 0;
-            string VersionNumberStr;
-            int a = 0, b = 0, c = 0, d = 0, l = 0;
+            string VersionNumberStr = VersionNumber.ToString();
 
-            VersionNumberStr = VersionNumber.ToString();
-
-            l = VersionNumberStr.Length;
+            int l = VersionNumberStr.Length;
             for (int i = 0; i < l; i++)
             {
                 VersionHash = (32 * VersionHash) + (int)VersionNumberStr[i] + 1;
             }
-            a = (VersionHash >> 24) & 0xFF;
-            b = (VersionHash >> 16) & 0xFF;
-            c = (VersionHash >> 8) & 0xFF;
-            d = VersionHash & 0xFF;
-            DecryptedVersionNumber = (0xff ^ a ^ b ^ c ^ d);
+
+            int a = (VersionHash >> 24) & 0xFF;
+            int b = (VersionHash >> 16) & 0xFF;
+            int c = (VersionHash >> 8) & 0xFF;
+            int d = VersionHash & 0xFF;
+            int DecryptedVersionNumber = (0xff ^ a ^ b ^ c ^ d);
 
             if (EncryptedVersionNumber == DecryptedVersionNumber)
             {
                 return Convert.ToUInt32(VersionHash);
             }
-            else
-            {
-                return 0;
-            }
+            return 0;
         }
 
         private void CreateVersionHash()
@@ -346,9 +346,11 @@ namespace MapleLib.WzLib
             WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion);
             CreateVersionHash();
             wzDir.SetHash(versionHash);
+
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
             File.Create(tempFile).Close();
             wzDir.GenerateDataFile(tempFile);
+
             WzTool.StringCache.Clear();
             uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
 
