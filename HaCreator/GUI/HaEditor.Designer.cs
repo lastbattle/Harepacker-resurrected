@@ -46,8 +46,9 @@
             this.dockPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.dockPanel.DocumentStyle = WeifenLuo.WinFormsUI.Docking.DocumentStyle.DockingSdi;
             this.dockPanel.Location = new System.Drawing.Point(0, 0);
+            this.dockPanel.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.dockPanel.Name = "dockPanel";
-            this.dockPanel.Size = new System.Drawing.Size(1113, 728);
+            this.dockPanel.Size = new System.Drawing.Size(1670, 1120);
             this.dockPanel.TabIndex = 4;
             // 
             // panel1
@@ -57,17 +58,19 @@
             this.panel1.Controls.Add(this.wpfHost);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel1.Location = new System.Drawing.Point(0, 0);
+            this.panel1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(1113, 728);
+            this.panel1.Size = new System.Drawing.Size(1670, 1120);
             this.panel1.TabIndex = 7;
             this.panel1.SizeChanged += new System.EventHandler(this.panel1_SizeChanged);
             // 
             // tabs
             // 
             this.tabs.CurrentPage = null;
-            this.tabs.Location = new System.Drawing.Point(168, 42);
+            this.tabs.Location = new System.Drawing.Point(732, 71);
+            this.tabs.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.tabs.Name = "tabs";
-            this.tabs.Size = new System.Drawing.Size(208, 215);
+            this.tabs.Size = new System.Drawing.Size(312, 331);
             this.tabs.TabColor = System.Drawing.Color.LightSteelBlue;
             this.tabs.TabIndex = 2;
             this.tabs.Text = "pageCollection1";
@@ -76,28 +79,31 @@
             // multiBoard
             // 
             this.multiBoard.DeviceReady = false;
-            this.multiBoard.Location = new System.Drawing.Point(217, 121);
+            this.multiBoard.Location = new System.Drawing.Point(326, 186);
+            this.multiBoard.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
             this.multiBoard.Name = "multiBoard";
             this.multiBoard.SelectedBoard = null;
-            this.multiBoard.Size = new System.Drawing.Size(88, 104);
+            this.multiBoard.Size = new System.Drawing.Size(132, 160);
             this.multiBoard.TabIndex = 3;
             // 
             // wpfHost
             // 
-            this.wpfHost.Location = new System.Drawing.Point(69, 21);
+            this.wpfHost.Location = new System.Drawing.Point(4, 5);
+            this.wpfHost.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.wpfHost.Name = "wpfHost";
-            this.wpfHost.Size = new System.Drawing.Size(333, 182);
+            this.wpfHost.Size = new System.Drawing.Size(1666, 1110);
             this.wpfHost.TabIndex = 0;
             this.wpfHost.Text = "elementHost1";
             this.wpfHost.Child = this.ribbon;
             // 
             // HaEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1113, 728);
+            this.ClientSize = new System.Drawing.Size(1670, 1120);
             this.Controls.Add(this.dockPanel);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.Name = "HaEditor";
             this.Text = "HaPigCreator";
             this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.HaEditor_FormClosed);
