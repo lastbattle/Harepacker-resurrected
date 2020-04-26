@@ -44,10 +44,14 @@ namespace HaCreator.MapEditor.Info
 
         public static ObjectInfo Get(string oS, string l0, string l1, string l2)
         {
+            try
+            {
             WzImageProperty objInfoProp = Program.InfoManager.ObjectSets[oS][l0][l1][l2];
             if (objInfoProp.HCTag == null)
                 objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
             return (ObjectInfo)objInfoProp.HCTag;
+            }
+            catch (KeyNotFoundException e) { return null; }
         }
 
         private static List<XNA.Point> ParsePropToOffsetList(WzImageProperty prop)
@@ -71,10 +75,13 @@ namespace HaCreator.MapEditor.Info
             }
             else if (prop is WzSubProperty)
             {
-                foreach (WzConvexProperty offsetSet in prop.WzProperties)
+                try
                 {
-                    result.Add(ParsePropToOffsetList(offsetSet));
-                }
+                    foreach (WzConvexProperty offsetSet in prop.WzProperties)
+                    {
+                        result.Add(ParsePropToOffsetList(offsetSet));
+                    }
+                }catch(InvalidCastException exc) {  }
             }
             else
             {

@@ -105,6 +105,10 @@ namespace HaCreator.GUI.EditorPanels
                         lifePictureBox.Image = null;
                         return;
                     }
+                    if(info.Height==1 && info.Width == 1)
+                    {
+                        info.Image = global::HaCreator.Properties.Resources.placeholder;
+                    }
                     lifePictureBox.Image = new Bitmap(info.Image);
                     hcsm.EnterEditMode(ItemTypes.NPCs);
                     hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);

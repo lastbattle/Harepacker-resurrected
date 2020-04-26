@@ -185,6 +185,8 @@ namespace HaCreator.Wz
                     }
                     bool flip = InfoTool.GetBool(obj["f"]);
                     ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
+                    if (objInfo == null)
+                        continue;
                     Layer l = mapBoard.Layers[layer];
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
                     l.zMList.Add(zM);
@@ -798,7 +800,7 @@ namespace HaCreator.Wz
                 ErrorLogger.SaveToFile("errors.txt");
                 if (UserSettings.ShowErrorsMessage)
                 {
-                    MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                   // MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
                 ErrorLogger.ClearErrors();
             }

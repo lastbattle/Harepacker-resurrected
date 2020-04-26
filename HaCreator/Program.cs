@@ -26,7 +26,7 @@ namespace HaCreator
         public static WzFileManager WzManager;
         public static WzInformationManager InfoManager;
         public static WzSettingsManager SettingsManager;
-        public const string Version = "2.1.1";
+        public const string Version = "2.2.0";
         public static bool AbortThreads = false;
         public static bool Restarting;
 
@@ -58,10 +58,8 @@ namespace HaCreator
             Properties.Resources.Culture = CultureInfo.CurrentCulture;
             InfoManager = new WzInformationManager();
             SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
-            if (SettingsManager.Load())
-            {
-                // do something
-            }
+            SettingsManager.Load();
+           
             MultiBoard.RecalculateSettings();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

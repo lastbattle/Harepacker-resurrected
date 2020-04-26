@@ -27,6 +27,10 @@ namespace HaCreator.MapEditor.Info
             {
                 if (base.Image == null)
                     ParseImage();
+                if (base.Image.Width == 1 && base.Image.Height == 1)
+                {
+                    return global::HaCreator.Properties.Resources.placeholder;
+                }
                 return base.Image;
             }
             set

@@ -176,6 +176,7 @@
     <Compile Include="WzLib\WzStructure\InfoTool.cs" />
     <Compile Include="WzLib\WzStructure\MapInfo.cs" />
     <Compile Include="WzLib\WzStructure\MapleBool.cs" />
+    <Compile Include="WzSettings.cs" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
