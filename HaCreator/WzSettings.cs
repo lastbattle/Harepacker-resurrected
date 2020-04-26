@@ -79,14 +79,6 @@ namespace HaCreator
         public static bool BackupEnabled = true;
         public static int BackupIdleTime = 5000;
         public static int BackupMaxTime = 60000;
-
-        // Controls debug features such feature compatibility testing and special exception handling
-        public static bool enableDebug =
-#if DEBUG
-            true;
-#else
-            false;
-#endif
     }
 
     public static class ApplicationSettings

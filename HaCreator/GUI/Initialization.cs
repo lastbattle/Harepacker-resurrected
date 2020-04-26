@@ -26,10 +26,10 @@ namespace HaCreator.GUI
         public Initialization()
         {
             InitializeComponent();
-            if (UserSettings.enableDebug)
-            {
-                debugButton.Visible = true;
-            }
+
+#if RELEASE
+                debugButton.Visible = false;
+#endif
         }
 
         private bool IsPathCommon(string path)
@@ -212,7 +212,7 @@ namespace HaCreator.GUI
             using (FolderBrowserDialog mapleSelect = new FolderBrowserDialog()
             {
                 ShowNewFolderButton = true,
-                RootFolder = Environment.SpecialFolder.ProgramFilesX86,
+             //   RootFolder = Environment.SpecialFolder.ProgramFilesX86,
                 Description = "Select the MapleStory folder."
             })
             {

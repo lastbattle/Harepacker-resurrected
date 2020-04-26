@@ -607,7 +607,7 @@ namespace HaRepacker.GUI.Panels
                 timerImgSequence = null;
             }
             timerImgSequence = new DispatcherTimer();
-            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, Program.TimeStartAnimateDefault);
+            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, 10);
             timerImgSequence.Tick += TimerImgSequence_Tick;
 
             if (bCanvasAnimationActive) // currently animating
