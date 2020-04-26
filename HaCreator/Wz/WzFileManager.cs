@@ -69,7 +69,7 @@ namespace HaCreator.Wz
             }
             catch (Exception e)
             {
-                HaRepackerLib.Warning.Error("Error initializing " + name + ".wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
+                //HaRepackerLib.Warning.Error("Error initializing " + name + ".wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
                 return false;
             }
         }
@@ -114,7 +114,7 @@ namespace HaCreator.Wz
 
         public WzDirectory this[string name]
         {
-            get { return wzDirs[name.ToLower()].MainDir; }
+            get { return (wzDirs.ContainsKey(name.ToLower()) ? wzDirs[name.ToLower()].MainDir : null); }    //really not very useful to return null in this case
         }
 
         public WzDirectory String
@@ -122,9 +122,10 @@ namespace HaCreator.Wz
             get { return GetMainDirectoryByName("string").MainDir; }
         }
 
+        //data.wz is wildly inconsistent between versions now, just avoid at all costs
         public bool HasDataFile
         {
-            get { return File.Exists(Path.Combine(baseDir, "Data.wz")); }
+            get { return false; }//return File.Exists(Path.Combine(baseDir, "Data.wz")); }
         }
 
         public string BaseDir
@@ -132,6 +133,7 @@ namespace HaCreator.Wz
             get { return baseDir; }
         }
 
+        //tbd load mob2.wz etc
         public void ExtractMobFile()
         {
             WzImage mobImage = (WzImage)String["Mob.img"];
@@ -142,6 +144,28 @@ namespace HaCreator.Wz
                 string name = nameProp == null ? "" : nameProp.Value;
                 Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
             }
+            /*   WzImage mobImage2 = (WzImage)String["Mob001.img"];
+               if (mobImage2 != null)
+               {
+                   if (!mobImage2.Parsed) mobImage2.ParseImage();
+                   foreach (WzSubProperty mob in mobImage2.WzProperties)
+                   {
+                       WzStringProperty nameProp = (WzStringProperty)mob["name"];
+                       string name = nameProp == null ? "" : nameProp.Value;
+                       Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
+                   }
+               }
+               WzImage mobImage3 = (WzImage)String["Mob2.img"];
+               if (mobImage3 != null)
+               {
+                   if (!mobImage3.Parsed) mobImage3.ParseImage();
+                   foreach (WzSubProperty mob in mobImage3.WzProperties)
+                   {
+                       WzStringProperty nameProp = (WzStringProperty)mob["name"];
+                       string name = nameProp == null ? "" : nameProp.Value;
+                       Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
+                   }
+               }*/
         }
 
         public void ExtractNpcFile()
@@ -171,8 +195,14 @@ namespace HaCreator.Wz
             {
                 if (!soundImage.Name.ToLower().Contains("bgm")) continue;
                 if (!soundImage.Parsed) soundImage.ParseImage();
-                foreach (WzSoundProperty bgm in soundImage.WzProperties)
-                    Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + bgm.Name] = bgm;
+                try
+                {
+                    foreach (WzSoundProperty bgm in soundImage.WzProperties)
+                    {
+                        Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + bgm.Name] = bgm;
+                    }
+                }
+                catch (Exception e) { continue; }
             }
         }
 
@@ -190,18 +220,63 @@ namespace HaCreator.Wz
                 Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
         }
 
+        //Handle various scenarios ie Map001.wz exists but may only contain Back or only Obj etc
         public void ExtractObjSets()
         {
-            WzDirectory objParent = (WzDirectory)this["map"]["Obj"];
-            foreach (WzImage objset in objParent.WzImages)
-                Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+            WzDirectory objParent1 = (WzDirectory)this["map"]["Obj"];
+            if (objParent1 != null)
+            {
+                foreach (WzImage objset in objParent1.WzImages)
+                    Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+            }
+
+            if (this.wzFiles.ContainsKey("map001"))
+            {
+                WzDirectory objParent2 = (WzDirectory)this["map001"]["Obj"];
+                if (objParent2 != null)
+                {
+                    foreach (WzImage objset in objParent2.WzImages)
+                        Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+                }
+            }
+            if (this.wzFiles.ContainsKey("map2"))
+            {
+                WzDirectory objParent3 = (WzDirectory)this["map2"]["Obj"];
+                if (objParent3 != null)
+                {
+                    foreach (WzImage objset in objParent3.WzImages)
+                        Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+                }
+            }
         }
 
+        //this handling sucks but nexon naming is not consistent enough to handle much better idk
         public void ExtractBackgroundSets()
         {
-            WzDirectory bgParent = (WzDirectory)this["map"]["Back"];
-            foreach (WzImage bgset in bgParent.WzImages)
-                Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+            WzDirectory bgParent1 = (WzDirectory)this["map"]["Back"];
+            if (bgParent1 != null)
+            {
+                foreach (WzImage bgset in bgParent1.WzImages)
+                    Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+            }
+            if (this.wzFiles.ContainsKey("map001"))
+            {
+                WzDirectory bgParent2 = (WzDirectory)this["map001"]["Back"];
+                if (bgParent2 != null)
+                {
+                    foreach (WzImage bgset in bgParent2.WzImages)
+                        Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+                }
+            }
+            if (this.wzFiles.ContainsKey("map2"))
+            {
+                WzDirectory bgParent3 = (WzDirectory)this["map2"]["Back"];
+                if (bgParent3 != null)
+                {
+                    foreach (WzImage bgset in bgParent3.WzImages)
+                        Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+                }
+            }
         }
 
         public void ExtractMaps()
@@ -214,14 +289,14 @@ namespace HaCreator.Wz
                 {
                     WzStringProperty mapName = (WzStringProperty)map["mapName"];
                     string id;
-                    if (map.Name.Length == 9) 
+                    if (map.Name.Length == 9)
                         id = map.Name;
-                    else 
+                    else
                         id = WzInfoTools.AddLeadingZeros(map.Name, 9);
 
-                    if (mapName == null) 
+                    if (mapName == null)
                         Program.InfoManager.Maps[id] = "";
-                    else 
+                    else
                         Program.InfoManager.Maps[id] = mapName.Value;
                 }
             }
@@ -237,7 +312,7 @@ namespace HaCreator.Wz
                 Program.InfoManager.PortalTypeById.Add(portal.Name);
                 PortalInfo.Load(portal);
             }
-            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
             foreach (WzSubProperty portal in gameParent.WzProperties)
             {
                 if (portal.WzProperties[0] is WzSubProperty)
@@ -246,15 +321,33 @@ namespace HaCreator.Wz
                     Bitmap defaultImage = null;
                     foreach (WzSubProperty image in portal.WzProperties)
                     {
-                        WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                        if (portalContinue == null) continue;
-                        Bitmap portalImage = portalContinue["0"].GetBitmap();
+                        //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                        //if (portalContinue == null) continue;
+                        Bitmap portalImage = image["0"].GetBitmap();
                         if (image.Name == "default")
                             defaultImage = portalImage;
                         else
                             images.Add(image.Name, portalImage);
                     }
                     Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                }
+                else if(portal.WzProperties[0] is WzCanvasProperty)
+                {
+                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
+                    Bitmap defaultImage = null;
+                    try
+                    {
+                        foreach (WzCanvasProperty image in portal.WzProperties)
+                        {
+                            //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                            //if (portalContinue == null) continue;
+                            Bitmap portalImage = image.GetBitmap();
+                            defaultImage = portalImage;
+                            images.Add(image.Name, portalImage);
+                        }
+                        Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                    }
+                    catch (InvalidCastException) { continue; } //nexon likes to toss ints in here zType etc
                 }
             }
 
@@ -264,16 +357,16 @@ namespace HaCreator.Wz
             }
         }
 
-/*        public void ExtractItems()
-        {
-            WzImage consImage = (WzImage)String["Consume.img"];
-            if (!consImage.Parsed) consImage.ParseImage();
-            foreach (WzSubProperty item in consImage.WzProperties)
-            {
-                WzStringProperty nameProp = (WzStringProperty)item["name"];
-                string name = nameProp == null ? "" : nameProp.Value;
-                Program.InfoManager.Items.Add(WzInfoTools.AddLeadingZeros(item.Name, 7), name);
-            }
-        }*/
+        /*        public void ExtractItems()
+                {
+                    WzImage consImage = (WzImage)String["Consume.img"];
+                    if (!consImage.Parsed) consImage.ParseImage();
+                    foreach (WzSubProperty item in consImage.WzProperties)
+                    {
+                        WzStringProperty nameProp = (WzStringProperty)item["name"];
+                        string name = nameProp == null ? "" : nameProp.Value;
+                        Program.InfoManager.Items.Add(WzInfoTools.AddLeadingZeros(item.Name, 7), name);
+                    }
+                }*/
     }
 }

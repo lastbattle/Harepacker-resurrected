@@ -25,7 +25,7 @@ namespace HaCreator
     public static class UserSettings
     {
         public static bool ShowErrorsMessage = true;
-        public static bool XGAResolution = false;
+        public static bool XGAResolution = true;
         public static bool ClipText = false;
         public static Color TabColor = Color.LightSteelBlue;
         public static int LineWidth = 1;

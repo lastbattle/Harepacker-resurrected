@@ -22,6 +22,7 @@ namespace HaRepacker.GUI
             InitializeComponent();
 
             sortBox.Checked = Program.ConfigurationManager.UserSettings.Sort;
+            loadRelated.Checked = Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles;
             apngIncompEnable.Checked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
             autoAssociateBox.Checked = Program.ConfigurationManager.UserSettings.AutoAssociate;
             if (Program.ConfigurationManager.UserSettings.DefaultXmlFolder != "") 
@@ -51,6 +52,7 @@ namespace HaRepacker.GUI
             }
             
             Program.ConfigurationManager.UserSettings.Sort = sortBox.Checked;
+            Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles = loadRelated.Checked;
             Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
             Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
             if (defXmlFolderEnable.Checked)

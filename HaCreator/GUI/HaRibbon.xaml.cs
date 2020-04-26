@@ -64,6 +64,7 @@ namespace HaCreator.GUI
                 reducedHeight = (int)child.RowDefinitions[0].ActualHeight;
                 child.RowDefinitions[0].Height = new GridLength(0);
             }
+            this.Height = 140;
         }
 
         public static readonly RoutedUICommand New = new RoutedUICommand("New", "New", typeof(HaRibbon),

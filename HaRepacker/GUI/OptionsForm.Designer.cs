@@ -32,9 +32,9 @@ namespace HaRepacker.GUI
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(OptionsForm));
             this.sortBox = new System.Windows.Forms.CheckBox();
+            this.loadRelated = new System.Windows.Forms.CheckBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.indentBox = new IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.lineBreakBox = new System.Windows.Forms.ComboBox();
             this.label2 = new System.Windows.Forms.Label();
@@ -54,6 +54,12 @@ namespace HaRepacker.GUI
             this.sortBox.Name = "sortBox";
             this.sortBox.UseVisualStyleBackColor = true;
             // 
+            // loadRelated
+            // 
+            resources.ApplyResources(this.loadRelated, "loadRelated");
+            this.loadRelated.Name = "loadRelated";
+            this.loadRelated.UseVisualStyleBackColor = true;
+            // 
             // okButton
             // 
             resources.ApplyResources(this.okButton, "okButton");
@@ -67,12 +73,6 @@ namespace HaRepacker.GUI
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.UseVisualStyleBackColor = true;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
-            // 
-            // indentBox
-            // 
-            resources.ApplyResources(this.indentBox, "indentBox");
-            this.indentBox.Name = "indentBox";
-            this.indentBox.Value = 0;
             // 
             // label1
             // 
@@ -153,6 +153,7 @@ namespace HaRepacker.GUI
             this.Controls.Add(this.themeColor__comboBox);
             this.Controls.Add(this.label3);
             this.Controls.Add(this.autoUpdate);
+            this.Controls.Add(this.loadRelated);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.browse);
             this.Controls.Add(this.defXmlFolderBox);
@@ -161,7 +162,6 @@ namespace HaRepacker.GUI
             this.Controls.Add(this.label2);
             this.Controls.Add(this.lineBreakBox);
             this.Controls.Add(this.label1);
-            this.Controls.Add(this.indentBox);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.sortBox);
@@ -175,9 +175,10 @@ namespace HaRepacker.GUI
         #endregion
 
         private System.Windows.Forms.CheckBox sortBox;
+        private System.Windows.Forms.CheckBox loadRelated;
         private System.Windows.Forms.Button okButton;
         private System.Windows.Forms.Button cancelButton;
-        private IntegerInput indentBox;
+        private IntegerInput indentBox = new IntegerInput();
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox lineBreakBox;
         private System.Windows.Forms.Label label2;

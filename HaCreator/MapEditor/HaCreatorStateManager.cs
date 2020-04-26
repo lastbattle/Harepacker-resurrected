@@ -438,7 +438,7 @@ namespace HaCreator.MapEditor
             WaitWindow ww = new WaitWindow("Opening HaRepacker...");
             ww.Show();
             Application.DoEvents();
-            HaRepacker.Program.WzMan = new HaRepackerLib.WzFileManager();
+            HaRepacker.Program.WzMan = new HaRepacker.WzFileManager();
             bool firstRun = HaRepacker.Program.PrepareApplication(false);
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
             mf.unloadAllToolStripMenuItem.Visible = false;

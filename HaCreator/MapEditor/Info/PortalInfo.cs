@@ -61,6 +61,7 @@ namespace HaCreator.MapEditor.Info
                 case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
                 case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
                 case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
+              //  case PortalType.PORTALTYPE_SCRIPT_HIDDEN_UNG:
                     return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, "", null, null);
                 default:
                     throw new Exception("unknown pt @ CreateInstance");

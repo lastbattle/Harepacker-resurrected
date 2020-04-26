@@ -33,7 +33,6 @@ If there are any bugs, describe it clearly.
  - Novak
  - [@Erick](https://github.com/ertrii)   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
  - [@RajanGrewa](https://github.com/RajanGrewal) https://github.com/eaxvac/Harepacker-resurrected/pull/8
- - [@shavitush](https://github.com/shavitush) https://github.com/eaxvac/Harepacker-resurrected/pull/5
  - and many others that contributed too! 
 ##### MapleLib2 by haha01haha01;
  - based on MapleLib by Snow;

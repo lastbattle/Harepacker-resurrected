@@ -30,6 +30,8 @@ namespace HaCreator.MapEditor.Info
         {
             this.id = id;
             this.name = name;
+            if(image!=null && image.Width==1 && image.Height==1)
+                image = global::HaCreator.Properties.Resources.placeholder; 
         }
 
         private void ExtractPNGFromImage(WzImage image)
@@ -38,6 +40,10 @@ namespace HaCreator.MapEditor.Info
             if (npcImage != null)
             {
                 Image = npcImage.PngProperty.GetPNG(false);
+                if(Image.Width==1 && Image.Height == 1)
+                {
+                    Image = global::HaCreator.Properties.Resources.placeholder;
+                }
                 Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)npcImage["origin"]);
             }
             else
