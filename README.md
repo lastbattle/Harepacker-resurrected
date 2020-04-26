@@ -6,14 +6,16 @@ HaSuite is a collection of tools for MapleStory, i.e file/level editor for Maple
 [![N|Solid](https://user-images.githubusercontent.com/4586194/41190431-cd2d7146-6c10-11e8-90ac-b5d5a6fdaeb3.png)](https://github.com/eaxvac/Harepacker-resurrected)
 
 ## To build HaSuite, you need 
- - at least Visual Studio 2017 (.NET 4.6.1 and Visual C++ Runtimes 2014+). 
+ - at least Visual Studio 2019 (.NET 4.7.1 and Visual C++ Runtimes 2014+). 
  - You must build it in AnyCPU mode, otherwise you will have to copy apng32.dll/apng64.dll from the AnyCPU build directory to the correct path.
 
 ## To run HaSuite, you need 
- - Microsoft .NET 4.6.1 
- - Microsoft Visual Studio 2017
+ - Microsoft .NET 4.7.1 
+ - Microsoft Visual Studio 2019
  - Visual C++ Redistributable 2014 +
 
+## Submodules
+- [Spine-Runtime](https://github.com/EsotericSoftware/spine-runtimes)
 ------------------------------
 
 ### Development

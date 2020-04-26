@@ -23,7 +23,6 @@ namespace HaRepacker
         public const string Version = "4.2.4";
         public const int Version_ = 424;
 
-        public const int TimeStartAnimateDefault = 10;
 
         public static WzFileManager WzMan = new WzFileManager();
         public static NamedPipeServerStream pipe;
