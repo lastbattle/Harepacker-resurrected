@@ -218,7 +218,9 @@ namespace MapleLib.WzLib
                 WzFile wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC);
                 try
                 {
-                    wzFile.ParseWzFile();
+                    string parseErrorMessage = string.Empty;
+                    bool success = wzFile.ParseWzFile(out parseErrorMessage);
+
                     ExtractSettingsImage((WzImage)wzFile["UserSettings.img"], userSettingsType);
                     ExtractSettingsImage((WzImage)wzFile["ApplicationSettings.img"], appSettingsType);
                     wzFile.Dispose();
@@ -238,7 +240,9 @@ namespace MapleLib.WzLib
             if (settingsExist)
             {
                 wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC);
-                wzFile.ParseWzFile();
+
+                string parseErrorMessage = string.Empty;
+                bool success = wzFile.ParseWzFile(out parseErrorMessage);
             }
             else
             {

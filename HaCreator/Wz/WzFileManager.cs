@@ -313,7 +313,7 @@ namespace HaCreator.Wz
                 PortalInfo.Load(portal);
             }
             WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
-            foreach (WzSubProperty portal in gameParent.WzProperties)
+            foreach (WzImageProperty portal in gameParent.WzProperties)
             {
                 if (portal.WzProperties[0] is WzSubProperty)
                 {
