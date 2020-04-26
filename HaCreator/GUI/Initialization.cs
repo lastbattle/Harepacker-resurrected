@@ -112,22 +112,27 @@ namespace HaCreator.GUI
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("string");
                 Program.WzManager.ExtractMaps();
+
                 textBox2.Text = "Initializing Mob.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("mob");
                 Program.WzManager.ExtractMobFile();
+
                 textBox2.Text = "Initializing Npc.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("npc");
                 Program.WzManager.ExtractNpcFile();
+
                 textBox2.Text = "Initializing Reactor.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("reactor");
                 Program.WzManager.ExtractReactorFile();
+
                 textBox2.Text = "Initializing Sound.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("sound");
                 Program.WzManager.ExtractSoundFile();
+
                 textBox2.Text = "Initializing Map.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("map");
@@ -204,11 +209,19 @@ namespace HaCreator.GUI
 
         private void button2_Click(object sender, EventArgs e)
         {
-            FolderBrowserDialog mapleSelect = new FolderBrowserDialog();
-            if (mapleSelect.ShowDialog() != DialogResult.OK)
-                return;
-            pathBox.Items.Add(mapleSelect.SelectedPath);
-            pathBox.SelectedIndex = pathBox.Items.Count - 1;
+            using (FolderBrowserDialog mapleSelect = new FolderBrowserDialog()
+            {
+                ShowNewFolderButton = true,
+                RootFolder = Environment.SpecialFolder.ProgramFilesX86,
+                Description = "Select the MapleStory folder."
+            })
+            {
+                if (mapleSelect.ShowDialog() != DialogResult.OK)
+                    return;
+
+                pathBox.Items.Add(mapleSelect.SelectedPath);
+                pathBox.SelectedIndex = pathBox.Items.Count - 1;
+            };
         }
 
         private void debugButton_Click(object sender, EventArgs e)

@@ -98,7 +98,7 @@ namespace HaCreator.GUI
 
         private void RedockControls()
         {
-            int ribbonHeight = (int)ribbon.ActualHeight - ribbon.reducedHeight;
+            int ribbonHeight = (int)ribbon.ActualHeight/* - ribbon.reducedHeight*/;
 
             wpfHost.Location = new Point();
             wpfHost.Size = new Size(panel1.Width, ribbonHeight);
