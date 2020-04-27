@@ -270,6 +270,12 @@ namespace MapleLib.WzLib
                                         parseErrorMessage = "Success";
                                         return true;
                                     }
+                                default:
+                                    {
+                                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, "New Wz image header found. checkByte = " + checkByte);
+                                        // log or something
+                                        break;
+                                    }
                             }
                             reader.BaseStream.Position = position; // reset
                         }

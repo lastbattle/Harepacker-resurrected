@@ -158,6 +158,7 @@
     <Compile Include="WzLib\WzProperties\WzConvexProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzDoubleProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzLongProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzLuaProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzNullProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzPngProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzSoundProperty.cs" />

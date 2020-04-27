@@ -19,6 +19,8 @@ using System.IO;
 using System;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
+using System.Diagnostics;
+using MapleLib.PacketLib;
 
 namespace MapleLib.WzLib
 {
@@ -44,6 +46,14 @@ namespace MapleLib.WzLib
         internal long tempFileEnd = 0;
         internal bool changed = false;
         internal bool parseEverything = false;
+
+        /// <summary>
+        /// Wz image embedding .lua file.
+        /// </summary>
+        public bool IsLuaWzImage
+        {
+            get { return Name.EndsWith(".lua"); } // TODO: find some ways to avoid user from adding a new image with .lua name
+        }
         #endregion
 
         #region Constructors\Destructors
@@ -286,13 +296,43 @@ namespace MapleLib.WzLib
                 reader.BaseStream.Position = offset;
 
                 byte b = reader.ReadByte();
-                string prop = reader.ReadString();
-                ushort val = reader.ReadUInt16();
+                switch (b)
+                {
+                    case 0x1: // .lua   
+                        {
+                            if (IsLuaWzImage) 
+                            {
+                                WzLuaProperty lua = WzImageProperty.ParseLuaProperty(offset, reader, this, this);
 
-                if (b != WzImageHeaderByte || prop != "Property" || val != 0)
-                    return false;
+                                List<WzImageProperty> luaImage = new List<WzImageProperty>();
+                                luaImage.Add(lua);
 
-                properties.AddRange(WzImageProperty.ParsePropertyList(offset, reader, this, this));
+                                properties.AddRange(luaImage);
+                                parsed = true; // test
+                                return true;
+                            }
+
+                            return false; // unhandled for now, if it isnt an .lua image
+                        }
+                    case WzImageHeaderByte:
+                        {
+                            string prop = reader.ReadString();
+                            ushort val = reader.ReadUInt16();
+                            if (prop != "Property" || val != 0)
+                            {
+                                return false;
+                            }
+                            break;
+                        }
+                    default:
+                        {
+                            // todo: log this or warn.
+                            Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, "[WzImage] New Wz image header found. b = " + b);
+                            return false;
+                        }
+                }
+                List<WzImageProperty> images = WzImageProperty.ParsePropertyList(offset, reader, this, this);
+                properties.AddRange(images);
 
                 parsed = true;
             }

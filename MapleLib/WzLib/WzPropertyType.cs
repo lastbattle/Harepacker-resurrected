@@ -35,6 +35,7 @@ namespace MapleLib.WzLib
 		Convex,
 		Sound,
 		UOL,
+		Lua,
 		#endregion
 
 		#region Png

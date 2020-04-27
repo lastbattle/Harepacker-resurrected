@@ -20,6 +20,10 @@ using System.IO;
 using System.Collections.Generic;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
+using System.Diagnostics;
+using MapleLib.PacketLib;
+using System.Text;
+using MapleLib.MapleCryptoLib;
 
 namespace MapleLib.WzLib
 {
@@ -105,7 +109,26 @@ namespace MapleLib.WzLib
 			}
 		}
 
-		internal static List<WzImageProperty> ParsePropertyList(uint offset, WzBinaryReader reader, WzObject parent, WzImage parentImg)
+        /// <summary>
+        /// Parses .lua property
+        /// </summary>
+        /// <param name="offset"></param>
+        /// <param name="reader"></param>
+        /// <param name="parent"></param>
+        /// <param name="parentImg"></param>
+        /// <returns></returns>
+        internal static WzLuaProperty ParseLuaProperty(uint offset, WzBinaryReader reader, WzObject parent, WzImage parentImg)
+        {
+            // 28 71 4F EF 1B 65 F9 1F A7 48 8D 11 73 E7 F0 27 55 09 DD 3C 07 32 D7 38 21 57 84 70 C1 79 9A 3F 49 F7 79 03 41 F4 9D B9 1B 5F CF 26 80 3D EC 25 5F 9C 
+            // [compressed int] [bytes]
+            int length = reader.ReadCompressedInt();
+            byte[] rawEncBytes = reader.ReadBytes(length);
+
+            WzLuaProperty lua = new WzLuaProperty("Script", rawEncBytes) { Parent = parent };
+            return lua;
+        }
+
+        internal static List<WzImageProperty> ParsePropertyList(uint offset, WzBinaryReader reader, WzObject parent, WzImage parentImg)
 		{
 			int entryCount = reader.ReadCompressedInt();
             List<WzImageProperty> properties = new List<WzImageProperty>(entryCount);
@@ -113,7 +136,7 @@ namespace MapleLib.WzLib
 			{
 				string name = reader.ReadStringBlock(offset);
                 byte ptype = reader.ReadByte();
-				switch (ptype)
+				switch (ptype) // header value
 				{
 					case 0:
 						properties.Add(new WzNullProperty(name) { Parent = parent });
@@ -146,10 +169,13 @@ namespace MapleLib.WzLib
 						int eob = (int)(reader.ReadUInt32() + reader.BaseStream.Position);
                         WzImageProperty exProp = ParseExtendedProp(reader, offset, eob, name, parent, parentImg);
 						properties.Add(exProp);
-						if (reader.BaseStream.Position != eob) reader.BaseStream.Position = eob;
+                        if (reader.BaseStream.Position != eob)
+                        {
+                            reader.BaseStream.Position = eob;
+                        }
 						break;
                     default:
-                        throw new Exception("Unknown property type at ParsePropertyList");
+                        throw new Exception("Unknown property type at ParsePropertyList, ptype = " + ptype);
 				}
 			}
 			return properties;
@@ -157,16 +183,18 @@ namespace MapleLib.WzLib
 
         internal static WzExtended ParseExtendedProp(WzBinaryReader reader, uint offset, int endOfBlock, string name, WzObject parent, WzImage imgParent)
         {
-            switch (reader.ReadByte())
+            byte propertyType = reader.ReadByte();
+            switch (propertyType)
             {
                 case 0x01:
+                    return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x1B:
                     return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x00:
                 case 0x73:
                     return ExtractMore(reader, offset, endOfBlock, name, "", parent, imgParent);
                 default:
-                    throw new System.Exception("Invlid byte read at ParseExtendedProp");
+                    throw new System.Exception("Invalid byte read at ParseExtendedProp");
             }
         }
 

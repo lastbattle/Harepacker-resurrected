@@ -136,8 +136,13 @@ namespace MapleLib.WzLib
                     ((WzVectorProperty)addedProp).X = new WzIntProperty("X");
                     ((WzVectorProperty)addedProp).Y = new WzIntProperty("Y");
                     break;
+                case WzPropertyType.Lua: // probably dont allow the user to create custom Lua for now.. 
+                    {
+                        addedProp = new WzLuaProperty(propName, new byte[] { });
+                        break;
+                    }
                 default:
-                    throw new NotSupportedException("not supported type");
+                    throw new NotSupportedException("Not supported type");
             }
             addedProp.SetValue(value);
             parent.AddProperty(addedProp);

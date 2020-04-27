@@ -105,7 +105,14 @@ namespace MapleLib.WzLib.Serialization
             indent = new string(indentArray);
         }
 
-        protected void WritePropertyToXML(TextWriter tw, string depth, WzImageProperty prop)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tw"></param>
+        /// <param name="depth"></param>
+        /// <param name="prop"></param>
+        /// <param name="exportFilePath"></param>
+        protected void WritePropertyToXML(TextWriter tw, string depth, WzImageProperty prop, string exportFilePath)
         {
             if (prop is WzCanvasProperty)
             {
@@ -122,7 +129,9 @@ namespace MapleLib.WzLib.Serialization
                     tw.Write(string.Concat(new object[] { depth, "<canvas name=\"", XmlUtil.SanitizeText(property3.Name), "\" width=\"", property3.PngProperty.Width, "\" height=\"", property3.PngProperty.Height, "\">" }) + lineBreak);
                 string newDepth = depth + indent;
                 foreach (WzImageProperty property in property3.WzProperties)
-                    WritePropertyToXML(tw, newDepth, property);
+                {
+                    WritePropertyToXML(tw, newDepth, property, exportFilePath);
+                }
                 tw.Write(depth + "</canvas>" + lineBreak);
             }
             else if (prop is WzIntProperty)
@@ -160,7 +169,9 @@ namespace MapleLib.WzLib.Serialization
                 tw.Write(depth + "<imgdir name=\"" + XmlUtil.SanitizeText(property9.Name) + "\">" + lineBreak);
                 string newDepth = depth + indent;
                 foreach (WzImageProperty property in property9.WzProperties)
-                    WritePropertyToXML(tw, newDepth, property);
+                {
+                    WritePropertyToXML(tw, newDepth, property, exportFilePath);
+                }
                 tw.Write(depth + "</imgdir>" + lineBreak);
             }
             else if (prop is WzShortProperty)
@@ -194,11 +205,29 @@ namespace MapleLib.WzLib.Serialization
             else if (prop is WzConvexProperty)
             {
                 tw.Write(depth + "<extended name=\"" + XmlUtil.SanitizeText(prop.Name) + "\">" + lineBreak);
+
                 WzConvexProperty property14 = (WzConvexProperty)prop;
                 string newDepth = depth + indent;
                 foreach (WzImageProperty property in property14.WzProperties)
-                    WritePropertyToXML(tw, newDepth, property);
+                {
+                    WritePropertyToXML(tw, newDepth, property, exportFilePath);
+                }
                 tw.Write(depth + "</extended>" + lineBreak);
+            } 
+            else if (prop is WzLuaProperty) // probably added on v188 gms?
+            {
+                WzLuaProperty property15 = (WzLuaProperty)prop;
+
+                string parentName = property15.Parent.Name;
+
+                tw.Write(depth);
+                tw.Write(lineBreak);
+
+                // Export standalone file here
+                using (TextWriter twLua = new StreamWriter(File.Create(exportFilePath.Replace(parentName + ".xml", parentName))))
+                {
+                    twLua.Write(property15.ToString());
+                }
             }
         }
     }
@@ -499,7 +528,9 @@ namespace MapleLib.WzLib.Serialization
                 tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
                 tw.Write("<imgdir name=\"" + XmlUtil.SanitizeText(img.Name) + "\">" + lineBreak);
                 foreach (WzImageProperty property in img.WzProperties)
-                    WritePropertyToXML(tw, indent, property);
+                {
+                    WritePropertyToXML(tw, indent, property, path);
+                }
                 tw.Write("</imgdir>" + lineBreak);
             }
 
@@ -550,7 +581,7 @@ namespace MapleLib.WzLib.Serialization
             : base(indentation, lineBreakType)
         { }
 
-        internal void DumpImageToXML(TextWriter tw, string depth, WzImage img)
+        internal void DumpImageToXML(TextWriter tw, string depth, WzImage img, string exportFilePath)
         {
             bool parsed = img.Parsed || img.Changed;
             if (!parsed) img.ParseImage();
@@ -558,40 +589,63 @@ namespace MapleLib.WzLib.Serialization
             tw.Write(depth + "<wzimg name=\"" + XmlUtil.SanitizeText(img.Name) + "\">" + lineBreak);
             string newDepth = depth + indent;
             foreach (WzImageProperty property in img.WzProperties)
-                WritePropertyToXML(tw, newDepth, property);
+            {
+                WritePropertyToXML(tw, newDepth, property, exportFilePath);
+            }
             tw.Write(depth + "</wzimg>");
-            if (!parsed) img.UnparseImage();
+            if (!parsed) 
+                img.UnparseImage();
         }
 
-        internal void DumpDirectoryToXML(TextWriter tw, string depth, WzDirectory dir)
+        internal void DumpDirectoryToXML(TextWriter tw, string depth, WzDirectory dir, string exportFilePath)
         {
             tw.Write(depth + "<wzdir name=\"" + XmlUtil.SanitizeText(dir.Name) + "\">" + lineBreak);
             foreach (WzDirectory subdir in dir.WzDirectories)
-                DumpDirectoryToXML(tw, depth + indent, subdir);
+                DumpDirectoryToXML(tw, depth + indent, subdir, exportFilePath);
             foreach (WzImage img in dir.WzImages)
-                DumpImageToXML(tw, depth + indent, img);
+            {
+                DumpImageToXML(tw, depth + indent, img, exportFilePath);
+            }
             tw.Write(depth + "</wzdir>" + lineBreak);
         }
 
-        public void ExportCombinedXml(List<WzObject> objects, string path)
+        /// <summary>
+        /// Export combined XML
+        /// </summary>
+        /// <param name="objects"></param>
+        /// <param name="exportFilePath"></param>
+        public void ExportCombinedXml(List<WzObject> objects, string exportFilePath)
         {
             total = 1; curr = 0;
-            if (Path.GetExtension(path) != ".xml") path += ".xml";
+
+            if (Path.GetExtension(exportFilePath) != ".xml")
+                exportFilePath += ".xml";
             foreach (WzObject obj in objects)
             {
-                if (obj is WzImage) total++;
-                else if (obj is WzDirectory) total += ((WzDirectory)obj).CountImages();
+                if (obj is WzImage) 
+                    total++;
+                else if (obj is WzDirectory) 
+                    total += ((WzDirectory)obj).CountImages();
             }
 
             ExportBase64Data = true;
-            TextWriter tw = new StreamWriter(path);
+            TextWriter tw = new StreamWriter(exportFilePath);
             tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
             tw.Write("<xmldump>" + lineBreak);
             foreach (WzObject obj in objects)
             {
-                if (obj is WzDirectory) DumpDirectoryToXML(tw, indent, (WzDirectory)obj);
-                else if (obj is WzImage) DumpImageToXML(tw, indent, (WzImage)obj);
-                else if (obj is WzImageProperty) WritePropertyToXML(tw, indent, (WzImageProperty)obj);
+                if (obj is WzDirectory)
+                {
+                    DumpDirectoryToXML(tw, indent, (WzDirectory)obj, exportFilePath);
+                }
+                else if (obj is WzImage)
+                {
+                    DumpImageToXML(tw, indent, (WzImage)obj, exportFilePath);
+                }
+                else if (obj is WzImageProperty)
+                {
+                    WritePropertyToXML(tw, indent, (WzImageProperty)obj, exportFilePath);
+                }
             }
             tw.Write("</xmldump>" + lineBreak);
             tw.Close();
