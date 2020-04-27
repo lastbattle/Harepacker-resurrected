@@ -72,12 +72,13 @@ namespace HaRepacker.GUI.Panels
             sbb.Completed += Storyboard_Find_FadeIn_Completed;
 
             // buttons
-            button_animateSelectedCanvas.Visibility = Visibility.Collapsed;
-            changeImageButton.Visibility = Visibility.Collapsed;
-            changeSoundButton.Visibility = Visibility.Collapsed;
-            saveSoundButton.Visibility = Visibility.Collapsed;
-            saveImageButton.Visibility = Visibility.Collapsed;
 
+            menuItem_Animate.Visibility = Visibility.Collapsed;
+            menuItem_changeImage.Visibility = Visibility.Collapsed;
+            menuItem_changeSound.Visibility = Visibility.Collapsed;
+            menuItem_saveSound.Visibility = Visibility.Collapsed;
+            menuItem_saveImage.Visibility = Visibility.Collapsed;
+            
             Loaded += MainPanelXAML_Loaded;
 
 
@@ -582,15 +583,6 @@ namespace HaRepacker.GUI.Panels
         #endregion
 
         #region Animate
-        /// <summary>
-        /// On button click for animating canvas
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_animateSelectedCanvas_Click_1(object sender, RoutedEventArgs e)
-        {
-            StartAnimateSelectedCanvas();
-        }
 
         private DispatcherTimer timerImgSequence;
         private int i_animateCanvasNode = 0;
@@ -697,7 +689,7 @@ namespace HaRepacker.GUI.Panels
                     bCanvasAnimationActive = true; // flag
 
                     timerImgSequence.Start();
-                    button_animateSelectedCanvas.Content = "Stop (F5)";
+                    menuItem_Animate.Header = "Stop (F5)";
                 }
             }
             else
@@ -747,7 +739,7 @@ namespace HaRepacker.GUI.Panels
                 timerImgSequence.Stop();
                 timerImgSequence = null;
             }
-            button_animateSelectedCanvas.Content = "Animate (F5)";
+            menuItem_Animate.Header = "Animate (F5)";
 
             // clear memory
             animate_PreLoadImages.Clear();
@@ -924,99 +916,35 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
-        /// Save sound 
+        /// More option -- Shows ContextMenuStrip 
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveSoundButton_Click(object sender, RoutedEventArgs e)
+        private void button_MoreOption_Click(object sender, RoutedEventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzSoundProperty))
-                return;
-            WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
+            Button clickSrc = (Button)sender;
 
-            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
-            {
-                FileName = mp3.Name,
-                Title = "Select where to save the image...",
-                Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3"
-            };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                return;
-
-            mp3.SaveToFile(dialog.FileName);
+            clickSrc.ContextMenu.IsOpen = true;
+          //  System.Windows.Forms.ContextMenuStrip contextMenu = new System.Windows.Forms.ContextMenuStrip();
+          //  contextMenu.Show(clickSrc, 0, 0);
         }
 
         /// <summary>
-        /// Saving the image from WzCanvasProperty
+        /// Menu item for animation. Appears when clicking on the "..." button
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveImageButton_Click(object sender, RoutedEventArgs e)
+        private void menuItem_Animate_Click(object sender, RoutedEventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty))
-            {
-                return;
-            }
-
-            System.Drawing.Bitmap wzCanvasPropertyObjLocation = null;
-            string fileName = string.Empty;
-
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty)
-            {
-                WzCanvasProperty canvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
-
-                wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
-                fileName = canvas.Name;
-            }
-            else
-            {
-                WzObject linkValue = ((WzUOLProperty)DataTree.SelectedNode.Tag).LinkValue;
-                if (linkValue is WzCanvasProperty)
-                {
-                    WzCanvasProperty canvas = (WzCanvasProperty)linkValue;
-
-                    wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
-                    fileName = canvas.Name;
-                }
-                else
-                    return;
-            }
-            if (wzCanvasPropertyObjLocation == null)
-                return; // oops, we're fucked lulz
-
-            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
-            {
-                FileName = fileName,
-                Title = "Select where to save the image...",
-                Filter = "Portable Network Grpahics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
-            };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-            switch (dialog.FilterIndex)
-            {
-                case 1: //png
-                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Png);
-                    break;
-                case 2: //gif
-                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Gif);
-                    break;
-                case 3: //bmp
-                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Bmp);
-                    break;
-                case 4: //jpg
-                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
-                    break;
-                case 5: //tiff
-                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Tiff);
-                    break;
-            }
+            StartAnimateSelectedCanvas();
         }
 
         /// <summary>
-        /// Changing the image of WzCanvasProperty
+        /// 
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void changeImageButton_Click(object sender, RoutedEventArgs e)
+        private void menuItem_changeImage_Click(object sender, RoutedEventArgs e)
         {
             if (DataTree.SelectedNode.Tag is WzCanvasProperty)
             {
@@ -1074,11 +1002,11 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
-        /// Change sound button onClicked
+        /// 
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void changeSoundButton_Click(object sender, RoutedEventArgs e)
+        private void menuItem_changeSound_Click(object sender, RoutedEventArgs e)
         {
             if (DataTree.SelectedNode.Tag is WzSoundProperty)
             {
@@ -1104,6 +1032,94 @@ namespace HaRepacker.GUI.Panels
                 DataTree.SelectedNode.Tag = prop;
                 parent.AddProperty(prop);
                 mp3Player.SoundProperty = prop;
+            }
+        }
+
+        /// <summary>
+        /// Saving the sound from WzSoundProperty
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void menuItem_saveSound_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(DataTree.SelectedNode.Tag is WzSoundProperty))
+                return;
+            WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
+
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
+                FileName = mp3.Name,
+                Title = "Select where to save the .mp3 file.",
+                Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3 (*.mp3)|*.mp3"
+            };
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                return;
+
+            mp3.SaveToFile(dialog.FileName);
+        }
+
+        /// <summary>
+        /// Saving the image from WzCanvasProperty
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void menuItem_saveImage_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(DataTree.SelectedNode.Tag is WzCanvasProperty) && !(DataTree.SelectedNode.Tag is WzUOLProperty))
+            {
+                return;
+            }
+
+            System.Drawing.Bitmap wzCanvasPropertyObjLocation = null;
+            string fileName = string.Empty;
+
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty)
+            {
+                WzCanvasProperty canvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
+
+                wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
+                fileName = canvas.Name;
+            }
+            else
+            {
+                WzObject linkValue = ((WzUOLProperty)DataTree.SelectedNode.Tag).LinkValue;
+                if (linkValue is WzCanvasProperty)
+                {
+                    WzCanvasProperty canvas = (WzCanvasProperty)linkValue;
+
+                    wzCanvasPropertyObjLocation = canvas.GetLinkedWzCanvasBitmap();
+                    fileName = canvas.Name;
+                }
+                else
+                    return;
+            }
+            if (wzCanvasPropertyObjLocation == null)
+                return; // oops, we're fucked lulz
+
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
+                FileName = fileName,
+                Title = "Select where to save the image...",
+                Filter = "Portable Network Grpahics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
+            };
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            switch (dialog.FilterIndex)
+            {
+                case 1: //png
+                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Png);
+                    break;
+                case 2: //gif
+                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Gif);
+                    break;
+                case 3: //bmp
+                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Bmp);
+                    break;
+                case 4: //jpg
+                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                    break;
+                case 5: //tiff
+                    wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Tiff);
+                    break;
             }
         }
         #endregion
@@ -1263,7 +1279,7 @@ namespace HaRepacker.GUI.Panels
 
             // Canvas animation
             if (DataTree.SelectedNodes.Count <= 1)
-                button_animateSelectedCanvas.Visibility = Visibility.Collapsed; // set invisible regardless if none of the nodes are selected.
+                menuItem_Animate.Visibility = Visibility.Collapsed; // set invisible regardless if none of the nodes are selected.
             else
             {
                 bool bIsAllCanvas = true;
@@ -1277,16 +1293,16 @@ namespace HaRepacker.GUI.Panels
                         break;
                     }
                 }
-                button_animateSelectedCanvas.Visibility = bIsAllCanvas ? Visibility.Visible : Visibility.Collapsed;
+                menuItem_Animate.Visibility = bIsAllCanvas ? Visibility.Visible : Visibility.Collapsed;
             }
-
+            
             // Set default layout collapsed state
             mp3Player.Visibility = Visibility.Collapsed;
             // Button collapsed state
-            changeImageButton.Visibility = Visibility.Collapsed;
-            saveImageButton.Visibility = Visibility.Collapsed;
-            changeSoundButton.Visibility = Visibility.Collapsed;
-            saveSoundButton.Visibility = Visibility.Collapsed;
+            menuItem_changeImage.Visibility = Visibility.Collapsed;
+            menuItem_saveImage.Visibility = Visibility.Collapsed;
+            menuItem_changeSound.Visibility = Visibility.Collapsed;
+            menuItem_saveSound.Visibility = Visibility.Collapsed; 
             // Canvas collapsed state
             canvasPropBox.Visibility = Visibility.Collapsed;
             // Value
@@ -1305,8 +1321,8 @@ namespace HaRepacker.GUI.Panels
             }
             else if (obj is WzCanvasProperty)
             {
-                changeImageButton.Visibility = Visibility.Visible;
-                saveImageButton.Visibility = Visibility.Visible;
+                menuItem_changeImage.Visibility = Visibility.Visible;
+                menuItem_saveImage.Visibility = Visibility.Visible;
 
                 // Image
                 WzCanvasProperty canvas = (WzCanvasProperty)obj;
@@ -1329,7 +1345,7 @@ namespace HaRepacker.GUI.Panels
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
                     canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
-                    saveImageButton.Visibility = Visibility.Visible;
+                    menuItem_saveImage.Visibility = Visibility.Visible;
 
                     WzCanvasProperty linkProperty = ((WzCanvasProperty)linkValue);
 
@@ -1340,8 +1356,8 @@ namespace HaRepacker.GUI.Panels
                     mp3Player.Visibility = Visibility.Visible;
                     mp3Player.SoundProperty = (WzSoundProperty)linkValue;
 
-                    changeSoundButton.Visibility = Visibility.Visible;
-                    saveSoundButton.Visibility = Visibility.Visible;
+                    menuItem_changeSound.Visibility = Visibility.Visible;
+                    menuItem_saveSound.Visibility = Visibility.Visible;
                 }
 
                 // Value
@@ -1353,8 +1369,8 @@ namespace HaRepacker.GUI.Panels
                 mp3Player.Visibility = Visibility.Visible;
                 mp3Player.SoundProperty = (WzSoundProperty)obj;
 
-                changeSoundButton.Visibility = Visibility.Visible;
-                saveSoundButton.Visibility = Visibility.Visible;
+                menuItem_changeSound.Visibility = Visibility.Visible;
+                menuItem_saveSound.Visibility = Visibility.Visible;
             }
             else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty || bIsWzLuaProperty)
             {
@@ -1694,5 +1710,6 @@ namespace HaRepacker.GUI.Panels
             searchidx = 0;
         }
         #endregion
+
     }
 }

@@ -40,6 +40,89 @@
                 <DiscreteObjectKeyFrame KeyTime="0:0:0.3" Value="{x:Static Visibility.Collapsed}"/>
             </ObjectAnimationUsingKeyFrames>
         </Storyboard>
+        <Style x:Key="FocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="2" SnapsToDevicePixels="true" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" StrokeThickness="1" StrokeDashArray="1 2"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <SolidColorBrush x:Key="Button.Static.Background" Color="#FFDDDDDD"/>
+        <SolidColorBrush x:Key="Button.Static.Border" Color="#FF707070"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#FFBEE6FD"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#FF3C7FB1"/>
+        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#FFC4E5F6"/>
+        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#FF2C628B"/>
+        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
+        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
+        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+
+        <Style x:Key="ButtonStyle_MoreOption" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="Background" Value="{StaticResource Button.Static.Background}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Button.Static.Border}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="0,0,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <ContentPresenter x:Name="contentPresenter" Focusable="False" Margin="0" HorizontalAlignment="Right"  RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" RenderTransformOrigin="0.5,0.5" >
+                            <ContentPresenter.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform/>
+                                    <SkewTransform/>
+                                    <RotateTransform/>
+                                    <TranslateTransform/>
+                                </TransformGroup>
+                            </ContentPresenter.RenderTransform>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="MouseOver">
+                                        <Storyboard>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" Storyboard.TargetName="contentPresenter">
+                                                <EasingDoubleKeyFrame KeyTime="0" Value="1.1"/>
+                                            </DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" Storyboard.TargetName="contentPresenter">
+                                                <EasingDoubleKeyFrame KeyTime="0" Value="1.1"/>
+                                            </DoubleAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" Storyboard.TargetName="contentPresenter">
+                                                <EasingDoubleKeyFrame KeyTime="0" Value="1.2"/>
+                                            </DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" Storyboard.TargetName="contentPresenter">
+                                                <EasingDoubleKeyFrame KeyTime="0" Value="1.2"/>
+                                            </DoubleAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                        </ContentPresenter>
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+
+                            <Trigger Property="IsMouseOver" Value="true">
+
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
     <UserControl.Triggers>
         <EventTrigger RoutedEvent="FrameworkElement.Loaded">
@@ -127,6 +210,9 @@
                                 </DiscreteObjectKeyFrame.Value>
                             </DiscreteObjectKeyFrame>
                         </ObjectAnimationUsingKeyFrames>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button">
+                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        </ColorAnimationUsingKeyFrames>
                         <!--      <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="statusBar">
                             <EasingColorKeyFrame KeyTime="0" Value="Black"/>
                         </ColorAnimationUsingKeyFrames>
@@ -146,7 +232,7 @@
                 </VisualState>
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        
+
         <StatusBar x:Name="statusBar" DockPanel.Dock="Bottom">
             <StatusBar.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -196,7 +282,7 @@
                 <ColumnDefinition Width="4" />
                 <ColumnDefinition Width="7*"/>
             </Grid.ColumnDefinitions>
-            
+
             <!-- Main panel-->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
@@ -210,7 +296,7 @@
                                       KeyDown="DataTree_KeyDown"
                                       DoubleClick="DataTree_DoubleClick"/>
                 </WindowsFormsHost>
-                
+
                 <!-- Find panel -->
                 <Grid x:Name="grid_FindPanel" Grid.Row="1" Grid.RowSpan="2" Opacity="1"
                       Margin="0,0,0,0" Background="White" Height="40" VerticalAlignment="Top"
@@ -253,6 +339,7 @@
                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
                   ResizeBehavior="PreviousAndNext" />
 
+            
             <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
@@ -260,6 +347,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
+                <!-- Text box -->
                 <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
                                                   AcceptsReturn="False"
                                                       ButtonClicked="nameBox_ButtonClicked"/>
@@ -276,6 +364,7 @@
                     <localSubPanels:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 
 
+                    <!-- Image render -->
                     <Grid Grid.Row="0" x:Name="Grid_ImageRender" Margin="10">
                         <localSubPanels:ImageRenderViewer x:Name="canvasPropBox"
                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
@@ -283,21 +372,27 @@
 
                         </localSubPanels:ImageRenderViewer>
                     </Grid>
-
-                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right"
-                                Margin="10,10,20,10">
-                        <Button Height="30" Width="100" Content="Animate (F5)" BorderBrush="#FFCBCBCB" x:Name="button_animateSelectedCanvas" 
-                                Click="button_animateSelectedCanvas_Click_1"/>
-                        <Button Height="30" Width="100" Content="Change Image" BorderBrush="#FFCBCBCB" x:Name="changeImageButton"
-                                Click="changeImageButton_Click"/>
-                        <Button Height="30" Width="100" Content="Change Sound" BorderBrush="#FFCBCBCB" x:Name="changeSoundButton"
-                                Click="changeSoundButton_Click"/>
-                        <Button Height="30" Width="100" Content="Save Sound" BorderBrush="#FFCBCBCB" x:Name="saveSoundButton" 
-                                Click="saveSoundButton_Click"/>
-                        <Button Height="30" Width="100" Content="Save Image" BorderBrush="#FFCBCBCB" x:Name="saveImageButton"
-                                Click="saveImageButton_Click"/>
-                    </StackPanel>
                 </Grid>
+
+                <!-- Context menu -->
+                <Button x:Name="button_MoreOption" Content="..."  Width="40" Height="50" FontSize="40" Style="{DynamicResource ButtonStyle_MoreOption}"
+                                VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,10,20,10"
+                        Grid.Row="2" 
+                                Click="button_MoreOption_Click">
+                    <Button.ContextMenu>
+                        <ContextMenu Name="cm" StaysOpen="true">
+                            <MenuItem Header="Animate (F5)" x:Name="menuItem_Animate" Click="menuItem_Animate_Click"/>
+                            <MenuItem Header="Change Image" x:Name="menuItem_changeImage" Click="menuItem_changeImage_Click"/>
+                            <MenuItem Header="Change Sound" x:Name="menuItem_changeSound" Click="menuItem_changeSound_Click"/>
+                            <MenuItem Header="Save Sound" x:Name="menuItem_saveSound" Click="menuItem_saveSound_Click"/>
+                            <MenuItem Header="Save Image" x:Name="menuItem_saveImage" Click="menuItem_saveImage_Click"/>
+                            <!--  <MenuItem Header="Save Sound">
+                                        <MenuItem Header="ReadMe.txt"/>
+                                        <MenuItem Header="Schedule.xls"/>
+                                    </MenuItem>-->
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
             </Grid>
 
 
