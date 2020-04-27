@@ -19,7 +19,7 @@ namespace MapleLib.WzLib
 	public enum WzPropertyType
 	{
 		#region Regular
-		Null = 0,
+		Null,
 		Short,
 		Int,
         Long,
@@ -35,7 +35,7 @@ namespace MapleLib.WzLib
 		Convex,
 		Sound,
 		UOL,
-		Lua = 13,
+		Lua,
 		#endregion
 
 		#region Png

@@ -260,10 +260,6 @@ namespace MapleLib.WzLib
 
                             switch (checkByte)
                             {
-                                case 0x1:
-                                    {
-                                        break;
-                                    }
                                 case 0x73:
                                 case 0x1b:
                                     {

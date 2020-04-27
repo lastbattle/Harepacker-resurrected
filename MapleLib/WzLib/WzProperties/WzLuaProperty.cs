@@ -61,7 +61,7 @@ namespace MapleLib.WzLib.WzProperties
         public override string Name { get { return name; } set { name = value; } }
         public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
         {
-            writer.Write((byte) WzPropertyType.Lua);
+            writer.Write((byte) 0x1);
             writer.WriteCompressedInt(encryptedBytes.Length);
             writer.Write(encryptedBytes);
         }
