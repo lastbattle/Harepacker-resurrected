@@ -387,4 +387,22 @@
   <data name="EncTypeGenerate" xml:space="preserve">
     <value>Bruteforce AES密钥（生成）</value>
   </data>
+  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="RelativeTime_HoursAgo" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="RelativeTime_MinutesAgo" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="RelativeTime_MonthsAgo" xml:space="preserve">
+    <value>{0} 月前</value>
+  </data>
+  <data name="RelativeTime_SecondsAgo" xml:space="preserve">
+    <value>{0} 秒前</value>
+  </data>
+  <data name="RelativeTime_YearsAgo" xml:space="preserve">
+    <value>{0} 年前</value>
+  </data>
 </root>

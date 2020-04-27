@@ -381,4 +381,22 @@
   <data name="EncTypeGenerate" xml:space="preserve">
     <value>Bruteforce AES key (Generate)</value>
   </data>
+  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+    <value>{0} day(s) ago</value>
+  </data>
+  <data name="RelativeTime_HoursAgo" xml:space="preserve">
+    <value>{0} hour(s) ago</value>
+  </data>
+  <data name="RelativeTime_MinutesAgo" xml:space="preserve">
+    <value>{0} minute(s) ago</value>
+  </data>
+  <data name="RelativeTime_MonthsAgo" xml:space="preserve">
+    <value>{0} month(s) ago</value>
+  </data>
+  <data name="RelativeTime_SecondsAgo" xml:space="preserve">
+    <value>{0} second(s) ago</value>
+  </data>
+  <data name="RelativeTime_YearsAgo" xml:space="preserve">
+    <value>{0} years(s) ago</value>
+  </data>
 </root>

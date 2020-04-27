@@ -1013,6 +1013,60 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to {0} day(s) ago.
+        /// </summary>
+        public static string RelativeTime_DaysAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_DaysAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} hour(s) ago.
+        /// </summary>
+        public static string RelativeTime_HoursAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_HoursAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} minute(s) ago.
+        /// </summary>
+        public static string RelativeTime_MinutesAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_MinutesAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} month(s) ago.
+        /// </summary>
+        public static string RelativeTime_MonthsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_MonthsAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} second(s) ago.
+        /// </summary>
+        public static string RelativeTime_SecondsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_SecondsAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} years(s) ago.
+        /// </summary>
+        public static string RelativeTime_YearsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_YearsAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap rename {
