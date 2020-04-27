@@ -14,7 +14,7 @@ For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2
  - [Git](https://git-scm.com/downloads) or [Github, bundled](https://desktop.github.com/) for cloning, and downloading of related sub-module components in the repository.
 
 ### To run HaSuite, you need 
- - Microsoft .NET 4.7.1 
+ - Microsoft .NET 4.7.1 (usually already pre-installed in Windows 10, just do a Windows update)
 
 ### Modules / [Submodules](https://www.atlassian.com/git/tutorials/git-submodule) used
 - [Spine-Runtime](https://github.com/EsotericSoftware/spine-runtimes)

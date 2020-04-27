@@ -1296,6 +1296,9 @@ namespace HaRepacker.GUI.Panels
             // Vector panel
             vectorPanel.Visibility = Visibility.Collapsed;
 
+            // vars
+            bool bIsWzLuaProperty = obj is WzLuaProperty;
+
             // Set layout visibility
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
@@ -1353,7 +1356,7 @@ namespace HaRepacker.GUI.Panels
                 changeSoundButton.Visibility = Visibility.Visible;
                 saveSoundButton.Visibility = Visibility.Visible;
             }
-            else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty)
+            else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty || bIsWzLuaProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
@@ -1364,6 +1367,11 @@ namespace HaRepacker.GUI.Panels
                 {
                     textPropBox.AcceptsReturn = true;
                     textPropBox.Height = 200;
+                } 
+                else if (bIsWzLuaProperty)
+                {
+                    textPropBox.AcceptsReturn = true;
+                    textPropBox.Height = 700;
                 }
                 else
                 {
@@ -1389,6 +1397,10 @@ namespace HaRepacker.GUI.Panels
                             toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
                         }
                     }
+                } 
+                else if (bIsWzLuaProperty)
+                {
+
                 }
                 else if (obj is WzIntProperty)
                 {

@@ -260,6 +260,10 @@ namespace MapleLib.WzLib
 
                             switch (checkByte)
                             {
+                                case 0x1:
+                                    {
+                                        break;
+                                    }
                                 case 0x73:
                                 case 0x1b:
                                     {
@@ -269,6 +273,12 @@ namespace MapleLib.WzLib
 
                                         parseErrorMessage = "Success";
                                         return true;
+                                    }
+                                default:
+                                    {
+                                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, "New Wz image header found. checkByte = " + checkByte);
+                                        // log or something
+                                        break;
                                     }
                             }
                             reader.BaseStream.Position = position; // reset

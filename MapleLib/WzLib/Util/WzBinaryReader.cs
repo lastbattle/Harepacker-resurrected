@@ -64,25 +64,44 @@ namespace MapleLib.WzLib.Util
             {
                 return string.Empty;
             }
-
             int length;
+            bool bIsUnicode = smallLength > 0;
+            if (bIsUnicode)
+            {
+                if (smallLength == sbyte.MaxValue)
+                    length = ReadInt32();
+                else
+                    length = (int)smallLength;
+
+                if (length <= 0)
+                    return string.Empty;
+
+                ReadString(length, true);
+            } else
+            {
+                if (smallLength == sbyte.MinValue)
+                    length = ReadInt32();
+                else
+                    length = (int)(-smallLength);
+
+                if (length <= 0)
+                    return string.Empty;
+            }
+            return ReadString(length, bIsUnicode);
+        }
+
+        /// <summary>
+        /// Reads an encrypted string with the provided length
+        /// </summary>
+        /// <param name="length"></param>
+        /// <param name="unicode"></param>
+        /// <returns></returns>
+        public string ReadString(int length, bool unicode)
+        {
             StringBuilder retString = new StringBuilder();
-            if (smallLength > 0) // Unicode
+            if (unicode)
             {
                 ushort mask = 0xAAAA;
-                if (smallLength == sbyte.MaxValue)
-                {
-                    length = ReadInt32();
-                }
-                else
-                {
-                    length = (int)smallLength;
-                }
-                if (length <= 0)
-                {
-                    return string.Empty;
-                }
-
                 for (int i = 0; i < length; i++)
                 {
                     ushort encryptedChar = ReadUInt16();
@@ -91,22 +110,9 @@ namespace MapleLib.WzLib.Util
                     retString.Append((char)encryptedChar);
                     mask++;
                 }
-            }
-            else
-            { // ASCII
+            } else
+            {
                 byte mask = 0xAA;
-                if (smallLength == sbyte.MinValue)
-                {
-                    length = ReadInt32();
-                }
-                else
-                {
-                    length = (int)(-smallLength);
-                }
-                if (length <= 0)
-                {
-                    return string.Empty;
-                }
 
                 for (int i = 0; i < length; i++)
                 {
@@ -192,12 +198,14 @@ namespace MapleLib.WzLib.Util
 
         public string ReadStringBlock(uint offset)
         {
-            switch (ReadByte())
+            byte header = ReadByte();
+
+            switch (header)
             {
                 case 0:
                 case 0x73:
                     return ReadString();
-                case 1:
+                case 0x1:
                 case 0x1B:
                     return ReadStringAtOffset(offset + ReadInt32());
                 default:

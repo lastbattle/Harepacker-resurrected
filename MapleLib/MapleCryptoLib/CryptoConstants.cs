@@ -71,7 +71,7 @@ namespace MapleLib.MapleCryptoLib
 		public static byte[] WZ_GMSIV = new byte[4] { 0x4D, 0x23, 0xC7, 0x2B };
 
 		/// <summary>
-		/// IV used to create the WzKey for MSEA
+		/// IV used to create the WzKey for the latest version of GMS, MSEA, or KMS
 		/// </summary>
 		public static byte[] WZ_MSEAIV = new byte[4] { 0xB9, 0x7D, 0x63, 0xE9 };
 

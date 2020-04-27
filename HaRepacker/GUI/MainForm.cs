@@ -583,7 +583,7 @@ namespace HaRepacker.GUI
         }
         #endregion
 
-        #region Wz Key bruteforcing
+        #region WZ IV Key bruteforcing
         private ulong wzKeyBruteforceTries = 0;
         private DateTime wzKeyBruteforceStartTime = DateTime.Now;
         private bool wzKeyBruteforceCompleted = false;

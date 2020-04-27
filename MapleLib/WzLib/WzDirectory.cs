@@ -190,28 +190,35 @@ namespace MapleLib.WzLib
                 uint offset;
 
                 long rememberPos = 0;
-                if (type == 1) //01 XX 00 00 00 00 00 OFFSET (4 bytes) 
+                switch (type)
                 {
-                    int unknown = reader.ReadInt32();
-                    reader.ReadInt16();
-                    uint offs = reader.ReadOffset();
-                    continue;
-                }
-                else if (type == 2)
-                {
-                    int stringOffset = reader.ReadInt32();
-                    rememberPos = reader.BaseStream.Position;
-                    reader.BaseStream.Position = reader.Header.FStart + stringOffset;
-                    type = reader.ReadByte();
-                    fname = reader.ReadString();
-                }
-                else if (type == 3 || type == 4)
-                {
-                    fname = reader.ReadString();
-                    rememberPos = reader.BaseStream.Position;
-                }
-                else
-                {
+                    case 1:  //01 XX 00 00 00 00 00 OFFSET (4 bytes) 
+                        {
+                            int unknown = reader.ReadInt32();
+                            reader.ReadInt16();
+                            uint offs = reader.ReadOffset();
+                            continue;
+                        }
+                    case 2:
+                        {
+                            int stringOffset = reader.ReadInt32();
+                            rememberPos = reader.BaseStream.Position;
+                            reader.BaseStream.Position = reader.Header.FStart + stringOffset;
+                            type = reader.ReadByte();
+                            fname = reader.ReadString();
+                            break;
+                        }
+                    case 3:
+                    case 4:
+                        {
+                            fname = reader.ReadString();
+                            rememberPos = reader.BaseStream.Position;
+                            break;
+                        }
+                    default:
+                        {
+                            break;
+                        }
                 }
                 reader.BaseStream.Position = rememberPos;
                 fsize = reader.ReadCompressedInt();
