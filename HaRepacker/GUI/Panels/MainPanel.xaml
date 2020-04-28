@@ -343,8 +343,7 @@
             <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
-                    <RowDefinition Height="Auto" MaxHeight="300"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- Text box -->
@@ -352,10 +351,11 @@
                                                   AcceptsReturn="False"
                                                       ButtonClicked="nameBox_ButtonClicked"/>
                 <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" 
+                                                  VerticalAlignment="Top"
                                                   TextWrap="Wrap" />
 
 
-                <Grid x:Name="grid1" Grid.Row="2">
+                <Grid x:Name="grid1" Grid.Row="1" Grid.RowSpan="2">
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed">
                         <localSubPanels:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
@@ -365,8 +365,9 @@
 
 
                     <!-- Image render -->
-                    <Grid Grid.Row="0" x:Name="Grid_ImageRender" Margin="10">
+                    <Grid x:Name="Grid_ImageRender" Margin="10">
                         <localSubPanels:ImageRenderViewer x:Name="canvasPropBox"
+                                                          Margin="0,40,0,0"
                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                           Visibility="Collapsed">
 
@@ -377,7 +378,7 @@
                 <!-- Context menu -->
                 <Button x:Name="button_MoreOption" Content="..."  Width="40" Height="50" FontSize="40" Style="{DynamicResource ButtonStyle_MoreOption}"
                                 VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,10,20,10"
-                        Grid.Row="2" 
+                        Grid.Row="0" Grid.RowSpan="2"
                                 Click="button_MoreOption_Click">
                     <Button.ContextMenu>
                         <ContextMenu Name="cm" StaysOpen="true">
