@@ -110,7 +110,7 @@ namespace MapleLib.WzLib.WzProperties
         #region Cast Values
         public override string GetString()
         {
-            byte[] decodedBytes = Decode();
+            byte[] decodedBytes = EncodeDecode(encryptedBytes);
             string decoded = Encoding.ASCII.GetString(decodedBytes);
 
             return decoded;
@@ -123,13 +123,18 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region Encoder Decoder
-        private byte[] Decode()
+        /// <summary>
+        /// Encodes or decoded a selected chunk of bytes with the xor encryption used with lua property
+        /// </summary>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        public byte[] EncodeDecode(byte[] input)
         {
-            byte[] newArray = new byte[encryptedBytes.Length];
+            byte[] newArray = new byte[input.Length];
 
-            for (int i = 0; i < encryptedBytes.Length; i++)
+            for (int i = 0; i < input.Length; i++)
             {
-                byte encryptedChar = (byte)(encryptedBytes[i] ^ WzKey[i]);
+                byte encryptedChar = (byte)(input[i] ^ WzKey[i]);
                 newArray[i] = encryptedChar;
             }
             return newArray;

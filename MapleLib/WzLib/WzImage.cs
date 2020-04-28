@@ -88,7 +88,9 @@ namespace MapleLib.WzLib
             if (properties != null)
             {
                 foreach (WzImageProperty prop in properties)
+                {
                     prop.Dispose();
+                }
                 properties.Clear();
                 properties = null;
             }
