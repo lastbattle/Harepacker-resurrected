@@ -232,7 +232,7 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to MSEA /Taiwan (old).
+        ///   Looks up a localized string similar to MSEA/ EMS /Taiwan (old).
         /// </summary>
         public static string EncTypeMSEA {
             get {
