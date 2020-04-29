@@ -232,7 +232,7 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to MSEA /Taiwan (old).
+        ///   Looks up a localized string similar to MSEA/ EMS /Taiwan (old).
         /// </summary>
         public static string EncTypeMSEA {
             get {
@@ -1009,6 +1009,60 @@ namespace HaRepacker.Properties {
             get {
                 object obj = ResourceManager.GetObject("red_x1", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} day(s) ago.
+        /// </summary>
+        public static string RelativeTime_DaysAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_DaysAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} hour(s) ago.
+        /// </summary>
+        public static string RelativeTime_HoursAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_HoursAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} minute(s) ago.
+        /// </summary>
+        public static string RelativeTime_MinutesAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_MinutesAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} month(s) ago.
+        /// </summary>
+        public static string RelativeTime_MonthsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_MonthsAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} second(s) ago.
+        /// </summary>
+        public static string RelativeTime_SecondsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_SecondsAgo", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to {0} years(s) ago.
+        /// </summary>
+        public static string RelativeTime_YearsAgo {
+            get {
+                return ResourceManager.GetString("RelativeTime_YearsAgo", resourceCulture);
             }
         }
         

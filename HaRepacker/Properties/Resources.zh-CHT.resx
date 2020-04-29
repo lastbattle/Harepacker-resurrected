@@ -136,7 +136,7 @@
     <value>Global MapleStory (舊)</value>
   </data>
   <data name="EncTypeMSEA" xml:space="preserve">
-    <value>新楓之谷 / 冒险岛Online / 메이플스토리 / MapleSEA(舊)</value>
+    <value>新楓之谷 / 冒险岛Online / 메이플스토리 / MapleSEA/ EMS(舊)</value>
   </data>
   <data name="EncTypeNone" xml:space="preserve">
     <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
@@ -378,5 +378,23 @@
   </data>
   <data name="EncTypeGenerate" xml:space="preserve">
     <value>Bruteforce AES密鑰（生成）</value>
+  </data>
+  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="RelativeTime_HoursAgo" xml:space="preserve">
+    <value>{0} 小時前</value>
+  </data>
+  <data name="RelativeTime_MinutesAgo" xml:space="preserve">
+    <value>{0} 分鐘前</value>
+  </data>
+  <data name="RelativeTime_MonthsAgo" xml:space="preserve">
+    <value>{0} 月前</value>
+  </data>
+  <data name="RelativeTime_SecondsAgo" xml:space="preserve">
+    <value>{0} 秒前</value>
+  </data>
+  <data name="RelativeTime_YearsAgo" xml:space="preserve">
+    <value>{0} 年前</value>
   </data>
 </root>

@@ -1,4 +1,12 @@
-﻿using MapleLib.MapleCryptoLib;
+﻿/* Copyright (C) 2020 LastBattle
+* https://github.com/lastbattle/Harepacker-resurrected
+* 
+* This Source Code Form is subject to the terms of the Mozilla Public
+* License, v. 2.0. If a copy of the MPL was not distributed with this
+* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+
+using MapleLib.MapleCryptoLib;
 using MapleLib.WzLib.Util;
 using System;
 using System.Collections.Generic;
@@ -102,7 +110,7 @@ namespace MapleLib.WzLib.WzProperties
         #region Cast Values
         public override string GetString()
         {
-            byte[] decodedBytes = Decode();
+            byte[] decodedBytes = EncodeDecode(encryptedBytes);
             string decoded = Encoding.ASCII.GetString(decodedBytes);
 
             return decoded;
@@ -115,13 +123,18 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region Encoder Decoder
-        private byte[] Decode()
+        /// <summary>
+        /// Encodes or decoded a selected chunk of bytes with the xor encryption used with lua property
+        /// </summary>
+        /// <param name="input"></param>
+        /// <returns></returns>
+        public byte[] EncodeDecode(byte[] input)
         {
-            byte[] newArray = new byte[encryptedBytes.Length];
+            byte[] newArray = new byte[input.Length];
 
-            for (int i = 0; i < encryptedBytes.Length; i++)
+            for (int i = 0; i < input.Length; i++)
             {
-                byte encryptedChar = (byte)(encryptedBytes[i] ^ WzKey[i]);
+                byte encryptedChar = (byte)(input[i] ^ WzKey[i]);
                 newArray[i] = encryptedChar;
             }
             return newArray;

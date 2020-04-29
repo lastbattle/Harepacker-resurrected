@@ -27,10 +27,10 @@ using MapleLib.MapleCryptoLib;
 
 namespace MapleLib.WzLib
 {
-	/// <summary>
-	/// An interface for wz img properties
-	/// </summary>
-	public abstract class WzImageProperty : WzObject
+    /// <summary>
+    /// An interface for wz img properties
+    /// </summary>
+    public abstract class WzImageProperty : WzObject
     {
         #region Virtual\Abstrcat Members
         public virtual List<WzImageProperty> WzProperties { get { return null; } }
@@ -42,12 +42,12 @@ namespace MapleLib.WzLib
             return null;
         }
 
-		public abstract WzPropertyType PropertyType { get; }
-        
+        public abstract WzPropertyType PropertyType { get; }
+
         /// <summary>
         /// The image that this property is contained in
         /// </summary>
-		public WzImage ParentImage 
+        public WzImage ParentImage
         {
             get
             {
@@ -61,9 +61,9 @@ namespace MapleLib.WzLib
             }
         }
 
-		public override WzObjectType ObjectType { get { return WzObjectType.Property; } }
+        public override WzObjectType ObjectType { get { return WzObjectType.Property; } }
 
-		public abstract void WriteValue(WzBinaryWriter writer);
+        public abstract void WriteValue(WzBinaryWriter writer);
 
         public abstract WzImageProperty DeepClone();
 
@@ -74,10 +74,10 @@ namespace MapleLib.WzLib
             ((IPropertyContainer)Parent).RemoveProperty(this);
         }
 
-		public virtual void ExportXml(StreamWriter writer, int level)
-		{
-			writer.WriteLine(XmlUtil.Indentation(level) + XmlUtil.OpenNamedTag(this.PropertyType.ToString(), this.Name, true));
-			writer.WriteLine(XmlUtil.Indentation(level) + XmlUtil.CloseTag(this.PropertyType.ToString()));
+        public virtual void ExportXml(StreamWriter writer, int level)
+        {
+            writer.WriteLine(XmlUtil.Indentation(level) + XmlUtil.OpenNamedTag(this.PropertyType.ToString(), this.Name, true));
+            writer.WriteLine(XmlUtil.Indentation(level) + XmlUtil.CloseTag(this.PropertyType.ToString()));
         }
 
         public override WzFile WzFileParent
@@ -88,26 +88,35 @@ namespace MapleLib.WzLib
 
         #region Extended Properties Parsing
         internal static void WritePropertyList(WzBinaryWriter writer, List<WzImageProperty> properties)
-		{
-			writer.Write((ushort)0);
-			writer.WriteCompressedInt(properties.Count);
-            for (int i = 0; i < properties.Count; i++)
-			{
-				writer.WriteStringValue(properties[i].Name, 0x00, 0x01);
-                if (properties[i] is WzExtended)
-                    WriteExtendedValue(writer, (WzExtended)properties[i]);
-                else
-                    properties[i].WriteValue(writer);
-			}
-		}
+        {
+            if (properties.Count == 1 && properties[0] is WzLuaProperty)
+            {
+                properties[0].WriteValue(writer);
+            }
+            else
+            {
+                writer.WriteStringValue("Property", 0x73, 0x1B);
 
-		internal static void DumpPropertyList(StreamWriter writer, int level, List<WzImageProperty> properties)
-		{
-			foreach (WzImageProperty prop in properties)
-			{
-				prop.ExportXml(writer, level + 1);
-			}
-		}
+                writer.Write((ushort)0);
+                writer.WriteCompressedInt(properties.Count);
+                for (int i = 0; i < properties.Count; i++)
+                {
+                    writer.WriteStringValue(properties[i].Name, 0x00, 0x01);
+                    if (properties[i] is WzExtended)
+                        WriteExtendedValue(writer, (WzExtended)properties[i]);
+                    else
+                        properties[i].WriteValue(writer);
+                }
+            }
+        }
+
+        internal static void DumpPropertyList(StreamWriter writer, int level, List<WzImageProperty> properties)
+        {
+            foreach (WzImageProperty prop in properties)
+            {
+                prop.ExportXml(writer, level + 1);
+            }
+        }
 
         /// <summary>
         /// Parses .lua property
@@ -129,65 +138,63 @@ namespace MapleLib.WzLib
         }
 
         internal static List<WzImageProperty> ParsePropertyList(uint offset, WzBinaryReader reader, WzObject parent, WzImage parentImg)
-		{
-			int entryCount = reader.ReadCompressedInt();
+        {
+            int entryCount = reader.ReadCompressedInt();
             List<WzImageProperty> properties = new List<WzImageProperty>(entryCount);
-			for (int i = 0; i < entryCount; i++)
-			{
-				string name = reader.ReadStringBlock(offset);
+            for (int i = 0; i < entryCount; i++)
+            {
+                string name = reader.ReadStringBlock(offset);
                 byte ptype = reader.ReadByte();
-				switch (ptype) // header value
-				{
-					case 0:
-						properties.Add(new WzNullProperty(name) { Parent = parent });
-						break;
-					case 11:
-					case 2:
-						properties.Add(new WzShortProperty(name, reader.ReadInt16()) { Parent = parent });
-						break;
-					case 3:
+                switch (ptype) // header value
+                {
+                    case 0:
+                        properties.Add(new WzNullProperty(name) { Parent = parent });
+                        break;
+                    case 11:
+                    case 2:
+                        properties.Add(new WzShortProperty(name, reader.ReadInt16()) { Parent = parent });
+                        break;
+                    case 3:
                     case 19:
-						properties.Add(new WzIntProperty(name, reader.ReadCompressedInt()) { Parent = parent });
-						break;
+                        properties.Add(new WzIntProperty(name, reader.ReadCompressedInt()) { Parent = parent });
+                        break;
                     case 20:
                         properties.Add(new WzLongProperty(name, reader.ReadLong()) { Parent = parent });
                         break;
-					case 4:
-						byte type = reader.ReadByte();
-						if (type == 0x80)
-							properties.Add(new WzFloatProperty(name, reader.ReadSingle()) { Parent = parent });
-						else if (type == 0)
-							properties.Add(new WzFloatProperty(name, 0f) { Parent = parent });
-						break;
-					case 5:
-						properties.Add(new WzDoubleProperty(name, reader.ReadDouble()) { Parent = parent });
-						break;
-					case 8:
-						properties.Add(new WzStringProperty(name, reader.ReadStringBlock(offset)) { Parent = parent });
-						break;
-					case 9:
-						int eob = (int)(reader.ReadUInt32() + reader.BaseStream.Position);
+                    case 4:
+                        byte type = reader.ReadByte();
+                        if (type == 0x80)
+                            properties.Add(new WzFloatProperty(name, reader.ReadSingle()) { Parent = parent });
+                        else if (type == 0)
+                            properties.Add(new WzFloatProperty(name, 0f) { Parent = parent });
+                        break;
+                    case 5:
+                        properties.Add(new WzDoubleProperty(name, reader.ReadDouble()) { Parent = parent });
+                        break;
+                    case 8:
+                        properties.Add(new WzStringProperty(name, reader.ReadStringBlock(offset)) { Parent = parent });
+                        break;
+                    case 9:
+                        int eob = (int)(reader.ReadUInt32() + reader.BaseStream.Position);
                         WzImageProperty exProp = ParseExtendedProp(reader, offset, eob, name, parent, parentImg);
-						properties.Add(exProp);
+                        properties.Add(exProp);
                         if (reader.BaseStream.Position != eob)
                         {
                             reader.BaseStream.Position = eob;
                         }
-						break;
+                        break;
                     default:
                         throw new Exception("Unknown property type at ParsePropertyList, ptype = " + ptype);
-				}
-			}
-			return properties;
-		}
+                }
+            }
+            return properties;
+        }
 
         internal static WzExtended ParseExtendedProp(WzBinaryReader reader, uint offset, int endOfBlock, string name, WzObject parent, WzImage imgParent)
         {
-            byte propertyType = reader.ReadByte();
-            switch (propertyType)
+            switch (reader.ReadByte())
             {
                 case 0x01:
-                    return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x1B:
                     return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x00:
@@ -201,7 +208,9 @@ namespace MapleLib.WzLib
         internal static WzExtended ExtractMore(WzBinaryReader reader, uint offset, int eob, string name, string iname, WzObject parent, WzImage imgParent)
         {
             if (iname == "")
+            {
                 iname = reader.ReadString();
+            }
             switch (iname)
             {
                 case "Property":
@@ -254,9 +263,11 @@ namespace MapleLib.WzLib
         internal static void WriteExtendedValue(WzBinaryWriter writer, WzExtended property)
         {
             writer.Write((byte)9);
+
             long beforePos = writer.BaseStream.Position;
             writer.Write((Int32)0); // Placeholder
             property.WriteValue(writer);
+
             int len = (int)(writer.BaseStream.Position - beforePos);
             long newPos = writer.BaseStream.Position;
             writer.BaseStream.Position = beforePos;
@@ -265,5 +276,5 @@ namespace MapleLib.WzLib
         }
         #endregion
 
-	}
+    }
 }

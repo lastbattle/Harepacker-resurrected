@@ -132,7 +132,6 @@ namespace MapleLib.WzLib.WzProperties
         }
         public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
         {
-            writer.WriteStringValue("Property", 0x73, 0x1B);
             WzImageProperty.WritePropertyList(writer, properties);
         }
         public override void ExportXml(StreamWriter writer, int level)
@@ -148,7 +147,9 @@ namespace MapleLib.WzLib.WzProperties
         {
             name = null;
             foreach (WzImageProperty prop in properties)
+            {
                 prop.Dispose();
+            }
             properties.Clear();
             properties = null;
         }
