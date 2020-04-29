@@ -192,11 +192,9 @@ namespace MapleLib.WzLib
 
         internal static WzExtended ParseExtendedProp(WzBinaryReader reader, uint offset, int endOfBlock, string name, WzObject parent, WzImage imgParent)
         {
-            byte propertyType = reader.ReadByte();
-            switch (propertyType)
+            switch (reader.ReadByte())
             {
                 case 0x01:
-                    return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x1B:
                     return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x00:
