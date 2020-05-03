@@ -160,7 +160,7 @@
   <ItemGroup>
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
-    <Compile Include="ContextMenuManager.cs" />
+    <Compile Include="GUI\ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
     <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
@@ -368,7 +368,6 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="UndoRedoManager.cs" />
-    <Compile Include="Utils\ScreenDPI.cs" />
     <Compile Include="Warning.cs" />
     <Compile Include="WzFileManager.cs" />
     <Compile Include="GUI\WzStringSearchForm.cs">

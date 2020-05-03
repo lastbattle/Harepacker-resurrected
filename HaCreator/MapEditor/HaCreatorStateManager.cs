@@ -518,7 +518,10 @@ namespace HaCreator.MapEditor
         void ribbon_MapSimulationClicked()
         {
             multiBoard.DeviceReady = false;
-            MapSimulator.MapSimulator.CreateMapSimulator(multiBoard.SelectedBoard).ShowDialog();
+
+            MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulator.CreateMapSimulator(multiBoard.SelectedBoard);
+            mapSimulator.ShowDialog();
+
             multiBoard.DeviceReady = true;
         }
 

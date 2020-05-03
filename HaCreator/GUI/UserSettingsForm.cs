@@ -25,7 +25,7 @@ namespace HaCreator.GUI
             linewBox.Value = UserSettings.LineWidth;
             dotwBox.Value = UserSettings.DotWidth;
             inactiveaBox.Value = UserSettings.NonActiveAlpha;
-            xgaResolutionCheckbox.Checked = UserSettings.XGAResolution;
+            comboBox_resolution.SelectedIndex = UserSettings.SimulateResolution;
             clipBox.Checked = UserSettings.ClipText;
             fixFh.Checked = UserSettings.FixFootholdMispositions;
             invertUpDownBox.Checked = UserSettings.InverseUpDown;
@@ -92,7 +92,7 @@ namespace HaCreator.GUI
             UserSettings.DotWidth = (int)dotwBox.Value;
             MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
             UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.XGAResolution = xgaResolutionCheckbox.Checked;
+            UserSettings.SimulateResolution = comboBox_resolution.SelectedIndex;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
             UserSettings.ClipText = clipBox.Checked;
             UserSettings.FixFootholdMispositions = fixFh.Checked;
             UserSettings.InverseUpDown = invertUpDownBox.Checked;

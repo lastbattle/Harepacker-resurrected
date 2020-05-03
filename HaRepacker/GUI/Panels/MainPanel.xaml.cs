@@ -21,7 +21,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using static HaRepacker.Configuration.UserSettings;
+using static MapleLib.Configuration.UserSettings;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -1325,6 +1325,12 @@ namespace HaRepacker.GUI.Panels
 
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
+            bool bIsWzSoundProperty = obj is WzSoundProperty;
+            bool bIsWzStringProperty = obj is WzStringProperty;
+            bool bIsWzIntProperty = obj is WzIntProperty;
+            bool bIsWzDoubleProperty = obj is WzDoubleProperty;
+            bool bIsWzFloatProperty = obj is WzFloatProperty;
+            bool bIsWzShortProperty = obj is WzShortProperty;
 
             // Set layout visibility
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
@@ -1375,7 +1381,7 @@ namespace HaRepacker.GUI.Panels
                 textPropBox.Visibility = Visibility.Visible;
                 textPropBox.Text = obj.ToString();
             }
-            else if (obj is WzSoundProperty)
+            else if (bIsWzSoundProperty)
             {
                 mp3Player.Visibility = Visibility.Visible;
                 mp3Player.SoundProperty = (WzSoundProperty)obj;
@@ -1383,17 +1389,24 @@ namespace HaRepacker.GUI.Panels
                 menuItem_changeSound.Visibility = Visibility.Visible;
                 menuItem_saveSound.Visibility = Visibility.Visible;
             }
-            else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty || bIsWzLuaProperty)
+            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
                 textPropBox.Text = obj.ToString();
 
                 // If text is a string property, expand the textbox
-                if (obj is WzStringProperty)
+                if (bIsWzStringProperty)
                 {
                     textPropBox.AcceptsReturn = true;
-                    textPropBox.Height = 200;
+                    if (((WzStringProperty)obj).IsSpineResources)
+                    {
+                        textPropBox.Height = 700;
+                    }
+                    else
+                    {
+                        textPropBox.Height = 200;
+                    }
                 } 
                 else if (bIsWzLuaProperty)
                 {
@@ -1407,7 +1420,7 @@ namespace HaRepacker.GUI.Panels
                 }
 
 
-                if (obj is WzStringProperty)
+                if (bIsWzStringProperty)
                 {
                     WzStringProperty stringObj = (WzStringProperty)obj;
 
@@ -1429,7 +1442,7 @@ namespace HaRepacker.GUI.Panels
                 {
 
                 }
-                else if (obj is WzIntProperty)
+                else if (bIsWzIntProperty)
                 {
                     WzIntProperty intProperty = (WzIntProperty)obj;
 
@@ -1437,7 +1450,7 @@ namespace HaRepacker.GUI.Panels
                     {
                         isSelectingWzMapFieldLimit = true;
 
-                        fieldLimitPanel1.UpdateFieldLimitCheckboxes(intProperty);
+                        fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) intProperty.GetLong());
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;

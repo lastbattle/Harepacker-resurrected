@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace HaRepacker.Utils
 {
-    public class ScreenDPI
+    public class ScreenDPIUtil
     {
         /// <summary>
         /// Gets the screen scale factor of the current user

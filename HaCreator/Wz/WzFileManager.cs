@@ -259,6 +259,7 @@ namespace HaCreator.Wz
                 foreach (WzImage bgset in bgParent1.WzImages)
                     Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
             }
+
             if (this.wzFiles.ContainsKey("map001"))
             {
                 WzDirectory bgParent2 = (WzDirectory)this["map001"]["Back"];

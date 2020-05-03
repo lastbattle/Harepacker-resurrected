@@ -29,6 +29,7 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Input;
 using HaSharedLirary;
+using HaRepacker.Utils;
 
 namespace HaCreator.MapSimulator
 {
@@ -38,8 +39,9 @@ namespace HaCreator.MapSimulator
         public int mapShiftY = 0;
         public Point mapCenter;
         public Point minimapPos;
-        public int width;
-        public int height;
+
+        public static int RenderWidth;
+        public static int RenderHeight;
 
         private GraphicsDevice DxDevice;
         private SpriteBatch sprite;
@@ -61,18 +63,50 @@ namespace HaCreator.MapSimulator
 
         public MapSimulator(Board mapBoard)
         {
+            InitializeComponent();
+
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
                 audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+
             mapCenter = mapBoard.CenterPoint;
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapCenter.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapCenter.Y) / (double)mapBoard.mag));
-            if (mapBoard.VRRectangle == null) vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
-            else vr = new Rectangle(mapBoard.VRRectangle.X + mapCenter.X, mapBoard.VRRectangle.Y + mapCenter.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
+            if (mapBoard.VRRectangle == null) 
+                vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+            else 
+                vr = new Rectangle(mapBoard.VRRectangle.X + mapCenter.X, mapBoard.VRRectangle.Y + mapCenter.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
-            InitializeComponent();
-            width = UserSettings.XGAResolution ? 1024 : 800;
-            height = UserSettings.XGAResolution ? 768 : 600;
-            this.Width = width;
-            this.Height = height;
+
+
+            switch (UserSettings.SimulateResolution)
+            {
+
+                case 1:  // 1024x768
+                    RenderHeight = 768;
+                    RenderWidth = 1024;
+                    break;
+                case 2: // 1280x720
+                    RenderHeight = 720;
+                    RenderWidth = 1280;
+                    break;
+                case 3:  // 1366x768
+                    RenderHeight = 768;
+                    RenderWidth = 1366;
+                    break;
+                case 4:
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    break;
+                case 0: // 800x600
+                default:
+                    RenderHeight = 600;
+                    RenderWidth = 800;
+                    break;
+            }
+            double dpi = ScreenDPIUtil.GetScreenScaleFactor();
+
+            this.Width = (int) (RenderWidth * dpi);
+            this.Height =(int) (RenderHeight * dpi);
+
 #if FULLSCREEN
             pParams.BackBufferWidth = Math.Max(Width, 1);
             pParams.BackBufferHeight = Math.Max(Height, 1);
@@ -80,13 +114,14 @@ namespace HaCreator.MapSimulator
             pParams.IsFullScreen = false;
             pParams.DepthStencilFormat = DepthFormat.Depth24;
 #else
-            pParams.BackBufferWidth = Math.Max(width, 1);
-            pParams.BackBufferHeight = Math.Max(height, 1);
+            pParams.BackBufferWidth = Math.Max(RenderWidth, 1);
+            pParams.BackBufferHeight = Math.Max(RenderHeight, 1);
             pParams.BackBufferFormat = SurfaceFormat.Color;
             pParams.DepthStencilFormat = DepthFormat.Depth24;
             pParams.DeviceWindowHandle = Handle;
             pParams.IsFullScreen = false;
 #endif
+
             DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
             this.minimap = BoardItem.TextureFromBitmap(DxDevice, mapBoard.MiniMap);
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
@@ -103,21 +138,23 @@ namespace HaCreator.MapSimulator
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
             foreach (BackgroundItem bg in backgrounds)
                 if (!bg.Front)
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, width, height);
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
+
             for (int i = 0; i < mapObjects.Length; i++)
             {
                 foreach (MapItem item in mapObjects[i])
-                    item.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, width, height);
+                    item.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
             }
+
             foreach (BackgroundItem bg in backgrounds)
                 if (bg.Front)
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, width, height);
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
 
             if (minimap != null)
             {
                 sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
-                int minimapPosX = (mapShiftX + 400) / 16;
-                int minimapPosY = (mapShiftY + 300) / 16;
+                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
+                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
                 FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
             }
             sprite.End();
@@ -177,9 +214,9 @@ namespace HaCreator.MapSimulator
             if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Up))
                 mapShiftY = Math.Max(vr.Top, mapShiftY - offset);
             if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Right))
-                mapShiftX = Math.Min(vr.Right - width, mapShiftX + offset);
+                mapShiftX = Math.Min(vr.Right - RenderWidth, mapShiftX + offset);
             if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Down))
-                mapShiftY = Math.Min(vr.Bottom - height, mapShiftY + offset);
+                mapShiftY = Math.Min(vr.Bottom - RenderHeight, mapShiftY + offset);
             if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Escape))
             {
                 DxDevice.Dispose();
@@ -229,6 +266,7 @@ namespace HaCreator.MapSimulator
             source = WzInfoTools.GetRealProperty(source);
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
                 source = ((WzSubProperty)source).WzProperties[0];
+
             if (source is WzCanvasProperty) //one-frame
             {
                 WzVectorProperty origin = (WzVectorProperty)source["origin"];
@@ -271,12 +309,15 @@ namespace HaCreator.MapSimulator
 
         public static MapSimulator CreateMapSimulator(Board mapBoard)
         {
-            if (mapBoard.MiniMap == null) mapBoard.RegenerateMinimap();
+            if (mapBoard.MiniMap == null) 
+                mapBoard.RegenerateMinimap();
+
             MapSimulator result = new MapSimulator(mapBoard);
             List<WzObject> usedProps = new List<WzObject>();
             WzDirectory MapFile = Program.WzManager["map"];
             WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
             GraphicsDevice device = result.DxDevice;
+
             foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
                 result.mapObjects[tileObj.LayerNumber].Add(CreateMapItemFromProperty((WzImageProperty)tileObj.BaseInfo.ParentObject, tileObj.X, tileObj.Y, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, result.DxDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
             foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
@@ -287,6 +328,7 @@ namespace HaCreator.MapSimulator
             usedProps.Clear();
             GC.Collect();
             GC.WaitForPendingFinalizers();
+
             return result;
         }
 
