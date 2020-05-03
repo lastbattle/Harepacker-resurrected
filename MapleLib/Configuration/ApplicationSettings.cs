@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaRepacker.Configuration
+namespace MapleLib.Configuration
 {
     public class ApplicationSettings
     {

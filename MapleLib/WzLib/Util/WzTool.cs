@@ -18,7 +18,7 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
-using HaRepacker.Configuration;
+using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
@@ -104,6 +104,7 @@ namespace MapleLib.WzLib.Util
         /// Get WZ encryption IV from maple version 
         /// </summary>
         /// <param name="ver"></param>
+        /// <param name="fallbackCustomIv">The custom bytes to use as IV</param>
         /// <returns></returns>
         public static byte[] GetIvByMapleVersion(WzMapleVersion ver)
         {
@@ -116,18 +117,7 @@ namespace MapleLib.WzLib.Util
                 case WzMapleVersion.CUSTOM: // custom WZ encryption bytes from stored app setting
                     {
                         ConfigurationManager config = new ConfigurationManager();
-                        bool loaded = config.Load();
-                        if (loaded)
-                        {
-                            string storedCustomEnc = config.ApplicationSettings.MapleVersion_EncryptionBytes;
-                            byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
-
-                            if (bytes.Length == 4)
-                            {
-                                return bytes;
-                            }
-                        }
-                        return new byte[4]; // fallback with BMS
+                        return config.GetCusomWzIVEncryption(); // fallback with BMS
                     }
                 case WzMapleVersion.GENERATE: // dont fill anything with GENERATE, it is not supposed to load anything
                     return new byte[4]; 

@@ -8,7 +8,6 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.Serialization;
 using HaRepacker.GUI.Panels;
-using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {

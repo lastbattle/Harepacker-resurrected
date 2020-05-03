@@ -25,11 +25,11 @@ using System.Windows.Threading;
 using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
-using static HaRepacker.Configuration.UserSettings;
 using System.Reflection;
 using HaRepacker.GUI.Panels.SubPanels;
 using MapleLib.PacketLib;
 using System.Timers;
+using static MapleLib.Configuration.UserSettings;
 
 namespace HaRepacker.GUI
 {

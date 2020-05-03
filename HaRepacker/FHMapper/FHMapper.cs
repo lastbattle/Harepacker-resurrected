@@ -13,7 +13,7 @@ using System.Security.Cryptography;
 using System.Diagnostics;
 using MapleLib;
 using HaRepacker.GUI.Panels;
-using HaRepacker.Configuration;
+using MapleLib.Configuration;
 
 namespace HaRepacker.FHMapper
 {

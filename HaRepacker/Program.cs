@@ -14,7 +14,7 @@ using System.IO.Pipes;
 using System.IO;
 using System.Security.Principal;
 using System.Globalization;
-using HaRepacker.Configuration;
+using MapleLib.Configuration;
 
 namespace HaRepacker
 {
