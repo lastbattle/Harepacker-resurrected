@@ -244,10 +244,10 @@
     <Compile Include="GUI\LayerChange.Designer.cs">
       <DependentUpon>LayerChange.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\LoadMapSelector.cs">
+    <Compile Include="GUI\InstanceEditor\LoadMapSelector.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="GUI\LoadMapSelector.designer.cs">
+    <Compile Include="GUI\InstanceEditor\LoadMapSelector.designer.cs">
       <DependentUpon>LoadMapSelector.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\ManageUserObjects.cs">
@@ -371,6 +371,8 @@
     <Compile Include="MapEditor\UndoRedo\UndoRedoAction.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
     <Compile Include="MapEditor\UserObjectsManager.cs" />
+    <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
+    <Compile Include="MapSimulator\DX\MapItem.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>
@@ -521,7 +523,7 @@
     <Compile Include="MapEditor\Instance\ISnappable.cs" />
     <Compile Include="MapEditor\Layer.cs" />
     <Compile Include="MapEditor\Input\Mouse.cs" />
-    <Compile Include="MapSimulator\DXObject.cs" />
+    <Compile Include="MapSimulator\DX\DXObject.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -635,7 +637,7 @@
     <EmbeddedResource Include="GUI\LayerChange.resx">
       <DependentUpon>LayerChange.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\LoadMapSelector.resx">
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadMapSelector.resx">
       <DependentUpon>LoadMapSelector.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>

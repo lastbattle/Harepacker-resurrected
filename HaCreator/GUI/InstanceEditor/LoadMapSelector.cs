@@ -29,7 +29,7 @@ using MapleLib.Helpers;
 using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
 
-namespace HaCreator.GUI
+namespace HaCreator.GUI.InstanceEditor
 {
     public partial class LoadMapSelector : System.Windows.Forms.Form
     {

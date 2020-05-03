@@ -222,6 +222,7 @@ namespace MapleLib.WzLib.WzProperties
             memStream.Dispose();
             return buffer;
         }
+
         internal byte[] Compress(byte[] decompressedBuffer)
         {
             MemoryStream memStream = new MemoryStream();
@@ -237,6 +238,7 @@ namespace MapleLib.WzLib.WzProperties
             System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
             return buffer;
         }
+
         internal void ParsePng()
         {
             try
@@ -286,8 +288,15 @@ namespace MapleLib.WzLib.WzProperties
                         byte[] argb = new Byte[uncompressedSize * 2];
                         for (int i = 0; i < uncompressedSize; i++)
                         {
-                            b = decBuf[i] & 0x0F; b |= (b << 4); argb[i * 2] = (byte)b;
-                            g = decBuf[i] & 0xF0; g |= (g >> 4); argb[i * 2 + 1] = (byte)g;
+                            b = decBuf[i] & 0x0F; 
+                            b |= (b << 4); 
+
+                            argb[i * 2] = (byte)b;
+
+                            g = decBuf[i] & 0xF0; 
+                            g |= (g >> 4); 
+
+                            argb[i * 2 + 1] = (byte)g;
                         }
                         Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
                         bmp.UnlockBits(bmpData);

@@ -1,6 +1,6 @@
 ﻿using HaCreator.CustomControls;
 
-namespace HaCreator.GUI
+namespace HaCreator.GUI.InstanceEditor
 {
     partial class LoadMapSelector
     {

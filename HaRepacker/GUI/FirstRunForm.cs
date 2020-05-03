@@ -18,8 +18,8 @@ namespace HaRepacker.GUI
 
         private void button1_Click(object sender, EventArgs e)
         {
-            Program.ConfigurationManager.UserSettings.AutoUpdate = autoUpdate.Checked;
             Program.ConfigurationManager.UserSettings.AutoAssociate = autoAssociateBox.Checked;
+
             FormClosing -= FirstRunForm_FormClosing;
             Close();
         }

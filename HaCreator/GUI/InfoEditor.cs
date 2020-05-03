@@ -19,6 +19,7 @@ using HaCreator.MapEditor;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.ThirdParty;
+using HaCreator.GUI.InstanceEditor;
 
 namespace HaCreator.GUI
 {

@@ -1,116 +1,12 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure.Data;
+using System;
+using System.Collections.Generic;
 
-namespace HaCreator.MapSimulator
+
+namespace HaCreator.MapSimulator.DX
 {
-    public class DXObject
-    {
-        protected Texture2D texture;
-        private int x;
-        private int y;
-
-        private int delay;
-
-        public DXObject(int x, int y, Texture2D texture)
-        {
-            this.x = x;
-            this.y = y;
-            this.texture = texture;
-        }
-
-        public DXObject(int x, int y, int delay, Texture2D texture)
-            : this(x, y, texture)
-        {
-            this.delay = delay;
-        }
-
-        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, bool flip)
-        {
-            sprite.Draw(texture, new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), null, Color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
-        }
-
-        public virtual void Draw(SpriteBatch sprite, int x, int y, Color color, bool flip)
-        {
-            sprite.Draw(texture, new Rectangle(x, y, texture.Width, texture.Height), null, color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
-        }
-
-        public int Delay
-        {
-            get { return delay; }
-        }
-
-        public virtual Color Color { get { return Color.White; } }
-        public virtual int X { get { return x; } }
-        public virtual int Y { get { return y; } }
-
-        public virtual int Width { get { return texture.Width; } }
-        public virtual int Height { get { return texture.Height; } }
-    }
-
-    public class MapItem
-    {
-        private List<DXObject> frames;
-        private int currFrame = 0;
-        private int lastFrameSwitchTime = 0;
-
-        protected bool flip;
-        protected bool notAnimated;
-        private DXObject frame0;
-
-        public MapItem(List<DXObject> frames, bool flip)
-        {
-            this.frames = frames;
-            notAnimated = false;
-            this.flip = flip;
-        }
-
-        public MapItem(DXObject frame0, bool flip)
-        {
-            this.frame0 = frame0;
-            notAnimated = true;
-            this.flip = flip;
-        }
-
-        protected DXObject GetCurrFrame()
-        {
-            if (notAnimated) return frame0;
-            else
-            {
-                int tc = Environment.TickCount;
-                if (tc - lastFrameSwitchTime > frames[currFrame].Delay)
-                { //advance frame
-                    currFrame++;
-                    if (currFrame == frames.Count) currFrame = 0;
-                    lastFrameSwitchTime = tc;
-                }
-                return frames[currFrame];
-            }
-        }
-
-        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, int width, int height)
-        {
-            if (notAnimated)
-            {
-                if (frame0.X - mapShiftX + frame0.Width > 0 && frame0.Y - mapShiftY + frame0.Height > 0 && frame0.X - mapShiftX < width && frame0.Y - mapShiftY < height)
-                    frame0.Draw(sprite, mapShiftX, mapShiftY, flip);
-            }
-            else
-                GetCurrFrame().Draw(sprite, mapShiftX, mapShiftY, flip);
-        }
-    }
-
     public class BackgroundItem : MapItem
     {
         private int rx;

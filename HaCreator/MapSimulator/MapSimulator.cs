@@ -30,6 +30,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Input;
 using HaSharedLirary;
 using HaRepacker.Utils;
+using HaCreator.MapSimulator.DX;
 
 namespace HaCreator.MapSimulator
 {
@@ -228,8 +229,12 @@ namespace HaCreator.MapSimulator
         private static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
+
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
+            {
                 source = ((WzSubProperty)source).WzProperties[0];
+            }
+
             if (source is WzCanvasProperty) //one-frame
             {
                 WzVectorProperty origin = (WzVectorProperty)source["origin"];

@@ -38,10 +38,5 @@ namespace MapleLib.Configuration
         [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
         public string MapleVersion_EncryptionBytes = "0x00-0x00-0x00-0x00";
         #endregion
-
-        #region Auto update
-        [JsonProperty(PropertyName = "UpdateServerURL")]
-        public string UpdateServer = "";
-        #endregion
     }
 }

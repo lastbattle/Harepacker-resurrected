@@ -365,46 +365,9 @@ namespace HaRepacker.GUI
             catch { }
         }
 
-
-        public static Thread updater = null;
-
-        //a thread used by the updating feature
-        private void UpdaterThread()
-        {
-            Thread.Sleep(60000);
-            WebClient client = new WebClient();
-            try
-            {
-                int version = int.Parse(
-                    Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "version.txt"
-                    )));
-                string notice = Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "notice.txt"
-                    ));
-                string url = Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "url.txt"
-                    ));
-                if (version <= Program.Version_)
-                    return;
-                if (MessageBox.Show(string.Format(HaRepacker.Properties.Resources.MainUpdateAvailable, notice.Replace("%URL%", url)), HaRepacker.Properties.Resources.MainUpdateTitle, MessageBoxButtons.YesNo) == DialogResult.Yes)
-                    Process.Start(url);
-            }
-            catch { }
-        }
-
         #region Handlers
         private void MainForm_Load(object sender, EventArgs e)
         {
-            if (Program.ConfigurationManager.UserSettings.AutoUpdate && Program.ConfigurationManager.ApplicationSettings.UpdateServer != "")
-            {
-                updater = new Thread(new ThreadStart(UpdaterThread));
-                updater.IsBackground = true;
-                updater.Start();
-            }
         }
 
         /// <summary>
