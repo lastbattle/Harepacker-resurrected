@@ -37,10 +37,12 @@ namespace HaCreator.GUI
                 WzImage tSImage = Program.InfoManager.TileSets[tS];
                 if (!tSImage.Parsed) tSImage.ParseImage();
                 WzImageProperty enh0 = tSImage["enH0"];
-                if (enh0 == null) continue;
+                if (enh0 == null) 
+                    continue;
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
-                if (image == null) continue;
-                //image.PngProperty.GetPNG(true);
+                if (image == null) 
+                    continue;
+
                 ImageViewer item = koolkLVContainer.Add(image.GetLinkedWzCanvasBitmap(), tS, true);
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);

@@ -138,7 +138,7 @@ namespace HaCreator.MapEditor
             pParams.BackBufferWidth = Math.Max(DxContainer.Width, 1);
             pParams.BackBufferHeight = Math.Max(DxContainer.Height, 1);
             pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.DepthStencilFormat = DepthFormat.Depth24;
+            pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
             pParams.DeviceWindowHandle = dxHandle;
             pParams.IsFullScreen = false;
             //pParams.PresentationInterval = PresentInterval.Immediate;

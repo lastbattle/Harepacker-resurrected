@@ -119,7 +119,7 @@ namespace HaCreator.MapSimulator
             pParams.BackBufferWidth = Math.Max(RenderWidth, 1);
             pParams.BackBufferHeight = Math.Max(RenderHeight, 1);
             pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.DepthStencilFormat = DepthFormat.Depth24;
+            pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
             pParams.DeviceWindowHandle = Handle;
             pParams.IsFullScreen = false;
 #endif
@@ -136,11 +136,14 @@ namespace HaCreator.MapSimulator
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+
             DxDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
             foreach (BackgroundItem bg in backgrounds)
+            {
                 if (!bg.Front)
                     bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
+            }
 
             for (int i = 0; i < mapObjects.Length; i++)
             {
@@ -187,8 +190,9 @@ namespace HaCreator.MapSimulator
             pParams.BackBufferHeight = Height;
             pParams.BackBufferWidth = Width;
             pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.DepthStencilFormat = DepthFormat.Depth24;
+            pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
             pParams.DeviceWindowHandle = Handle;
+
             DxDevice.Reset(DxDevice.PresentationParameters);
         }
 
@@ -226,6 +230,18 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        /// <summary>
+        /// Map item
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
         private static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
@@ -237,13 +253,20 @@ namespace HaCreator.MapSimulator
 
             if (source is WzCanvasProperty) //one-frame
             {
-                WzVectorProperty origin = (WzVectorProperty)source["origin"];
                 if (source.MSTag == null)
                 {
                     source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
                     usedProps.Add(source);
                 }
-                return new MapItem(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, (Texture2D)source.MSTag), flip);
+                Texture2D texture = (Texture2D)source.MSTag;
+                if (texture != null) 
+                {
+                    WzVectorProperty origin = (WzVectorProperty)source["origin"];
+                    return new MapItem(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, texture), flip);
+                } else
+                {
+                    throw new Exception("Texture is null for the map item.");
+                }
             }
             else if (source is WzSubProperty) //animooted
             {
@@ -253,20 +276,51 @@ namespace HaCreator.MapSimulator
                 while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
                 {
                     int? delay = InfoTool.GetOptionalInt(frameProp["delay"]);
-                    if (delay == null) delay = 100;
+                    if (delay == null)
+                    {
+                        delay = 100;
+                    }
+
                     if (frameProp.MSTag == null)
                     {
                         frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
                         usedProps.Add(frameProp);
                     }
-                    WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
-                    frames.Add(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, (int)delay, (Texture2D)frameProp.MSTag));
+
+                    Texture2D texture = (Texture2D)frameProp.MSTag;
+                    if (texture != null)
+                    {
+                        WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
+                        frames.Add(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, texture, (int)delay));
+                    } else
+                    {
+                        throw new Exception("Texture is null for the animated map item");
+                    }
                 }
                 return new MapItem(frames, flip);
             }
             else throw new Exception("unsupported property type in map simulator");
         }
 
+        /// <summary>
+        /// Background
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="rx"></param>
+        /// <param name="ry"></param>
+        /// <param name="cx"></param>
+        /// <param name="cy"></param>
+        /// <param name="a"></param>
+        /// <param name="type"></param>
+        /// <param name="front"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
         public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, int x, int y, int rx, int ry, int cx, int cy, int a, BackgroundType type, bool front, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
@@ -275,13 +329,23 @@ namespace HaCreator.MapSimulator
 
             if (source is WzCanvasProperty) //one-frame
             {
-                WzVectorProperty origin = (WzVectorProperty)source["origin"];
                 if (source.MSTag == null)
                 {
                     source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
                     usedProps.Add(source);
                 }
-                return new BackgroundItem(cx, cy, rx, ry, type, a, front, new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, (Texture2D)source.MSTag), flip);
+
+                Texture2D texture = (Texture2D)source.MSTag;
+                if (texture != null)
+                {
+                    WzVectorProperty origin = (WzVectorProperty)source["origin"];
+                    DXObject dxobj = new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, texture);
+
+                    return new BackgroundItem(cx, cy, rx, ry, type, a, front, dxobj, flip);
+                } else
+                {
+                    throw new Exception("Texture is null for the background property.");
+                }
             }
             else if (source is WzSubProperty) //animooted
             {
@@ -291,19 +355,29 @@ namespace HaCreator.MapSimulator
                 while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
                 {
                     int? delay = InfoTool.GetOptionalInt(frameProp["delay"]);
-                    if (delay == null) delay = 100;
+                    if (delay == null) 
+                        delay = 100;
+
                     if (frameProp.MSTag == null)
                     {
                         frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
                         usedProps.Add(frameProp);
                     }
-                    WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
-                    frames.Add(new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, (int)delay, (Texture2D)frameProp.MSTag));
+
+                    Texture2D texture = (Texture2D)frameProp.MSTag;
+                    if (texture != null)
+                    {
+                        WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
+                        frames.Add(new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, texture, (int)delay));
+                    }
+                    else
+                        throw new Exception("Texture is null for the animation");
                 }
                 return new BackgroundItem(cx, cy, rx, ry, type, a, front, frames, flip);
             }
             else throw new Exception("unsupported property type in map simulator");
         }
+
 
         private static string DumpFhList(List<FootholdLine> fhs)
         {
@@ -346,7 +420,8 @@ namespace HaCreator.MapSimulator
 
         private void MapSimulator_Load(object sender, EventArgs e)
         {
-            if (audio != null) audio.Play();
+            if (audio != null) 
+                audio.Play();
         }
 
         private void MapSimulator_FormClosing(object sender, FormClosingEventArgs e)

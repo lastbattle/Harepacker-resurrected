@@ -23,16 +23,12 @@ namespace HaCreator.MapSimulator.DX
 
         private int delay;
 
-        public DXObject(int x, int y, Texture2D texture)
+        public DXObject(int x, int y, Texture2D texture, int delay = 0)
         {
             this.x = x;
             this.y = y;
             this.texture = texture;
-        }
 
-        public DXObject(int x, int y, int delay, Texture2D texture)
-            : this(x, y, texture)
-        {
             this.delay = delay;
         }
 
