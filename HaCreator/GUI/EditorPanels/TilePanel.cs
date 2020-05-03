@@ -82,7 +82,7 @@ namespace HaCreator.GUI.EditorPanels
                     {
                         WzCanvasProperty canvasProp = (WzCanvasProperty)tCat["0"];
                         if (canvasProp == null) continue;
-                        ImageViewer item = tileImagesContainer.Add(canvasProp.PngProperty.GetPNG(false), tCat.Name, true);
+                        ImageViewer item = tileImagesContainer.Add(canvasProp.GetLinkedWzCanvasBitmap(), tCat.Name, true);
                         TileInfo[] randomInfos = new TileInfo[tCat.WzProperties.Count];
                         for (int i = 0; i < randomInfos.Length; i++)
                         {
@@ -96,7 +96,7 @@ namespace HaCreator.GUI.EditorPanels
                     {
                         foreach (WzCanvasProperty tile in tCat.WzProperties)
                         {
-                            ImageViewer item = tileImagesContainer.Add(tile.PngProperty.GetPNG(false), tCat.Name + "/" + tile.Name, true);
+                            ImageViewer item = tileImagesContainer.Add(tile.GetLinkedWzCanvasBitmap(), tCat.Name + "/" + tile.Name, true);
                             item.Tag = TileInfo.Get((string)tileSetList.SelectedItem, tCat.Name, tile.Name, mag);
                             item.MouseDown += new MouseEventHandler(tileItem_Click);
                             item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);

@@ -37,7 +37,7 @@ namespace HaCreator.MapEditor.Info
             WzCanvasProperty mobImage = WzInfoTools.GetMobImage(image);
             if (mobImage != null)
             {
-                Image = mobImage.PngProperty.GetPNG(false);
+                Image = mobImage.GetLinkedWzCanvasBitmap();
                 Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)mobImage["origin"]);
             }
             else

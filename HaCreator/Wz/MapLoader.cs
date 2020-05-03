@@ -771,7 +771,7 @@ namespace HaCreator.Wz
                 mapBoard.MapInfo = info;
                 if (hasMinimap)
                 {
-                    mapBoard.MiniMap = ((WzCanvasProperty)mapImage["miniMap"]["canvas"]).PngProperty.GetPNG(false);
+                    mapBoard.MiniMap = ((WzCanvasProperty)mapImage["miniMap"]["canvas"]).GetLinkedWzCanvasBitmap();
                     System.Drawing.Point mmPos = new System.Drawing.Point(-minimapCenter.X, -minimapCenter.Y);
                     mapBoard.MinimapPosition = mmPos;
                     mapBoard.MinimapRectangle = new MinimapRectangle(mapBoard, new Rectangle(mmPos.X, mmPos.Y, minimapSize.X, minimapSize.Y));

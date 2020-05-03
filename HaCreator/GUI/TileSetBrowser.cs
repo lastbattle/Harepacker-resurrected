@@ -41,7 +41,7 @@ namespace HaCreator.GUI
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
                 if (image == null) continue;
                 //image.PngProperty.GetPNG(true);
-                ImageViewer item = koolkLVContainer.Add(image.PngProperty.GetPNG(true), tS, true);
+                ImageViewer item = koolkLVContainer.Add(image.GetLinkedWzCanvasBitmap(), tS, true);
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
             }

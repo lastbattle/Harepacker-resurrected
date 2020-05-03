@@ -240,7 +240,7 @@ namespace HaCreator.MapSimulator
                 WzVectorProperty origin = (WzVectorProperty)source["origin"];
                 if (source.MSTag == null)
                 {
-                    source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).PngProperty.GetPNG(false));
+                    source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
                     usedProps.Add(source);
                 }
                 return new MapItem(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, (Texture2D)source.MSTag), flip);
@@ -256,7 +256,7 @@ namespace HaCreator.MapSimulator
                     if (delay == null) delay = 100;
                     if (frameProp.MSTag == null)
                     {
-                        frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.PngProperty.GetPNG(false));
+                        frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
                         usedProps.Add(frameProp);
                     }
                     WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
@@ -278,7 +278,7 @@ namespace HaCreator.MapSimulator
                 WzVectorProperty origin = (WzVectorProperty)source["origin"];
                 if (source.MSTag == null)
                 {
-                    source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).PngProperty.GetPNG(false));
+                    source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
                     usedProps.Add(source);
                 }
                 return new BackgroundItem(cx, cy, rx, ry, type, a, front, new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, (Texture2D)source.MSTag), flip);
@@ -294,7 +294,7 @@ namespace HaCreator.MapSimulator
                     if (delay == null) delay = 100;
                     if (frameProp.MSTag == null)
                     {
-                        frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.PngProperty.GetPNG(false));
+                        frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
                         usedProps.Add(frameProp);
                     }
                     WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];

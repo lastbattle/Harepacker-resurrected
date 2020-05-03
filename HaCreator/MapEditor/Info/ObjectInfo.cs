@@ -93,7 +93,7 @@ namespace HaCreator.MapEditor.Info
         private static ObjectInfo Load(WzSubProperty parentObject, string oS, string l0, string l1, string l2)
         {
             WzCanvasProperty frame1 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
-            ObjectInfo result = new ObjectInfo(frame1.PngProperty.GetPNG(false), WzInfoTools.VectorToSystemPoint((WzVectorProperty)frame1["origin"]), oS, l0, l1, l2, parentObject);
+            ObjectInfo result = new ObjectInfo(frame1.GetLinkedWzCanvasBitmap(), WzInfoTools.VectorToSystemPoint((WzVectorProperty)frame1["origin"]), oS, l0, l1, l2, parentObject);
             WzImageProperty chairs = parentObject["seat"];
             WzImageProperty ropes = frame1["rope"];
             WzImageProperty ladders = frame1["ladder"];

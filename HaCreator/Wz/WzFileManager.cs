@@ -210,7 +210,9 @@ namespace HaCreator.Wz
         {
             WzImage mapHelper = (WzImage)this["map"]["MapHelper.img"];
             foreach (WzCanvasProperty mark in mapHelper["mark"].WzProperties)
-                Program.InfoManager.MapMarks[mark.Name] = mark.PngProperty.GetPNG(false);
+            {
+                Program.InfoManager.MapMarks[mark.Name] = mark.GetLinkedWzCanvasBitmap();
+            }
         }
 
         public void ExtractTileSets()

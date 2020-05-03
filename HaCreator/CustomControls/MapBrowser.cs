@@ -171,7 +171,7 @@ namespace HaCreator.CustomControls
                             WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
-                                minimapBox.Image = (Image)minimap.PngProperty.GetPNG(false);
+                                minimapBox.Image = (Image)minimap.GetLinkedWzCanvasBitmap();
                             }
                             else
                             {
