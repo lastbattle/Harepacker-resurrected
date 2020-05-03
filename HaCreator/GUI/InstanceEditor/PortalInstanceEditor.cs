@@ -525,8 +525,8 @@ namespace HaCreator.GUI.InstanceEditor
 
         private void btnBrowseMap_Click(object sender, EventArgs e)
         {
-            int? mapId = MapBrowser.Show();
-            if (mapId != null) tmBox.Value = (int)mapId;
+            LoadMapSelector selector = new LoadMapSelector(tmBox);
+            selector.ShowDialog();
         }
 
         private void btnBrowseTn_Click(object sender, EventArgs e)

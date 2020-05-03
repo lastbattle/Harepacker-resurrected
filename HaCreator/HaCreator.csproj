@@ -426,12 +426,6 @@
     <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.Designer.cs">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\InstanceEditor\MapBrowser.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MapBrowser.Designer.cs">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
-    </Compile>
     <Compile Include="GUI\InstanceEditor\PnSelector.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -610,9 +604,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\EditorBase.resx">
       <DependentUpon>EditorBase.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\MapBrowser.resx">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\PnSelector.resx">
       <DependentUpon>PnSelector.cs</DependentUpon>

@@ -104,8 +104,9 @@ namespace HaCreator.MapSimulator
             }
             double dpi = ScreenDPIUtil.GetScreenScaleFactor();
 
+            // set Form window height & width
             this.Width = (int) (RenderWidth * dpi);
-            this.Height =(int) (RenderHeight * dpi);
+            this.Height = (int) (RenderHeight * dpi);
 
 #if FULLSCREEN
             pParams.BackBufferWidth = Math.Max(Width, 1);

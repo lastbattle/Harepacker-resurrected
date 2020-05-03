@@ -39,7 +39,6 @@ namespace HaCreator.GUI
             // loadButton
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.loadButton.Enabled = false;
             this.loadButton.Location = new System.Drawing.Point(11, 752);
             this.loadButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.loadButton.Name = "loadButton";
