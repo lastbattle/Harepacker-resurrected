@@ -142,6 +142,8 @@
             this.label123 = new System.Windows.Forms.Label();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
+            this.button_selectReturnMap = new System.Windows.Forms.Button();
+            this.button_selectForcedReturnMap = new System.Windows.Forms.Button();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.yBox)).BeginInit();
@@ -244,7 +246,7 @@
             // markBox
             // 
             this.markBox.FormattingEnabled = true;
-            this.markBox.Location = new System.Drawing.Point(663, 42);
+            this.markBox.Location = new System.Drawing.Point(834, 48);
             this.markBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.markBox.Name = "markBox";
             this.markBox.Size = new System.Drawing.Size(250, 28);
@@ -294,7 +296,7 @@
             // label11
             // 
             this.label11.AutoSize = true;
-            this.label11.Location = new System.Drawing.Point(680, 9);
+            this.label11.Location = new System.Drawing.Point(851, 15);
             this.label11.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label11.Name = "label11";
             this.label11.Size = new System.Drawing.Size(83, 20);
@@ -382,6 +384,8 @@
             // tabPage1
             // 
             this.tabPage1.BackColor = System.Drawing.SystemColors.Control;
+            this.tabPage1.Controls.Add(this.button_selectForcedReturnMap);
+            this.tabPage1.Controls.Add(this.button_selectReturnMap);
             this.tabPage1.Controls.Add(this.yBox);
             this.tabPage1.Controls.Add(this.label20);
             this.tabPage1.Controls.Add(this.xBox);
@@ -564,7 +568,7 @@
             // 
             // markImage
             // 
-            this.markImage.Location = new System.Drawing.Point(597, 28);
+            this.markImage.Location = new System.Drawing.Point(768, 34);
             this.markImage.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.markImage.Name = "markImage";
             this.markImage.Size = new System.Drawing.Size(57, 58);
@@ -1618,6 +1622,26 @@
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
+            // button_selectReturnMap
+            // 
+            this.button_selectReturnMap.Location = new System.Drawing.Point(520, 139);
+            this.button_selectReturnMap.Name = "button_selectReturnMap";
+            this.button_selectReturnMap.Size = new System.Drawing.Size(91, 27);
+            this.button_selectReturnMap.TabIndex = 158;
+            this.button_selectReturnMap.Text = "Select";
+            this.button_selectReturnMap.UseVisualStyleBackColor = true;
+            this.button_selectReturnMap.Click += new System.EventHandler(this.button_selectReturnMap_Click);
+            // 
+            // button_selectForcedReturnMap
+            // 
+            this.button_selectForcedReturnMap.Location = new System.Drawing.Point(520, 182);
+            this.button_selectForcedReturnMap.Name = "button_selectForcedReturnMap";
+            this.button_selectForcedReturnMap.Size = new System.Drawing.Size(91, 27);
+            this.button_selectForcedReturnMap.TabIndex = 159;
+            this.button_selectForcedReturnMap.Text = "Select";
+            this.button_selectForcedReturnMap.UseVisualStyleBackColor = true;
+            this.button_selectForcedReturnMap.Click += new System.EventHandler(this.button_selectForcedReturnMap_Click);
+            // 
             // InfoEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
@@ -1789,5 +1813,7 @@
         private System.Windows.Forms.NumericUpDown xBox;
         private System.Windows.Forms.NumericUpDown yBox;
         private Etc.FieldLimitPanel fieldLimitPanel1;
+        private System.Windows.Forms.Button button_selectForcedReturnMap;
+        private System.Windows.Forms.Button button_selectReturnMap;
     }
 }

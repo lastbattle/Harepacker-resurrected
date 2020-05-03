@@ -47,6 +47,7 @@ namespace HaCreator.GUI
             this.multiBoard = board;
             this.Tabs = Tabs;
             this.rightClickHandler = rightClickHandler;
+
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
 

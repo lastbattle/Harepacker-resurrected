@@ -40,9 +40,11 @@
             // mapNamesBox
             // 
             this.mapNamesBox.FormattingEnabled = true;
-            this.mapNamesBox.Location = new System.Drawing.Point(0, 3);
+            this.mapNamesBox.ItemHeight = 20;
+            this.mapNamesBox.Location = new System.Drawing.Point(0, 5);
+            this.mapNamesBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.mapNamesBox.Name = "mapNamesBox";
-            this.mapNamesBox.Size = new System.Drawing.Size(253, 399);
+            this.mapNamesBox.Size = new System.Drawing.Size(402, 664);
             this.mapNamesBox.TabIndex = 19;
             this.mapNamesBox.SelectedIndexChanged += new System.EventHandler(this.mapNamesBox_SelectedIndexChanged);
             // 
@@ -52,18 +54,20 @@
             this.panel1.Controls.Add(this.mapNotExist);
             this.panel1.Controls.Add(this.linkLabel);
             this.panel1.Controls.Add(this.minimapBox);
-            this.panel1.Location = new System.Drawing.Point(273, 3);
+            this.panel1.Location = new System.Drawing.Point(410, 5);
+            this.panel1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(262, 199);
+            this.panel1.Size = new System.Drawing.Size(393, 659);
             this.panel1.TabIndex = 18;
             // 
             // mapNotExist
             // 
             this.mapNotExist.AutoSize = true;
             this.mapNotExist.ForeColor = System.Drawing.Color.Red;
-            this.mapNotExist.Location = new System.Drawing.Point(65, 96);
+            this.mapNotExist.Location = new System.Drawing.Point(98, 148);
+            this.mapNotExist.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.mapNotExist.Name = "mapNotExist";
-            this.mapNotExist.Size = new System.Drawing.Size(135, 13);
+            this.mapNotExist.Size = new System.Drawing.Size(199, 20);
             this.mapNotExist.TabIndex = 19;
             this.mapNotExist.Text = "Map does not actually exist";
             this.mapNotExist.Visible = false;
@@ -72,9 +76,10 @@
             // 
             this.linkLabel.AutoSize = true;
             this.linkLabel.ForeColor = System.Drawing.Color.Red;
-            this.linkLabel.Location = new System.Drawing.Point(96, 96);
+            this.linkLabel.Location = new System.Drawing.Point(144, 148);
+            this.linkLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.linkLabel.Name = "linkLabel";
-            this.linkLabel.Size = new System.Drawing.Size(69, 13);
+            this.linkLabel.Size = new System.Drawing.Size(100, 20);
             this.linkLabel.TabIndex = 18;
             this.linkLabel.Text = "Map is linked";
             this.linkLabel.Visible = false;
@@ -82,6 +87,7 @@
             // minimapBox
             // 
             this.minimapBox.Location = new System.Drawing.Point(0, 0);
+            this.minimapBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.minimapBox.Name = "minimapBox";
             this.minimapBox.Size = new System.Drawing.Size(262, 199);
             this.minimapBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
@@ -90,12 +96,13 @@
             // 
             // MapBrowser
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.mapNamesBox);
             this.Controls.Add(this.panel1);
+            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.Name = "MapBrowser";
-            this.Size = new System.Drawing.Size(538, 205);
+            this.Size = new System.Drawing.Size(807, 669);
             this.panel1.ResumeLayout(false);
             this.panel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.minimapBox)).EndInit();

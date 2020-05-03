@@ -43,10 +43,10 @@
             // button1
             // 
             this.button1.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button1.Location = new System.Drawing.Point(18, 100);
+            this.button1.Location = new System.Drawing.Point(7, 100);
             this.button1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(402, 43);
+            this.button1.Size = new System.Drawing.Size(529, 43);
             this.button1.TabIndex = 1;
             this.button1.Text = "Initialize";
             this.button1.Click += new System.EventHandler(this.button1_Click);
@@ -59,10 +59,10 @@
             "EMS , MSEA , KMS",
             "BMS , JMS",
             "Auto-Detect"});
-            this.versionBox.Location = new System.Drawing.Point(118, 58);
+            this.versionBox.Location = new System.Drawing.Point(101, 58);
             this.versionBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.versionBox.Name = "versionBox";
-            this.versionBox.Size = new System.Drawing.Size(300, 28);
+            this.versionBox.Size = new System.Drawing.Size(435, 28);
             this.versionBox.TabIndex = 3;
             // 
             // toolStripProgressBar1
@@ -74,7 +74,7 @@
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(18, 63);
+            this.label2.Location = new System.Drawing.Point(9, 61);
             this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(84, 20);
@@ -84,7 +84,7 @@
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(18, 23);
+            this.label3.Location = new System.Drawing.Point(9, 23);
             this.label3.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label3.Name = "label3";
             this.label3.Size = new System.Drawing.Size(70, 20);
@@ -93,39 +93,39 @@
             // 
             // textBox2
             // 
-            this.textBox2.Location = new System.Drawing.Point(18, 152);
+            this.textBox2.Location = new System.Drawing.Point(7, 152);
             this.textBox2.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.textBox2.Name = "textBox2";
             this.textBox2.ReadOnly = true;
-            this.textBox2.Size = new System.Drawing.Size(400, 26);
+            this.textBox2.Size = new System.Drawing.Size(529, 26);
             this.textBox2.TabIndex = 2;
             // 
             // pathBox
             // 
             this.pathBox.FormattingEnabled = true;
-            this.pathBox.Location = new System.Drawing.Point(118, 18);
+            this.pathBox.Location = new System.Drawing.Point(101, 18);
             this.pathBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.pathBox.Name = "pathBox";
-            this.pathBox.Size = new System.Drawing.Size(236, 28);
+            this.pathBox.Size = new System.Drawing.Size(364, 28);
             this.pathBox.TabIndex = 13;
             // 
             // button2
             // 
             this.button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button2.Location = new System.Drawing.Point(366, 18);
+            this.button2.Location = new System.Drawing.Point(473, 15);
             this.button2.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(54, 32);
+            this.button2.Size = new System.Drawing.Size(63, 32);
             this.button2.TabIndex = 14;
             this.button2.Text = "...";
             this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
             // debugButton
             // 
-            this.debugButton.Location = new System.Drawing.Point(275, 96);
+            this.debugButton.Location = new System.Drawing.Point(377, 86);
             this.debugButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.debugButton.Name = "debugButton";
-            this.debugButton.Size = new System.Drawing.Size(159, 71);
+            this.debugButton.Size = new System.Drawing.Size(159, 57);
             this.debugButton.TabIndex = 15;
             this.debugButton.Text = "DEBUG - check map errors";
             this.debugButton.UseVisualStyleBackColor = true;
@@ -136,7 +136,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(438, 202);
+            this.ClientSize = new System.Drawing.Size(540, 202);
             this.Controls.Add(this.debugButton);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);

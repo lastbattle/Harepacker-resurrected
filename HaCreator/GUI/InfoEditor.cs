@@ -463,5 +463,27 @@ namespace HaCreator.GUI
         {
             allowedItems.Items.Add(Microsoft.VisualBasic.Interaction.InputBox("Insert item ID", "Add Allowed Item", "", -1, -1));
         }
+
+        /// <summary>
+        /// Select field ID for return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(returnBox);
+            selector.ShowDialog();
+        }
+
+        /// <summary>
+        /// Select field ID for forced return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectForcedReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(forcedRet);
+            selector.ShowDialog();
+        }
     }
 }
