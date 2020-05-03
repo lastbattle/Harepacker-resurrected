@@ -22,7 +22,6 @@ using HaCreator.GUI;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Text;
-using HaRepackerLib;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -126,7 +125,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                HaRepackerLib.Warning.Error(string.Format("Graphics adapter is not supported: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(string.Format("Graphics adapter is not supported: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
                 Environment.Exit(0);
                 // This code will never be reached, but VS still requires this path to end
                 throw;

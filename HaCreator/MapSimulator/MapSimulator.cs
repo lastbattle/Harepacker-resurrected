@@ -25,10 +25,10 @@ using HaCreator.MapEditor;
 using HaCreator.Wz;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
-using HaRepackerLib;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Input;
+using HaSharedLirary;
 
 namespace HaCreator.MapSimulator
 {

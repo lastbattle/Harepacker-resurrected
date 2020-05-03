@@ -14,12 +14,12 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace HaCreator.GUI.Etc
+namespace HaSharedLirary.GUI
 {
     /// <summary>
     /// Interaction logic for ChangeableTextBoxXAML.xaml
     /// </summary>
-    public partial class ChangeableTextBox : UserControl, INotifyPropertyChanged
+    public partial class ChangeableTextBox : System.Windows.Controls.UserControl, INotifyPropertyChanged
     {
         public ChangeableTextBox()
         {

@@ -28,7 +28,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;
 using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
-using HaRepackerLib;
+
 
 namespace HaCreator.GUI
 {
@@ -154,7 +154,7 @@ namespace HaCreator.GUI
                 }
                 catch
                 {
-                    Warning.Error("Error while loading XML. Aborted.");
+                    MessageBox.Show("Error while loading XML. Aborted.");
                     ww.EndWait();
                     Show();
                     return;

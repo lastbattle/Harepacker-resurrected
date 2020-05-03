@@ -1,4 +1,4 @@
-﻿namespace HaRepacker.GUI.Panels.SubPanels
+﻿namespace HaSharedLirary.GUI
 {
     partial class FieldLimitPanel
     {

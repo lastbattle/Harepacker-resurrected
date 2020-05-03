@@ -28,7 +28,6 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;
 using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
-using HaRepackerLib;
 
 namespace HaCreator.GUI
 {

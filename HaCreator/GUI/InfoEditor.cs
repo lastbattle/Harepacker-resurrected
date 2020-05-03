@@ -275,12 +275,12 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            soundPlayer.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
         }
 
         private void InfoEditor_FormClosing(object sender, FormClosingEventArgs e)
         {
-            soundPlayer.SoundProperty = null;
+            soundPlayer1.SoundProperty = null;
         }
 
         private void markBox_SelectedIndexChanged(object sender, EventArgs e)

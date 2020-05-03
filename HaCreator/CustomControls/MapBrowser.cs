@@ -91,7 +91,6 @@ namespace HaCreator.CustomControls
             TextBox searchBox = (TextBox)sender;
             string tosearch = searchBox.Text.ToLower();
 
-
             if (_previousSeachText == tosearch)
             {
                 return;

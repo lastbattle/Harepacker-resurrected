@@ -131,9 +131,6 @@
     <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=1.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.1.1.0\lib\net461\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
     </Reference>
-    <Reference Include="NAudio, Version=1.10.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\NAudio.1.10.0\lib\net35\NAudio.dll</HintPath>
-    </Reference>
     <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -330,23 +327,11 @@
     <Compile Include="GUI\Panels\MainPanel.xaml.cs">
       <DependentUpon>MainPanel.xaml</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Panels\SubPanels\ChangeableTextBox.xaml.cs">
-      <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\FieldLimitPanel.designer.cs">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </Compile>
     <Compile Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml.cs">
       <DependentUpon>ImageRenderViewer.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\Panels\SubPanels\LoadingPanel.xaml.cs">
       <DependentUpon>LoadingPanel.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\SoundPlayer.xaml.cs">
-      <DependentUpon>SoundPlayer.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\Panels\SubPanels\XYPanel.xaml.cs">
       <DependentUpon>XYPanel.xaml</DependentUpon>
@@ -407,7 +392,6 @@
     <Compile Include="GUI\SaveForm.designer.cs">
       <DependentUpon>SaveForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="WzMp3Streamer.cs" />
     <Compile Include="WzNode.cs" />
     <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
@@ -635,15 +619,6 @@
     <EmbeddedResource Include="GUI\OptionsForm.zh-CHT.resx">
       <DependentUpon>OptionsForm.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHS.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Panels\SubPanels\FieldLimitPanel.zh-CHT.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.resx">
       <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -724,6 +699,10 @@
     <None Include="Resources\find.png" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\HaSharedLirary\HaSharedLirary.csproj">
+      <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
+      <Name>HaSharedLirary</Name>
+    </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
@@ -776,19 +755,11 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="GUI\Panels\SubPanels\ChangeableTextBox.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
     <Page Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="GUI\Panels\SubPanels\LoadingPanel.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Panels\SubPanels\SoundPlayer.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

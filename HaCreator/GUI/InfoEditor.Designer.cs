@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI
+﻿using HaSharedLirary.GUI;
+
+namespace HaCreator.GUI
 {
     partial class InfoEditor
     {
@@ -50,6 +52,8 @@
             this.unknownProps = new System.Windows.Forms.TreeView();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.button_selectForcedReturnMap = new System.Windows.Forms.Button();
+            this.button_selectReturnMap = new System.Windows.Forms.Button();
             this.yBox = new System.Windows.Forms.NumericUpDown();
             this.label20 = new System.Windows.Forms.Label();
             this.xBox = new System.Windows.Forms.NumericUpDown();
@@ -60,7 +64,6 @@
             this.cannotReturnCBX = new System.Windows.Forms.CheckBox();
             this.mobRate = new System.Windows.Forms.NumericUpDown();
             this.IDLabel = new System.Windows.Forms.Label();
-            this.soundPlayer = new HaRepackerLib.Controls.SoundPlayer();
             this.returnBox = new System.Windows.Forms.NumericUpDown();
             this.forcedRet = new System.Windows.Forms.NumericUpDown();
             this.markImage = new System.Windows.Forms.PictureBox();
@@ -137,13 +140,13 @@
             this.label121 = new System.Windows.Forms.Label();
             this.timedMobEnable = new System.Windows.Forms.CheckBox();
             this.tabPage4 = new System.Windows.Forms.TabPage();
-            this.fieldLimitPanel1 = new HaCreator.GUI.Etc.FieldLimitPanel();
+            this.fieldLimitPanel1 = new HaSharedLirary.GUI.FieldLimitPanel();
             this.optionsList = new HaCreator.ThirdParty.BetterCheckedListBox();
             this.label123 = new System.Windows.Forms.Label();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.button_selectReturnMap = new System.Windows.Forms.Button();
-            this.button_selectForcedReturnMap = new System.Windows.Forms.Button();
+            this.elementHost1 = new System.Windows.Forms.Integration.ElementHost();
+            this.soundPlayer1 = new HaSharedLirary.GUI.SoundPlayer();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.yBox)).BeginInit();
@@ -384,6 +387,7 @@
             // tabPage1
             // 
             this.tabPage1.BackColor = System.Drawing.SystemColors.Control;
+            this.tabPage1.Controls.Add(this.elementHost1);
             this.tabPage1.Controls.Add(this.button_selectForcedReturnMap);
             this.tabPage1.Controls.Add(this.button_selectReturnMap);
             this.tabPage1.Controls.Add(this.yBox);
@@ -396,7 +400,6 @@
             this.tabPage1.Controls.Add(this.cannotReturnCBX);
             this.tabPage1.Controls.Add(this.mobRate);
             this.tabPage1.Controls.Add(this.IDLabel);
-            this.tabPage1.Controls.Add(this.soundPlayer);
             this.tabPage1.Controls.Add(this.bgmBox);
             this.tabPage1.Controls.Add(this.label2);
             this.tabPage1.Controls.Add(this.label3);
@@ -419,9 +422,29 @@
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "Essential Settings";
             // 
+            // button_selectForcedReturnMap
+            // 
+            this.button_selectForcedReturnMap.Location = new System.Drawing.Point(520, 182);
+            this.button_selectForcedReturnMap.Name = "button_selectForcedReturnMap";
+            this.button_selectForcedReturnMap.Size = new System.Drawing.Size(91, 27);
+            this.button_selectForcedReturnMap.TabIndex = 159;
+            this.button_selectForcedReturnMap.Text = "Select";
+            this.button_selectForcedReturnMap.UseVisualStyleBackColor = true;
+            this.button_selectForcedReturnMap.Click += new System.EventHandler(this.button_selectForcedReturnMap_Click);
+            // 
+            // button_selectReturnMap
+            // 
+            this.button_selectReturnMap.Location = new System.Drawing.Point(520, 139);
+            this.button_selectReturnMap.Name = "button_selectReturnMap";
+            this.button_selectReturnMap.Size = new System.Drawing.Size(91, 27);
+            this.button_selectReturnMap.TabIndex = 158;
+            this.button_selectReturnMap.Text = "Select";
+            this.button_selectReturnMap.UseVisualStyleBackColor = true;
+            this.button_selectReturnMap.Click += new System.EventHandler(this.button_selectReturnMap_Click);
+            // 
             // yBox
             // 
-            this.yBox.Location = new System.Drawing.Point(234, 468);
+            this.yBox.Location = new System.Drawing.Point(233, 680);
             this.yBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.yBox.Maximum = new decimal(new int[] {
             2147483647,
@@ -435,7 +458,7 @@
             // label20
             // 
             this.label20.AutoSize = true;
-            this.label20.Location = new System.Drawing.Point(28, 471);
+            this.label20.Location = new System.Drawing.Point(27, 683);
             this.label20.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label20.Name = "label20";
             this.label20.Size = new System.Drawing.Size(96, 20);
@@ -444,7 +467,7 @@
             // 
             // xBox
             // 
-            this.xBox.Location = new System.Drawing.Point(130, 468);
+            this.xBox.Location = new System.Drawing.Point(129, 680);
             this.xBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.xBox.Maximum = new decimal(new int[] {
             2147483647,
@@ -528,17 +551,6 @@
             this.IDLabel.Size = new System.Drawing.Size(45, 20);
             this.IDLabel.TabIndex = 53;
             this.IDLabel.Text = "1234";
-            // 
-            // soundPlayer
-            // 
-            this.soundPlayer.Location = new System.Drawing.Point(75, 334);
-            this.soundPlayer.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
-            this.soundPlayer.MaximumSize = new System.Drawing.Size(465, 132);
-            this.soundPlayer.MinimumSize = new System.Drawing.Size(465, 132);
-            this.soundPlayer.Name = "soundPlayer";
-            this.soundPlayer.Size = new System.Drawing.Size(465, 132);
-            this.soundPlayer.SoundProperty = null;
-            this.soundPlayer.TabIndex = 2;
             // 
             // returnBox
             // 
@@ -1622,25 +1634,14 @@
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
-            // button_selectReturnMap
+            // elementHost1
             // 
-            this.button_selectReturnMap.Location = new System.Drawing.Point(520, 139);
-            this.button_selectReturnMap.Name = "button_selectReturnMap";
-            this.button_selectReturnMap.Size = new System.Drawing.Size(91, 27);
-            this.button_selectReturnMap.TabIndex = 158;
-            this.button_selectReturnMap.Text = "Select";
-            this.button_selectReturnMap.UseVisualStyleBackColor = true;
-            this.button_selectReturnMap.Click += new System.EventHandler(this.button_selectReturnMap_Click);
-            // 
-            // button_selectForcedReturnMap
-            // 
-            this.button_selectForcedReturnMap.Location = new System.Drawing.Point(520, 182);
-            this.button_selectForcedReturnMap.Name = "button_selectForcedReturnMap";
-            this.button_selectForcedReturnMap.Size = new System.Drawing.Size(91, 27);
-            this.button_selectForcedReturnMap.TabIndex = 159;
-            this.button_selectForcedReturnMap.Text = "Select";
-            this.button_selectForcedReturnMap.UseVisualStyleBackColor = true;
-            this.button_selectForcedReturnMap.Click += new System.EventHandler(this.button_selectForcedReturnMap_Click);
+            this.elementHost1.Location = new System.Drawing.Point(12, 328);
+            this.elementHost1.Name = "elementHost1";
+            this.elementHost1.Size = new System.Drawing.Size(710, 214);
+            this.elementHost1.TabIndex = 160;
+            this.elementHost1.Text = "elementHost1";
+            this.elementHost1.Child = this.soundPlayer1;
             // 
             // InfoEditor
             // 
@@ -1701,7 +1702,6 @@
 
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox bgmBox;
-        private HaRepackerLib.Controls.SoundPlayer soundPlayer;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Label label3;
         private System.Windows.Forms.Label label4;
@@ -1812,8 +1812,10 @@
         private System.Windows.Forms.Label label20;
         private System.Windows.Forms.NumericUpDown xBox;
         private System.Windows.Forms.NumericUpDown yBox;
-        private Etc.FieldLimitPanel fieldLimitPanel1;
+        private FieldLimitPanel fieldLimitPanel1;
         private System.Windows.Forms.Button button_selectForcedReturnMap;
         private System.Windows.Forms.Button button_selectReturnMap;
+        private System.Windows.Forms.Integration.ElementHost elementHost1;
+        private SoundPlayer soundPlayer1;
     }
 }

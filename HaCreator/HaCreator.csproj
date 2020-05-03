@@ -120,9 +120,6 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="HaRepackerLib">
-      <HintPath>ThirdParty\HaRepackerLib.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.Build.Framework" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.VisualBasic" />
@@ -157,15 +154,6 @@
     </Compile>
     <Compile Include="Exceptions\DeserializationException.cs" />
     <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
-    <Compile Include="GUI\Etc\ChangeableTextBox.xaml.cs">
-      <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Etc\FieldLimitPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\Etc\FieldLimitPanel.designer.cs">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </Compile>
     <Compile Include="GUI\HaRibbon.xaml.cs">
       <DependentUpon>HaRibbon.xaml</DependentUpon>
     </Compile>
@@ -590,15 +578,6 @@
     <EmbeddedResource Include="GUI\EditorPanels\TilePanel.resx">
       <DependentUpon>TilePanel.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.zh-CHS.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.zh-CHT.resx">
-      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="GUI\ExceptionHandler.resx">
       <DependentUpon>ExceptionHandler.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -743,6 +722,10 @@
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
     </ProjectReference>
+    <ProjectReference Include="..\HaSharedLirary\HaSharedLirary.csproj">
+      <Project>{5411388B-F3CB-4D52-9F55-ABD15CFE966C}</Project>
+      <Name>HaSharedLirary</Name>
+    </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
@@ -793,10 +776,6 @@
     <Page Include="CustomControls\HaList.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Etc\ChangeableTextBox.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
     </Page>
     <Page Include="GUI\HaRibbon.xaml">
       <SubType>Designer</SubType>

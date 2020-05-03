@@ -32,8 +32,8 @@ namespace HaCreator.GUI
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(LoadMapSelector));
             this.loadButton = new System.Windows.Forms.Button();
-            this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
             this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
+            this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
             this.SuspendLayout();
             // 
             // loadButton
@@ -48,6 +48,15 @@ namespace HaCreator.GUI
             this.loadButton.Text = "Select";
             this.loadButton.Click += new System.EventHandler(this.loadButton_Click);
             // 
+            // mapBrowser
+            // 
+            this.mapBrowser.Location = new System.Drawing.Point(13, 47);
+            this.mapBrowser.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
+            this.mapBrowser.Name = "mapBrowser";
+            this.mapBrowser.Size = new System.Drawing.Size(810, 692);
+            this.mapBrowser.TabIndex = 8;
+            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
+            // 
             // searchBox
             // 
             this.searchBox.ForeColor = System.Drawing.Color.Gray;
@@ -59,15 +68,6 @@ namespace HaCreator.GUI
             this.searchBox.Text = "Type here to search";
             this.searchBox.WatermarkActive = true;
             this.searchBox.WatermarkText = "Type here";
-            // 
-            // mapBrowser
-            // 
-            this.mapBrowser.Location = new System.Drawing.Point(13, 47);
-            this.mapBrowser.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
-            this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(810, 692);
-            this.mapBrowser.TabIndex = 8;
-            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
             // 
             // LoadMapSelector
             // 
@@ -85,7 +85,7 @@ namespace HaCreator.GUI
             this.MaximizeBox = false;
             this.Name = "LoadMapSelector";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Load";
+            this.Text = "Select a field";
             this.Load += new System.EventHandler(this.Load_Load);
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Load_KeyDown);
             this.ResumeLayout(false);

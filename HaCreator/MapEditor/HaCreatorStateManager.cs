@@ -148,7 +148,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                HaRepackerLib.Warning.Error(string.Format("Backup failed! Error:{0}\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(string.Format("Backup failed! Error:{0}\r\n{1}", e.Message, e.StackTrace));
             }
         }
 
@@ -409,7 +409,7 @@ namespace HaCreator.MapEditor
             }
             catch (Exception e)
             {
-                HaRepackerLib.Warning.Error(string.Format("Could not save: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
+                MessageBox.Show(string.Format("Could not save: {0}\r\n\r\n{1}", e.Message, e.StackTrace));
             }
         }
 
@@ -599,7 +599,7 @@ namespace HaCreator.MapEditor
             if (File.Exists(helpPath))
                 Process.Start(helpPath);
             else
-                HaRepackerLib.Warning.Error("Help could not be shown because the help file (HRHelp.htm) was not found");
+                MessageBox.Show("Help could not be shown because the help file (HRHelp.htm) was not found");
         }
 
         void ribbon_AboutClicked()

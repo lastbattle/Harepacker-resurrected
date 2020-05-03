@@ -14,7 +14,7 @@ using MapleLib.WzLib.WzProperties;
 using NAudio.Wave;
 using System.IO;
 
-namespace HaRepacker
+namespace HaSharedLirary
 {
     public class WzMp3Streamer
     {
