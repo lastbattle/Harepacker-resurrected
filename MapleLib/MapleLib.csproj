@@ -170,9 +170,14 @@
     <Compile Include="WzLib\IPropertyContainer.cs" />
     <Compile Include="WzLib\WzPropertyType.cs" />
     <Compile Include="WzLib\WzSerializer.cs" />
+    <Compile Include="WzLib\WzStructure\Data\BackgroundType.cs" />
     <Compile Include="WzLib\WzStructure\Data\Data.cs" />
-    <Compile Include="WzLib\WzStructure\Data\Enums.cs" />
-    <Compile Include="WzLib\WzStructure\Data\WzFieldLimitType.cs" />
+    <Compile Include="WzLib\WzStructure\Data\FieldType.cs" />
+    <Compile Include="WzLib\WzStructure\Data\ItemTypes.cs" />
+    <Compile Include="WzLib\WzStructure\Data\MapType.cs" />
+    <Compile Include="WzLib\WzStructure\Data\PortalType.cs" />
+    <Compile Include="WzLib\WzStructure\Data\FieldLimitType.cs" />
+    <Compile Include="WzLib\WzStructure\Data\QuestState.cs" />
     <Compile Include="WzLib\WzStructure\Foothold.cs" />
     <Compile Include="WzLib\WzStructure\InfoTool.cs" />
     <Compile Include="WzLib\WzStructure\MapInfo.cs" />

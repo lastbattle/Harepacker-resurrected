@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace MapleLib.WzLib.WzStructure.Data
 {
-    public enum WzFieldLimitType
+    public enum FieldLimitType
     {
         //Unable_To_Use_AntiMacro_Item = 0, // CField::IsUnableToUseAntiMacroItem = CField *this 
         Unable_To_Jump = 0, // CField::IsUnableToJump = CField *this 
@@ -52,12 +52,12 @@ namespace MapleLib.WzLib.WzStructure.Data
             return ((fieldLimit >> type) & 1) != 0;
         }
 
-        public static bool Check(this WzFieldLimitType type, int fieldLimit)
+        public static bool Check(this FieldLimitType type, int fieldLimit)
         {
             return Check(type, (long) fieldLimit);
         }
 
-        public static bool Check(this WzFieldLimitType type, long fieldLimit)
+        public static bool Check(this FieldLimitType type, long fieldLimit)
         {
             return ((fieldLimit >> (int)type) & 1) != 0;
         }
@@ -65,7 +65,7 @@ namespace MapleLib.WzLib.WzStructure.Data
         public static int GetMaxFieldLimitType()
         {
             int max = 0;
-            foreach (WzFieldLimitType limitType in Enum.GetValues(typeof(WzFieldLimitType)))
+            foreach (FieldLimitType limitType in Enum.GetValues(typeof(FieldLimitType)))
             {
                 if ((int)limitType > max)
                     max = (int)limitType;

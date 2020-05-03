@@ -56,12 +56,4 @@ namespace MapleLib.WzLib.WzStructure.Data
         public const int MinMap = 0;
         public const int MaxMap = 999999999;
     }
-
-    public enum QuestState
-    {
-        Available = 0,
-        InProgress = 1,
-        Completed = 2
-    }
-    
 }

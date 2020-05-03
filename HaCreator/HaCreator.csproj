@@ -154,6 +154,15 @@
     </Compile>
     <Compile Include="Exceptions\DeserializationException.cs" />
     <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
+    <Compile Include="GUI\Etc\ChangeableTextBox.xaml.cs">
+      <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\Etc\FieldLimitPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="GUI\Etc\FieldLimitPanel.designer.cs">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\HaRibbon.xaml.cs">
       <DependentUpon>HaRibbon.xaml</DependentUpon>
     </Compile>
@@ -402,7 +411,7 @@
     <Compile Include="CustomControls\AlphaColorPicker.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="ThirdParty\Better.cs">
+    <Compile Include="ThirdParty\BetterCheckedListBox.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="GUI\HaEditor.cs">
@@ -571,6 +580,15 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\EditorPanels\TilePanel.resx">
       <DependentUpon>TilePanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.zh-CHS.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Etc\FieldLimitPanel.zh-CHT.resx">
+      <DependentUpon>FieldLimitPanel.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\ExceptionHandler.resx">
       <DependentUpon>ExceptionHandler.cs</DependentUpon>
@@ -762,6 +780,10 @@
     <Page Include="CustomControls\HaList.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\Etc\ChangeableTextBox.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
     </Page>
     <Page Include="GUI\HaRibbon.xaml">
       <SubType>Designer</SubType>

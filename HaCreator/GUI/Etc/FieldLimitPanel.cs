@@ -6,7 +6,7 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.WzStructure.Data;
 
-namespace HaRepacker.GUI.Panels.SubPanels
+namespace HaCreator.GUI.Etc
 {
     public partial class FieldLimitPanel : UserControl
     {
@@ -28,7 +28,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
         #region Events
         /// <summary>
         /// Loaded
-        /// This doesnt seems to get called automatically on WinForm.. 
+        /// Note: This doesnt seems to get called automatically on WinForm.. 
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>

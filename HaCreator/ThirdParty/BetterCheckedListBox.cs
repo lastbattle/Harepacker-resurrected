@@ -57,6 +57,7 @@ namespace HaCreator.ThirdParty
             }
             //Clear items
             base.Items.Clear();
+
             //Fill it again
             int i = 0;
             for (i = 0; i <= dt.DefaultView.Count - 1; i++)
@@ -156,7 +157,7 @@ namespace HaCreator.ThirdParty
 
         public void SetText(int index, string value)
         {
-            dt.Rows[index][base.DisplayMember] = value;
+            dt.Rows[index] [base.DisplayMember] = value;
         }
 
         public string Value(int index)

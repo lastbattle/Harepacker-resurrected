@@ -1,5 +1,7 @@
 ﻿/*  MapleLib - A general-purpose MapleStory library
- * Copyright (C) 2009, 2010, 2015 Snow and haha01haha01
+ * Copyright (C) 
+ * 2009, 2010, 2015 Snow and haha01haha01
+ * 2020 lastbattle
    
  * This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -91,13 +93,8 @@ namespace MapleLib.WzLib.WzStructure
                         version = InfoTool.GetInt(prop);
                         break;
                     case "fieldLimit":
-                        int fl = InfoTool.GetInt(prop);
-                        if (fl >= (int)Math.Pow(2, 23)) 
-                        {
-                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, "Invalid fieldlimit " + fl.ToString() + loggerSuffix);
-                            fl = fl & ((int)Math.Pow(2, 23) - 1);
-                        }
-                        fieldLimit = (FieldLimit)fl;
+                        long fl = InfoTool.GetLong(prop);
+                        fieldLimit = fl;
                         break;
                     case "VRTop":
                     case "VRBottom":
@@ -386,7 +383,7 @@ namespace MapleLib.WzLib.WzStructure
         //Must have
         public string bgm = "Bgm00/GoPicnic";
         public string mapMark = "None";
-        public FieldLimit fieldLimit = FieldLimit.FIELDOPT_NONE;
+        public long fieldLimit = 0; // FieldLimitType a | FieldLimitType b | etc
         public int returnMap = 999999999;
         public int forcedReturn = 999999999;
         public bool cloud = false;
