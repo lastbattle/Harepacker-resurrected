@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(HaEditor));
-            this.vS2012LightTheme = new WeifenLuo.WinFormsUI.Docking.VS2012LightTheme();
+            this.vS2012LightTheme = new WeifenLuo.WinFormsUI.Docking.VS2005Theme();
             this.dockPanel = new WeifenLuo.WinFormsUI.Docking.DockPanel();
             this.panel1 = new System.Windows.Forms.Panel();
             this.tabs = new HaCreator.ThirdParty.TabPages.PageCollection();
@@ -120,7 +120,7 @@
         private HaRibbon ribbon;
         private HaCreator.ThirdParty.TabPages.PageCollection tabs;
         private HaCreator.MapEditor.MultiBoard multiBoard;
-        private WeifenLuo.WinFormsUI.Docking.VS2012LightTheme vS2012LightTheme;
+        private WeifenLuo.WinFormsUI.Docking.VS2005Theme vS2012LightTheme;
         private WeifenLuo.WinFormsUI.Docking.DockPanel dockPanel;
         private System.Windows.Forms.Panel panel1;
     }

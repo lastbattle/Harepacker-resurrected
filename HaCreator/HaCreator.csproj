@@ -807,8 +807,8 @@
     <Resource Include="Images\new_icon.png" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="DockPanelSuite.ThemeVS2012Light">
-      <Version>2.10.0</Version>
+    <PackageReference Include="DockPanelSuite">
+      <Version>3.0.6</Version>
     </PackageReference>
     <PackageReference Include="MonoGame.Framework.WindowsDX">
       <Version>3.7.1.189</Version>
