@@ -49,7 +49,7 @@ namespace MapleLib.WzLib.WzStructure
             this.strCategoryName = strCategoryName;
             WzFile file = (WzFile)image.WzFileParent;
             string loggerSuffix = ", map " + image.Name + ((file != null) ? (" of version " + Enum.GetName(typeof(WzMapleVersion), file.MapleVersion) + ", v" + file.Version.ToString()) : "");
-            foreach (WzImageProperty prop in image["info"].WzProperties) 
+            foreach (WzImageProperty prop in image["info"].WzProperties)
             {
                 switch (prop.Name)
                 {
@@ -127,7 +127,7 @@ namespace MapleLib.WzLib.WzStructure
                         break;
                     case "fieldType":
                         int ft = InfoTool.GetInt(prop);
-                        if (!Enum.IsDefined(typeof(FieldType), ft)) 
+                        if (!Enum.IsDefined(typeof(FieldType), ft))
                         {
                             ErrorLogger.Log(ErrorLevel.IncorrectStructure, "Invalid fieldType " + ft.ToString() + loggerSuffix);
                             ft = 0;
@@ -312,7 +312,7 @@ namespace MapleLib.WzLib.WzStructure
             info["entrustedShop"] = InfoTool.SetOptionalBool(entrustedShop);
             info["effect"] = InfoTool.SetOptionalString(effect);
             info["lvForceMove"] = InfoTool.SetOptionalInt(lvForceMove);
-            if (timeMob != null) 
+            if (timeMob != null)
             {
                 WzSubProperty prop = new WzSubProperty();
                 prop["startHour"] = InfoTool.SetOptionalInt(timeMob.Value.startHour);
@@ -327,7 +327,7 @@ namespace MapleLib.WzLib.WzStructure
             info["dropExpire"] = InfoTool.SetOptionalInt(dropExpire);
             info["decHP"] = InfoTool.SetOptionalInt(decHP);
             info["decInterval"] = InfoTool.SetOptionalInt(decInterval);
-            if (autoLieDetector != null) 
+            if (autoLieDetector != null)
             {
                 WzSubProperty prop = new WzSubProperty();
                 prop["startHour"] = InfoTool.SetOptionalInt(autoLieDetector.Value.startHour);
@@ -363,7 +363,7 @@ namespace MapleLib.WzLib.WzStructure
             info["allMoveCheck"] = InfoTool.SetOptionalBool(allMoveCheck);
             info["VRLimit"] = InfoTool.SetOptionalBool(VRLimit);
             info["consumeItemCoolTime"] = InfoTool.SetOptionalBool(consumeItemCoolTime);
-            foreach (WzImageProperty prop in additionalProps) 
+            foreach (WzImageProperty prop in additionalProps)
             {
                 info.AddProperty(prop);
             }

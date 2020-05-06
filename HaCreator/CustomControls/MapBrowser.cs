@@ -109,13 +109,10 @@ namespace HaCreator.CustomControls
             }
             else
             {
-                foreach (string map in maps)
-                {
+                maps.ForEach(map => {
                     if (map.ToLower().Contains(tosearch))
-                    {
                         mapNamesBox.Items.Add(map);
-                    }
-                }
+                });
             }
             mapNamesBox.SelectedItem = null;
             mapNamesBox.SelectedIndex = -1;

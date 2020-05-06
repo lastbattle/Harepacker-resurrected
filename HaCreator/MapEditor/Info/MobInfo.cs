@@ -71,7 +71,7 @@ namespace HaCreator.MapEditor.Info
         {
             foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
             {
-                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()][id + ".img"];
+                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
                 if (mobImage == null)
                     continue;
 
