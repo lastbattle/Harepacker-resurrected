@@ -21,6 +21,11 @@ namespace HaCreator.Wz
 {
     public class WzFileManager
     {
+        public static string[] MOBWZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static string[] MAPWZ_FILES = { "Map", "Map001",
+            "Map002", //kms now stores main map key here
+            "Map2" };
+
         private string baseDir;
         public Dictionary<string, WzFile> wzFiles = new Dictionary<string, WzFile>();
         public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>();
@@ -133,45 +138,27 @@ namespace HaCreator.Wz
             get { return baseDir; }
         }
 
-        //tbd load mob2.wz etc
         public void ExtractMobFile()
         {
-            WzImage mobImage = (WzImage)String["Mob.img"];
-            if (!mobImage.Parsed) mobImage.ParseImage();
-            foreach (WzSubProperty mob in mobImage.WzProperties)
+            WzImage mobStringImage = (WzImage)String["mob.img"];
+            if (mobStringImage == null)
+                return;
+
+            if (!mobStringImage.Parsed) 
+                mobStringImage.ParseImage();
+            foreach (WzSubProperty mob in mobStringImage.WzProperties)
             {
                 WzStringProperty nameProp = (WzStringProperty)mob["name"];
                 string name = nameProp == null ? "" : nameProp.Value;
                 Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
             }
-            /*   WzImage mobImage2 = (WzImage)String["Mob001.img"];
-               if (mobImage2 != null)
-               {
-                   if (!mobImage2.Parsed) mobImage2.ParseImage();
-                   foreach (WzSubProperty mob in mobImage2.WzProperties)
-                   {
-                       WzStringProperty nameProp = (WzStringProperty)mob["name"];
-                       string name = nameProp == null ? "" : nameProp.Value;
-                       Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
-                   }
-               }
-               WzImage mobImage3 = (WzImage)String["Mob2.img"];
-               if (mobImage3 != null)
-               {
-                   if (!mobImage3.Parsed) mobImage3.ParseImage();
-                   foreach (WzSubProperty mob in mobImage3.WzProperties)
-                   {
-                       WzStringProperty nameProp = (WzStringProperty)mob["name"];
-                       string name = nameProp == null ? "" : nameProp.Value;
-                       Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
-                   }
-               }*/
         }
 
         public void ExtractNpcFile()
         {
             WzImage npcImage = (WzImage)String["Npc.img"];
-            if (!npcImage.Parsed) npcImage.ParseImage();
+            if (!npcImage.Parsed) 
+                npcImage.ParseImage();
             foreach (WzSubProperty npc in npcImage.WzProperties)
             {
                 WzStringProperty nameProp = (WzStringProperty)npc["name"];
@@ -282,7 +269,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void ExtractMaps()
+        public void ExtractStringWzMaps()
         {
             WzImage mapStringsParent = (WzImage)String["Map.img"];
             if (!mapStringsParent.Parsed) mapStringsParent.ParseImage();
@@ -334,7 +321,7 @@ namespace HaCreator.Wz
                     }
                     Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
                 }
-                else if(portal.WzProperties[0] is WzCanvasProperty)
+                else if (portal.WzProperties[0] is WzCanvasProperty)
                 {
                     Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
                     Bitmap defaultImage = null;

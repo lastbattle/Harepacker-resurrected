@@ -95,8 +95,11 @@ namespace HaCreator.GUI
                 textBox2.Text = "Initializing Data.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadDataWzFile("data");
-                Program.WzManager.ExtractMaps();
+                Program.WzManager.ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
+                foreach (string mobWZFile in WzFileManager.MOBWZ_FILES)
+                {
+                }
                 Program.WzManager.ExtractMobFile();
                 Program.WzManager.ExtractNpcFile();
                 Program.WzManager.ExtractReactorFile();
@@ -112,11 +115,18 @@ namespace HaCreator.GUI
                 textBox2.Text = "Initializing String.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("string");
-                Program.WzManager.ExtractMaps();
+                Program.WzManager.ExtractStringWzMaps();
 
-                textBox2.Text = "Initializing Mob.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("mob");
+                // Mob WZ
+                foreach (string mobWZFile in WzFileManager.MOBWZ_FILES)
+                {
+                    textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
+                    Application.DoEvents();
+                    if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
+                    {
+                        // mob is a little special... gonna load all 3 wz first
+                    }
+                }
                 Program.WzManager.ExtractMobFile();
 
                 textBox2.Text = "Initializing Npc.wz...";
@@ -143,29 +153,16 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractObjSets();
                 Program.WzManager.ExtractBackgroundSets();
 
-                if (Program.WzManager.LoadWzFile("map001"))
+                foreach (string mapwzFile in WzFileManager.MAPWZ_FILES)
                 {
-                    textBox2.Text = "Initializing Map001.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
+                    if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
+                    {
+                        textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
+                        Application.DoEvents();
+                        Program.WzManager.ExtractBackgroundSets();
+                        Program.WzManager.ExtractObjSets();
+                    }
                 }
-                if (Program.WzManager.LoadWzFile("map002")) //kms now stores main map key here
-                {
-                    textBox2.Text = "Initializing Map002.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
-                }
-                if (Program.WzManager.LoadWzFile("map2"))
-                {
-                    textBox2.Text = "Initializing Map2.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
-                }
-
-
 
                 textBox2.Text = "Initializing UI.wz...";
                 Application.DoEvents();

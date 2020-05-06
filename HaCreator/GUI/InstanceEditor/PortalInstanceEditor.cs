@@ -532,7 +532,8 @@ namespace HaCreator.GUI.InstanceEditor
         private void btnBrowseTn_Click(object sender, EventArgs e)
         {
             string tn = TnSelector.Show(item.Board);
-            if (tn != null) tnBox.Text = tn;
+            if (tn != null) 
+                tnBox.Text = tn;
         }
     }
 

@@ -61,18 +61,32 @@ namespace HaCreator.MapEditor.Info
             }
         }
 
+        /// <summary>
+        /// Get monster by ID
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            WzImage mobImage = (WzImage)Program.WzManager["mob"][id + ".img"];
-            if (mobImage == null)
-                return null;
-            if (!mobImage.Parsed)
-                mobImage.ParseImage();
-            if (mobImage.HCTag == null)
-                mobImage.HCTag = MobInfo.Load(mobImage);
-            MobInfo result = (MobInfo)mobImage.HCTag;
-            result.ParseImageIfNeeded();
-            return result;
+            foreach (string mobWzFile in WzFileManager.MOBWZ_FILES)
+            {
+                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()][id + ".img"];
+                if (mobImage == null)
+                    continue;
+
+                if (!mobImage.Parsed)
+                {
+                    mobImage.ParseImage();
+                }
+                if (mobImage.HCTag == null)
+                {
+                    mobImage.HCTag = MobInfo.Load(mobImage);
+                }
+                MobInfo result = (MobInfo)mobImage.HCTag;
+                result.ParseImageIfNeeded();
+                return result;
+            }
+            return null;
         }
 
         private static MobInfo Load(WzImage parentObject)
