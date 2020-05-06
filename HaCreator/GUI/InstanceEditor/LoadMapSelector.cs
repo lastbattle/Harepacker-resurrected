@@ -22,7 +22,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
 using XNA = Microsoft.Xna.Framework;
-using HaCreator.ThirdParty.TabPages;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;

@@ -7,7 +7,7 @@
              xmlns:ns="clr-namespace:HaCreator.GUI"
              xmlns:sys="clr-namespace:System;assembly=mscorlib">
     <Grid>
-        <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Height="170" Focusable="False">
+        <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Focusable="False">
             <Ribbon.CommandBindings>
                 <CommandBinding Command="ns:HaRibbon.New" CanExecute="AlwaysExecute" Executed="New_Executed" />
                 <CommandBinding Command="ns:HaRibbon.Open" CanExecute="AlwaysExecute" Executed="Open_Executed" />

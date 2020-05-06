@@ -311,7 +311,7 @@ namespace HaCreator.GUI
                     info.strCategoryName = categoryBox.Text;
 
                     // We do, however, need to change the tab's name/info
-                    board.TabPage.Text = info.strMapName;
+                    ((TabItemContainer)board.TabPage.Tag).Text = info.strMapName;
                 }
                 info.returnMap = cannotReturnCBX.Checked ? info.id : (int)returnBox.Value;
                 info.forcedReturn = returnHereCBX.Checked ? 999999999 : (int)forcedRet.Value;

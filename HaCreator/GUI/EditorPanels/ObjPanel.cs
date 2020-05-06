@@ -24,7 +24,7 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class ObjPanel : DockContent
+    public partial class ObjPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
 

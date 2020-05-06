@@ -22,10 +22,10 @@ namespace HaCreator.GUI
     public partial class New : Form
     {
         private MultiBoard multiBoard;
-        private HaCreator.ThirdParty.TabPages.PageCollection Tabs;
-        private EventHandler[] rightClickHandler;
+        private System.Windows.Controls.TabControl Tabs;
+        private System.Windows.RoutedEventHandler[] rightClickHandler;
 
-        public New(MultiBoard board, HaCreator.ThirdParty.TabPages.PageCollection Tabs, EventHandler[] rightClickHandler)
+        public New(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             InitializeComponent();
             this.multiBoard = board;

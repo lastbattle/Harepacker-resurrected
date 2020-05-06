@@ -22,7 +22,7 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class LifePanel : DockContent
+    public partial class LifePanel : UserControl
     {
         List<string> reactors = new List<string>();
         List<string> npcs = new List<string>();

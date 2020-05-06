@@ -22,7 +22,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
 using XNA = Microsoft.Xna.Framework;
-using HaCreator.ThirdParty.TabPages;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;
@@ -37,10 +36,10 @@ namespace HaCreator.GUI
         public bool usebasepng = false;
         public int bufferzone = 100;
         private MultiBoard multiBoard;
-        private HaCreator.ThirdParty.TabPages.PageCollection Tabs;
-        private EventHandler[] rightClickHandler;
+        private System.Windows.Controls.TabControl Tabs;
+        private System.Windows.RoutedEventHandler[] rightClickHandler;
 
-        public Load(MultiBoard board, HaCreator.ThirdParty.TabPages.PageCollection Tabs, EventHandler[] rightClickHandler)
+        public Load(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             InitializeComponent();
             DialogResult = DialogResult.Cancel;

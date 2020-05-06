@@ -30,6 +30,8 @@ namespace HaCreator
         public static bool AbortThreads = false;
         public static bool Restarting;
 
+        public static HaEditor HaEditorWindow = null;
+
         public static string GetLocalSettingsFolder()
         {
             string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

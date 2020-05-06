@@ -26,7 +26,7 @@ using HaCreator.MapEditor.UndoRedo;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class TilePanel : DockContent
+    public partial class TilePanel : UserControl
     {
         private HaCreatorStateManager hcsm;
 

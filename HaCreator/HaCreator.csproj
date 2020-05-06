@@ -157,6 +157,9 @@
     </Compile>
     <Compile Include="Exceptions\DeserializationException.cs" />
     <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
+    <Compile Include="GUI\HaEditor.xaml.cs">
+      <DependentUpon>HaEditor.xaml</DependentUpon>
+    </Compile>
     <Compile Include="GUI\HaRibbon.xaml.cs">
       <DependentUpon>HaRibbon.xaml</DependentUpon>
     </Compile>
@@ -179,37 +182,37 @@
       <DependentUpon>CancelableWaitWindow.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\BackgroundPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\BackgroundPanel.Designer.cs">
       <DependentUpon>BackgroundPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\CommonPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\CommonPanel.Designer.cs">
       <DependentUpon>CommonPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\LifePanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\LifePanel.Designer.cs">
       <DependentUpon>LifePanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\ObjPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\ObjPanel.Designer.cs">
       <DependentUpon>ObjPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\PortalPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\PortalPanel.Designer.cs">
       <DependentUpon>PortalPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\TilePanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\TilePanel.Designer.cs">
       <DependentUpon>TilePanel.cs</DependentUpon>
@@ -350,6 +353,9 @@
     <Compile Include="MapEditor\Instance\Shapes\ToolTipChar.cs" />
     <Compile Include="MapEditor\Instance\Shapes\Rope.cs" />
     <Compile Include="MapEditor\Instance\TileInstance.cs" />
+    <Compile Include="MapEditor\MultiBoard.xaml.cs">
+      <DependentUpon>MultiBoard.xaml</DependentUpon>
+    </Compile>
     <Compile Include="MapEditor\Scheduler.cs" />
     <Compile Include="MapEditor\SelectionInfo.cs" />
     <Compile Include="MapEditor\SerializationManager.cs" />
@@ -373,6 +379,7 @@
     <Compile Include="MapEditor\UserObjectsManager.cs" />
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="TabItemContainer.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>
@@ -385,25 +392,6 @@
     <Compile Include="ThirdParty\ImageViewer.Designer.cs">
       <DependentUpon>ImageViewer.cs</DependentUpon>
     </Compile>
-    <Compile Include="ThirdParty\TabPages\BaseTab.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\DropdownButton.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\FlickerFreeControl.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\PageCollection.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\TabPage.cs" />
-    <Compile Include="ThirdParty\TabPages\TabPageControl.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\TabView.cs">
-      <SubType>Component</SubType>
-    </Compile>
     <Compile Include="GUI\About.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -415,12 +403,6 @@
     </Compile>
     <Compile Include="ThirdParty\BetterCheckedListBox.cs">
       <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="GUI\HaEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\HaEditor.Designer.cs">
-      <DependentUpon>HaEditor.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.cs">
       <SubType>Form</SubType>
@@ -581,9 +563,6 @@
       <DependentUpon>ExceptionHandler.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\HaEditor.resx">
-      <DependentUpon>HaEditor.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="GUI\InfoEditor.resx">
       <DependentUpon>InfoEditor.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -666,10 +645,6 @@
     <EmbeddedResource Include="GUI\WaitWindow.resx">
       <DependentUpon>WaitWindow.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="MapEditor\MultiBoard.resx">
-      <DependentUpon>MultiBoard.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
     <EmbeddedResource Include="MapSimulator\MapSimulator.resx">
       <DependentUpon>MapSimulator.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -682,12 +657,6 @@
     <EmbeddedResource Include="GUI\TileSetBrowser.resx">
       <DependentUpon>TileSetBrowser.cs</DependentUpon>
     </EmbeddedResource>
-    <Compile Include="MapEditor\MultiBoard.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="MapEditor\MultiBoard.Designer.cs">
-      <DependentUpon>MultiBoard.cs</DependentUpon>
-    </Compile>
     <Compile Include="MapEditor\TilesDesign\Snapping.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoManager.cs" />
     <Compile Include="Wz\WzFileManager.cs" />
@@ -774,7 +743,15 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="GUI\HaEditor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="GUI\HaRibbon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="MapEditor\MultiBoard.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

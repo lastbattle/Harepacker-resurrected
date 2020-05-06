@@ -82,6 +82,7 @@ namespace HaCreator.GUI
             Hide();
             Application.DoEvents();
             editor = new HaEditor();
+
             editor.ShowDialog();
             Application.Exit();
         }
@@ -236,7 +237,13 @@ namespace HaCreator.GUI
             InitializeWzFiles(wzPath, fileVersion);
 
             MultiBoard mb = new MultiBoard();
-            Board b = new Board(new Microsoft.Xna.Framework.Point(), new Microsoft.Xna.Framework.Point(), mb, null, MapleLib.WzLib.WzStructure.Data.ItemTypes.None, MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
+            Board b = new Board(
+                new Microsoft.Xna.Framework.Point(), 
+                new Microsoft.Xna.Framework.Point(), 
+                mb, 
+                null, 
+                MapleLib.WzLib.WzStructure.Data.ItemTypes.None, 
+                MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
             {

@@ -16,13 +16,15 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.Helpers;
 using MapleLib.WzLib.WzProperties;
-using HaCreator.ThirdParty.TabPages;
 using System.Collections;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using XNA = Microsoft.Xna.Framework;
+using System.Runtime.Remoting.Channels;
+using System.Windows.Media;
+using HaSharedLirary.Util;
 
 namespace HaCreator.Wz
 {
@@ -663,13 +665,39 @@ namespace HaCreator.Wz
             // Some misc items are not implemented here; these are copied byte-to-byte from the original. See VerifyMapPropsKnown for details.
         }
 
-        public ContextMenuStrip CreateStandardMapMenu(EventHandler[] rightClickHandler)
+        public System.Windows.Controls.ContextMenu CreateStandardMapMenu(System.Windows.RoutedEventHandler[] rightClickHandler)
         {
-            ContextMenuStrip result = new ContextMenuStrip();
-            result.Items.Add(new ToolStripMenuItem("Edit map info...", Properties.Resources.mapEditMenu, rightClickHandler[0]));
-            result.Items.Add(new ToolStripMenuItem("Add VR", Properties.Resources.mapEditMenu, rightClickHandler[1]));
-            result.Items.Add(new ToolStripMenuItem("Add Minimap", Properties.Resources.mapEditMenu, rightClickHandler[2]));
-            return result;
+            System.Windows.Controls.ContextMenu menu = new System.Windows.Controls.ContextMenu();
+            
+            System.Windows.Controls.MenuItem menuItem1 = new System.Windows.Controls.MenuItem();
+            menuItem1.Header = "Edit map info...";
+            menuItem1.Click += rightClickHandler[0];
+            menuItem1.Icon = new System.Windows.Controls.Image
+            {
+                Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
+            };
+
+            System.Windows.Controls.MenuItem menuItem2 = new System.Windows.Controls.MenuItem();
+            menuItem2.Header = "Add VR";
+            menuItem2.Click += rightClickHandler[1];
+            menuItem2.Icon = new System.Windows.Controls.Image
+            {
+                Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
+            };
+
+            System.Windows.Controls.MenuItem menuItem3 = new System.Windows.Controls.MenuItem();
+            menuItem3.Header = "Add Minimap";
+            menuItem3.Click += rightClickHandler[2];
+            menuItem3.Icon = new System.Windows.Controls.Image
+            {
+                Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
+            };
+
+            menu.Items.Add(menuItem1);
+            menu.Items.Add(menuItem2);
+            menu.Items.Add(menuItem3);
+
+            return menu;
         }
 
         public static void GetMapDimensions(WzImage mapImage, out Rectangle VR, out Point mapCenter, out Point mapSize, out Point minimapCenter, out Point minimapSize, out bool hasVR, out bool hasMinimap)
@@ -730,7 +758,7 @@ namespace HaCreator.Wz
             VR = new Rectangle(vr.Value.X, vr.Value.Y, vr.Value.Width, vr.Value.Height);
         }
 
-        public void CreateMapFromImage(WzImage mapImage, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, PageCollection Tabs, MultiBoard multiBoard, EventHandler[] rightClickHandler)
+        public void CreateMapFromImage(WzImage mapImage, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             if (!mapImage.Parsed) mapImage.ParseImage();
             List<string> copyPropNames = VerifyMapPropsKnown(mapImage, false);
@@ -806,25 +834,38 @@ namespace HaCreator.Wz
             }
         }
 
-        public void CreateMap(string text, string tooltip, ContextMenuStrip menu, Point size, Point center, int layers, HaCreator.ThirdParty.TabPages.PageCollection Tabs, MultiBoard multiBoard)
+        public void CreateMap(string text, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, int layers, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
         {
             lock (multiBoard)
             {
                 Board newBoard = multiBoard.CreateBoard(size, center, layers, menu);
                 GenerateDefaultZms(newBoard);
-                HaCreator.ThirdParty.TabPages.TabPage page = new HaCreator.ThirdParty.TabPages.TabPage(text, multiBoard, tooltip, menu);
-                newBoard.TabPage = page;
-                page.Tag = newBoard;
-                Tabs.Add(page);
-                Tabs.CurrentPage = page;
+
+                System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem();
+                newTabPage.Header = text;
+                newTabPage.MouseRightButtonUp += (sender, e) =>
+                {
+                    System.Windows.Controls.TabItem senderTab = (System.Windows.Controls.TabItem)sender;
+
+                    menu.PlacementTarget = senderTab;
+                    menu.IsOpen = true;
+                };
+                //newTabPage.Content = text;
+                //newTabPage.Name
+
+                newBoard.TabPage = newTabPage;
+                newTabPage.Tag = new TabItemContainer(text, multiBoard, tooltip, menu, newBoard); //newBoard;
+                Tabs.Items.Add(newTabPage);
+                Tabs.SelectedItem = newTabPage;
+
                 multiBoard.SelectedBoard = newBoard;
                 menu.Tag = newBoard;
-                foreach (ToolStripItem item in menu.Items)
+                foreach (System.Windows.Controls.MenuItem item in menu.Items)
                     item.Tag = newBoard;
             }
         }
 
-        public void CreateMapFromHam(MultiBoard multiBoard, HaCreator.ThirdParty.TabPages.PageCollection Tabs, string data, EventHandler[] rightClickHandler)
+        public void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             CreateMap("", "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), 8, Tabs, multiBoard);
             multiBoard.SelectedBoard.Loading = true; // Prevent TS Change callbacks while were loading

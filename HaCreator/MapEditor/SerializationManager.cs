@@ -148,7 +148,7 @@ namespace HaCreator.MapEditor
                 item.AddToBoard(null);
             }
             board.RegenerateMinimap();
-            board.TabPage.Text = board.MapInfo.strMapName;
+            ((TabItemContainer)board.TabPage.Tag).Text = board.MapInfo.strMapName;
             foreach (Layer l in board.Layers)
             {
                 l.RecheckTileSet();
