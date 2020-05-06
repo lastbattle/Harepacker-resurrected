@@ -59,24 +59,24 @@ namespace HaCreator.CustomControls
 
         public void InitializeMaps(bool special)
         {
-            bool mapLogin1 = Program.WzManager["ui"]["MapLogin1.img"] != null;
-            bool mapLogin2 = Program.WzManager["ui"]["MapLogin2.img"] != null;
-            bool mapLogin3 = Program.WzManager["ui"]["MapLogin3.img"] != null;
+            WzObject mapLogin1 = Program.WzManager["ui"]["MapLogin1.img"];
+            WzObject mapLogin2 = Program.WzManager["ui"]["MapLogin2.img"];
+            WzObject mapLogin3 = Program.WzManager["ui"]["MapLogin3.img"]; // pretty rare, happened a few times in ascension patch
 
             foreach (KeyValuePair<string, string> map in Program.InfoManager.Maps)
             {
-                maps.Add(map.Key + " - " + map.Value);
+                maps.Add(string.Format("{0} - {1}", map.Key, map.Value));
             }
             maps.Sort();
             if (special)
             {
                 maps.Insert(0, "CashShopPreview");
                 maps.Insert(0, "MapLogin");
-                if (mapLogin1)
+                if (mapLogin1 != null)
                     maps.Insert(0, "MapLogin1");
-                if (mapLogin2)
+                if (mapLogin2 != null)
                     maps.Insert(0, "MapLogin2");
-                if (mapLogin3)
+                if (mapLogin3 != null)
                     maps.Insert(0, "MapLogin3");
             }
 
@@ -142,15 +142,8 @@ namespace HaCreator.CustomControls
             {
                 string mapid = (selectedName).Substring(0, 9);
                 string mapcat = "Map" + mapid.Substring(0, 1);
-                WzImage mapImage = null;
-                if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much
-                {
-                    mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid + ".img"];
-                }
-                else
-                {
-                    mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
-                }
+
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
                 {
                     linkLabel.Visible = false;

@@ -149,13 +149,14 @@ namespace HaCreator.Wz
             get { return baseDir; }
         }
 
+        #region Extract
         public void ExtractMobFile()
         {
             WzImage mobStringImage = (WzImage)String["mob.img"];
             if (mobStringImage == null)
                 return;
 
-            if (!mobStringImage.Parsed) 
+            if (!mobStringImage.Parsed)
                 mobStringImage.ParseImage();
             foreach (WzSubProperty mob in mobStringImage.WzProperties)
             {
@@ -168,7 +169,7 @@ namespace HaCreator.Wz
         public void ExtractNpcFile()
         {
             WzImage npcImage = (WzImage)String["Npc.img"];
-            if (!npcImage.Parsed) 
+            if (!npcImage.Parsed)
                 npcImage.ParseImage();
             foreach (WzSubProperty npc in npcImage.WzProperties)
             {
@@ -195,9 +196,9 @@ namespace HaCreator.Wz
 
             foreach (WzImage soundImage in directory.WzImages)
             {
-                if (!soundImage.Name.ToLower().Contains("bgm")) 
+                if (!soundImage.Name.ToLower().Contains("bgm"))
                     continue;
-                if (!soundImage.Parsed) 
+                if (!soundImage.Parsed)
                     soundImage.ParseImage();
                 try
                 {
@@ -229,29 +230,18 @@ namespace HaCreator.Wz
         //Handle various scenarios ie Map001.wz exists but may only contain Back or only Obj etc
         public void ExtractObjSets()
         {
-            WzDirectory objParent1 = (WzDirectory)this["map"]["Obj"];
-            if (objParent1 != null)
+            foreach (string mapWzFile in MAP_WZ_FILES)
             {
-                foreach (WzImage objset in objParent1.WzImages)
-                    Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
-            }
+                string mapWzFile_ = mapWzFile.ToLower();
 
-            if (this.wzFiles.ContainsKey("map001"))
-            {
-                WzDirectory objParent2 = (WzDirectory)this["map001"]["Obj"];
-                if (objParent2 != null)
+                if (this.wzFiles.ContainsKey(mapWzFile_))
                 {
-                    foreach (WzImage objset in objParent2.WzImages)
-                        Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
-                }
-            }
-            if (this.wzFiles.ContainsKey("map2"))
-            {
-                WzDirectory objParent3 = (WzDirectory)this["map2"]["Obj"];
-                if (objParent3 != null)
-                {
-                    foreach (WzImage objset in objParent3.WzImages)
-                        Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+                    WzDirectory objParent = (WzDirectory)this[mapWzFile_]["Obj"];
+                    if (objParent != null)
+                    {
+                        foreach (WzImage objset in objParent.WzImages)
+                            Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+                    }
                 }
             }
         }
@@ -259,29 +249,18 @@ namespace HaCreator.Wz
         //this handling sucks but nexon naming is not consistent enough to handle much better idk
         public void ExtractBackgroundSets()
         {
-            WzDirectory bgParent1 = (WzDirectory)this["map"]["Back"];
-            if (bgParent1 != null)
+            foreach (string mapWzFile in MAP_WZ_FILES)
             {
-                foreach (WzImage bgset in bgParent1.WzImages)
-                    Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
-            }
+                string mapWzFile_ = mapWzFile.ToLower();
 
-            if (this.wzFiles.ContainsKey("map001"))
-            {
-                WzDirectory bgParent2 = (WzDirectory)this["map001"]["Back"];
-                if (bgParent2 != null)
+                if (this.wzFiles.ContainsKey(mapWzFile_))
                 {
-                    foreach (WzImage bgset in bgParent2.WzImages)
-                        Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
-                }
-            }
-            if (this.wzFiles.ContainsKey("map2"))
-            {
-                WzDirectory bgParent3 = (WzDirectory)this["map2"]["Back"];
-                if (bgParent3 != null)
-                {
-                    foreach (WzImage bgset in bgParent3.WzImages)
-                        Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+                    WzDirectory bgParent1 = (WzDirectory)this[mapWzFile_]["Back"];
+                    if (bgParent1 != null)
+                    {
+                        foreach (WzImage bgset in bgParent1.WzImages)
+                            Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+                    }
                 }
             }
         }
@@ -363,6 +342,35 @@ namespace HaCreator.Wz
                 Program.InfoManager.PortalIdByType[Program.InfoManager.PortalTypeById[i]] = i;
             }
         }
+        #endregion
+
+        #region Find        
+        /// <summary>
+        /// Finds a map image from the list of Map.wzs
+        /// </summary>
+        /// <param name="mapid"></param>
+        /// <param name="mapcat"></param>
+        /// <returns></returns>
+        public WzImage FindMapImage(string mapid, string mapcat)
+        {
+            foreach (string mapWzFile in MAP_WZ_FILES)
+            {
+                string mapWzFile_ = mapWzFile.ToLower();
+
+                if (this.wzFiles.ContainsKey(mapWzFile_))
+                {
+                    WzObject mapImage = (WzImage) this[mapWzFile_]?["Map"]?[mapcat]?[mapid + ".img"];
+
+                    if (mapImage != null)
+                    {
+                        return (WzImage) mapImage;
+                    }
+                }
+            }
+            return null;
+        }
+        #endregion
+
 
         /*        public void ExtractItems()
                 {
