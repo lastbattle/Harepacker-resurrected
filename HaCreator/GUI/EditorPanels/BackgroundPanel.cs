@@ -28,17 +28,25 @@ namespace HaCreator.GUI.EditorPanels
     {
         private HaCreatorStateManager hcsm;
 
-        public BackgroundPanel(HaCreatorStateManager hcsm)
+        public BackgroundPanel()
         {
-            this.hcsm = hcsm;
             InitializeComponent();
+        }
 
+        public void Initialize(HaCreatorStateManager hcsm)
+        {
+            this.hcsm = hcsm; 
+            
             List<string> sortedBgSets = new List<string>();
             foreach (KeyValuePair<string, WzImage> bS in Program.InfoManager.BackgroundSets)
+            {
                 sortedBgSets.Add(bS.Key);
+            }
             sortedBgSets.Sort();
             foreach (string bS in sortedBgSets)
+            {
                 bgSetListBox.Items.Add(bS);
+            }
         }
 
         private void bgSetListBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -55,6 +63,7 @@ namespace HaCreator.GUI.EditorPanels
                 BackgroundInfo bgInfo = BackgroundInfo.Get((string)bgSetListBox.SelectedItem, aniBg.Checked, prop.Name);
                 if (bgInfo == null)
                     continue;
+
                 ImageViewer item = bgImageContainer.Add(bgInfo.Image, prop.Name, true);
                 item.Tag = bgInfo;
                 item.MouseDown += new MouseEventHandler(bgItem_Click);

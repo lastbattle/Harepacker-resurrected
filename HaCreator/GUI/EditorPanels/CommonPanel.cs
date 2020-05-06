@@ -23,14 +23,18 @@ namespace HaCreator.GUI.EditorPanels
 {
     public partial class CommonPanel : UserControl
     {
-        HaCreatorStateManager hcsm;
+        private HaCreatorStateManager hcsm;
 
-        public CommonPanel(HaCreatorStateManager hcsm)
+        public CommonPanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
-            InitializeComponent();
 
-            ImageViewer[] commonItems = new ImageViewer[] { 
+            ImageViewer[] commonItems = new ImageViewer[] {
                 miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.FootholdColor)), "Foothold", true),
                 miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.RopeColor)), "Rope", true),
                 miscItemsContainer.Add(CreateColoredBitmap(WzInfoTools.XNAToDrawingColor(UserSettings.ChairColor)), "Chair", true),

@@ -28,11 +28,15 @@ namespace HaCreator.GUI.EditorPanels
     {
         private HaCreatorStateManager hcsm;
 
-        public ObjPanel(HaCreatorStateManager hcsm)
+        public ObjPanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
             hcsm.SetObjPanel(this);
-            InitializeComponent();
 
             List<string> sortedObjSets = new List<string>();
             foreach (KeyValuePair<string, WzImage> oS in Program.InfoManager.ObjectSets)

@@ -30,10 +30,14 @@ namespace HaCreator.GUI.EditorPanels
 
         private HaCreatorStateManager hcsm;
 
-        public LifePanel(HaCreatorStateManager hcsm)
+        public LifePanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
-            InitializeComponent();
 
             foreach (KeyValuePair<string, ReactorInfo> entry in Program.InfoManager.Reactors)
             {

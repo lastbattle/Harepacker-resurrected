@@ -5,7 +5,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
         
         xmlns:local="clr-namespace:HaCreator.GUI"
-        xmlns:editorPanes="clr-namespace:HaCreator.GUI.EditorPanels"
+        xmlns:editorItems="clr-namespace:HaCreator.GUI.EditorPanels"
         xmlns:mapEditor="clr-namespace:HaCreator.MapEditor"
 
         mc:Ignorable="d" 
@@ -20,10 +20,10 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
-        
+
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="200"/>
+            <ColumnDefinition Width="290"/>
         </Grid.ColumnDefinitions>
 
         <local:HaRibbon x:Name="ribbon"
@@ -33,14 +33,55 @@
         <Grid Grid.Row="1" Grid.Column="0">
             <TabControl x:Name="tabControl1" VerticalAlignment="Top"
                         >
-                
+
             </TabControl>
             <mapEditor:MultiBoard x:Name="multiBoard" Margin="0,30,0,0"/>
         </Grid>
 
-        <!-- side dock panel-->
-        <DockPanel x:Name="dockPanel" Grid.Row="2" Grid.Column="1">
-        </DockPanel>
+
+
+        <!-- Side panel-->
+        <ScrollViewer Grid.Row="1" Grid.Column="1"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Visible">
+            <StackPanel Orientation="Vertical">
+                <Expander Header="Tile" IsExpanded="False">
+                    <WindowsFormsHost x:Name="tilePanelHost">
+                        <editorItems:TilePanel x:Name="tilePanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Object">
+                    <WindowsFormsHost x:Name="objPanelHost">
+                        <editorItems:ObjPanel x:Name="objPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Life">
+                    <WindowsFormsHost x:Name="lifePanelHost">
+                        <editorItems:LifePanel x:Name="lifePanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Portal">
+                    <WindowsFormsHost x:Name="portalPanelHost">
+                        <editorItems:PortalPanel x:Name="portalPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Background">
+                    <WindowsFormsHost x:Name="bgPanelHost">
+                        <editorItems:BackgroundPanel x:Name="bgPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Common">
+                    <WindowsFormsHost x:Name="commonPanelHost">
+                        <editorItems:CommonPanel x:Name="commonPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 
 </Window>

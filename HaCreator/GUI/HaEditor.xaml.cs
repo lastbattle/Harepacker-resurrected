@@ -28,17 +28,9 @@ namespace HaCreator.GUI
         private InputHandler handler;
         public HaCreatorStateManager hcsm;
 
-        private TilePanel tilePanel;
-        private ObjPanel objPanel;
-        private LifePanel lifePanel;
-        private PortalPanel portalPanel;
-        private BackgroundPanel bgPanel;
-        private CommonPanel commonPanel;
-
         public HaEditor()
         {
             InitializeComponent();
-            InitializeComponentCustom();
 
             Program.HaEditorWindow = this;
 
@@ -66,44 +58,34 @@ namespace HaCreator.GUI
         private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
         {
             multiBoard.UpdateWindowSize(e.NewSize);
+
+            int newHeight = (int)(e.NewSize.Height * 0.75);
+
+            tilePanelHost.Height = newHeight;
+            objPanelHost.Height = newHeight;
+            lifePanelHost.Height = newHeight;
+            portalPanelHost.Height = newHeight;
+            bgPanelHost.Height = newHeight;
+            commonPanelHost.Height = newHeight;
         }
 
         private void HaEditor2_Loaded(object sender, RoutedEventArgs e)
-        {
-            // This has to be here and not in .ctor for some reason, otherwise subwindows are not locating properly
-            tilePanel = new TilePanel(hcsm) { Enabled = false };
-            objPanel = new ObjPanel(hcsm) { Enabled = false };
-            lifePanel = new LifePanel(hcsm) { Enabled = false };
-            portalPanel = new PortalPanel(hcsm) { Enabled = false };
-            bgPanel = new BackgroundPanel(hcsm) { Enabled = false };
-            commonPanel = new CommonPanel(hcsm) { Enabled = false };
-
-            // Obj panel
-
-            List<System.Windows.Forms.UserControl> dockContents = new List<System.Windows.Forms.UserControl> { tilePanel, objPanel, lifePanel, portalPanel, bgPanel, commonPanel };
-            foreach (System.Windows.Forms.UserControl dockContent in dockContents)
-            {
-                dockContent.Show();
-
-                WindowsFormsHost formsHost = new WindowsFormsHost();
-                formsHost.Child = dockContent;
-                DockPanel.SetDock(formsHost, Dock.Right | Dock.Top);
-                dockPanel.Children.Add(formsHost);
-            }
-
-           // commonPanel.Pane = bgPanel.Pane = portalPanel.Pane = lifePanel.Pane = objPanel.Pane = tilePanel.Pane;
-
-            if (!hcsm.backupMan.AttemptRestore())
-                hcsm.LoadMap(new Load(multiBoard, tabControl1, hcsm.MakeRightClickHandler()));
-        }
-
-        private void InitializeComponentCustom()
         {
             // helper classes
             handler = new InputHandler(multiBoard);
             hcsm = new HaCreatorStateManager(multiBoard, ribbon, tabControl1, handler);
             hcsm.CloseRequested += hcsm_CloseRequested;
             hcsm.FirstMapLoaded += hcsm_FirstMapLoaded;
+
+            tilePanel.Initialize(hcsm);
+            objPanel.Initialize(hcsm);
+            lifePanel.Initialize(hcsm);
+            portalPanel.Initialize(hcsm);
+            bgPanel.Initialize(hcsm);
+            commonPanel.Initialize(hcsm);
+
+            if (!hcsm.backupMan.AttemptRestore())
+                hcsm.LoadMap(new Load(multiBoard, tabControl1, hcsm.MakeRightClickHandler()));
         }
 
         /// <summary>
@@ -128,13 +110,6 @@ namespace HaCreator.GUI
 
         void hcsm_FirstMapLoaded()
         {
-            tilePanel.Enabled = true;
-            objPanel.Enabled = true;
-            lifePanel.Enabled = true;
-            portalPanel.Enabled = true;
-            bgPanel.Enabled = true;
-            commonPanel.Enabled = true;
-
             WindowState = WindowState.Maximized;
         }
 

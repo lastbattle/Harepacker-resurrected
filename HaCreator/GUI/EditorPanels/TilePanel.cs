@@ -30,11 +30,15 @@ namespace HaCreator.GUI.EditorPanels
     {
         private HaCreatorStateManager hcsm;
 
-        public TilePanel(HaCreatorStateManager hcsm)
+        public TilePanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
             hcsm.SetTilePanel(this);
-            InitializeComponent();
 
             List<string> sortedTileSets = new List<string>();
             foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
@@ -68,7 +72,8 @@ namespace HaCreator.GUI.EditorPanels
         {
             lock (hcsm.MultiBoard)
             {
-                if (tileSetList.SelectedItem == null) return;
+                if (tileSetList.SelectedItem == null) 
+                    return;
                 tileImagesContainer.Controls.Clear();
                 string selectedSetName = (string)tileSetList.SelectedItem;
                 if (!Program.InfoManager.TileSets.ContainsKey(selectedSetName))
@@ -77,11 +82,13 @@ namespace HaCreator.GUI.EditorPanels
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
                 foreach (WzSubProperty tCat in tileSetImage.WzProperties)
                 {
-                    if (tCat.Name == "info") continue;
+                    if (tCat.Name == "info") 
+                        continue;
                     if (ApplicationSettings.randomTiles)
                     {
                         WzCanvasProperty canvasProp = (WzCanvasProperty)tCat["0"];
-                        if (canvasProp == null) continue;
+                        if (canvasProp == null) 
+                            continue;
                         ImageViewer item = tileImagesContainer.Add(canvasProp.GetLinkedWzCanvasBitmap(), tCat.Name, true);
                         TileInfo[] randomInfos = new TileInfo[tCat.WzProperties.Count];
                         for (int i = 0; i < randomInfos.Length; i++)

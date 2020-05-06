@@ -399,17 +399,16 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         private void closeMapTab(object sender, EventArgs e)
         {
+            if (tabs.Items.Count <= 1) // at least 1 tabs for now
+            {
+                return;
+            }
             if (MessageBox.Show("Are you sure you want to close this map?", "Close", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
             System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender; 
             if (item == null)
                 return;
-
-            if (tabs.Items.Count <= 1) // at least 1 tabs for now
-            {
-                return;
-            }
 
             System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem) item.Tag;
             TabItemContainer container = (TabItemContainer)tabItem.Tag;
