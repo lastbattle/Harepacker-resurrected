@@ -99,8 +99,10 @@ namespace HaCreator.Wz
         {
             switch (mapImage.Name)
             {
-                case "MapLogin1.img":
                 case "MapLogin.img":
+                case "MapLogin1.img":
+                case "MapLogin2.img":
+                case "MapLogin3.img":
                     return MapType.MapLogin;
                 case "CashShopPreview.img":
                     return MapType.CashShopPreview;

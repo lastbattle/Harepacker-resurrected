@@ -164,15 +164,12 @@ namespace HaCreator.GUI
             }
             else if (WZSelect.Checked)
             {
-                if (mapBrowser.SelectedItem == "MapLogin")
+                string selectedName = mapBrowser.SelectedItem;
+
+                if (selectedName.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
                 {
-                    mapImage = (WzImage)Program.WzManager["ui"]["MapLogin.img"];
-                    mapName = streetName = categoryName = "MapLogin";
-                }
-                else if (mapBrowser.SelectedItem == "MapLogin1")
-                {
-                    mapImage = (WzImage)Program.WzManager["ui"]["MapLogin1.img"];
-                    mapName = streetName = categoryName = "MapLogin1";
+                    mapImage = (WzImage)Program.WzManager["ui"][selectedName + ".img"];
+                    mapName = streetName = categoryName = selectedName;
                 }
                 else if (mapBrowser.SelectedItem == "CashShopPreview")
                 {

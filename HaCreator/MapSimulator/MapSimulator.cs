@@ -290,7 +290,7 @@ namespace HaCreator.MapSimulator
                     Texture2D texture = (Texture2D)frameProp.MSTag;
                     if (texture != null)
                     {
-                        System.Drawing.PointF origin = ((WzCanvasProperty)frameProp).GetCanvasOriginPosition();
+                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
                         frames.Add(new DXObject(x - (int)origin.X + mapCenterX, y - (int)origin.Y + mapCenterY, texture, (int)delay));
                     } else
                     {
