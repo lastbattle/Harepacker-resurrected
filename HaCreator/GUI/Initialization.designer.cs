@@ -121,7 +121,6 @@
             this.debugButton.TabIndex = 15;
             this.debugButton.Text = "DEBUG - check map errors";
             this.debugButton.UseVisualStyleBackColor = true;
-            this.debugButton.Visible = false;
             this.debugButton.Click += new System.EventHandler(this.debugButton_Click);
             // 
             // Initialization

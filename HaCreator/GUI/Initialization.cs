@@ -248,7 +248,8 @@ namespace HaCreator.GUI
             {
                 MapLoader loader = new MapLoader();
                 string mapcat = "Map" + mapid.Substring(0, 1);
-                WzImage mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
+
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
                 {
                     continue;

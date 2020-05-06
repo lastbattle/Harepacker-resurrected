@@ -116,8 +116,32 @@ namespace MapleLib.WzLib.WzProperties
 		}
 		#endregion
 
-        #region Cast Values
-        public override string GetString()
+		#region Cast Values
+		public override int GetInt()
+		{
+			int outvalue = 0;
+			int.TryParse(val, out outvalue);
+
+			return outvalue; // stupid nexon . fu, some shit that should be WzIntProperty
+		}
+
+		public override short GetShort()
+		{
+			short outvalue = 0;
+			short.TryParse(val, out outvalue);
+
+			return outvalue; // stupid nexon . fu, some shit that should be WzIntProperty
+		}
+
+		public override long GetLong()
+		{
+			long outvalue = 0;
+			long.TryParse(val, out outvalue);
+
+			return outvalue; // stupid nexon . fu, some shit that should be WzIntProperty
+		}
+
+		public override string GetString()
         {
             return val;
         }
