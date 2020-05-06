@@ -693,9 +693,18 @@ namespace HaCreator.Wz
                 Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
             };
 
+            System.Windows.Controls.MenuItem menuItem4 = new System.Windows.Controls.MenuItem();
+            menuItem4.Header = "Close";
+            menuItem4.Click += rightClickHandler[3];
+            menuItem4.Icon = new System.Windows.Controls.Image
+            {
+                Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
+            };
+
             menu.Items.Add(menuItem1);
             menu.Items.Add(menuItem2);
             menu.Items.Add(menuItem3);
+            menu.Items.Add(menuItem4);
 
             return menu;
         }
@@ -850,8 +859,6 @@ namespace HaCreator.Wz
                     menu.PlacementTarget = senderTab;
                     menu.IsOpen = true;
                 };
-                //newTabPage.Content = text;
-                //newTabPage.Name
 
                 newBoard.TabPage = newTabPage;
                 newTabPage.Tag = new TabItemContainer(text, multiBoard, tooltip, menu, newBoard); //newBoard;
@@ -861,7 +868,9 @@ namespace HaCreator.Wz
                 multiBoard.SelectedBoard = newBoard;
                 menu.Tag = newBoard;
                 foreach (System.Windows.Controls.MenuItem item in menu.Items)
-                    item.Tag = newBoard;
+                {
+                    item.Tag = newTabPage;
+                }
             }
         }
 

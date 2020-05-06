@@ -125,14 +125,6 @@ namespace HaCreator.MapEditor
             this.userObjs = new UserObjectsManager(this);
             this.SizeChanged += MultiBoard2_SizeChanged;
 
-            this.DxContainer.DragEnter += DxContainer_DragEnter;
-            this.DxContainer.DragDrop += DxContainer_DragDrop;
-            this.DxContainer.KeyDown += DxContainer_KeyDown;
-            this.DxContainer.MouseClick += DxContainer_MouseClick;
-            this.DxContainer.MouseDoubleClick += DxContainer_MouseDoubleClick;
-            this.DxContainer.MouseDown += DxContainer_MouseDown;
-            this.DxContainer.MouseMove += DxContainer_MouseMove;
-            this.DxContainer.MouseUp += DxContainer_MouseUp;
         }
 
         public void Start()

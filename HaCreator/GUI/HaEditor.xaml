@@ -13,7 +13,7 @@
         
         MouseWheel="OnMouseWheel" 
         Closing="HaEditor2_Closing" 
-        SizeChanged="WindowSizeChanged">
+        SizeChanged="WindowSizeChanged" Title="HaCreator resurrected">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -31,7 +31,8 @@
 
         <!-- editor board-->
         <Grid Grid.Row="1" Grid.Column="0">
-            <TabControl x:Name="tabControl1" VerticalAlignment="Top">
+            <TabControl x:Name="tabControl1" VerticalAlignment="Top"
+                        >
                 
             </TabControl>
             <mapEditor:MultiBoard x:Name="multiBoard" Margin="0,30,0,0"/>

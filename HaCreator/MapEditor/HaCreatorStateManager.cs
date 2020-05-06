@@ -307,9 +307,20 @@ namespace HaCreator.MapEditor
         #endregion
 
         #region Tab Events
+        /// <summary>
+        /// Context menu for editing map info
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void mapEditInfo(object sender, EventArgs e)
         {
-            Board selectedBoard = (Board)((System.Windows.Controls.MenuItem)sender).Tag;
+            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
+            if (item == null)
+                return;
+
+            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem)item.Tag;
+            TabItemContainer container = (TabItemContainer)tabItem.Tag;
+            Board selectedBoard = container.Board;
             lock (selectedBoard.ParentControl)
             {
                 new InfoEditor(selectedBoard, selectedBoard.MapInfo, multiBoard).ShowDialog();
@@ -318,9 +329,20 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Context menu for adding map VR
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void mapAddVR(object sender, EventArgs e)
         {
-            Board selectedBoard = (Board)((System.Windows.Controls.MenuItem)sender).Tag;
+            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
+            if (item == null)
+                return;
+
+            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem)item.Tag;
+            TabItemContainer container = (TabItemContainer)tabItem.Tag;
+            Board selectedBoard = container.Board;
             lock (selectedBoard.ParentControl)
             {
                 if (selectedBoard.MapInfo.Image != null)
@@ -338,9 +360,20 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Context menu for adding mini map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void mapAddMinimap(object sender, EventArgs e)
         {
-            Board selectedBoard = (Board)((System.Windows.Controls.MenuItem)sender).Tag;
+            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
+            if (item == null)
+                return;
+
+            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem)item.Tag;
+            TabItemContainer container = (TabItemContainer)tabItem.Tag;
+            Board selectedBoard = container.Board;
             lock (selectedBoard.ParentControl)
             {
                 if (selectedBoard.MapInfo.Image != null)
@@ -359,16 +392,58 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Context menu for closing of the map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void closeMapTab(object sender, EventArgs e)
+        {
+            if (MessageBox.Show("Are you sure you want to close this map?", "Close", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender; 
+            if (item == null)
+                return;
+
+            if (tabs.Items.Count <= 1) // at least 1 tabs for now
+            {
+                return;
+            }
+
+            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem) item.Tag;
+            TabItemContainer container = (TabItemContainer)tabItem.Tag;
+            Board selectedBoard = container.Board;
+            lock (selectedBoard.ParentControl)
+            {
+                tabs.SelectedItem = tabs.Items[0];
+                tabs.Items.Remove(tabItem);
+
+                selectedBoard.Dispose();
+            }
+        }
+
         private void Tabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             lock (multiBoard)
             {
                 multiBoard_ReturnToSelectionState();
-                multiBoard.SelectedBoard = ((TabItemContainer)((System.Windows.Controls.TabItem)tabs.SelectedItem).Tag).Board;
-                ApplicationSettings.lastDefaultLayer = multiBoard.SelectedBoard.SelectedLayerIndex;
-                ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
-                ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
-                ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+
+                if (tabs.SelectedItem != null)
+                {
+                    System.Windows.Controls.TabItem selectedTab = (System.Windows.Controls.TabItem)tabs.SelectedItem;
+
+                    multiBoard.SelectedBoard = ((TabItemContainer)selectedTab.Tag).Board;
+
+                    ApplicationSettings.lastDefaultLayer = multiBoard.SelectedBoard.SelectedLayerIndex;
+
+                    ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
+                    ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
+                    ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+                } else
+                {
+                    multiBoard.SelectedBoard = null;
+                }
                 ParseVisibleEditedTypes();
                 multiBoard.Focus();
             }
@@ -620,7 +695,8 @@ namespace HaCreator.MapEditor
             return new System.Windows.RoutedEventHandler[] { 
                 new System.Windows.RoutedEventHandler(mapEditInfo), 
                 new System.Windows.RoutedEventHandler(mapAddVR), 
-                new System.Windows.RoutedEventHandler(mapAddMinimap) 
+                new System.Windows.RoutedEventHandler(mapAddMinimap),
+                 new System.Windows.RoutedEventHandler(closeMapTab)
             };
         }
 
