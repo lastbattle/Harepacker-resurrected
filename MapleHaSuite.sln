@@ -12,7 +12,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Win32", "Win32\Win32.csproj
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "spine-csharp", "spine-runtimes\spine-csharp\spine-csharp.csproj", "{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaSharedLirary", "HaSharedLirary\HaSharedLirary.csproj", "{5411388B-F3CB-4D52-9F55-ABD15CFE966C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaSharedLibrary", "HaSharedLirary\HaSharedLibrary.csproj", "{5411388B-F3CB-4D52-9F55-ABD15CFE966C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

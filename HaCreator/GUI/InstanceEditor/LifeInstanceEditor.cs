@@ -36,11 +36,13 @@ namespace HaCreator.GUI.InstanceEditor
             rx0Box.Value = item.rx0Shift;
             rx1Box.Value = item.rx1Shift;
             yShiftBox.Value = item.yShift;
+
             LoadOptionalInt(item.Info, infoEnable, infoBox);
             LoadOptionalInt(item.Team, teamEnable, teamBox);
             LoadOptionalInt(item.MobTime, mobTimeEnable, mobTimeBox);
             LoadOptionalStr(item.LimitedName, limitedNameEnable, limitedNameBox);
             hideBox.Checked = item.Hide;
+            flipBox.Checked = item.Flip;
 
             pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
         }
@@ -71,6 +73,7 @@ namespace HaCreator.GUI.InstanceEditor
                 //item.TypeStr = GetOptionalStr(typeEnable, typeBox);
                 item.LimitedName = GetOptionalStr(limitedNameEnable, limitedNameBox);
                 item.Hide = hideBox.Checked;
+                item.Flip = flipBox.Checked;
             }
             Close();
         }

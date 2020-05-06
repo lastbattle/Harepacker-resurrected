@@ -50,6 +50,7 @@
             this.limitedNameBox = new System.Windows.Forms.TextBox();
             this.label5 = new System.Windows.Forms.Label();
             this.yShiftBox = new System.Windows.Forms.NumericUpDown();
+            this.flipBox = new System.Windows.Forms.CheckBox();
             ((System.ComponentModel.ISupportInitialize)(this.xInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.rx0Box)).BeginInit();
@@ -124,9 +125,9 @@
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(103, 193);
+            this.okButton.Location = new System.Drawing.Point(3, 228);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(76, 28);
+            this.okButton.Size = new System.Drawing.Size(141, 46);
             this.okButton.TabIndex = 9;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -134,9 +135,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(185, 193);
+            this.cancelButton.Location = new System.Drawing.Point(149, 228);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(73, 28);
+            this.cancelButton.Size = new System.Drawing.Size(141, 46);
             this.cancelButton.TabIndex = 8;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -330,11 +331,21 @@
             this.yShiftBox.Size = new System.Drawing.Size(50, 20);
             this.yShiftBox.TabIndex = 20;
             // 
+            // flipBox
+            // 
+            this.flipBox.AutoSize = true;
+            this.flipBox.Location = new System.Drawing.Point(131, 176);
+            this.flipBox.Name = "flipBox";
+            this.flipBox.Size = new System.Drawing.Size(42, 17);
+            this.flipBox.TabIndex = 22;
+            this.flipBox.Text = "Flip";
+            // 
             // LifeInstanceEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(308, 233);
+            this.ClientSize = new System.Drawing.Size(293, 275);
+            this.Controls.Add(this.flipBox);
             this.Controls.Add(this.label5);
             this.Controls.Add(this.yShiftBox);
             this.Controls.Add(this.limitedNameBox);
@@ -403,5 +414,6 @@
         private System.Windows.Forms.TextBox limitedNameBox;
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.NumericUpDown yShiftBox;
+        private System.Windows.Forms.CheckBox flipBox;
     }
 }

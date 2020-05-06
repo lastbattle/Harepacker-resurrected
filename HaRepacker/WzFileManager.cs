@@ -11,9 +11,9 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System.Windows.Threading;
 using System.Threading.Tasks;
-using HaRepacker.GUI.Panels;
-using HaRepacker.Comparer;
 using System.Diagnostics;
+using HaRepacker.Comparer;
+using HaRepacker.GUI.Panels;
 
 namespace HaRepacker
 {

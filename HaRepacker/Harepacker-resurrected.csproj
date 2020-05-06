@@ -372,7 +372,6 @@
     </Compile>
     <Compile Include="UndoRedoManager.cs" />
     <Compile Include="Warning.cs" />
-    <Compile Include="WzFileManager.cs" />
     <Compile Include="GUI\WzStringSearchForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -394,6 +393,7 @@
     <Compile Include="GUI\SaveForm.designer.cs">
       <DependentUpon>SaveForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="WzFileManager.cs" />
     <Compile Include="WzNode.cs" />
     <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
       <DependentUpon>DisplayMap.cs</DependentUpon>
@@ -702,9 +702,9 @@
     <None Include="Resources\find.png" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaSharedLirary\HaSharedLirary.csproj">
+    <ProjectReference Include="..\HaSharedLirary\HaSharedLibrary.csproj">
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
-      <Name>HaSharedLirary</Name>
+      <Name>HaSharedLibrary</Name>
     </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
