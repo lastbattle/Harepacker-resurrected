@@ -140,5 +140,21 @@ namespace HaCreator.GUI
         {
             multiBoard.Stop();
         }
+
+        private void Expander_Expanded(object sender, RoutedEventArgs e)
+        {
+            Expander expanderSrc = sender as Expander;
+            UIElement childContent = expanderSrc.Content as UIElement;
+
+            childContent.Visibility = Visibility.Visible;
+        }
+
+        private void Expander_Collapsed(object sender, RoutedEventArgs e)
+        {
+            Expander expanderSrc = sender as Expander;
+            UIElement childContent = expanderSrc.Content as UIElement;
+
+            childContent.Visibility = Visibility.Collapsed; // collapse when its not needed, speed up the performance here
+        }
     }
 }

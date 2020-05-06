@@ -45,38 +45,45 @@
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Visible">
             <StackPanel Orientation="Vertical">
-                <Expander Header="Tile" IsExpanded="False">
-                    <WindowsFormsHost x:Name="tilePanelHost">
+                
+                <Expander Header="Tile"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
                         <editorItems:TilePanel x:Name="tilePanel"/>
                     </WindowsFormsHost>
                 </Expander>
 
-                <Expander Header="Object">
-                    <WindowsFormsHost x:Name="objPanelHost">
+                <Expander Header="Object"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="objPanelHost" Visibility="Collapsed">
                         <editorItems:ObjPanel x:Name="objPanel"/>
                     </WindowsFormsHost>
                 </Expander>
 
-                <Expander Header="Life">
-                    <WindowsFormsHost x:Name="lifePanelHost">
+                <Expander Header="Life"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="lifePanelHost" Visibility="Collapsed">
                         <editorItems:LifePanel x:Name="lifePanel"/>
                     </WindowsFormsHost>
                 </Expander>
 
-                <Expander Header="Portal">
-                    <WindowsFormsHost x:Name="portalPanelHost">
+                <Expander Header="Portal"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="portalPanelHost" Visibility="Collapsed">
                         <editorItems:PortalPanel x:Name="portalPanel"/>
                     </WindowsFormsHost>
                 </Expander>
 
-                <Expander Header="Background">
-                    <WindowsFormsHost x:Name="bgPanelHost">
+                <Expander Header="Background"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="bgPanelHost" Visibility="Collapsed">
                         <editorItems:BackgroundPanel x:Name="bgPanel"/>
                     </WindowsFormsHost>
                 </Expander>
 
-                <Expander Header="Common">
-                    <WindowsFormsHost x:Name="commonPanelHost">
+                <Expander Header="Common"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">
                         <editorItems:CommonPanel x:Name="commonPanel"/>
                     </WindowsFormsHost>
                 </Expander>
