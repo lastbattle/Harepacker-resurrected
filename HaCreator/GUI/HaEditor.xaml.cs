@@ -153,7 +153,7 @@ namespace HaCreator.GUI
         {
             Expander expanderSrc = sender as Expander;
             UIElement childContent = expanderSrc.Content as UIElement;
-
+  
             childContent.Visibility = Visibility.Collapsed; // collapse when its not needed, speed up the performance here
         }
     }

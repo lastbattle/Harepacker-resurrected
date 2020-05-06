@@ -14,6 +14,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -43,7 +44,6 @@ namespace HaCreator.MapEditor
 {
     public partial class MultiBoard : UserControl
     {
-        private bool deviceReady = false;
         private GraphicsDevice DxDevice;
         private Microsoft.Xna.Framework.Graphics.SpriteBatch sprite;
         private PresentationParameters pParams = new PresentationParameters();
@@ -98,11 +98,11 @@ namespace HaCreator.MapEditor
         {
             PrepareDevice();
             pixel = CreatePixel();
-            deviceReady = true;
+            DeviceReady = true;
 
             while (!Program.AbortThreads)
             {
-                if (deviceReady && CurrentHostWindowState != System.Windows.WindowState.Minimized)
+                if (DeviceReady && CurrentHostWindowState != System.Windows.WindowState.Minimized)
                 {
                     RenderFrame();
 #if FPS_TEST
@@ -121,16 +121,21 @@ namespace HaCreator.MapEditor
         {
             InitializeComponent();
 
+            if (!DesignerProperties.GetIsInDesignMode(this)) // stupid errors popping up in design mode 
+                winFormDXHolder.Visibility = Visibility.Visible;
+
             this.dxHandle = DxContainer.Handle;
             this.userObjs = new UserObjectsManager(this);
             this.SizeChanged += MultiBoard2_SizeChanged;
-
         }
 
         public void Start()
         {
-            if (deviceReady) return;
-            if (selectedBoard == null) throw new Exception("Cannot start without a selected board");
+            if (DeviceReady) 
+                return;
+
+            if (selectedBoard == null) 
+                throw new Exception("Cannot start without a selected board");
             Visibility = Visibility.Visible;
 
             AdjustScrollBars();
@@ -321,11 +326,7 @@ namespace HaCreator.MapEditor
         #endregion
 
         #region Properties
-        public bool DeviceReady
-        {
-            get { return deviceReady; }
-            set { deviceReady = value; }
-        }
+        public bool DeviceReady { get; set; } = false;
 
         public FontEngine FontEngine
         {
@@ -775,7 +776,7 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
-                if (!this.deviceReady)
+                if (!this.DeviceReady)
                     return false;
 
                 System.Windows.Point newMousePoint = e.MouseDevice.GetPosition(sender);

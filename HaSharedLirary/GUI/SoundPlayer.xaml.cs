@@ -91,6 +91,10 @@ namespace HaSharedLirary.GUI
                 PauseButton.Content = "Play";
             } else
             {
+                if (currAudio == null)
+                {
+                    return;
+                }
                 PrepareAudioForPlayback();
 
                 currAudio.Play();

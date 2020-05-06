@@ -11,8 +11,8 @@
     
    
     <Grid>
-        <WindowsFormsHost Margin="0,0,20,20">
-            <haCreator:DirectXHolder x:Name="DxContainer"
+        <WindowsFormsHost x:Name="winFormDXHolder" Margin="0,0,20,20" Visibility="Collapsed">
+            <haCreator:DirectXHolder x:Name="DxContainer" 
                                      DragEnter="DxContainer_DragEnter"
                                      DragDrop="DxContainer_DragDrop"
                                      KeyDown="DxContainer_KeyDown"
