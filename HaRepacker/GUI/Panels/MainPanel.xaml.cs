@@ -1350,7 +1350,7 @@ namespace HaRepacker.GUI.Panels
                         canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
                 }
                 else
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetLinkedWzCanvasBitmap());
 
                 SetImageRenderView(canvas, null);
             }

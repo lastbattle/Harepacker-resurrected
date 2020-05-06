@@ -134,6 +134,7 @@ namespace HaCreator.MapSimulator.DX
             int Y = CalculateBackgroundPosY(frame, mapShiftY, centerY);
             int _cx = cx == 0 ? frame.Width : cx;
             int _cy = cy == 0 ? frame.Height : cy;
+
             switch (type)
             {
                 default:

@@ -44,7 +44,7 @@ namespace HaCreator.MapEditor.Info
                 {
                     Image = global::HaCreator.Properties.Resources.placeholder;
                 }
-                Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)npcImage["origin"]);
+                Origin = WzInfoTools.PointFToSystemPoint(npcImage.GetCanvasOriginPosition());
             }
             else
             {

@@ -19,6 +19,11 @@ namespace HaCreator.Wz
 {
     public static class WzInfoTools
     {
+        public static System.Drawing.Point PointFToSystemPoint(PointF source)
+        {
+            return new System.Drawing.Point((int)source.X, (int)source.Y);
+        }
+
         public static System.Drawing.Point VectorToSystemPoint(WzVectorProperty source)
         {
             return new System.Drawing.Point(source.X.Value, source.Y.Value);

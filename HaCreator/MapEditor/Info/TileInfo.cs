@@ -72,7 +72,10 @@ namespace HaCreator.MapEditor.Info
         {
             WzImageProperty zProp = parentObject["z"];
             int z = zProp == null ? 0 : InfoTool.GetInt(zProp);
-            TileInfo result = new TileInfo(parentObject.GetLinkedWzCanvasBitmap(), WzInfoTools.VectorToSystemPoint((WzVectorProperty)parentObject["origin"]), tS, u, no, mag.HasValue ? mag.Value : 1, z, parentObject);
+            TileInfo result = new TileInfo(
+                parentObject.GetLinkedWzCanvasBitmap(), 
+                WzInfoTools.PointFToSystemPoint(parentObject.GetCanvasOriginPosition()),
+                tS, u, no, mag.HasValue ? mag.Value : 1, z, parentObject);
             WzConvexProperty footholds = (WzConvexProperty)parentObject["foothold"];
             if (footholds != null)
                 foreach (WzVectorProperty foothold in footholds.WzProperties)

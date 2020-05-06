@@ -538,7 +538,7 @@ namespace HaRepacker.FHMapper
                             errorList.Add(string.Format("Tile {0}, ID: {1} is not found.", tilePackName, tileID));
                         }
                         PointF tileVector = tileCanvas.GetCanvasOriginPosition();
-                        tileBuf.DrawImage(tileCanvas.GetBitmap(), x - tileVector.X, y - tileVector.Y);
+                        tileBuf.DrawImage(tileCanvas.GetLinkedWzCanvasBitmap(), x - tileVector.X, y - tileVector.Y);
                     }
                 }
             }

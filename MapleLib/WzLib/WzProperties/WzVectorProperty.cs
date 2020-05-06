@@ -130,10 +130,36 @@ namespace MapleLib.WzLib.WzProperties
 			this.x = x;
 			this.y = y;
 		}
+
+		/// <summary>
+		/// Creates a WzVectorProperty with the specified name, x and y
+		/// </summary>
+		/// <param name="name">The name of the property</param>
+		/// <param name="x">The x value of the vector</param>
+		/// <param name="y">The y value of the vector</param>
+		public WzVectorProperty(string name, int x, int y)
+		{
+			this.name = name;
+			this.x = new WzIntProperty(string.Empty, x);
+			this.y = new WzIntProperty(string.Empty, y);
+		}
+
+		/// <summary>
+		/// Creates a WzVectorProperty with the specified name, x and y
+		/// </summary>
+		/// <param name="name">The name of the property</param>
+		/// <param name="x">The x value of the vector</param>
+		/// <param name="y">The y value of the vector</param>
+		public WzVectorProperty(string name, float x, float y)
+		{
+			this.name = name;
+			this.x = new WzIntProperty(string.Empty, (int)x);
+			this.y = new WzIntProperty(string.Empty, (int)y);
+		}
 		#endregion
 
-        #region Cast Values
-        public override System.Drawing.Point GetPoint()
+		#region Cast Values
+		public override System.Drawing.Point GetPoint()
         {
             return new System.Drawing.Point(x.val, y.val);
         }
