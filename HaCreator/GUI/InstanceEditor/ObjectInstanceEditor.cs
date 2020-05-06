@@ -40,6 +40,7 @@ namespace HaCreator.GUI.InstanceEditor
             zInput.Value = item.Z;
             rBox.Checked = item.r;
             flipBox.Checked = item.Flip;
+            hideBox.Checked = !item.hide.HasValue ? false : item.hide.Value;
             pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
             if (item.Name != null)
             {
