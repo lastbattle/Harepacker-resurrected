@@ -7,11 +7,6 @@
 using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework.Graphics;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.Instance
@@ -45,6 +40,7 @@ namespace HaCreator.MapEditor.Instance
                 // which will execute after we are finished.
                 X -= baseInfo.Width - 2 * baseInfo.Origin.X;
             }
+            this.hide = hide;
         }
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)

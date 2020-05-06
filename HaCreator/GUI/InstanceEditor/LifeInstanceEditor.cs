@@ -41,6 +41,7 @@ namespace HaCreator.GUI.InstanceEditor
             LoadOptionalInt(item.Team, teamEnable, teamBox);
             LoadOptionalInt(item.MobTime, mobTimeEnable, mobTimeBox);
             LoadOptionalStr(item.LimitedName, limitedNameEnable, limitedNameBox);
+
             hideBox.Checked = item.Hide;
             flipBox.Checked = item.Flip;
 
@@ -72,8 +73,9 @@ namespace HaCreator.GUI.InstanceEditor
                 item.Team = GetOptionalInt(teamEnable, teamBox);
                 //item.TypeStr = GetOptionalStr(typeEnable, typeBox);
                 item.LimitedName = GetOptionalStr(limitedNameEnable, limitedNameBox);
+
                 item.Hide = hideBox.Checked;
-                item.Flip = flipBox.Checked;
+                item.Flip = flipBox.Checked; 
             }
             Close();
         }

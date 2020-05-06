@@ -49,7 +49,8 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+            WzStringProperty link = (WzStringProperty)((WzSubProperty)
+                ((WzImage)ParentObject)["info"])["link"];
             if (link != null)
             {
                 LinkedImage = (WzImage)Program.WzManager["mob"][link.Value + ".img"];
@@ -97,13 +98,18 @@ namespace HaCreator.MapEditor.Info
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
+
+            bool bIsBoss = false; // set default to false as boss
             return new MobInstance(this, board, x, y, UserSettings.Mobrx0Offset, UserSettings.Mobrx1Offset, 20, null, UserSettings.defaultMobTime, flip, false, null, null);
         }
 
         public BoardItem CreateInstance(Board board, int x, int y, int rx0Shift, int rx1Shift, int yShift, string limitedname, int? mobTime, MapleBool flip, MapleBool hide, int? info, int? team)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
+
             return new MobInstance(this, board, x, y, rx0Shift, rx1Shift, yShift, limitedname, mobTime, flip, hide, info, team);
         }
 

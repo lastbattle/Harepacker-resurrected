@@ -225,7 +225,7 @@
             // limitedNameEnable
             // 
             this.limitedNameEnable.AutoSize = true;
-            this.limitedNameEnable.Location = new System.Drawing.Point(131, 130);
+            this.limitedNameEnable.Location = new System.Drawing.Point(131, 126);
             this.limitedNameEnable.Name = "limitedNameEnable";
             this.limitedNameEnable.Size = new System.Drawing.Size(90, 17);
             this.limitedNameEnable.TabIndex = 16;
@@ -235,7 +235,7 @@
             // infoEnable
             // 
             this.infoEnable.AutoSize = true;
-            this.infoEnable.Location = new System.Drawing.Point(131, 79);
+            this.infoEnable.Location = new System.Drawing.Point(131, 75);
             this.infoEnable.Name = "infoEnable";
             this.infoEnable.Size = new System.Drawing.Size(44, 17);
             this.infoEnable.TabIndex = 18;
@@ -245,7 +245,7 @@
             // teamEnable
             // 
             this.teamEnable.AutoSize = true;
-            this.teamEnable.Location = new System.Drawing.Point(131, 105);
+            this.teamEnable.Location = new System.Drawing.Point(131, 101);
             this.teamEnable.Name = "teamEnable";
             this.teamEnable.Size = new System.Drawing.Size(53, 17);
             this.teamEnable.TabIndex = 19;
@@ -255,7 +255,7 @@
             // hideBox
             // 
             this.hideBox.AutoSize = true;
-            this.hideBox.Location = new System.Drawing.Point(131, 153);
+            this.hideBox.Location = new System.Drawing.Point(131, 149);
             this.hideBox.Name = "hideBox";
             this.hideBox.Size = new System.Drawing.Size(48, 17);
             this.hideBox.TabIndex = 4;
@@ -264,7 +264,7 @@
             // infoBox
             // 
             this.infoBox.Enabled = false;
-            this.infoBox.Location = new System.Drawing.Point(227, 76);
+            this.infoBox.Location = new System.Drawing.Point(227, 72);
             this.infoBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -282,7 +282,7 @@
             // teamBox
             // 
             this.teamBox.Enabled = false;
-            this.teamBox.Location = new System.Drawing.Point(227, 102);
+            this.teamBox.Location = new System.Drawing.Point(227, 98);
             this.teamBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -300,7 +300,7 @@
             // limitedNameBox
             // 
             this.limitedNameBox.Enabled = false;
-            this.limitedNameBox.Location = new System.Drawing.Point(227, 128);
+            this.limitedNameBox.Location = new System.Drawing.Point(227, 124);
             this.limitedNameBox.Name = "limitedNameBox";
             this.limitedNameBox.Size = new System.Drawing.Size(63, 20);
             this.limitedNameBox.TabIndex = 8;
@@ -334,7 +334,7 @@
             // flipBox
             // 
             this.flipBox.AutoSize = true;
-            this.flipBox.Location = new System.Drawing.Point(131, 176);
+            this.flipBox.Location = new System.Drawing.Point(131, 172);
             this.flipBox.Name = "flipBox";
             this.flipBox.Size = new System.Drawing.Size(42, 17);
             this.flipBox.TabIndex = 22;
