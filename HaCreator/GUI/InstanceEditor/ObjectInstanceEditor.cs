@@ -39,20 +39,24 @@ namespace HaCreator.GUI.InstanceEditor
             yInput.Value = item.Y;
             zInput.Value = item.Z;
             rBox.Checked = item.r;
+            flipBox.Checked = item.Flip;
             pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
             if (item.Name != null)
             {
                 nameEnable.Checked = true;
                 nameBox.Text = item.Name;
             }
-            rBox.Checked = item.r;
             flowBox.Checked = item.flow;
             SetOptionalInt(rxInt, rxBox, item.rx);
             SetOptionalInt(ryInt, ryBox, item.ry);
             SetOptionalInt(cxInt, cxBox, item.cx);
             SetOptionalInt(cyInt, cyBox, item.cy);
-            if (item.tags == null) tagsEnable.Checked = false;
-            else { tagsEnable.Checked = true; tagsBox.Text = item.tags; }
+            if (item.tags == null) 
+                tagsEnable.Checked = false;
+            else { 
+                tagsEnable.Checked = true; tagsBox.Text = item.tags; 
+            }
+
             if (item.QuestInfo != null)
             {
                 questEnable.Checked = true;
@@ -93,6 +97,7 @@ namespace HaCreator.GUI.InstanceEditor
                 item.flow = flowBox.Checked;
                 item.reactor = reactorBox.Checked;
                 item.r = rBox.Checked;
+                item.Flip = flipBox.Checked;
                 item.hide = hideBox.Checked;
                 item.rx = GetOptionalInt(rxInt, rxBox);
                 item.ry = GetOptionalInt(ryInt, ryBox);
