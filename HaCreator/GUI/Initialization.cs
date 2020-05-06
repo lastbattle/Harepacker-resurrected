@@ -97,7 +97,7 @@ namespace HaCreator.GUI
                 Program.WzManager.LoadDataWzFile("data");
                 Program.WzManager.ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
-                foreach (string mobWZFile in WzFileManager.MOBWZ_FILES)
+                foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
                 {
                 }
                 Program.WzManager.ExtractMobFile();
@@ -118,7 +118,7 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractStringWzMaps();
 
                 // Mob WZ
-                foreach (string mobWZFile in WzFileManager.MOBWZ_FILES)
+                foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
                 {
                     textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
                     Application.DoEvents();
@@ -157,7 +157,7 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractObjSets();
                 Program.WzManager.ExtractBackgroundSets();
 
-                foreach (string mapwzFile in WzFileManager.MAPWZ_FILES)
+                foreach (string mapwzFile in WzFileManager.MAP_WZ_FILES)
                 {
                     if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
                     {

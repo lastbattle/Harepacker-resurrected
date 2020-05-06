@@ -76,7 +76,9 @@ namespace HaCreator.Wz
                     catDir.AddImage(image);
                     Program.WzManager.SetUpdated("map", image);
                 }
-                catch(NullReferenceException exp) { throw new Exception("Map img must exist in wz file / evil kms hellworld map002 error"); }
+                catch(NullReferenceException exp) { 
+                    throw new Exception("Map img must exist in wz file / evil kms hellworld map002 error"); 
+                }
             }
             else
             {

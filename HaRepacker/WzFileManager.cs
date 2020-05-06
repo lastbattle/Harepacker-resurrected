@@ -19,6 +19,13 @@ namespace HaRepacker
 {
     public class WzFileManager
     {
+        public static string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static string[] MAP_WZ_FILES = { "Map", "Map001",
+            "Map002", //kms now stores main map key here
+            "Map2" };
+        public static string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+
+
         private static TreeViewNodeSorter SORTER = new TreeViewNodeSorter();
 
         private List<WzFile> wzFiles = new List<WzFile>();

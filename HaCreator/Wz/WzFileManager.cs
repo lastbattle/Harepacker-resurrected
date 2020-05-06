@@ -21,8 +21,8 @@ namespace HaCreator.Wz
 {
     public class WzFileManager
     {
-        public static string[] MOBWZ_FILES = { "Mob", "Mob001", "Mob2" };
-        public static string[] MAPWZ_FILES = { "Map", "Map001",
+        public static string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static string[] MAP_WZ_FILES = { "Map", "Map001",
             "Map002", //kms now stores main map key here
             "Map2" };
         public static string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
@@ -179,7 +179,11 @@ namespace HaCreator.Wz
 
         public void ExtractSoundFile(string soundWzFile)
         {
-            foreach (WzImage soundImage in this[soundWzFile].WzImages)
+            WzDirectory directory = this[soundWzFile];
+            if (directory == null)
+                return;
+
+            foreach (WzImage soundImage in directory.WzImages)
             {
                 if (!soundImage.Name.ToLower().Contains("bgm")) 
                     continue;
