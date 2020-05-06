@@ -34,7 +34,7 @@ namespace HaCreator.GUI
 
         private bool IsPathCommon(string path)
         {
-            foreach (string commonPath in commonMaplePaths)
+            foreach (string commonPath in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
             {
                 if (commonPath == path)
                     return true;
@@ -48,9 +48,9 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
 
-            if (wzPath == "Select Maple Folder")
+            if (wzPath == "Select MapleStory Folder")
             {
-                MessageBox.Show("Please select the maple folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             if (!ApplicationSettings.MapleFolder.Contains(wzPath) && !IsPathCommon(wzPath))
@@ -175,8 +175,6 @@ namespace HaCreator.GUI
         }
 
 
-        private static readonly string[] commonMaplePaths = new string[] { @"C:\Nexon\MapleStory", @"C:\Program Files\WIZET\MapleStory", @"C:\MapleStory" };
-
         private void Initialization_Load(object sender, EventArgs e)
         {
             versionBox.SelectedIndex = 0;
@@ -187,7 +185,7 @@ namespace HaCreator.GUI
                 {
                     pathBox.Items.Add(x);
                 }
-                foreach (string path in commonMaplePaths)
+                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
                 {
                     if (Directory.Exists(path))
                     {

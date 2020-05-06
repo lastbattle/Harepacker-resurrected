@@ -80,7 +80,7 @@
             // 
             // xInput
             // 
-            this.xInput.Location = new System.Drawing.Point(15, 47);
+            this.xInput.Location = new System.Drawing.Point(22, 49);
             this.xInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -98,7 +98,7 @@
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(-1, 50);
+            this.label1.Location = new System.Drawing.Point(6, 52);
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(14, 13);
             this.label1.TabIndex = 2;
@@ -107,7 +107,7 @@
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(-1, 76);
+            this.label2.Location = new System.Drawing.Point(6, 78);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(14, 13);
             this.label2.TabIndex = 4;
@@ -115,7 +115,7 @@
             // 
             // yInput
             // 
-            this.yInput.Location = new System.Drawing.Point(15, 73);
+            this.yInput.Location = new System.Drawing.Point(22, 75);
             this.yInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -133,7 +133,7 @@
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(-1, 102);
+            this.label3.Location = new System.Drawing.Point(6, 104);
             this.label3.Name = "label3";
             this.label3.Size = new System.Drawing.Size(14, 13);
             this.label3.TabIndex = 6;
@@ -141,7 +141,7 @@
             // 
             // zInput
             // 
-            this.zInput.Location = new System.Drawing.Point(15, 99);
+            this.zInput.Location = new System.Drawing.Point(22, 101);
             this.zInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -174,7 +174,7 @@
             // nameBox
             // 
             this.nameBox.Enabled = false;
-            this.nameBox.Location = new System.Drawing.Point(59, 128);
+            this.nameBox.Location = new System.Drawing.Point(66, 130);
             this.nameBox.Name = "nameBox";
             this.nameBox.Size = new System.Drawing.Size(107, 20);
             this.nameBox.TabIndex = 4;
@@ -182,7 +182,7 @@
             // rBox
             // 
             this.rBox.AutoSize = true;
-            this.rBox.Location = new System.Drawing.Point(3, 156);
+            this.rBox.Location = new System.Drawing.Point(10, 158);
             this.rBox.Name = "rBox";
             this.rBox.Size = new System.Drawing.Size(34, 17);
             this.rBox.TabIndex = 5;
@@ -191,7 +191,7 @@
             // flowBox
             // 
             this.flowBox.AutoSize = true;
-            this.flowBox.Location = new System.Drawing.Point(176, 52);
+            this.flowBox.Location = new System.Drawing.Point(189, 52);
             this.flowBox.Name = "flowBox";
             this.flowBox.Size = new System.Drawing.Size(48, 17);
             this.flowBox.TabIndex = 8;
@@ -200,7 +200,7 @@
             // rxBox
             // 
             this.rxBox.AutoSize = true;
-            this.rxBox.Location = new System.Drawing.Point(176, 73);
+            this.rxBox.Location = new System.Drawing.Point(189, 73);
             this.rxBox.Name = "rxBox";
             this.rxBox.Size = new System.Drawing.Size(41, 17);
             this.rxBox.TabIndex = 9;
@@ -210,7 +210,7 @@
             // ryBox
             // 
             this.ryBox.AutoSize = true;
-            this.ryBox.Location = new System.Drawing.Point(176, 99);
+            this.ryBox.Location = new System.Drawing.Point(189, 99);
             this.ryBox.Name = "ryBox";
             this.ryBox.Size = new System.Drawing.Size(41, 17);
             this.ryBox.TabIndex = 11;
@@ -220,7 +220,7 @@
             // cxBox
             // 
             this.cxBox.AutoSize = true;
-            this.cxBox.Location = new System.Drawing.Point(176, 125);
+            this.cxBox.Location = new System.Drawing.Point(189, 125);
             this.cxBox.Name = "cxBox";
             this.cxBox.Size = new System.Drawing.Size(40, 17);
             this.cxBox.TabIndex = 13;
@@ -230,7 +230,7 @@
             // cyBox
             // 
             this.cyBox.AutoSize = true;
-            this.cyBox.Location = new System.Drawing.Point(176, 151);
+            this.cyBox.Location = new System.Drawing.Point(189, 151);
             this.cyBox.Name = "cyBox";
             this.cyBox.Size = new System.Drawing.Size(40, 17);
             this.cyBox.TabIndex = 15;
@@ -240,7 +240,7 @@
             // rxInt
             // 
             this.rxInt.Enabled = false;
-            this.rxInt.Location = new System.Drawing.Point(220, 71);
+            this.rxInt.Location = new System.Drawing.Point(233, 71);
             this.rxInt.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -258,7 +258,7 @@
             // ryInt
             // 
             this.ryInt.Enabled = false;
-            this.ryInt.Location = new System.Drawing.Point(220, 97);
+            this.ryInt.Location = new System.Drawing.Point(233, 97);
             this.ryInt.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -276,7 +276,7 @@
             // cxInt
             // 
             this.cxInt.Enabled = false;
-            this.cxInt.Location = new System.Drawing.Point(220, 123);
+            this.cxInt.Location = new System.Drawing.Point(233, 123);
             this.cxInt.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -294,7 +294,7 @@
             // cyInt
             // 
             this.cyInt.Enabled = false;
-            this.cyInt.Location = new System.Drawing.Point(220, 149);
+            this.cyInt.Location = new System.Drawing.Point(233, 149);
             this.cyInt.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -312,7 +312,7 @@
             // nameEnable
             // 
             this.nameEnable.AutoSize = true;
-            this.nameEnable.Location = new System.Drawing.Point(2, 130);
+            this.nameEnable.Location = new System.Drawing.Point(9, 132);
             this.nameEnable.Name = "nameEnable";
             this.nameEnable.Size = new System.Drawing.Size(54, 17);
             this.nameEnable.TabIndex = 3;
@@ -322,7 +322,7 @@
             // hideBox
             // 
             this.hideBox.AutoSize = true;
-            this.hideBox.Location = new System.Drawing.Point(43, 156);
+            this.hideBox.Location = new System.Drawing.Point(50, 158);
             this.hideBox.Name = "hideBox";
             this.hideBox.Size = new System.Drawing.Size(48, 17);
             this.hideBox.TabIndex = 6;
@@ -331,7 +331,7 @@
             // reactorBox
             // 
             this.reactorBox.AutoSize = true;
-            this.reactorBox.Location = new System.Drawing.Point(97, 156);
+            this.reactorBox.Location = new System.Drawing.Point(104, 158);
             this.reactorBox.Name = "reactorBox";
             this.reactorBox.Size = new System.Drawing.Size(64, 17);
             this.reactorBox.TabIndex = 7;
@@ -371,7 +371,7 @@
             // questEnable
             // 
             this.questEnable.AutoSize = true;
-            this.questEnable.Location = new System.Drawing.Point(5, 9);
+            this.questEnable.Location = new System.Drawing.Point(6, 9);
             this.questEnable.Name = "questEnable";
             this.questEnable.Size = new System.Drawing.Size(54, 17);
             this.questEnable.TabIndex = 19;
@@ -381,7 +381,7 @@
             // tagsEnable
             // 
             this.tagsEnable.AutoSize = true;
-            this.tagsEnable.Location = new System.Drawing.Point(2, 220);
+            this.tagsEnable.Location = new System.Drawing.Point(9, 222);
             this.tagsEnable.Name = "tagsEnable";
             this.tagsEnable.Size = new System.Drawing.Size(50, 17);
             this.tagsEnable.TabIndex = 17;
@@ -391,7 +391,7 @@
             // tagsBox
             // 
             this.tagsBox.Enabled = false;
-            this.tagsBox.Location = new System.Drawing.Point(58, 218);
+            this.tagsBox.Location = new System.Drawing.Point(65, 220);
             this.tagsBox.Name = "tagsBox";
             this.tagsBox.Size = new System.Drawing.Size(108, 20);
             this.tagsBox.TabIndex = 18;
@@ -410,7 +410,7 @@
             // flipBox
             // 
             this.flipBox.AutoSize = true;
-            this.flipBox.Location = new System.Drawing.Point(2, 184);
+            this.flipBox.Location = new System.Drawing.Point(9, 186);
             this.flipBox.Name = "flipBox";
             this.flipBox.Size = new System.Drawing.Size(42, 17);
             this.flipBox.TabIndex = 26;

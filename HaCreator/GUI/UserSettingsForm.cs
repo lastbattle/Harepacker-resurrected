@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -25,7 +26,7 @@ namespace HaCreator.GUI
             linewBox.Value = UserSettings.LineWidth;
             dotwBox.Value = UserSettings.DotWidth;
             inactiveaBox.Value = UserSettings.NonActiveAlpha;
-            comboBox_resolution.SelectedIndex = UserSettings.SimulateResolution;
+            comboBox_resolution.SelectedIndex = (int) UserSettings.SimulateResolution;
             clipBox.Checked = UserSettings.ClipText;
             fixFh.Checked = UserSettings.FixFootholdMispositions;
             invertUpDownBox.Checked = UserSettings.InverseUpDown;
@@ -92,7 +93,7 @@ namespace HaCreator.GUI
             UserSettings.DotWidth = (int)dotwBox.Value;
             MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
             UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.SimulateResolution = comboBox_resolution.SelectedIndex;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+            UserSettings.SimulateResolution = (MapRenderResolution) comboBox_resolution.SelectedIndex;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
             UserSettings.ClipText = clipBox.Checked;
             UserSettings.FixFootholdMispositions = fixFh.Checked;
             UserSettings.InverseUpDown = invertUpDownBox.Checked;

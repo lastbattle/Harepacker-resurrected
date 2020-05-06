@@ -213,6 +213,7 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region Custom Members
+
         /// <summary>
         /// Gets the 'origin' position of the Canvas
         /// If not available, it defaults to xy of 0, 0

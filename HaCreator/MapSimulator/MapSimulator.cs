@@ -4,7 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//#define FULLSCREEN
+// #define FULLSCREEN
 
 using System;
 using System.Collections.Generic;
@@ -78,26 +78,26 @@ namespace HaCreator.MapSimulator
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
 
-            switch (UserSettings.SimulateResolution)
+            switch ((MapRenderResolution) UserSettings.SimulateResolution)
             {
 
-                case 1:  // 1024x768
+                case MapRenderResolution.Res_1024x768:  // 1024x768
                     RenderHeight = 768;
                     RenderWidth = 1024;
                     break;
-                case 2: // 1280x720
+                case MapRenderResolution.Res_1280x720: // 1280x720
                     RenderHeight = 720;
                     RenderWidth = 1280;
                     break;
-                case 3:  // 1366x768
+                case MapRenderResolution.Res_1366x768:  // 1366x768
                     RenderHeight = 768;
                     RenderWidth = 1366;
                     break;
-                case 4:
+                case MapRenderResolution.Res_1920x1080:
                     RenderHeight = 1080;
                     RenderWidth = 1920;
                     break;
-                case 0: // 800x600
+                case MapRenderResolution.Res_800x600: // 800x600
                 default:
                     RenderHeight = 600;
                     RenderWidth = 800;
@@ -261,8 +261,8 @@ namespace HaCreator.MapSimulator
                 Texture2D texture = (Texture2D)source.MSTag;
                 if (texture != null) 
                 {
-                    WzVectorProperty origin = (WzVectorProperty)source["origin"];
-                    return new MapItem(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, texture), flip);
+                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
+                    return new MapItem(new DXObject(x - (int)origin.X + mapCenterX, y - (int)origin.Y + mapCenterY, texture), flip);
                 } else
                 {
                     throw new Exception("Texture is null for the map item.");
@@ -290,8 +290,8 @@ namespace HaCreator.MapSimulator
                     Texture2D texture = (Texture2D)frameProp.MSTag;
                     if (texture != null)
                     {
-                        WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
-                        frames.Add(new DXObject(x - origin.X.Value + mapCenterX, y - origin.Y.Value + mapCenterY, texture, (int)delay));
+                        System.Drawing.PointF origin = ((WzCanvasProperty)frameProp).GetCanvasOriginPosition();
+                        frames.Add(new DXObject(x - (int)origin.X + mapCenterX, y - (int)origin.Y + mapCenterY, texture, (int)delay));
                     } else
                     {
                         throw new Exception("Texture is null for the animated map item");
@@ -338,8 +338,8 @@ namespace HaCreator.MapSimulator
                 Texture2D texture = (Texture2D)source.MSTag;
                 if (texture != null)
                 {
-                    WzVectorProperty origin = (WzVectorProperty)source["origin"];
-                    DXObject dxobj = new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, texture);
+                    System.Drawing.PointF origin = ((WzCanvasProperty) source).GetCanvasOriginPosition();
+                    DXObject dxobj = new DXObject(x - (int)origin.X/* - mapCenterX*/, y - (int)origin.Y/* - mapCenterY*/, texture);
 
                     return new BackgroundItem(cx, cy, rx, ry, type, a, front, dxobj, flip);
                 } else
@@ -367,8 +367,8 @@ namespace HaCreator.MapSimulator
                     Texture2D texture = (Texture2D)frameProp.MSTag;
                     if (texture != null)
                     {
-                        WzVectorProperty origin = (WzVectorProperty)frameProp["origin"];
-                        frames.Add(new DXObject(x - origin.X.Value/* - mapCenterX*/, y - origin.Y.Value/* - mapCenterY*/, texture, (int)delay));
+                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                        frames.Add(new DXObject(x - (int) origin.X/* - mapCenterX*/, y - (int)origin.Y/* - mapCenterY*/, texture, (int)delay));
                     }
                     else
                         throw new Exception("Texture is null for the animation");

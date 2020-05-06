@@ -19,13 +19,14 @@ using HaCreator.MapEditor;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using System.Drawing;
+using HaCreator.MapSimulator;
 
 namespace HaCreator
 {
     public static class UserSettings
     {
         public static bool ShowErrorsMessage = true;
-        public static int SimulateResolution = 0; // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+        public static MapRenderResolution SimulateResolution = 0; // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
         public static bool ClipText = false;
         public static Color TabColor = Color.LightSteelBlue;
         public static int LineWidth = 1;

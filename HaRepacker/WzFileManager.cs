@@ -19,11 +19,20 @@ namespace HaRepacker
 {
     public class WzFileManager
     {
-        public static string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
-        public static string[] MAP_WZ_FILES = { "Map", "Map001",
+        #region Constants
+        public static readonly string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static readonly string[] MAP_WZ_FILES = { "Map", "Map001",
             "Map002", //kms now stores main map key here
             "Map2" };
-        public static string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+        public static readonly string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+
+        public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
+            @"C:\Nexon\MapleStory",
+            @"C:\Program Files\WIZET\MapleStory",
+            @"C:\MapleStory",
+            @"C:\Program Files (x86)\Wizet\MapleStorySEA"
+        };
+        #endregion
 
 
         private static TreeViewNodeSorter SORTER = new TreeViewNodeSorter();

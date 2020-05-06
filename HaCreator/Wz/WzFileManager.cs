@@ -21,11 +21,21 @@ namespace HaCreator.Wz
 {
     public class WzFileManager
     {
-        public static string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
-        public static string[] MAP_WZ_FILES = { "Map", "Map001",
+        #region Constants
+        public static readonly string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static readonly string[] MAP_WZ_FILES = { "Map", "Map001",
             "Map002", //kms now stores main map key here
             "Map2" };
-        public static string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+        public static readonly string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+
+        public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
+            @"C:\Nexon\MapleStory",
+            @"C:\Program Files\WIZET\MapleStory",
+            @"C:\MapleStory",
+            @"C:\Program Files (x86)\Wizet\MapleStorySEA"
+        };
+        #endregion
+
 
         private string baseDir;
         public Dictionary<string, WzFile> wzFiles = new Dictionary<string, WzFile>();
@@ -338,7 +348,7 @@ namespace HaCreator.Wz
                         {
                             //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
                             //if (portalContinue == null) continue;
-                            Bitmap portalImage = image.GetBitmap();
+                            Bitmap portalImage = image.GetLinkedWzCanvasBitmap();
                             defaultImage = portalImage;
                             images.Add(image.Name, portalImage);
                         }
