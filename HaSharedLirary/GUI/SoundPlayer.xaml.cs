@@ -91,7 +91,7 @@ namespace HaSharedLirary.GUI
                 PauseButton.Content = "Play";
             } else
             {
-                if (currAudio == null)
+                if (soundProp == null)
                 {
                     return;
                 }

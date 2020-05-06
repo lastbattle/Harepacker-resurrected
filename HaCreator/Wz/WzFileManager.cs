@@ -25,6 +25,7 @@ namespace HaCreator.Wz
         public static string[] MAPWZ_FILES = { "Map", "Map001",
             "Map002", //kms now stores main map key here
             "Map2" };
+        public static string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
 
         private string baseDir;
         public Dictionary<string, WzFile> wzFiles = new Dictionary<string, WzFile>();
@@ -176,12 +177,14 @@ namespace HaCreator.Wz
             }
         }
 
-        public void ExtractSoundFile()
+        public void ExtractSoundFile(string soundWzFile)
         {
-            foreach (WzImage soundImage in this["sound"].WzImages)
+            foreach (WzImage soundImage in this[soundWzFile].WzImages)
             {
-                if (!soundImage.Name.ToLower().Contains("bgm")) continue;
-                if (!soundImage.Parsed) soundImage.ParseImage();
+                if (!soundImage.Name.ToLower().Contains("bgm")) 
+                    continue;
+                if (!soundImage.Parsed) 
+                    soundImage.ParseImage();
                 try
                 {
                     foreach (WzSoundProperty bgm in soundImage.WzProperties)

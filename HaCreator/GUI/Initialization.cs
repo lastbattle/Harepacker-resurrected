@@ -90,7 +90,7 @@ namespace HaCreator.GUI
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
-            if (Program.WzManager.HasDataFile)//currently always false
+            if (Program.WzManager.HasDataFile) //currently always false
             {
                 textBox2.Text = "Initializing Data.wz...";
                 Application.DoEvents();
@@ -103,7 +103,7 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractMobFile();
                 Program.WzManager.ExtractNpcFile();
                 Program.WzManager.ExtractReactorFile();
-                Program.WzManager.ExtractSoundFile();
+                Program.WzManager.ExtractSoundFile("sound");
                 Program.WzManager.ExtractMapMarks();
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
@@ -139,10 +139,14 @@ namespace HaCreator.GUI
                 Program.WzManager.LoadWzFile("reactor");
                 Program.WzManager.ExtractReactorFile();
 
-                textBox2.Text = "Initializing Sound.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("sound");
-                Program.WzManager.ExtractSoundFile();
+                // Load sound
+                foreach (string soundWzFile in WzFileManager.SOUND_WZ_FILES)
+                {
+                    textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
+                    Application.DoEvents();
+                    Program.WzManager.LoadWzFile(soundWzFile.ToLower());
+                    Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
+                }
 
                 textBox2.Text = "Initializing Map.wz...";
                 Application.DoEvents();
