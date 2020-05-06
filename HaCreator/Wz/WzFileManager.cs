@@ -344,7 +344,32 @@ namespace HaCreator.Wz
         }
         #endregion
 
-        #region Find        
+        #region Find    
+        /// <summary>
+        /// Finds a map image from the list of Map.wzs
+        /// </summary>
+        /// <param name="mapid"></param>
+        /// <param name="mapcat"></param>
+        /// <returns></returns>
+        public WzImage FindMobImage(string mobId)
+        {
+            foreach (string mobWzFile in MOB_WZ_FILES)
+            {
+                string mobWzFile_ = mobWzFile.ToLower();
+
+                if (this.wzFiles.ContainsKey(mobWzFile_))
+                {
+                    WzObject mobImage = (WzImage)Program.WzManager[mobWzFile_][mobId + ".img"];
+
+                    if (mobImage != null)
+                    {
+                        return (WzImage)mobImage;
+                    }
+                }
+            }
+            return null;
+        }
+
         /// <summary>
         /// Finds a map image from the list of Map.wzs
         /// </summary>

@@ -53,7 +53,8 @@ namespace HaCreator.MapEditor.Info
                 ((WzImage)ParentObject)["info"])["link"];
             if (link != null)
             {
-                LinkedImage = (WzImage)Program.WzManager["mob"][link.Value + ".img"];
+                LinkedImage = Program.WzManager.FindMobImage(link.Value);
+
                 ExtractPNGFromImage(LinkedImage);
             }
             else
