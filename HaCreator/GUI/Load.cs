@@ -135,8 +135,11 @@ namespace HaCreator.GUI
 
             MapLoader loader = new MapLoader();
             WzImage mapImage = null;
+            int mapid = -1;
             string mapName = null, streetName = "", categoryName = "";
             WzSubProperty strMapProp = null;
+
+
             if (HAMSelect.Checked)
             {
                 loader.CreateMapFromHam(multiBoard, Tabs, File.ReadAllText(HAMBox.Text), rightClickHandler);
@@ -178,23 +181,25 @@ namespace HaCreator.GUI
                 }
                 else
                 {
-                    string mapid = mapBrowser.SelectedItem.Substring(0, 9);
-                    string mapcat = "Map" + mapid.Substring(0, 1);
+                    string mapid_str = mapBrowser.SelectedItem.Substring(0, 9);
+                    int.TryParse(mapid_str, out mapid);
+
+                    string mapcat = "Map" + mapid_str.Substring(0, 1);
                     if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much  
                     {
-                        mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid + ".img"];
+                        mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid_str + ".img"];
                     }
                     else
                     {
-                        mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
+                        mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid_str + ".img"];
                     }
-                    strMapProp = WzInfoTools.GetMapStringProp(mapid);
+                    strMapProp = WzInfoTools.GetMapStringProp(mapid_str);
                     mapName = WzInfoTools.GetMapName(strMapProp);
                     streetName = WzInfoTools.GetMapStreetName(strMapProp);
                     categoryName = WzInfoTools.GetMapCategoryName(strMapProp);
                 }
             }
-            loader.CreateMapFromImage(mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
+            loader.CreateMapFromImage(mapid, mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
             DialogResult = DialogResult.OK;
             ww.EndWait();
             Close();

@@ -22,8 +22,8 @@
         </Grid.RowDefinitions>
 
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="290"/>
+            <ColumnDefinition Width="7*"/>
+            <ColumnDefinition Width="3*" MaxWidth="400"/>
         </Grid.ColumnDefinitions>
 
         <local:HaRibbon x:Name="ribbon"

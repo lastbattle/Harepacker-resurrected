@@ -43,89 +43,81 @@
             // button1
             // 
             this.button1.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button1.Location = new System.Drawing.Point(7, 100);
-            this.button1.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.button1.Location = new System.Drawing.Point(5, 65);
             this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(529, 43);
+            this.button1.Size = new System.Drawing.Size(353, 28);
             this.button1.TabIndex = 1;
             this.button1.Text = "Initialize";
             this.button1.Click += new System.EventHandler(this.button1_Click);
             // 
             // versionBox
             // 
+            this.versionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.versionBox.FormattingEnabled = true;
             this.versionBox.Items.AddRange(new object[] {
             "GMS",
             "EMS , MSEA , KMS",
             "BMS , JMS",
             "Auto-Detect"});
-            this.versionBox.Location = new System.Drawing.Point(101, 58);
-            this.versionBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.versionBox.Location = new System.Drawing.Point(67, 38);
             this.versionBox.Name = "versionBox";
-            this.versionBox.Size = new System.Drawing.Size(435, 28);
+            this.versionBox.Size = new System.Drawing.Size(291, 21);
             this.versionBox.TabIndex = 3;
             // 
             // toolStripProgressBar1
             // 
-            this.toolStripProgressBar1.Margin = new System.Windows.Forms.Padding(1, 2, 1, 1);
             this.toolStripProgressBar1.Name = "toolStripProgressBar1";
             this.toolStripProgressBar1.Size = new System.Drawing.Size(150, 16);
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(9, 61);
-            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label2.Location = new System.Drawing.Point(6, 40);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(84, 20);
+            this.label2.Size = new System.Drawing.Size(57, 13);
             this.label2.TabIndex = 8;
             this.label2.Text = "Encryption";
             // 
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(9, 23);
-            this.label3.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label3.Location = new System.Drawing.Point(6, 15);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(70, 20);
+            this.label3.Size = new System.Drawing.Size(48, 13);
             this.label3.TabIndex = 9;
             this.label3.Text = "MS Path";
             // 
             // textBox2
             // 
-            this.textBox2.Location = new System.Drawing.Point(7, 152);
-            this.textBox2.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.textBox2.Location = new System.Drawing.Point(5, 99);
             this.textBox2.Name = "textBox2";
             this.textBox2.ReadOnly = true;
-            this.textBox2.Size = new System.Drawing.Size(529, 26);
+            this.textBox2.Size = new System.Drawing.Size(354, 20);
             this.textBox2.TabIndex = 2;
             // 
             // pathBox
             // 
             this.pathBox.FormattingEnabled = true;
-            this.pathBox.Location = new System.Drawing.Point(101, 18);
-            this.pathBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.pathBox.Location = new System.Drawing.Point(67, 12);
             this.pathBox.Name = "pathBox";
-            this.pathBox.Size = new System.Drawing.Size(364, 28);
+            this.pathBox.Size = new System.Drawing.Size(244, 21);
             this.pathBox.TabIndex = 13;
             // 
             // button2
             // 
             this.button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button2.Location = new System.Drawing.Point(473, 15);
-            this.button2.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.button2.Location = new System.Drawing.Point(315, 10);
             this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(63, 32);
+            this.button2.Size = new System.Drawing.Size(42, 21);
             this.button2.TabIndex = 14;
             this.button2.Text = "...";
             this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
             // debugButton
             // 
-            this.debugButton.Location = new System.Drawing.Point(377, 86);
-            this.debugButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.debugButton.Location = new System.Drawing.Point(251, 56);
             this.debugButton.Name = "debugButton";
-            this.debugButton.Size = new System.Drawing.Size(159, 57);
+            this.debugButton.Size = new System.Drawing.Size(106, 37);
             this.debugButton.TabIndex = 15;
             this.debugButton.Text = "DEBUG - check map errors";
             this.debugButton.UseVisualStyleBackColor = true;
@@ -134,9 +126,9 @@
             // 
             // Initialization
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(540, 202);
+            this.ClientSize = new System.Drawing.Size(360, 131);
             this.Controls.Add(this.debugButton);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);
@@ -148,7 +140,6 @@
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
-            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.MaximizeBox = false;
             this.Name = "Initialization";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
