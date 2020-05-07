@@ -25,6 +25,7 @@ using XNA = Microsoft.Xna.Framework;
 using System.Runtime.Remoting.Channels;
 using System.Windows.Media;
 using HaSharedLirary.Util;
+using HaCreator.GUI;
 
 namespace HaCreator.Wz
 {
@@ -49,6 +50,7 @@ namespace HaCreator.Wz
                     case "5":
                     case "6":
                     case "7":
+                    case "8": // what? 749080500.img
                     case "info":
                     case "life":
                     case "ladderRope":
@@ -84,9 +86,51 @@ namespace HaCreator.Wz
                             MessageBox.Show("The map you are opening has the feature \"" + prop.Name + "\", which is purposely not supported in the editor.\r\nTo get around this, HaCreator will copy the original feature's data byte-to-byte. This might cause the feature to stop working if it depends on map objects, such as footholds or mobs.");
                         }
                         continue;
+
+                    case "skyWhale":
+                    case "rectInfo":
+                    case "directionInfo":
+                    case "particle":
+                    case "respawn":
+                    case "enterUI":
+                    case "mobTeleport":
+                    case "climbArea":
+                    case "stigma":
+                    case "monsterDefense":
+                    case "oxQuiz":
+                    case "nodeInfo":
+                    case "onlyUseSkill":
+                    case "replaceUI":
+                    case "rapidStream":
+                    case "areaCtrl":
+                    case "swimArea_Moment":
+                    case "reactorRemove":
+                    case "objectVisibleLevel":
+                    case "bonusRewards":
+                    case "incHealRate":
+                    case "triggersTW":
+                    case "climbArea_Moment":
+                    case "crawlArea":
+                    case "checkPoint":
+                    case "mobKillCountExp":
+                    case "ghostPark":
+                    case "courtshipDance":
+                    case "fishingZone":
+                    case "remoteCharacterEffect":
+                    case "publicTaggedObjectVisible":
+                    case "MirrorFieldData":
+                    case "defenseMob":
+                    case "randomMobGen":
+                    case "unusableSkillArea":
+                    case "flyingAreaData":
+                    case "extinctMO":
+                    case "permittedSkill":
+                    case "WindArea":
+                        continue;
+
                     default:
                         string loggerSuffix = ", map " + mapImage.Name + ((mapImage.WzFileParent != null) ? (" of version " + Enum.GetName(typeof(WzMapleVersion), mapImage.WzFileParent.MapleVersion) + ", v" + mapImage.WzFileParent.Version.ToString()) : "");
-                        string error = "Unknown property " + prop.Name + loggerSuffix;
+                        string error = "Unknown field property " + prop.Name + loggerSuffix;
                         MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         copyPropNames.Add(prop.Name);
                         break;
@@ -785,7 +829,9 @@ namespace HaCreator.Wz
         {
             if (!mapImage.Parsed) 
                 mapImage.ParseImage();
+
             List<string> copyPropNames = VerifyMapPropsKnown(mapImage, false);
+
             MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
             foreach (string copyPropName in copyPropNames)
             {

@@ -22,11 +22,18 @@ namespace HaCreator.Wz
     public class WzFileManager
     {
         #region Constants
-        public static readonly string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
-        public static readonly string[] MAP_WZ_FILES = { "Map", "Map001",
+        public static readonly string[] MOB_WZ_FILES = { 
+            "Mob", 
+            "Mob001", 
+            "Mob2" };
+        public static readonly string[] MAP_WZ_FILES = { 
+            "Map", 
+            "Map001",
             "Map002", //kms now stores main map key here
             "Map2" };
-        public static readonly string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+        public static readonly string[] SOUND_WZ_FILES = { 
+            "Sound", 
+            "Sound001" };
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",

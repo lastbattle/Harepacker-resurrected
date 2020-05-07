@@ -24,8 +24,9 @@ namespace HaCreator.Wz
 {
     public class MapSaver
     {
-        Board board;
-        WzImage image;
+        private Board board;
+        private WzImage image;
+
         public MapSaver(Board board)
         {
             this.board = board;
