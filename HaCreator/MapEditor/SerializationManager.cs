@@ -7,6 +7,7 @@
 //#define SPEEDTEST
 
 using HaCreator.Collections;
+using HaCreator.GUI;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;

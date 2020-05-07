@@ -1,4 +1,4 @@
-﻿using HaSharedLirary.GUI;
+﻿using HaSharedLibrary.GUI;
 
 namespace HaCreator.GUI
 {
@@ -140,13 +140,13 @@ namespace HaCreator.GUI
             this.label121 = new System.Windows.Forms.Label();
             this.timedMobEnable = new System.Windows.Forms.CheckBox();
             this.tabPage4 = new System.Windows.Forms.TabPage();
-            this.fieldLimitPanel1 = new HaSharedLirary.GUI.FieldLimitPanel();
+            this.fieldLimitPanel1 = new HaSharedLibrary.GUI.FieldLimitPanel();
             this.optionsList = new HaCreator.ThirdParty.BetterCheckedListBox();
             this.label123 = new System.Windows.Forms.Label();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.elementHost1 = new System.Windows.Forms.Integration.ElementHost();
-            this.soundPlayer1 = new HaSharedLirary.GUI.SoundPlayer();
+            this.soundPlayer1 = new HaSharedLibrary.GUI.SoundPlayer();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.yBox)).BeginInit();

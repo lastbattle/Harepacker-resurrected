@@ -15,7 +15,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 
-namespace HaSharedLirary.GUI
+namespace HaSharedLibrary.GUI
 {
     /// <summary>
     /// Interaction logic for SoundPlayerXAML.xaml

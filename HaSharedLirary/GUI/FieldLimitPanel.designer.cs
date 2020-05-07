@@ -1,4 +1,4 @@
-﻿namespace HaSharedLirary.GUI
+﻿namespace HaSharedLibrary.GUI
 {
     partial class FieldLimitPanel
     {

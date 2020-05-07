@@ -6,7 +6,7 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.WzStructure.Data;
 
-namespace HaSharedLirary.GUI
+namespace HaSharedLibrary.GUI
 {
     public partial class FieldLimitPanel : UserControl
     {

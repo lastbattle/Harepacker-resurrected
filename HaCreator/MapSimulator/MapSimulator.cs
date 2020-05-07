@@ -28,7 +28,7 @@ using MapleLib.WzLib.WzStructure;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Input;
-using HaSharedLirary;
+using HaSharedLibrary;
 using HaRepacker.Utils;
 using HaCreator.MapSimulator.DX;
 

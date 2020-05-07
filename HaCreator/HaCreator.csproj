@@ -380,7 +380,7 @@
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />
-    <Compile Include="TabItemContainer.cs" />
+    <Compile Include="GUI\TabItemContainer.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>

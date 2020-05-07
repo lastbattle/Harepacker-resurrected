@@ -24,7 +24,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using XNA = Microsoft.Xna.Framework;
 using System.Runtime.Remoting.Channels;
 using System.Windows.Media;
-using HaSharedLirary.Util;
+using HaSharedLibrary.Util;
 using HaCreator.GUI;
 
 namespace HaCreator.Wz

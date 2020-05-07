@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
-namespace HaSharedLirary.Util
+namespace HaSharedLibrary.Util
 {
     public class BitmapHelper
     { /// <summary>

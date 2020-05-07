@@ -14,7 +14,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace HaSharedLirary.GUI
+namespace HaSharedLibrary.GUI
 {
     /// <summary>
     /// Interaction logic for ChangeableTextBoxXAML.xaml
