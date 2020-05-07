@@ -381,7 +381,6 @@ namespace HaCreator.Wz
             foreach (string mapWzFile in MAP_WZ_FILES)
             {
                 string mapWzFile_ = mapWzFile.ToLower();
-
                 if (this.wzFiles.ContainsKey(mapWzFile_))
                 {
                     WzObject mapImage = (WzImage) this[mapWzFile_]?["Map"]?[mapcat]?[mapid + ".img"];
@@ -390,6 +389,27 @@ namespace HaCreator.Wz
                     {
                         return (WzImage) mapImage;
                     }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Finds a suitable (Map.wz, Map001.wz, Map2.wz) for storing the newly created map
+        /// </summary>
+        /// <param name="cat">Map01, Map02, Map001.wz</param>
+        /// <returns></returns>
+        public WzDirectory FindMapWz(string cat)
+        {
+            foreach (string mapWzFile in MAP_WZ_FILES)
+            {
+                string mapWzFile_ = mapWzFile.ToLower();
+                WzDirectory mapDir = (WzDirectory)Program.WzManager[mapWzFile_]?["Map"];
+                if (mapDir != null)
+                {
+                    WzDirectory catDir = (WzDirectory)mapDir[cat];
+                    if (catDir != null)
+                        return catDir;
                 }
             }
             return null;

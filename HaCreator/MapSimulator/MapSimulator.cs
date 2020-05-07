@@ -375,7 +375,7 @@ namespace HaCreator.MapSimulator
                 }
                 return new BackgroundItem(cx, cy, rx, ry, type, a, front, frames, flip);
             }
-            else throw new Exception("unsupported property type in map simulator");
+            else throw new Exception("Unsupported property type in map simulator");
         }
 
 
