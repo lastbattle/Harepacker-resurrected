@@ -45,7 +45,7 @@ namespace HaCreator.GUI
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             this.loadButton.Enabled = false;
-            this.loadButton.Location = new System.Drawing.Point(9, 544);
+            this.loadButton.Location = new System.Drawing.Point(10, 559);
             this.loadButton.Name = "loadButton";
             this.loadButton.Size = new System.Drawing.Size(747, 30);
             this.loadButton.TabIndex = 9;
@@ -111,7 +111,7 @@ namespace HaCreator.GUI
             this.mapBrowser.Location = new System.Drawing.Point(10, 86);
             this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(746, 450);
+            this.mapBrowser.Size = new System.Drawing.Size(746, 465);
             this.mapBrowser.TabIndex = 8;
             this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
             // 
@@ -130,7 +130,7 @@ namespace HaCreator.GUI
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(763, 578);
+            this.ClientSize = new System.Drawing.Size(763, 591);
             this.Controls.Add(this.HAMBox);
             this.Controls.Add(this.HAMSelect);
             this.Controls.Add(this.mapBrowser);

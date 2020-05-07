@@ -16,6 +16,7 @@ using System.Windows.Forms;
 using System.Drawing;
 using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.MapEditor.Info;
+using MapleLib.Helpers;
 
 namespace HaCreator.Wz
 {
@@ -30,10 +31,13 @@ namespace HaCreator.Wz
             "Map", 
             "Map001",
             "Map002", //kms now stores main map key here
-            "Map2" };
+            "Map2" 
+        };
         public static readonly string[] SOUND_WZ_FILES = { 
             "Sound", 
-            "Sound001" };
+            "Sound001",
+            "Sound2"
+        };
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",
@@ -214,7 +218,12 @@ namespace HaCreator.Wz
                         Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + bgm.Name] = bgm;
                     }
                 }
-                catch (Exception e) { continue; }
+                catch (Exception e) 
+                {
+                    string error = string.Format("[ExtractSoundFile] Error parsing {0}, {1} file.\r\nError: {2}", soundWzFile, soundImage.Name, e.ToString());
+                    MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    continue; 
+                }
             }
         }
 
