@@ -63,9 +63,9 @@ namespace HaCreator.CustomControls
             WzObject mapLogin2 = Program.WzManager["ui"]["MapLogin2.img"];
             WzObject mapLogin3 = Program.WzManager["ui"]["MapLogin3.img"]; // pretty rare, happened a few times in ascension patch
 
-            foreach (KeyValuePair<string, string> map in Program.InfoManager.Maps)
+            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
             {
-                maps.Add(string.Format("{0} - {1}", map.Key, map.Value));
+                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
             }
             maps.Sort();
             if (special)

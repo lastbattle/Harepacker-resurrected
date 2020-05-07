@@ -8,23 +8,11 @@
 #define SPACETIME
 
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
-using System.Collections;
-using System.Xml;
-using System.Linq;
 using System.IO;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
-using XNA = Microsoft.Xna.Framework;
-using MapleLib.WzLib.WzStructure.Data;
-using MapleLib.WzLib.WzStructure;
-using MapleLib.Helpers;
 using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
 
@@ -42,6 +30,7 @@ namespace HaCreator.GUI
         public Load(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             InitializeComponent();
+
             DialogResult = DialogResult.Cancel;
             this.multiBoard = board;
             this.Tabs = Tabs;
@@ -182,14 +171,10 @@ namespace HaCreator.GUI
                     int.TryParse(mapid_str, out mapid);
 
                     string mapcat = "Map" + mapid_str.Substring(0, 1);
-                    if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much  
-                    {
-                        mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid_str + ".img"];
-                    }
-                    else
-                    {
-                        mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid_str + ".img"];
-                    }
+
+                    WzDirectory directory = Program.WzManager.FindMapWz(mapcat);
+                    mapImage = (WzImage)directory[mapid_str + ".img"];
+
                     strMapProp = WzInfoTools.GetMapStringProp(mapid_str);
                     mapName = WzInfoTools.GetMapName(strMapProp);
                     streetName = WzInfoTools.GetMapStreetName(strMapProp);

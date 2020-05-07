@@ -1099,7 +1099,8 @@ namespace HaCreator.Wz
 
         public void UpdateMapLists()
         {
-            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] = board.MapInfo.strMapName;
+            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] = 
+                new Tuple<string, string>(board.MapInfo.strStreetName, board.MapInfo.strMapName);
         }
     }
 

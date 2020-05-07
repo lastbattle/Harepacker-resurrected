@@ -27,7 +27,7 @@ namespace HaCreator.Wz
         public Dictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
         public Dictionary<string, WzSoundProperty> BGMs = new Dictionary<string, WzSoundProperty>();
         public Dictionary<string, Bitmap> MapMarks = new Dictionary<string, Bitmap>();
-        public Dictionary<string, string> Maps = new Dictionary<string, string>();
+        public Dictionary<string, Tuple<string, string>> Maps = new Dictionary<string, Tuple<string, string>>();
         public Dictionary<string, PortalInfo> Portals = new Dictionary<string, PortalInfo>();
         public List<string> PortalTypeById = new List<string>();
         public Dictionary<string, int> PortalIdByType = new Dictionary<string,int>();

@@ -280,6 +280,7 @@ namespace HaCreator.Wz
             {
                 foreach (WzSubProperty map in mapCat.WzProperties)
                 {
+                    WzStringProperty streetName = (WzStringProperty)map["streetName"];
                     WzStringProperty mapName = (WzStringProperty)map["mapName"];
                     string id;
                     if (map.Name.Length == 9)
@@ -288,9 +289,9 @@ namespace HaCreator.Wz
                         id = WzInfoTools.AddLeadingZeros(map.Name, 9);
 
                     if (mapName == null)
-                        Program.InfoManager.Maps[id] = "";
+                        Program.InfoManager.Maps[id] = new Tuple<string, string>("", "");
                     else
-                        Program.InfoManager.Maps[id] = mapName.Value;
+                        Program.InfoManager.Maps[id] = new Tuple<string, string>(streetName?.Value == null ? string.Empty : streetName.Value, mapName.Value);
                 }
             }
         }

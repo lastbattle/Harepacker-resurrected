@@ -35,20 +35,19 @@ namespace HaCreator.GUI
             this.WZSelect = new System.Windows.Forms.RadioButton();
             this.XMLSelect = new System.Windows.Forms.RadioButton();
             this.XMLBox = new System.Windows.Forms.TextBox();
-            this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
-            this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
             this.HAMBox = new System.Windows.Forms.TextBox();
             this.HAMSelect = new System.Windows.Forms.RadioButton();
+            this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
+            this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
             this.SuspendLayout();
             // 
             // loadButton
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             this.loadButton.Enabled = false;
-            this.loadButton.Location = new System.Drawing.Point(13, 837);
-            this.loadButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.loadButton.Location = new System.Drawing.Point(9, 544);
             this.loadButton.Name = "loadButton";
-            this.loadButton.Size = new System.Drawing.Size(812, 46);
+            this.loadButton.Size = new System.Drawing.Size(747, 30);
             this.loadButton.TabIndex = 9;
             this.loadButton.Text = "Load";
             this.loadButton.Click += new System.EventHandler(this.loadButton_Click);
@@ -57,10 +56,9 @@ namespace HaCreator.GUI
             // 
             this.WZSelect.AutoSize = true;
             this.WZSelect.Checked = true;
-            this.WZSelect.Location = new System.Drawing.Point(16, 97);
-            this.WZSelect.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.WZSelect.Location = new System.Drawing.Point(11, 63);
             this.WZSelect.Name = "WZSelect";
-            this.WZSelect.Size = new System.Drawing.Size(59, 24);
+            this.WZSelect.Size = new System.Drawing.Size(43, 17);
             this.WZSelect.TabIndex = 6;
             this.WZSelect.TabStop = true;
             this.WZSelect.Text = "WZ";
@@ -70,10 +68,9 @@ namespace HaCreator.GUI
             // XMLSelect
             // 
             this.XMLSelect.AutoSize = true;
-            this.XMLSelect.Location = new System.Drawing.Point(16, 60);
-            this.XMLSelect.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.XMLSelect.Location = new System.Drawing.Point(11, 39);
             this.XMLSelect.Name = "XMLSelect";
-            this.XMLSelect.Size = new System.Drawing.Size(67, 24);
+            this.XMLSelect.Size = new System.Drawing.Size(47, 17);
             this.XMLSelect.TabIndex = 3;
             this.XMLSelect.Text = "XML";
             this.XMLSelect.UseVisualStyleBackColor = true;
@@ -82,42 +79,19 @@ namespace HaCreator.GUI
             // XMLBox
             // 
             this.XMLBox.Enabled = false;
-            this.XMLBox.Location = new System.Drawing.Point(96, 58);
-            this.XMLBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.XMLBox.Location = new System.Drawing.Point(64, 38);
             this.XMLBox.Name = "XMLBox";
-            this.XMLBox.Size = new System.Drawing.Size(729, 26);
+            this.XMLBox.Size = new System.Drawing.Size(692, 20);
             this.XMLBox.TabIndex = 4;
             this.XMLBox.Click += new System.EventHandler(this.browseXML_Click);
             this.XMLBox.TextChanged += new System.EventHandler(this.XMLBox_TextChanged);
             // 
-            // searchBox
-            // 
-            this.searchBox.ForeColor = System.Drawing.Color.Gray;
-            this.searchBox.Location = new System.Drawing.Point(96, 95);
-            this.searchBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
-            this.searchBox.Name = "searchBox";
-            this.searchBox.Size = new System.Drawing.Size(729, 26);
-            this.searchBox.TabIndex = 7;
-            this.searchBox.Text = "Type here to search";
-            this.searchBox.WatermarkActive = true;
-            this.searchBox.WatermarkText = "Type here";
-            // 
-            // mapBrowser
-            // 
-            this.mapBrowser.Location = new System.Drawing.Point(15, 132);
-            this.mapBrowser.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
-            this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(810, 692);
-            this.mapBrowser.TabIndex = 8;
-            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
-            // 
             // HAMBox
             // 
             this.HAMBox.Enabled = false;
-            this.HAMBox.Location = new System.Drawing.Point(96, 18);
-            this.HAMBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.HAMBox.Location = new System.Drawing.Point(64, 12);
             this.HAMBox.Name = "HAMBox";
-            this.HAMBox.Size = new System.Drawing.Size(729, 26);
+            this.HAMBox.Size = new System.Drawing.Size(692, 20);
             this.HAMBox.TabIndex = 1;
             this.HAMBox.Click += new System.EventHandler(this.browseHAM_Click);
             this.HAMBox.TextChanged += new System.EventHandler(this.HAMBox_TextChanged);
@@ -125,19 +99,38 @@ namespace HaCreator.GUI
             // HAMSelect
             // 
             this.HAMSelect.AutoSize = true;
-            this.HAMSelect.Location = new System.Drawing.Point(16, 20);
-            this.HAMSelect.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.HAMSelect.Location = new System.Drawing.Point(11, 13);
             this.HAMSelect.Name = "HAMSelect";
-            this.HAMSelect.Size = new System.Drawing.Size(70, 24);
+            this.HAMSelect.Size = new System.Drawing.Size(49, 17);
             this.HAMSelect.TabIndex = 0;
             this.HAMSelect.Text = "HAM";
             this.HAMSelect.UseVisualStyleBackColor = true;
             // 
+            // mapBrowser
+            // 
+            this.mapBrowser.Location = new System.Drawing.Point(10, 86);
+            this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.mapBrowser.Name = "mapBrowser";
+            this.mapBrowser.Size = new System.Drawing.Size(746, 450);
+            this.mapBrowser.TabIndex = 8;
+            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
+            // 
+            // searchBox
+            // 
+            this.searchBox.ForeColor = System.Drawing.Color.Gray;
+            this.searchBox.Location = new System.Drawing.Point(64, 62);
+            this.searchBox.Name = "searchBox";
+            this.searchBox.Size = new System.Drawing.Size(692, 20);
+            this.searchBox.TabIndex = 7;
+            this.searchBox.Text = "Type here to search";
+            this.searchBox.WatermarkActive = true;
+            this.searchBox.WatermarkText = "Type here";
+            // 
             // Load
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(838, 889);
+            this.ClientSize = new System.Drawing.Size(763, 578);
             this.Controls.Add(this.HAMBox);
             this.Controls.Add(this.HAMSelect);
             this.Controls.Add(this.mapBrowser);
@@ -150,7 +143,6 @@ namespace HaCreator.GUI
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
-            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.MaximizeBox = false;
             this.Name = "Load";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
