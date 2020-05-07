@@ -70,13 +70,19 @@ namespace HaCreator.Wz
         private string Capitalize(string x)
         {
             if (x.Length > 0 && char.IsLower(x[0]))
-            {
                 return new string(new char[] { char.ToUpper(x[0]) }) + x.Substring(1);
-            }
-            else
-            {
-                return x;
-            }
+            return x;
+        }
+
+        /// <summary>
+        /// Cleanup 
+        /// </summary>
+        public void Clear()
+        {
+            wzFiles.Clear();
+            wzFilesUpdated.Clear();
+            updatedImages.Clear();
+            wzDirs.Clear();
         }
 
         public bool LoadWzFile(string name)

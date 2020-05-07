@@ -89,7 +89,18 @@ namespace HaCreator.GUI
 
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
+            if (Program.WzManager != null)
+            {
+                Program.WzManager.Clear();
+                Program.WzManager = null; // old loaded items
+            }
+            if (Program.InfoManager != null)
+            {
+                Program.InfoManager.Clear();
+            }
+
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
+
             if (Program.WzManager.HasDataFile) //currently always false
             {
                 textBox2.Text = "Initializing Data.wz...";
