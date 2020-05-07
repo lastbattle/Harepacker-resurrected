@@ -53,7 +53,7 @@ namespace MapleLib.WzLib.Serialization
             Directory.CreateDirectory(path);
         }
 
-        private static string regexSearch = new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
+        private static string regexSearch = ":" +  new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
         private static Regex regex_invalidPath = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
         /// <summary>
         /// Escapes invalid file name and paths (if nexon uses any illegal character that causes issue during saving)
@@ -489,21 +489,27 @@ namespace MapleLib.WzLib.Serialization
                     Directory.CreateDirectory(outPath);
 
                 bool parse = ((WzImage)currObj).Parsed || ((WzImage)currObj).Changed;
-                if (!parse) 
+                if (!parse)
+                {
                     ((WzImage)currObj).ParseImage();
+                }
                 foreach (WzImageProperty subprop in ((IPropertyContainer)currObj).WzProperties)
                 {
                     ExportRecursion(subprop, outPath);
                 }
-                if (!parse) 
+                if (!parse)
+                {
                     ((WzImage)currObj).UnparseImage();
+                }
                 curr++;
             }
             else if (currObj is IPropertyContainer)
             {
-                outPath += currObj.Name + ".";
+                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".";
                 foreach (WzImageProperty subprop in ((IPropertyContainer)currObj).WzProperties)
+                {
                     ExportRecursion(subprop, outPath);
+                }
             }
             else if (currObj is WzUOLProperty)
                 ExportRecursion(((WzUOLProperty)currObj).LinkValue, outPath);

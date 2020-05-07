@@ -371,7 +371,7 @@ namespace MapleLib.WzLib.WzProperties
                         break;
                     case 513:
                         bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
-                        bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
+                        bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
                         uncompressedSize = width * height * 2;
                         decBuf = new byte[uncompressedSize];
                         zlib.Read(decBuf, 0, uncompressedSize);
@@ -421,7 +421,9 @@ namespace MapleLib.WzLib.WzProperties
                          uncompressedSize = width * height;
                          decBuf = new byte[uncompressedSize];
                          zlib.Read(decBuf, 0, uncompressedSize);
+
                          decBuf = GetPixelDataDXT5(decBuf, Width, Height);
+
                          Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
                          bmp.UnlockBits(bmpData);
                          break;
