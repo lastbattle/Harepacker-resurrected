@@ -68,7 +68,8 @@ namespace HaCreator.Wz
                     mapImg.Remove();
                 }
                 catDir.AddImage(image);
-                Program.WzManager.SetUpdated("map", image);
+
+                Program.WzManager.SetWzFileUpdated(catDir.GetTopMostWzDirectory().Name /* "map" */, image);
             }
             else
             {
@@ -79,7 +80,7 @@ namespace HaCreator.Wz
                     mapImg.Remove();
                 }
                 mapDir.AddImage(image);
-                Program.WzManager.SetUpdated("ui", image);
+                Program.WzManager.SetWzFileUpdated("ui", image);
             }
         }
 
@@ -94,28 +95,28 @@ namespace HaCreator.Wz
                 {
                     strCatProp = new WzSubProperty();
                     strMapImg[board.MapInfo.strCategoryName] = strCatProp;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
                 }
                 WzSubProperty strMapProp = (WzSubProperty)strCatProp[board.MapInfo.id.ToString()];
                 if (strMapProp == null)
                 {
                     strMapProp = new WzSubProperty();
                     strCatProp[board.MapInfo.id.ToString()] = strMapProp;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
                 }
                 WzStringProperty strMapName = (WzStringProperty)strMapProp["mapName"];
                 if (strMapName == null)
                 {
                     strMapName = new WzStringProperty();
                     strMapProp["mapName"] = strMapName;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
                 }
                 WzStringProperty strStreetName = (WzStringProperty)strMapProp["streetName"];
                 if (strStreetName == null)
                 {
                     strStreetName = new WzStringProperty();
                     strMapProp["streetName"] = strStreetName;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
                 }
                 UpdateString(strMapName, board.MapInfo.strMapName, strMapImg);
                 UpdateString(strStreetName, board.MapInfo.strStreetName, strMapImg);
@@ -127,7 +128,7 @@ namespace HaCreator.Wz
             if (strProp.Value != val)
             {
                 strProp.Value = val;
-                Program.WzManager.SetUpdated("string", img);
+                Program.WzManager.SetWzFileUpdated("string", img);
             }
         }
 
@@ -344,7 +345,7 @@ namespace HaCreator.Wz
             {
                 strTooltipParent = new WzSubProperty();
                 strTooltipCat[board.MapInfo.id.ToString()] = strTooltipParent;
-                Program.WzManager.SetUpdated("string", strTooltipImg);
+                Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
                 retainTooltipStrings = false;
             }
 
@@ -366,7 +367,7 @@ namespace HaCreator.Wz
             // If they do not, we need to update string.wz and rebuild the string tooltip props
             if (!retainTooltipStrings)
             {
-                Program.WzManager.SetUpdated("string", strTooltipImg);
+                Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
                 strTooltipParent.ClearProperties();
             }
 
@@ -391,7 +392,7 @@ namespace HaCreator.Wz
                         if (titleProp == null)
                         {
                             titleProp = new WzStringProperty();
-                            Program.WzManager.SetUpdated("string", strTooltipImg);
+                            Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
                         }
                         UpdateString(titleProp, ttInst.Title, strTooltipImg);
                     }
@@ -401,7 +402,7 @@ namespace HaCreator.Wz
                         if (descProp == null)
                         {
                             descProp = new WzStringProperty();
-                            Program.WzManager.SetUpdated("string", strTooltipImg);
+                            Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
                         }
                         UpdateString(descProp, ttInst.Desc, strTooltipImg);
                     }

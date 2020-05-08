@@ -133,16 +133,31 @@ namespace HaCreator.Wz
             }
         }
 
-        public void SetUpdated(string name, WzImage img)
+        /// <summary>
+        /// Sets WZ file as updated for saving
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="img"></param>
+        public void SetWzFileUpdated(string name, WzImage img)
         {
             img.Changed = true;
             updatedImages.Add(img);
             wzFilesUpdated[GetMainDirectoryByName(name).File] = true;
         }
 
+        /// <summary>
+        /// Gets WZ by name from the list of loaded files
+        /// </summary>
+        /// <param name="name"></param>
+        /// <returns></returns>
         public WzMainDirectory GetMainDirectoryByName(string name)
         {
-            return wzDirs[name.ToLower()];
+            name = name.ToLower();
+
+            if (name.EndsWith(".wz"))
+                name = name.Replace(".wz", "");
+
+            return wzDirs[name];
         }
 
         public WzDirectory this[string name]
