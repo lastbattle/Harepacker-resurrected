@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             this.infoLabel = new System.Windows.Forms.Label();
-            this.button1 = new System.Windows.Forms.Button();
+            this.button_repack = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.stateLabel = new System.Windows.Forms.Label();
@@ -44,15 +44,15 @@
             this.infoLabel.TabIndex = 0;
             this.infoLabel.Text = "asdf\r\nasdf";
             // 
-            // button1
+            // button_repack
             // 
-            this.button1.Location = new System.Drawing.Point(12, 313);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(260, 51);
-            this.button1.TabIndex = 1;
-            this.button1.Text = "Repack";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
+            this.button_repack.Location = new System.Drawing.Point(12, 313);
+            this.button_repack.Name = "button_repack";
+            this.button_repack.Size = new System.Drawing.Size(260, 51);
+            this.button_repack.TabIndex = 1;
+            this.button_repack.Text = "Repack";
+            this.button_repack.UseVisualStyleBackColor = true;
+            this.button_repack.Click += new System.EventHandler(this.button_repack_Click);
             // 
             // label1
             // 
@@ -91,7 +91,7 @@
             this.Controls.Add(this.stateLabel);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
-            this.Controls.Add(this.button1);
+            this.Controls.Add(this.button_repack);
             this.Controls.Add(this.infoLabel);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.KeyPreview = true;
@@ -108,7 +108,7 @@
         #endregion
 
         private System.Windows.Forms.Label infoLabel;
-        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Button button_repack;
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Label stateLabel;
