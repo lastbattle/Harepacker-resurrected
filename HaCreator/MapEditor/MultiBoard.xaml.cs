@@ -593,7 +593,14 @@ namespace HaCreator.MapEditor
                 Point realPosition = new Point(e.X, e.Y);
                 lock (this)
                 {
-                    RightMouseClick(selectedBoard, GetObjectUnderPoint(realPosition), realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)), selectedBoard.Mouse.State);
+                    RightMouseClick(
+                        selectedBoard, 
+                        GetObjectUnderPoint(realPosition), 
+                        realPosition, 
+                        new Point(
+                            PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), 
+                            PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)), 
+                        selectedBoard.Mouse.State);
                 }
             }
         }
@@ -750,6 +757,8 @@ namespace HaCreator.MapEditor
                     return;
 
                 string[] data = (string[])e.Data.GetData(DataFormats.FileDrop);
+
+                // be warned when run under visual studio. it inherits VS's scaling and VS's window location
                 System.Windows.Point p = PointToScreen(new System.Windows.Point(e.X, e.Y));
                 foreach (string file in data)
                 {

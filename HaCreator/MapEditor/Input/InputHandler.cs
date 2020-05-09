@@ -16,6 +16,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Exceptions;
 using HaCreator.MapEditor.Info;
+using HaRepacker.Utils;
 
 namespace HaCreator.MapEditor.Input
 {
@@ -528,16 +529,21 @@ namespace HaCreator.MapEditor.Input
                 if (mouseState == MouseState.Selection)
                 {
                     ClearBoundItems(selectedBoard);
-                    if (ClickOnMinimap(selectedBoard, realPosition)) return;
+                    if (ClickOnMinimap(selectedBoard, realPosition)) 
+                        return;
+
                     if (rightClickTarget == null)
                         return;
+
                     if (!rightClickTarget.Selected)
                         ClearSelectedItems(selectedBoard);
                     rightClickTarget.Selected = true;
                     BoardItemContextMenu bicm = new BoardItemContextMenu(parentBoard, selectedBoard, rightClickTarget);
 
+                    // be warned when run under visual studio. it inherits VS's scaling and VS's window location
                     System.Windows.Point point = parentBoard.PointToScreen(new System.Windows.Point(realPosition.X, realPosition.Y));
-                    bicm.Menu.Show(new System.Drawing.Point((int)point.X, (int)point.Y));
+
+                    bicm.Menu.Show(new System.Drawing.Point((int) (point.X), (int) (point.Y )));
                 }
                 else parentBoard.InvokeReturnToSelectionState();
             }
