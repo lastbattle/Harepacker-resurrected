@@ -1179,12 +1179,13 @@ namespace HaRepacker.GUI.Panels
                 return;
 
             clipboard.Clear();
-            Parallel.ForEach(DataTree.SelectedNodes.ToArray(), node =>
+
+            foreach (WzNode node in DataTree.SelectedNodes)
             {
                 WzObject clone = CloneWzObject((WzObject)((WzNode)node).Tag);
                 if (clone != null)
                     clipboard.Add(clone);
-            });
+            }
         }
 
         private ReplaceResult replaceBoxResult = ReplaceResult.NoneSelectedYet;
