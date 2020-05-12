@@ -259,10 +259,10 @@ namespace HaCreator.MapSimulator
 
             if (bIsUp || bIsDown)
             {
-                int topDownVRDifference = vr.Top - vr.Bottom;
+                int topDownVRDifference = vr.Bottom - vr.Top;
                 if (topDownVRDifference < RenderHeight)
                 {
-                    mapShiftY = ((topDownVRDifference / 2) + vr.Bottom) - (RenderHeight / 2);
+                    mapShiftY = ((topDownVRDifference / 2) + vr.Top) - (RenderHeight / 2);
                 }
                 else
                 {
