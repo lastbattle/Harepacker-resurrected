@@ -40,7 +40,7 @@
             this.infoLabel.AutoSize = true;
             this.infoLabel.Location = new System.Drawing.Point(12, 9);
             this.infoLabel.Name = "infoLabel";
-            this.infoLabel.Size = new System.Drawing.Size(27, 26);
+            this.infoLabel.Size = new System.Drawing.Size(29, 26);
             this.infoLabel.TabIndex = 0;
             this.infoLabel.Text = "asdf\r\nasdf";
             // 
@@ -93,6 +93,7 @@
             this.Controls.Add(this.label1);
             this.Controls.Add(this.button_repack);
             this.Controls.Add(this.infoLabel);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.KeyPreview = true;
             this.Name = "Repack";

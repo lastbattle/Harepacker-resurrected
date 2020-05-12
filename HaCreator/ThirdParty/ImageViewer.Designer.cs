@@ -37,9 +37,11 @@ namespace HaCreator.ThirdParty
             this.AutoValidate = System.Windows.Forms.AutoValidate.EnableAllowFocusChange;
             this.BackColor = System.Drawing.SystemColors.ControlLightLight;
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "ImageViewer";
             this.Size = new System.Drawing.Size(227, 210);
             this.ResumeLayout(false);
+
         }
 
         #endregion

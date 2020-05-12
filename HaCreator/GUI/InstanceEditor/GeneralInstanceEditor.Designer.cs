@@ -65,7 +65,7 @@
             0,
             -2147483648});
             this.xInput.Name = "xInput";
-            this.xInput.Size = new System.Drawing.Size(50, 20);
+            this.xInput.Size = new System.Drawing.Size(50, 22);
             this.xInput.TabIndex = 0;
             // 
             // label1
@@ -73,7 +73,7 @@
             this.label1.AutoSize = true;
             this.label1.Location = new System.Drawing.Point(63, 55);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(14, 13);
+            this.label1.Size = new System.Drawing.Size(13, 13);
             this.label1.TabIndex = 2;
             this.label1.Text = "X";
             // 
@@ -82,7 +82,7 @@
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(63, 81);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(14, 13);
+            this.label2.Size = new System.Drawing.Size(12, 13);
             this.label2.TabIndex = 4;
             this.label2.Text = "Y";
             // 
@@ -100,7 +100,7 @@
             0,
             -2147483648});
             this.yInput.Name = "yInput";
-            this.yInput.Size = new System.Drawing.Size(50, 20);
+            this.yInput.Size = new System.Drawing.Size(50, 22);
             this.yInput.TabIndex = 1;
             // 
             // label3
@@ -108,7 +108,7 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(63, 107);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(14, 13);
+            this.label3.Size = new System.Drawing.Size(13, 13);
             this.label3.TabIndex = 6;
             this.label3.Text = "Z";
             // 
@@ -121,7 +121,7 @@
             0,
             0});
             this.zInput.Name = "zInput";
-            this.zInput.Size = new System.Drawing.Size(50, 20);
+            this.zInput.Size = new System.Drawing.Size(50, 22);
             this.zInput.TabIndex = 2;
             // 
             // okButton
@@ -158,6 +158,7 @@
             this.Controls.Add(this.label1);
             this.Controls.Add(this.xInput);
             this.Controls.Add(this.pathLabel);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;

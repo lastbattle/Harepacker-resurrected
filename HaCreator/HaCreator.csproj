@@ -679,8 +679,14 @@
       <DependentUpon>TileSetBrowser.cs</DependentUpon>
     </Compile>
     <Compile Include="WzSettings.cs" />
+    <EmbeddedResource Include="ThirdParty\BetterCheckedListBox.resx">
+      <DependentUpon>BetterCheckedListBox.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="ThirdParty\ImageViewer.resx">
       <DependentUpon>ImageViewer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ThirdParty\ThumbnailFlowLayoutPanel.resx">
+      <DependentUpon>ThumbnailFlowLayoutPanel.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>

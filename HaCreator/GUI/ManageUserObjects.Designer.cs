@@ -69,9 +69,9 @@
             // 
             // label1
             // 
-            this.label1.Location = new System.Drawing.Point(28, 261);
+            this.label1.Location = new System.Drawing.Point(12, 261);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(406, 37);
+            this.label1.Size = new System.Drawing.Size(422, 37);
             this.label1.TabIndex = 3;
             this.label1.Text = "Do NOT Remove objects that are in use somewhere on some map; If you are not sure," +
     " click the \"Search all usages\" button.";
@@ -85,6 +85,7 @@
             this.Controls.Add(this.searchBtn);
             this.Controls.Add(this.removeBtn);
             this.Controls.Add(this.objsList);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.KeyPreview = true;
             this.Name = "ManageUserObjects";

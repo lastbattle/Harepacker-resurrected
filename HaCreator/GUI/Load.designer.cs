@@ -58,7 +58,7 @@ namespace HaCreator.GUI
             this.WZSelect.Checked = true;
             this.WZSelect.Location = new System.Drawing.Point(11, 63);
             this.WZSelect.Name = "WZSelect";
-            this.WZSelect.Size = new System.Drawing.Size(43, 17);
+            this.WZSelect.Size = new System.Drawing.Size(42, 17);
             this.WZSelect.TabIndex = 6;
             this.WZSelect.TabStop = true;
             this.WZSelect.Text = "WZ";
@@ -70,7 +70,7 @@ namespace HaCreator.GUI
             this.XMLSelect.AutoSize = true;
             this.XMLSelect.Location = new System.Drawing.Point(11, 39);
             this.XMLSelect.Name = "XMLSelect";
-            this.XMLSelect.Size = new System.Drawing.Size(47, 17);
+            this.XMLSelect.Size = new System.Drawing.Size(46, 17);
             this.XMLSelect.TabIndex = 3;
             this.XMLSelect.Text = "XML";
             this.XMLSelect.UseVisualStyleBackColor = true;
@@ -81,7 +81,7 @@ namespace HaCreator.GUI
             this.XMLBox.Enabled = false;
             this.XMLBox.Location = new System.Drawing.Point(64, 38);
             this.XMLBox.Name = "XMLBox";
-            this.XMLBox.Size = new System.Drawing.Size(692, 20);
+            this.XMLBox.Size = new System.Drawing.Size(692, 22);
             this.XMLBox.TabIndex = 4;
             this.XMLBox.Click += new System.EventHandler(this.browseXML_Click);
             this.XMLBox.TextChanged += new System.EventHandler(this.XMLBox_TextChanged);
@@ -91,7 +91,7 @@ namespace HaCreator.GUI
             this.HAMBox.Enabled = false;
             this.HAMBox.Location = new System.Drawing.Point(64, 12);
             this.HAMBox.Name = "HAMBox";
-            this.HAMBox.Size = new System.Drawing.Size(692, 20);
+            this.HAMBox.Size = new System.Drawing.Size(692, 22);
             this.HAMBox.TabIndex = 1;
             this.HAMBox.Click += new System.EventHandler(this.browseHAM_Click);
             this.HAMBox.TextChanged += new System.EventHandler(this.HAMBox_TextChanged);
@@ -101,7 +101,7 @@ namespace HaCreator.GUI
             this.HAMSelect.AutoSize = true;
             this.HAMSelect.Location = new System.Drawing.Point(11, 13);
             this.HAMSelect.Name = "HAMSelect";
-            this.HAMSelect.Size = new System.Drawing.Size(49, 17);
+            this.HAMSelect.Size = new System.Drawing.Size(50, 17);
             this.HAMSelect.TabIndex = 0;
             this.HAMSelect.Text = "HAM";
             this.HAMSelect.UseVisualStyleBackColor = true;
@@ -120,7 +120,7 @@ namespace HaCreator.GUI
             this.searchBox.ForeColor = System.Drawing.Color.Gray;
             this.searchBox.Location = new System.Drawing.Point(64, 62);
             this.searchBox.Name = "searchBox";
-            this.searchBox.Size = new System.Drawing.Size(692, 20);
+            this.searchBox.Size = new System.Drawing.Size(692, 22);
             this.searchBox.TabIndex = 7;
             this.searchBox.Text = "Type here to search";
             this.searchBox.WatermarkActive = true;
@@ -140,6 +140,7 @@ namespace HaCreator.GUI
             this.Controls.Add(this.WZSelect);
             this.Controls.Add(this.loadButton);
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;

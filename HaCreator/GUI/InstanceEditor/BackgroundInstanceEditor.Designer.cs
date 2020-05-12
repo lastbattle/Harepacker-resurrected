@@ -85,7 +85,7 @@
             0,
             -2147483648});
             this.xInput.Name = "xInput";
-            this.xInput.Size = new System.Drawing.Size(50, 20);
+            this.xInput.Size = new System.Drawing.Size(50, 22);
             this.xInput.TabIndex = 0;
             // 
             // label1
@@ -93,7 +93,7 @@
             this.label1.AutoSize = true;
             this.label1.Location = new System.Drawing.Point(12, 56);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(14, 13);
+            this.label1.Size = new System.Drawing.Size(13, 13);
             this.label1.TabIndex = 2;
             this.label1.Text = "X";
             // 
@@ -102,7 +102,7 @@
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(89, 56);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(14, 13);
+            this.label2.Size = new System.Drawing.Size(12, 13);
             this.label2.TabIndex = 4;
             this.label2.Text = "Y";
             // 
@@ -120,7 +120,7 @@
             0,
             -2147483648});
             this.yInput.Name = "yInput";
-            this.yInput.Size = new System.Drawing.Size(50, 20);
+            this.yInput.Size = new System.Drawing.Size(50, 22);
             this.yInput.TabIndex = 1;
             // 
             // label3
@@ -128,7 +128,7 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(168, 56);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(14, 13);
+            this.label3.Size = new System.Drawing.Size(13, 13);
             this.label3.TabIndex = 6;
             this.label3.Text = "Z";
             // 
@@ -141,15 +141,15 @@
             0,
             0});
             this.zInput.Name = "zInput";
-            this.zInput.Size = new System.Drawing.Size(50, 20);
+            this.zInput.Size = new System.Drawing.Size(50, 22);
             this.zInput.TabIndex = 2;
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(48, 183);
+            this.okButton.Location = new System.Drawing.Point(2, 185);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(76, 28);
+            this.okButton.Size = new System.Drawing.Size(122, 28);
             this.okButton.TabIndex = 10;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -157,9 +157,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(130, 183);
+            this.cancelButton.Location = new System.Drawing.Point(124, 185);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(73, 28);
+            this.cancelButton.Size = new System.Drawing.Size(121, 28);
             this.cancelButton.TabIndex = 11;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -169,7 +169,7 @@
             this.label4.AutoSize = true;
             this.label4.Location = new System.Drawing.Point(12, 81);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(34, 13);
+            this.label4.Size = new System.Drawing.Size(33, 13);
             this.label4.TabIndex = 9;
             this.label4.Text = "Type:";
             // 
@@ -187,7 +187,7 @@
             this.label5.AutoSize = true;
             this.label5.Location = new System.Drawing.Point(12, 108);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(37, 13);
+            this.label5.Size = new System.Drawing.Size(40, 13);
             this.label5.TabIndex = 11;
             this.label5.Text = "Alpha:";
             // 
@@ -200,7 +200,7 @@
             0,
             0});
             this.alphaBox.Name = "alphaBox";
-            this.alphaBox.Size = new System.Drawing.Size(50, 20);
+            this.alphaBox.Size = new System.Drawing.Size(50, 22);
             this.alphaBox.TabIndex = 4;
             // 
             // front
@@ -208,7 +208,7 @@
             this.front.AutoSize = true;
             this.front.Location = new System.Drawing.Point(121, 108);
             this.front.Name = "front";
-            this.front.Size = new System.Drawing.Size(111, 17);
+            this.front.Size = new System.Drawing.Size(119, 17);
             this.front.TabIndex = 5;
             this.front.Text = "Front Background";
             // 
@@ -217,7 +217,7 @@
             this.label6.AutoSize = true;
             this.label6.Location = new System.Drawing.Point(140, 134);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(14, 13);
+            this.label6.Size = new System.Drawing.Size(12, 13);
             this.label6.TabIndex = 17;
             this.label6.Text = "Y";
             // 
@@ -235,7 +235,7 @@
             0,
             -2147483648});
             this.ryBox.Name = "ryBox";
-            this.ryBox.Size = new System.Drawing.Size(50, 20);
+            this.ryBox.Size = new System.Drawing.Size(50, 22);
             this.ryBox.TabIndex = 7;
             // 
             // label7
@@ -243,7 +243,7 @@
             this.label7.AutoSize = true;
             this.label7.Location = new System.Drawing.Point(63, 134);
             this.label7.Name = "label7";
-            this.label7.Size = new System.Drawing.Size(14, 13);
+            this.label7.Size = new System.Drawing.Size(13, 13);
             this.label7.TabIndex = 15;
             this.label7.Text = "X";
             // 
@@ -261,7 +261,7 @@
             0,
             -2147483648});
             this.rxBox.Name = "rxBox";
-            this.rxBox.Size = new System.Drawing.Size(50, 20);
+            this.rxBox.Size = new System.Drawing.Size(50, 22);
             this.rxBox.TabIndex = 6;
             // 
             // label8
@@ -269,7 +269,7 @@
             this.label8.AutoSize = true;
             this.label8.Location = new System.Drawing.Point(12, 134);
             this.label8.Name = "label8";
-            this.label8.Size = new System.Drawing.Size(47, 13);
+            this.label8.Size = new System.Drawing.Size(49, 13);
             this.label8.TabIndex = 18;
             this.label8.Text = "Parallax:";
             // 
@@ -278,7 +278,7 @@
             this.copyLabel.AutoSize = true;
             this.copyLabel.Location = new System.Drawing.Point(12, 160);
             this.copyLabel.Name = "copyLabel";
-            this.copyLabel.Size = new System.Drawing.Size(34, 13);
+            this.copyLabel.Size = new System.Drawing.Size(36, 13);
             this.copyLabel.TabIndex = 23;
             this.copyLabel.Text = "Copy:";
             // 
@@ -287,7 +287,7 @@
             this.cyLabel.AutoSize = true;
             this.cyLabel.Location = new System.Drawing.Point(140, 160);
             this.cyLabel.Name = "cyLabel";
-            this.cyLabel.Size = new System.Drawing.Size(14, 13);
+            this.cyLabel.Size = new System.Drawing.Size(12, 13);
             this.cyLabel.TabIndex = 22;
             this.cyLabel.Text = "Y";
             // 
@@ -305,7 +305,7 @@
             0,
             -2147483648});
             this.cyBox.Name = "cyBox";
-            this.cyBox.Size = new System.Drawing.Size(50, 20);
+            this.cyBox.Size = new System.Drawing.Size(50, 22);
             this.cyBox.TabIndex = 9;
             // 
             // cxLabel
@@ -313,7 +313,7 @@
             this.cxLabel.AutoSize = true;
             this.cxLabel.Location = new System.Drawing.Point(63, 160);
             this.cxLabel.Name = "cxLabel";
-            this.cxLabel.Size = new System.Drawing.Size(14, 13);
+            this.cxLabel.Size = new System.Drawing.Size(13, 13);
             this.cxLabel.TabIndex = 20;
             this.cxLabel.Text = "X";
             // 
@@ -331,7 +331,7 @@
             0,
             -2147483648});
             this.cxBox.Name = "cxBox";
-            this.cxBox.Size = new System.Drawing.Size(50, 20);
+            this.cxBox.Size = new System.Drawing.Size(50, 22);
             this.cxBox.TabIndex = 8;
             // 
             // BackgroundInstanceEditor
@@ -364,6 +364,7 @@
             this.Controls.Add(this.xInput);
             this.Controls.Add(this.pathLabel);
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;

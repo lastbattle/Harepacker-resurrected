@@ -102,7 +102,7 @@
             // 
             this.lifeSearchBox.Location = new System.Drawing.Point(44, 28);
             this.lifeSearchBox.Name = "lifeSearchBox";
-            this.lifeSearchBox.Size = new System.Drawing.Size(146, 20);
+            this.lifeSearchBox.Size = new System.Drawing.Size(146, 22);
             this.lifeSearchBox.TabIndex = 3;
             this.lifeSearchBox.TextChanged += new System.EventHandler(this.lifeModeChanged);
             // 
@@ -160,7 +160,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.splitContainer8);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "LifePanel";
             this.Size = new System.Drawing.Size(269, 658);
             this.splitContainer8.Panel1.ResumeLayout(false);

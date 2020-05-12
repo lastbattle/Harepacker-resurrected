@@ -55,6 +55,7 @@
             this.ClientSize = new System.Drawing.Size(554, 109);
             this.Controls.Add(this.restartButton);
             this.Controls.Add(this.crashMessageLabel);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "ExceptionHandler";
             this.Text = "OH SHI-";
             this.ResumeLayout(false);

@@ -59,9 +59,9 @@
             "EMS , MSEA , KMS",
             "BMS , JMS",
             "Auto-Detect"});
-            this.versionBox.Location = new System.Drawing.Point(67, 38);
+            this.versionBox.Location = new System.Drawing.Point(74, 38);
             this.versionBox.Name = "versionBox";
-            this.versionBox.Size = new System.Drawing.Size(291, 21);
+            this.versionBox.Size = new System.Drawing.Size(284, 21);
             this.versionBox.TabIndex = 3;
             // 
             // toolStripProgressBar1
@@ -74,7 +74,7 @@
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(6, 40);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(57, 13);
+            this.label2.Size = new System.Drawing.Size(62, 13);
             this.label2.TabIndex = 8;
             this.label2.Text = "Encryption";
             // 
@@ -83,7 +83,7 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(6, 15);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(48, 13);
+            this.label3.Size = new System.Drawing.Size(49, 13);
             this.label3.TabIndex = 9;
             this.label3.Text = "MS Path";
             // 
@@ -92,15 +92,15 @@
             this.textBox2.Location = new System.Drawing.Point(5, 99);
             this.textBox2.Name = "textBox2";
             this.textBox2.ReadOnly = true;
-            this.textBox2.Size = new System.Drawing.Size(354, 20);
+            this.textBox2.Size = new System.Drawing.Size(354, 22);
             this.textBox2.TabIndex = 2;
             // 
             // pathBox
             // 
             this.pathBox.FormattingEnabled = true;
-            this.pathBox.Location = new System.Drawing.Point(67, 12);
+            this.pathBox.Location = new System.Drawing.Point(74, 12);
             this.pathBox.Name = "pathBox";
-            this.pathBox.Size = new System.Drawing.Size(244, 21);
+            this.pathBox.Size = new System.Drawing.Size(237, 21);
             this.pathBox.TabIndex = 13;
             // 
             // button2
@@ -136,6 +136,7 @@
             this.Controls.Add(this.versionBox);
             this.Controls.Add(this.textBox2);
             this.Controls.Add(this.button1);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;

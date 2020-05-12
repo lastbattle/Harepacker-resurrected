@@ -39,6 +39,7 @@
             this.listView_fieldLimitType.FullRowSelect = true;
             this.listView_fieldLimitType.GridLines = true;
             this.listView_fieldLimitType.HeaderStyle = System.Windows.Forms.ColumnHeaderStyle.None;
+            this.listView_fieldLimitType.HideSelection = false;
             this.listView_fieldLimitType.Name = "listView_fieldLimitType";
             this.listView_fieldLimitType.ShowGroups = false;
             this.listView_fieldLimitType.ShowItemToolTips = true;

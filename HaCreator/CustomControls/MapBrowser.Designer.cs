@@ -63,7 +63,7 @@
             this.mapNotExist.ForeColor = System.Drawing.Color.Red;
             this.mapNotExist.Location = new System.Drawing.Point(65, 96);
             this.mapNotExist.Name = "mapNotExist";
-            this.mapNotExist.Size = new System.Drawing.Size(135, 13);
+            this.mapNotExist.Size = new System.Drawing.Size(147, 13);
             this.mapNotExist.TabIndex = 19;
             this.mapNotExist.Text = "Map does not actually exist";
             this.mapNotExist.Visible = false;
@@ -74,7 +74,7 @@
             this.linkLabel.ForeColor = System.Drawing.Color.Red;
             this.linkLabel.Location = new System.Drawing.Point(96, 96);
             this.linkLabel.Name = "linkLabel";
-            this.linkLabel.Size = new System.Drawing.Size(69, 13);
+            this.linkLabel.Size = new System.Drawing.Size(76, 13);
             this.linkLabel.TabIndex = 18;
             this.linkLabel.Text = "Map is linked";
             this.linkLabel.Visible = false;
@@ -94,6 +94,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.mapNamesBox);
             this.Controls.Add(this.panel1);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "MapBrowser";
             this.Size = new System.Drawing.Size(794, 468);
             this.panel1.ResumeLayout(false);

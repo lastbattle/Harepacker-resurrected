@@ -62,5 +62,16 @@ namespace HaCreator.ThirdParty
 
             return imageViewer;
         }
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // ThumbnailFlowLayoutPanel
+            // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.ResumeLayout(false);
+
+        }
     }
 }

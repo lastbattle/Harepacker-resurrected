@@ -39,30 +39,28 @@ namespace HaCreator.GUI.InstanceEditor
             // loadButton
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.loadButton.Location = new System.Drawing.Point(11, 752);
-            this.loadButton.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.loadButton.Location = new System.Drawing.Point(7, 489);
             this.loadButton.Name = "loadButton";
-            this.loadButton.Size = new System.Drawing.Size(812, 46);
+            this.loadButton.Size = new System.Drawing.Size(797, 30);
             this.loadButton.TabIndex = 9;
             this.loadButton.Text = "Select";
             this.loadButton.Click += new System.EventHandler(this.loadButton_Click);
             // 
             // mapBrowser
             // 
-            this.mapBrowser.Location = new System.Drawing.Point(13, 47);
-            this.mapBrowser.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
+            this.mapBrowser.Location = new System.Drawing.Point(9, 31);
+            this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(810, 692);
+            this.mapBrowser.Size = new System.Drawing.Size(795, 450);
             this.mapBrowser.TabIndex = 8;
             this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
             // 
             // searchBox
             // 
             this.searchBox.ForeColor = System.Drawing.Color.Gray;
-            this.searchBox.Location = new System.Drawing.Point(13, 10);
-            this.searchBox.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.searchBox.Location = new System.Drawing.Point(9, 6);
             this.searchBox.Name = "searchBox";
-            this.searchBox.Size = new System.Drawing.Size(810, 26);
+            this.searchBox.Size = new System.Drawing.Size(784, 22);
             this.searchBox.TabIndex = 7;
             this.searchBox.Text = "Type here to search";
             this.searchBox.WatermarkActive = true;
@@ -70,17 +68,17 @@ namespace HaCreator.GUI.InstanceEditor
             // 
             // LoadMapSelector
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 20F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(838, 804);
+            this.ClientSize = new System.Drawing.Size(813, 523);
             this.Controls.Add(this.mapBrowser);
             this.Controls.Add(this.searchBox);
             this.Controls.Add(this.loadButton);
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
-            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.MaximizeBox = false;
             this.Name = "LoadMapSelector";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;

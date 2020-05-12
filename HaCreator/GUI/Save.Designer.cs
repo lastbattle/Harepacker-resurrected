@@ -39,7 +39,7 @@
             // 
             this.idBox.Location = new System.Drawing.Point(63, 12);
             this.idBox.Name = "idBox";
-            this.idBox.Size = new System.Drawing.Size(133, 20);
+            this.idBox.Size = new System.Drawing.Size(133, 22);
             this.idBox.TabIndex = 0;
             this.idBox.TextChanged += new System.EventHandler(this.idBox_TextChanged);
             // 
@@ -58,7 +58,7 @@
             this.label1.AutoSize = true;
             this.label1.Location = new System.Drawing.Point(12, 15);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(45, 13);
+            this.label1.Size = new System.Drawing.Size(47, 13);
             this.label1.TabIndex = 2;
             this.label1.Text = "Map ID:";
             // 
@@ -82,6 +82,7 @@
             this.Controls.Add(this.saveButton);
             this.Controls.Add(this.idBox);
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;

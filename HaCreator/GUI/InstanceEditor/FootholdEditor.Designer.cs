@@ -54,7 +54,7 @@
             0,
             -2147483648});
             this.forceInt.Name = "forceInt";
-            this.forceInt.Size = new System.Drawing.Size(123, 20);
+            this.forceInt.Size = new System.Drawing.Size(123, 22);
             this.forceInt.TabIndex = 1;
             // 
             // forceEnable
@@ -62,7 +62,7 @@
             this.forceEnable.AutoSize = true;
             this.forceEnable.Location = new System.Drawing.Point(12, 14);
             this.forceEnable.Name = "forceEnable";
-            this.forceEnable.Size = new System.Drawing.Size(53, 17);
+            this.forceEnable.Size = new System.Drawing.Size(54, 17);
             this.forceEnable.TabIndex = 0;
             this.forceEnable.Text = "Force";
             this.forceEnable.CheckedChanged += new System.EventHandler(this.forceEnable_CheckedChanged);
@@ -72,7 +72,7 @@
             this.pieceEnable.AutoSize = true;
             this.pieceEnable.Location = new System.Drawing.Point(12, 40);
             this.pieceEnable.Name = "pieceEnable";
-            this.pieceEnable.Size = new System.Drawing.Size(53, 17);
+            this.pieceEnable.Size = new System.Drawing.Size(52, 17);
             this.pieceEnable.TabIndex = 2;
             this.pieceEnable.Text = "Piece";
             // 
@@ -90,7 +90,7 @@
             0,
             -2147483648});
             this.pieceInt.Name = "pieceInt";
-            this.pieceInt.Size = new System.Drawing.Size(123, 20);
+            this.pieceInt.Size = new System.Drawing.Size(123, 22);
             this.pieceInt.TabIndex = 3;
             // 
             // cantThroughBox
@@ -98,7 +98,7 @@
             this.cantThroughBox.AutoSize = true;
             this.cantThroughBox.Location = new System.Drawing.Point(12, 64);
             this.cantThroughBox.Name = "cantThroughBox";
-            this.cantThroughBox.Size = new System.Drawing.Size(91, 17);
+            this.cantThroughBox.Size = new System.Drawing.Size(98, 17);
             this.cantThroughBox.TabIndex = 4;
             this.cantThroughBox.Text = "Cant Through";
             // 
@@ -107,16 +107,16 @@
             this.forbidFallDownBox.AutoSize = true;
             this.forbidFallDownBox.Location = new System.Drawing.Point(108, 64);
             this.forbidFallDownBox.Name = "forbidFallDownBox";
-            this.forbidFallDownBox.Size = new System.Drawing.Size(105, 17);
+            this.forbidFallDownBox.Size = new System.Drawing.Size(115, 17);
             this.forbidFallDownBox.TabIndex = 5;
             this.forbidFallDownBox.Text = "Forbid Fall Down";
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(33, 85);
+            this.okButton.Location = new System.Drawing.Point(5, 97);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(71, 26);
+            this.okButton.Size = new System.Drawing.Size(99, 26);
             this.okButton.TabIndex = 6;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -124,9 +124,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(110, 85);
+            this.cancelButton.Location = new System.Drawing.Point(113, 97);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(71, 26);
+            this.cancelButton.Size = new System.Drawing.Size(99, 26);
             this.cancelButton.TabIndex = 7;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -145,6 +145,7 @@
             this.Controls.Add(this.forceEnable);
             this.Controls.Add(this.forceInt);
             this.DoubleBuffered = true;
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;

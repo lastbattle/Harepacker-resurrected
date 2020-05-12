@@ -169,5 +169,16 @@ namespace HaCreator.ThirdParty
         {
             dt.Rows[index][base.ValueMember] = value;
         }
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // BetterCheckedListBox
+            // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.ResumeLayout(false);
+
+        }
     }
 }
