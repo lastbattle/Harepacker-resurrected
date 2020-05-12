@@ -122,7 +122,7 @@ namespace HaCreator.GUI
                     {
                         ObjectInfo oi = (ObjectInfo)li.BaseInfo;
                         if (oi.oS == UserObjectsManager.oS &&
-                            oi.l0 == UserObjectsManager.l0 &&
+                            oi.l0 == Program.APP_NAME &&
                             oi.l1 == UserObjectsManager.l1 &&
                             oi.l2 == l2)
                         {
@@ -156,7 +156,7 @@ namespace HaCreator.GUI
                         foreach (WzImageProperty obj in prop.WzProperties)
                         {
                             if (InfoTool.GetOptionalString(obj["oS"]) == UserObjectsManager.oS &&
-                                InfoTool.GetOptionalString(obj["l0"]) == UserObjectsManager.l0 &&
+                                InfoTool.GetOptionalString(obj["l0"]) == Program.APP_NAME &&
                                 InfoTool.GetOptionalString(obj["l1"]) == UserObjectsManager.l1 &&
                                 InfoTool.GetOptionalString(obj["l2"]) == l2)
                             {

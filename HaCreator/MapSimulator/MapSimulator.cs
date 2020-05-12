@@ -215,14 +215,64 @@ namespace HaCreator.MapSimulator
             if (!Focused)
                 return;
             int offset = (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.LShiftKey) || InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.RShiftKey)) ? 100 : 10;
-            if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Left))
-                mapShiftX = Math.Max(vr.Left, mapShiftX - offset);
-            if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Up))
-                mapShiftY = Math.Max(vr.Top, mapShiftY - offset);
-            if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Right))
-                mapShiftX = Math.Min(vr.Right - RenderWidth, mapShiftX + offset);
-            if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Down))
-                mapShiftY = Math.Min(vr.Bottom - RenderHeight, mapShiftY + offset);
+
+            bool bIsLeft = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Left);
+            bool bIsRight = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Right);
+
+            if (bIsLeft || bIsRight)
+            {
+                int leftRightVRDifference = vr.Right - vr.Left;
+                if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
+                {
+                    /*
+                     * Orbis Tower <20th Floor>
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  |____________|
+                     *  
+                     * vr.Left = 87
+                     * vr.Right = 827
+                     * Difference = 740px
+                     * vr.Center = ((vr.Right - vr.Left) / 2) + vr.Left
+                     * 
+                     * Viewing Width = 1024 
+                     * Relative viewing center = vr.Center - (Viewing Width / 2)
+                     */
+                    mapShiftX = ((leftRightVRDifference/2) + vr.Left) - (RenderWidth / 2);
+                }
+                else
+                {
+                    if (bIsLeft)
+                        mapShiftX = Math.Max(vr.Left, mapShiftX - offset);
+                    else if (bIsRight)
+                        mapShiftX = Math.Min(vr.Right - RenderWidth, mapShiftX + offset);
+                }
+            }
+
+            bool bIsUp = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Up);
+            bool bIsDown = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Down);
+
+            if (bIsUp || bIsDown)
+            {
+                int topDownVRDifference = vr.Top - vr.Bottom;
+                if (topDownVRDifference < RenderHeight)
+                {
+                    mapShiftY = ((topDownVRDifference / 2) + vr.Bottom) - (RenderHeight / 2);
+                }
+                else
+                {
+                    if (bIsUp)
+                        mapShiftY = Math.Max(vr.Top, mapShiftY - offset);
+                    else if (bIsDown)
+                        mapShiftY = Math.Min(vr.Bottom - RenderHeight, mapShiftY + offset);
+                }
+            }
+
             if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Escape))
             {
                 DxDevice.Dispose();

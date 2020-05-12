@@ -135,7 +135,7 @@ namespace HaCreator.GUI
             });
 
             // Test for write access
-            string rootDir = Path.Combine(Program.WzManager.BaseDir, "HaCreator");
+            string rootDir = Path.Combine(Program.WzManager.BaseDir, Program.APP_NAME);
             string testDir = Path.Combine(rootDir, "Test");
 
             bool bSaveFileInHaCreatorDirectory = false;
@@ -155,7 +155,7 @@ namespace HaCreator.GUI
                 }
             }
             if (bSaveFileInHaCreatorDirectory)
-                rootDir = Path.Combine(Directory.GetCurrentDirectory(), "HaCreator"); 
+                rootDir = Path.Combine(Directory.GetCurrentDirectory(), Program.APP_NAME); 
 
             // Prepare directories
             string backupDir = Path.Combine(rootDir, "Backup");

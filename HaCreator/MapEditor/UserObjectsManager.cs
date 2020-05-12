@@ -24,7 +24,6 @@ namespace HaCreator.MapEditor
     public class UserObjectsManager
     {
         public const string oS = "haha01haha01";
-        public const string l0 = "HaCreator";
         public const string l1 = "userObjs";
 
         private MultiBoard multiBoard;
@@ -52,11 +51,11 @@ namespace HaCreator.MapEditor
                 Program.InfoManager.ObjectSets[oS].Changed = true;
             }
             WzImage osimg = Program.InfoManager.ObjectSets[oS];
-            if (osimg[l0] == null)
+            if (osimg[Program.APP_NAME] == null)
             {
-                osimg[l0] = new WzSubProperty();
+                osimg[Program.APP_NAME] = new WzSubProperty();
             }
-            WzImageProperty l0prop = osimg[l0];
+            WzImageProperty l0prop = osimg[Program.APP_NAME];
             if (l0prop[l1] == null)
             {
                 l0prop[l1] = new WzSubProperty();
@@ -86,7 +85,7 @@ namespace HaCreator.MapEditor
             canvasProp["z"] = new WzIntProperty("", 0);
             prop["0"] = canvasProp;
 
-            ObjectInfo oi = new ObjectInfo(bmp, origin, oS, l0, l1, name, prop);
+            ObjectInfo oi = new ObjectInfo(bmp, origin, oS, Program.APP_NAME, l1, name, prop);
             newObjects.Add(oi);
             newObjectsData.Add(name, SaveImageToBytes(bmp));
             SerializeObjects();
@@ -113,7 +112,7 @@ namespace HaCreator.MapEditor
                     if (li is ObjectInstance)
                     {
                         ObjectInfo oi = (ObjectInfo)li.BaseInfo;
-                        if (oi.oS == oS && oi.l0 == l0 && oi.l1 == l1 && oi.l2 == l2)
+                        if (oi.oS == oS && oi.l0 == Program.APP_NAME && oi.l1 == l1 && oi.l2 == l2)
                         {
                             li.RemoveItem(null);
                             i--;
@@ -152,7 +151,7 @@ namespace HaCreator.MapEditor
         {
             if (newObjects.Count == 0)
                 return;
-            WzDirectory objsDir = (WzDirectory)Program.WzManager["map"]["Obj"]; // "obj' is guaranteed to be on "Map.wz" for now
+            WzDirectory objsDir = (WzDirectory)Program.WzManager["map"]["Obj"]; // "obj' is in Map.wz or Map2.wz (TODO)
             if (objsDir[oS + ".img"] == null)
                 objsDir[oS + ".img"] = Program.InfoManager.ObjectSets[oS];
             SetOsUpdated();
@@ -182,7 +181,7 @@ namespace HaCreator.MapEditor
         private void SetOsUpdated()
         {
             Program.WzManager.SetWzFileUpdated( 
-                "map", // "obj' is guaranteed to be on "Map.wz" for now
+                "map", // "obj' is in Map.wz or Map2.wz (TODO)
                 Program.InfoManager.ObjectSets[oS]);
         }
 
