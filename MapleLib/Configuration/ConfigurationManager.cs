@@ -14,12 +14,13 @@
  * You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
+using MapleLib.PacketLib;
 using Newtonsoft.Json;
 using System;
 using System.IO;
 using System.Text;
 
-namespace HaRepacker.Configuration
+namespace MapleLib.Configuration
 {
     public class ConfigurationManager
     {
@@ -44,6 +45,9 @@ namespace HaRepacker.Configuration
             private set { }
         }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public ConfigurationManager()
         {
             this.folderPath = GetLocalFolderPath();
@@ -63,7 +67,7 @@ namespace HaRepacker.Configuration
         }
 
         /// <summary>
-        /// Load application setting from user data 
+        /// Load application setting from user application data 
         /// </summary>
         /// <returns></returns>
         public bool Load()
@@ -98,6 +102,10 @@ namespace HaRepacker.Configuration
             return false;
         }
 
+        /// <summary>
+        /// Saves setting to user application data
+        /// </summary>
+        /// <returns></returns>
         public bool Save()
         {
             string userSettingsSerialised = JsonConvert.SerializeObject(_userSettings, Formatting.Indented); // format for user
@@ -124,6 +132,27 @@ namespace HaRepacker.Configuration
 
             }
             return false;
+        }
+
+
+        /// <summary>
+        /// Gets the custom WZ IV from settings
+        /// </summary>
+        /// <returns></returns>
+        public byte[] GetCusomWzIVEncryption()
+        {
+            bool loaded = Load();
+            if (loaded)
+            {
+                string storedCustomEnc = ApplicationSettings.MapleVersion_EncryptionBytes;
+                byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
+
+                if (bytes.Length == 4)
+                {
+                    return bytes;
+                }
+            }
+            return new byte[4]; // fallback with BMS
         }
     }
 }

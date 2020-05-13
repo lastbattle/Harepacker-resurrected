@@ -21,24 +21,28 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class PortalPanel : DockContent
+    public partial class PortalPanel : UserControl
     {
-        HaCreatorStateManager hcsm;
+        private HaCreatorStateManager hcsm;
 
-        public PortalPanel(HaCreatorStateManager hcsm)
+        public PortalPanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
-            InitializeComponent();
 
             foreach (string pt in Program.InfoManager.PortalTypeById)
             {
                 PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
                 try
                 {
-                ImageViewer item = portalImageContainer.Add(pInfo.Image, Tables.PortalTypeNames[pt], true);
-                item.Tag = pInfo;
-                item.MouseDown += new MouseEventHandler(portal_MouseDown);
-                item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
+                    ImageViewer item = portalImageContainer.Add(pInfo.Image, Tables.PortalTypeNames[pt], true);
+                    item.Tag = pInfo;
+                    item.MouseDown += new MouseEventHandler(portal_MouseDown);
+                    item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
                 }
                 catch (KeyNotFoundException e) { }
             }

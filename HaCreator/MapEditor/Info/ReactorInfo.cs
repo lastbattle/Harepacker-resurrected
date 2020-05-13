@@ -34,8 +34,8 @@ namespace HaCreator.MapEditor.Info
             WzCanvasProperty reactorImage = WzInfoTools.GetReactorImage(image);
             if (reactorImage != null)
             {
-                Image = reactorImage.PngProperty.GetPNG(false);
-                Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)reactorImage["origin"]);
+                Image = reactorImage.GetLinkedWzCanvasBitmap();
+                Origin = WzInfoTools.PointFToSystemPoint(reactorImage.GetCanvasOriginPosition());
             }
             else
             {

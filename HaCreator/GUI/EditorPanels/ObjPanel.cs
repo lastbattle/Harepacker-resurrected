@@ -24,15 +24,19 @@ using WeifenLuo.WinFormsUI.Docking;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class ObjPanel : DockContent
+    public partial class ObjPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
 
-        public ObjPanel(HaCreatorStateManager hcsm)
+        public ObjPanel()
+        {
+            InitializeComponent();
+        }
+
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
             hcsm.SetObjPanel(this);
-            InitializeComponent();
 
             List<string> sortedObjSets = new List<string>();
             foreach (KeyValuePair<string, WzImage> oS in Program.InfoManager.ObjectSets)
@@ -44,24 +48,45 @@ namespace HaCreator.GUI.EditorPanels
 
         private void objSetListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (objSetListBox.SelectedItem == null) return;
+            if (objSetListBox.SelectedItem == null) 
+                return;
+
             objL0ListBox.Items.Clear();
             objL1ListBox.Items.Clear();
             objImagesContainer.Controls.Clear();
             WzImage oSImage = Program.InfoManager.ObjectSets[(string)objSetListBox.SelectedItem];
-            if (!oSImage.Parsed) oSImage.ParseImage();
+            if (!oSImage.Parsed)
+            {
+                oSImage.ParseImage();
+            }
             foreach (WzImageProperty l0Prop in oSImage.WzProperties)
+            {
                 objL0ListBox.Items.Add(l0Prop.Name);
+            }
+            // select the first item automatically
+            if (objL0ListBox.Items.Count > 0)
+            {
+                objL0ListBox.SelectedIndex = 0;
+            }
         }
 
         private void objL0ListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (objL0ListBox.SelectedItem == null) return;
+            if (objL0ListBox.SelectedItem == null)
+                return;
+
             objL1ListBox.Items.Clear();
             objImagesContainer.Controls.Clear();
             WzImageProperty l0Prop = Program.InfoManager.ObjectSets[(string)objSetListBox.SelectedItem][(string)objL0ListBox.SelectedItem];
             foreach (WzImageProperty l1Prop in l0Prop.WzProperties)
+            {
                 objL1ListBox.Items.Add(l1Prop.Name);
+            }            
+            // select the first item automatically
+            if (objL1ListBox.Items.Count > 0)
+            {
+                objL1ListBox.SelectedIndex = 0;
+            }
         }
 
         private void objL1ListBox_SelectedIndexChanged(object sender, EventArgs e)

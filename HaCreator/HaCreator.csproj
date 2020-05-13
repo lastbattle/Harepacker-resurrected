@@ -119,10 +119,10 @@
   <PropertyGroup>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
   <ItemGroup>
-    <Reference Include="HaRepackerLib">
-      <HintPath>ThirdParty\HaRepackerLib.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.Build.Framework" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.VisualBasic" />
@@ -152,8 +152,14 @@
     <Compile Include="CustomControls\HaList.xaml.cs">
       <DependentUpon>HaList.xaml</DependentUpon>
     </Compile>
+    <Compile Include="CustomControls\WatermarkTextBox.cs">
+      <SubType>Component</SubType>
+    </Compile>
     <Compile Include="Exceptions\DeserializationException.cs" />
     <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
+    <Compile Include="GUI\HaEditor.xaml.cs">
+      <DependentUpon>HaEditor.xaml</DependentUpon>
+    </Compile>
     <Compile Include="GUI\HaRibbon.xaml.cs">
       <DependentUpon>HaRibbon.xaml</DependentUpon>
     </Compile>
@@ -176,37 +182,37 @@
       <DependentUpon>CancelableWaitWindow.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\BackgroundPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\BackgroundPanel.Designer.cs">
       <DependentUpon>BackgroundPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\CommonPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\CommonPanel.Designer.cs">
       <DependentUpon>CommonPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\LifePanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\LifePanel.Designer.cs">
       <DependentUpon>LifePanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\ObjPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\ObjPanel.Designer.cs">
       <DependentUpon>ObjPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\PortalPanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\PortalPanel.Designer.cs">
       <DependentUpon>PortalPanel.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\EditorPanels\TilePanel.cs">
-      <SubType>Form</SubType>
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="GUI\EditorPanels\TilePanel.Designer.cs">
       <DependentUpon>TilePanel.cs</DependentUpon>
@@ -240,6 +246,12 @@
     </Compile>
     <Compile Include="GUI\LayerChange.Designer.cs">
       <DependentUpon>LayerChange.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadMapSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadMapSelector.designer.cs">
+      <DependentUpon>LoadMapSelector.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\ManageUserObjects.cs">
       <SubType>Form</SubType>
@@ -341,6 +353,9 @@
     <Compile Include="MapEditor\Instance\Shapes\ToolTipChar.cs" />
     <Compile Include="MapEditor\Instance\Shapes\Rope.cs" />
     <Compile Include="MapEditor\Instance\TileInstance.cs" />
+    <Compile Include="MapEditor\MultiBoard.xaml.cs">
+      <DependentUpon>MultiBoard.xaml</DependentUpon>
+    </Compile>
     <Compile Include="MapEditor\Scheduler.cs" />
     <Compile Include="MapEditor\SelectionInfo.cs" />
     <Compile Include="MapEditor\SerializationManager.cs" />
@@ -362,6 +377,10 @@
     <Compile Include="MapEditor\UndoRedo\UndoRedoAction.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
     <Compile Include="MapEditor\UserObjectsManager.cs" />
+    <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
+    <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="MapSimulator\MapRenderResolution.cs" />
+    <Compile Include="GUI\TabItemContainer.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>
@@ -374,25 +393,6 @@
     <Compile Include="ThirdParty\ImageViewer.Designer.cs">
       <DependentUpon>ImageViewer.cs</DependentUpon>
     </Compile>
-    <Compile Include="ThirdParty\TabPages\BaseTab.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\DropdownButton.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\FlickerFreeControl.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\PageCollection.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\TabPage.cs" />
-    <Compile Include="ThirdParty\TabPages\TabPageControl.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="ThirdParty\TabPages\TabView.cs">
-      <SubType>Component</SubType>
-    </Compile>
     <Compile Include="GUI\About.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -402,26 +402,14 @@
     <Compile Include="CustomControls\AlphaColorPicker.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="ThirdParty\Better.cs">
+    <Compile Include="ThirdParty\BetterCheckedListBox.cs">
       <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="GUI\HaEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\HaEditor.Designer.cs">
-      <DependentUpon>HaEditor.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.Designer.cs">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MapBrowser.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MapBrowser.Designer.cs">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\InstanceEditor\PnSelector.cs">
       <SubType>Form</SubType>
@@ -518,7 +506,7 @@
     <Compile Include="MapEditor\Instance\ISnappable.cs" />
     <Compile Include="MapEditor\Layer.cs" />
     <Compile Include="MapEditor\Input\Mouse.cs" />
-    <Compile Include="MapSimulator\DXObject.cs" />
+    <Compile Include="MapSimulator\DX\DXObject.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -576,9 +564,6 @@
       <DependentUpon>ExceptionHandler.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="GUI\HaEditor.resx">
-      <DependentUpon>HaEditor.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="GUI\InfoEditor.resx">
       <DependentUpon>InfoEditor.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -601,9 +586,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\EditorBase.resx">
       <DependentUpon>EditorBase.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\MapBrowser.resx">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\PnSelector.resx">
       <DependentUpon>PnSelector.cs</DependentUpon>
@@ -635,6 +617,10 @@
     <EmbeddedResource Include="GUI\LayerChange.resx">
       <DependentUpon>LayerChange.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadMapSelector.resx">
+      <DependentUpon>LoadMapSelector.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
     <EmbeddedResource Include="GUI\Load.resx">
       <DependentUpon>Load.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -660,10 +646,6 @@
     <EmbeddedResource Include="GUI\WaitWindow.resx">
       <DependentUpon>WaitWindow.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="MapEditor\MultiBoard.resx">
-      <DependentUpon>MultiBoard.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
     <EmbeddedResource Include="MapSimulator\MapSimulator.resx">
       <DependentUpon>MapSimulator.cs</DependentUpon>
       <SubType>Designer</SubType>
@@ -676,12 +658,6 @@
     <EmbeddedResource Include="GUI\TileSetBrowser.resx">
       <DependentUpon>TileSetBrowser.cs</DependentUpon>
     </EmbeddedResource>
-    <Compile Include="MapEditor\MultiBoard.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="MapEditor\MultiBoard.Designer.cs">
-      <DependentUpon>MultiBoard.cs</DependentUpon>
-    </Compile>
     <Compile Include="MapEditor\TilesDesign\Snapping.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoManager.cs" />
     <Compile Include="Wz\WzFileManager.cs" />
@@ -703,14 +679,24 @@
       <DependentUpon>TileSetBrowser.cs</DependentUpon>
     </Compile>
     <Compile Include="WzSettings.cs" />
+    <EmbeddedResource Include="ThirdParty\BetterCheckedListBox.resx">
+      <DependentUpon>BetterCheckedListBox.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="ThirdParty\ImageViewer.resx">
       <DependentUpon>ImageViewer.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="ThirdParty\ThumbnailFlowLayoutPanel.resx">
+      <DependentUpon>ThumbnailFlowLayoutPanel.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\HaSharedLirary\HaSharedLibrary.csproj">
+      <Project>{5411388B-F3CB-4D52-9F55-ABD15CFE966C}</Project>
+      <Name>HaSharedLibrary</Name>
     </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
@@ -719,6 +705,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
+    <None Include="app.manifest" />
     <None Include="GUI\HaCreator.res" />
     <None Include="Resources\mapEditMenu.png" />
     <Resource Include="Images\About.png" />
@@ -763,7 +750,15 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="GUI\HaEditor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="GUI\HaRibbon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="MapEditor\MultiBoard.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -796,8 +791,8 @@
     <Resource Include="Images\new_icon.png" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="DockPanelSuite.ThemeVS2012Light">
-      <Version>2.10.0</Version>
+    <PackageReference Include="DockPanelSuite">
+      <Version>3.0.6</Version>
     </PackageReference>
     <PackageReference Include="MonoGame.Framework.WindowsDX">
       <Version>3.7.1.189</Version>

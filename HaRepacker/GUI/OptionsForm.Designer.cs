@@ -43,7 +43,6 @@ namespace HaRepacker.GUI
             this.defXmlFolderBox = new System.Windows.Forms.TextBox();
             this.browse = new System.Windows.Forms.Button();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
-            this.autoUpdate = new System.Windows.Forms.CheckBox();
             this.themeColor__comboBox = new System.Windows.Forms.ComboBox();
             this.label3 = new System.Windows.Forms.Label();
             this.SuspendLayout();
@@ -125,12 +124,6 @@ namespace HaRepacker.GUI
             this.autoAssociateBox.Name = "autoAssociateBox";
             this.autoAssociateBox.UseVisualStyleBackColor = true;
             // 
-            // autoUpdate
-            // 
-            resources.ApplyResources(this.autoUpdate, "autoUpdate");
-            this.autoUpdate.Name = "autoUpdate";
-            this.autoUpdate.UseVisualStyleBackColor = true;
-            // 
             // themeColor__comboBox
             // 
             this.themeColor__comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
@@ -152,7 +145,6 @@ namespace HaRepacker.GUI
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.themeColor__comboBox);
             this.Controls.Add(this.label3);
-            this.Controls.Add(this.autoUpdate);
             this.Controls.Add(this.loadRelated);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.browse);
@@ -187,7 +179,6 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.TextBox defXmlFolderBox;
         private System.Windows.Forms.Button browse;
         private System.Windows.Forms.CheckBox autoAssociateBox;
-        private System.Windows.Forms.CheckBox autoUpdate;
         private System.Windows.Forms.ComboBox themeColor__comboBox;
         private System.Windows.Forms.Label label3;
     }

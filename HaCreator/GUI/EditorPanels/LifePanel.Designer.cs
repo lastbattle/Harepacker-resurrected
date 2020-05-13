@@ -63,8 +63,8 @@
             // 
             this.splitContainer8.Panel2.AutoScroll = true;
             this.splitContainer8.Panel2.Controls.Add(this.lifePictureBox);
-            this.splitContainer8.Size = new System.Drawing.Size(269, 537);
-            this.splitContainer8.SplitterDistance = 182;
+            this.splitContainer8.Size = new System.Drawing.Size(269, 658);
+            this.splitContainer8.SplitterDistance = 223;
             this.splitContainer8.TabIndex = 2;
             // 
             // splitContainer9
@@ -85,8 +85,8 @@
             // splitContainer9.Panel2
             // 
             this.splitContainer9.Panel2.Controls.Add(this.lifeListBox);
-            this.splitContainer9.Size = new System.Drawing.Size(269, 182);
-            this.splitContainer9.SplitterDistance = 65;
+            this.splitContainer9.Size = new System.Drawing.Size(269, 223);
+            this.splitContainer9.SplitterDistance = 79;
             this.splitContainer9.TabIndex = 3;
             // 
             // label1
@@ -102,7 +102,7 @@
             // 
             this.lifeSearchBox.Location = new System.Drawing.Point(44, 28);
             this.lifeSearchBox.Name = "lifeSearchBox";
-            this.lifeSearchBox.Size = new System.Drawing.Size(146, 20);
+            this.lifeSearchBox.Size = new System.Drawing.Size(146, 22);
             this.lifeSearchBox.TabIndex = 3;
             this.lifeSearchBox.TextChanged += new System.EventHandler(this.lifeModeChanged);
             // 
@@ -141,7 +141,7 @@
             this.lifeListBox.FormattingEnabled = true;
             this.lifeListBox.Location = new System.Drawing.Point(0, 0);
             this.lifeListBox.Name = "lifeListBox";
-            this.lifeListBox.Size = new System.Drawing.Size(269, 113);
+            this.lifeListBox.Size = new System.Drawing.Size(269, 140);
             this.lifeListBox.TabIndex = 0;
             this.lifeListBox.SelectedIndexChanged += new System.EventHandler(this.lifeListBox_SelectedValueChanged);
             // 
@@ -150,7 +150,7 @@
             this.lifePictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.lifePictureBox.Location = new System.Drawing.Point(0, 0);
             this.lifePictureBox.Name = "lifePictureBox";
-            this.lifePictureBox.Size = new System.Drawing.Size(269, 351);
+            this.lifePictureBox.Size = new System.Drawing.Size(269, 431);
             this.lifePictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
             this.lifePictureBox.TabIndex = 0;
             this.lifePictureBox.TabStop = false;
@@ -159,14 +159,10 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(269, 537);
-            this.CloseButton = false;
-            this.CloseButtonVisible = false;
             this.Controls.Add(this.splitContainer8);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "LifePanel";
-            this.ShowIcon = false;
-            this.Text = "Life";
+            this.Size = new System.Drawing.Size(269, 658);
             this.splitContainer8.Panel1.ResumeLayout(false);
             this.splitContainer8.Panel2.ResumeLayout(false);
             this.splitContainer8.Panel2.PerformLayout();

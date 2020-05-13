@@ -37,21 +37,17 @@
             this.miscItemsContainer.Dock = System.Windows.Forms.DockStyle.Fill;
             this.miscItemsContainer.Location = new System.Drawing.Point(0, 0);
             this.miscItemsContainer.Name = "miscItemsContainer";
-            this.miscItemsContainer.Size = new System.Drawing.Size(284, 435);
+            this.miscItemsContainer.Size = new System.Drawing.Size(284, 658);
             this.miscItemsContainer.TabIndex = 2;
             // 
             // CommonPanel
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(284, 435);
-            this.CloseButton = false;
-            this.CloseButtonVisible = false;
             this.Controls.Add(this.miscItemsContainer);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "CommonPanel";
-            this.ShowIcon = false;
-            this.Text = "Common";
+            this.Size = new System.Drawing.Size(284, 658);
             this.ResumeLayout(false);
 
         }

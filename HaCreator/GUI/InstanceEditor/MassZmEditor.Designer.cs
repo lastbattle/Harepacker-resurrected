@@ -50,7 +50,7 @@
             this.label3.AutoSize = true;
             this.label3.Location = new System.Drawing.Point(52, 49);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(21, 13);
+            this.label3.Size = new System.Drawing.Size(22, 13);
             this.label3.TabIndex = 6;
             this.label3.Text = "zM";
             // 
@@ -63,7 +63,7 @@
             0,
             0});
             this.zmInput.Name = "zmInput";
-            this.zmInput.Size = new System.Drawing.Size(50, 20);
+            this.zmInput.Size = new System.Drawing.Size(50, 22);
             this.zmInput.TabIndex = 2;
             // 
             // okButton
@@ -96,6 +96,7 @@
             this.Controls.Add(this.label3);
             this.Controls.Add(this.zmInput);
             this.Controls.Add(this.pathLabel);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;

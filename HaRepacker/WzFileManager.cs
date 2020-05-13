@@ -11,14 +11,30 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System.Windows.Threading;
 using System.Threading.Tasks;
-using HaRepacker.GUI.Panels;
-using HaRepacker.Comparer;
 using System.Diagnostics;
+using HaRepacker.Comparer;
+using HaRepacker.GUI.Panels;
 
 namespace HaRepacker
 {
     public class WzFileManager
     {
+        #region Constants
+        public static readonly string[] MOB_WZ_FILES = { "Mob", "Mob001", "Mob2" };
+        public static readonly string[] MAP_WZ_FILES = { "Map", "Map001",
+            "Map002", //kms now stores main map key here
+            "Map2" };
+        public static readonly string[] SOUND_WZ_FILES = { "Sound", "Sound001" };
+
+        public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
+            @"C:\Nexon\MapleStory",
+            @"C:\Program Files\WIZET\MapleStory",
+            @"C:\MapleStory",
+            @"C:\Program Files (x86)\Wizet\MapleStorySEA"
+        };
+        #endregion
+
+
         private static TreeViewNodeSorter SORTER = new TreeViewNodeSorter();
 
         private List<WzFile> wzFiles = new List<WzFile>();

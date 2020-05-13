@@ -40,15 +40,22 @@ namespace MapleLib.Helpers
             errorList.Clear();
         }
 
+        /// <summary>
+        /// Logs all pending errors to file
+        /// </summary>
+        /// <param name="filename"></param>
         public static void SaveToFile(string filename)
         {
             using (StreamWriter sw = new StreamWriter(File.Open(filename, FileMode.Append, FileAccess.Write, FileShare.Read)))
             {
-                sw.WriteLine("Starting error log on " + DateTime.Today.ToShortDateString());
+                sw.WriteLine("Starting error log on " + DateTime.Today.ToString());
                 foreach (Error e in errorList) 
                 {
-                    sw.WriteLine(e.level.ToString() + ":" + e.message);
+                    sw.WriteLine(e.level.ToString() + ": " + e.message);
+                    sw.WriteLine(": ");
+                    sw.WriteLine(e.message);
                 }
+                sw.WriteLine();
                 sw.WriteLine();
             }
         }

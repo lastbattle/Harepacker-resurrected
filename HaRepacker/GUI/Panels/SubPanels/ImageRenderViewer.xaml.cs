@@ -14,7 +14,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
-using static HaRepacker.Configuration.UserSettings;
+using static MapleLib.Configuration.UserSettings;
 
 namespace HaRepacker.GUI.Panels.SubPanels
 {

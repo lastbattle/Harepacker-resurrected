@@ -30,10 +30,14 @@ namespace HaCreator
         public static bool AbortThreads = false;
         public static bool Restarting;
 
+        public const string APP_NAME = "HaCreator";
+
+        public static HaEditor HaEditorWindow = null;
+
         public static string GetLocalSettingsFolder()
         {
             string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string our_folder = Path.Combine(appdata, "HaCreator");
+            string our_folder = Path.Combine(appdata, APP_NAME);
             if (!Directory.Exists(our_folder))
                 Directory.CreateDirectory(our_folder);
             return our_folder;

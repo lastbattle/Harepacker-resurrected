@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HaRepacker"
+             xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
               xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
              xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
@@ -347,21 +348,21 @@
                 </Grid.RowDefinitions>
 
                 <!-- Text box -->
-                <localSubPanels:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
+                <sharedLib:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
                                                   AcceptsReturn="False"
                                                       ButtonClicked="nameBox_ButtonClicked"/>
-                <localSubPanels:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" 
+                <sharedLib:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" 
                                                   VerticalAlignment="Top"
                                                   TextWrap="Wrap" />
 
 
                 <Grid x:Name="grid1" Grid.Row="1" Grid.RowSpan="2">
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed">
-                        <localSubPanels:FieldLimitPanel x:Name="fieldLimitPanel1" />
+                        <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
                     <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"/>
 
-                    <localSubPanels:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
+                    <sharedLib:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 
 
                     <!-- Image render -->

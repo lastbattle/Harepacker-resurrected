@@ -34,7 +34,7 @@ namespace HaCreator.GUI
 
         private bool IsPathCommon(string path)
         {
-            foreach (string commonPath in commonMaplePaths)
+            foreach (string commonPath in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
             {
                 if (commonPath == path)
                     return true;
@@ -48,9 +48,9 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
 
-            if (wzPath == "Select Maple Folder")
+            if (wzPath == "Select MapleStory Folder")
             {
-                MessageBox.Show("Please select the maple folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
             if (!ApplicationSettings.MapleFolder.Contains(wzPath) && !IsPathCommon(wzPath))
@@ -82,24 +82,39 @@ namespace HaCreator.GUI
             Hide();
             Application.DoEvents();
             editor = new HaEditor();
+
             editor.ShowDialog();
             Application.Exit();
         }
 
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
+            if (Program.WzManager != null)
+            {
+                Program.WzManager.Clear();
+                Program.WzManager = null; // old loaded items
+            }
+            if (Program.InfoManager != null)
+            {
+                Program.InfoManager.Clear();
+            }
+
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
-            if (Program.WzManager.HasDataFile)//currently always false
+
+            if (Program.WzManager.HasDataFile) //currently always false
             {
                 textBox2.Text = "Initializing Data.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadDataWzFile("data");
-                Program.WzManager.ExtractMaps();
+                Program.WzManager.ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
+                foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
+                {
+                }
                 Program.WzManager.ExtractMobFile();
                 Program.WzManager.ExtractNpcFile();
                 Program.WzManager.ExtractReactorFile();
-                Program.WzManager.ExtractSoundFile();
+                Program.WzManager.ExtractSoundFile("sound");
                 Program.WzManager.ExtractMapMarks();
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
@@ -111,11 +126,18 @@ namespace HaCreator.GUI
                 textBox2.Text = "Initializing String.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("string");
-                Program.WzManager.ExtractMaps();
+                Program.WzManager.ExtractStringWzMaps();
 
-                textBox2.Text = "Initializing Mob.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("mob");
+                // Mob WZ
+                foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
+                {
+                    textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
+                    Application.DoEvents();
+                    if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
+                    {
+                        // mob is a little special... gonna load all 3 wz first
+                    }
+                }
                 Program.WzManager.ExtractMobFile();
 
                 textBox2.Text = "Initializing Npc.wz...";
@@ -128,10 +150,14 @@ namespace HaCreator.GUI
                 Program.WzManager.LoadWzFile("reactor");
                 Program.WzManager.ExtractReactorFile();
 
-                textBox2.Text = "Initializing Sound.wz...";
-                Application.DoEvents();
-                Program.WzManager.LoadWzFile("sound");
-                Program.WzManager.ExtractSoundFile();
+                // Load sound
+                foreach (string soundWzFile in WzFileManager.SOUND_WZ_FILES)
+                {
+                    textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
+                    Application.DoEvents();
+                    Program.WzManager.LoadWzFile(soundWzFile.ToLower());
+                    Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
+                }
 
                 textBox2.Text = "Initializing Map.wz...";
                 Application.DoEvents();
@@ -140,38 +166,25 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
-                
-                if (Program.WzManager.LoadWzFile("map001"))
+                Program.WzManager.ExtractBackgroundSets();
+
+                foreach (string mapwzFile in WzFileManager.MAP_WZ_FILES)
                 {
-                    textBox2.Text = "Initializing Map001.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
+                    if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
+                    {
+                        textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
+                        Application.DoEvents();
+                        Program.WzManager.ExtractBackgroundSets();
+                        Program.WzManager.ExtractObjSets();
+                    }
                 }
 
-                if (Program.WzManager.LoadWzFile("map002")) //kms now stores main map key here
-                {
-                    textBox2.Text = "Initializing Map002.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
-                }
-                
-                if (Program.WzManager.LoadWzFile("map2"))
-                {
-                    textBox2.Text = "Initializing Map2.wz...";
-                    Application.DoEvents();
-                    Program.WzManager.ExtractBackgroundSets();
-                    Program.WzManager.ExtractObjSets();
-                }
                 textBox2.Text = "Initializing UI.wz...";
                 Application.DoEvents();
                 Program.WzManager.LoadWzFile("ui");
             }
         }
 
-
-        private static readonly string[] commonMaplePaths = new string[] { @"C:\Nexon\MapleStory", @"C:\Program Files\WIZET\MapleStory", @"C:\MapleStory" };
 
         private void Initialization_Load(object sender, EventArgs e)
         {
@@ -183,7 +196,7 @@ namespace HaCreator.GUI
                 {
                     pathBox.Items.Add(x);
                 }
-                foreach (string path in commonMaplePaths)
+                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
                 {
                     if (Directory.Exists(path))
                     {
@@ -234,13 +247,20 @@ namespace HaCreator.GUI
             InitializeWzFiles(wzPath, fileVersion);
 
             MultiBoard mb = new MultiBoard();
-            Board b = new Board(new Microsoft.Xna.Framework.Point(), new Microsoft.Xna.Framework.Point(), mb, null, MapleLib.WzLib.WzStructure.Data.ItemTypes.None, MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
+            Board b = new Board(
+                new Microsoft.Xna.Framework.Point(), 
+                new Microsoft.Xna.Framework.Point(), 
+                mb, 
+                null, 
+                MapleLib.WzLib.WzStructure.Data.ItemTypes.None, 
+                MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
             {
                 MapLoader loader = new MapLoader();
                 string mapcat = "Map" + mapid.Substring(0, 1);
-                WzImage mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
+
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
                 {
                     continue;

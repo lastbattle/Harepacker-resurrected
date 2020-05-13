@@ -109,7 +109,7 @@ namespace HaCreator.GUI
             else
             {
                 board.MapInfo.strMapName = idBox.Text;
-                board.TabPage.Text = board.MapInfo.strMapName;
+                ((TabItemContainer)board.TabPage.Tag).Text = board.MapInfo.strMapName;
                 saver.ChangeMapTypeAndID(-1, type);
                 saver.SaveMapImage();
                 MessageBox.Show("Saved map: " + board.MapInfo.strMapName);

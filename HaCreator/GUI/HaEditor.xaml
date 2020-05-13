@@ -1,0 +1,94 @@
+﻿<Window x:Class="HaCreator.GUI.HaEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+        
+        xmlns:local="clr-namespace:HaCreator.GUI"
+        xmlns:editorItems="clr-namespace:HaCreator.GUI.EditorPanels"
+        xmlns:mapEditor="clr-namespace:HaCreator.MapEditor"
+
+        mc:Ignorable="d" 
+        d:DesignHeight="721" d:DesignWidth="1111" 
+        
+        MouseWheel="OnMouseWheel" 
+        Closing="HaEditor2_Closing" 
+        SizeChanged="WindowSizeChanged" Title="HaCreator resurrected">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="7*"/>
+            <ColumnDefinition Width="3*" MaxWidth="400"/>
+        </Grid.ColumnDefinitions>
+
+        <local:HaRibbon x:Name="ribbon"
+                        Grid.Row="0" Grid.ColumnSpan="2"/>
+
+        <!-- editor board-->
+        <Grid Grid.Row="1" Grid.Column="0">
+            <TabControl x:Name="tabControl1" VerticalAlignment="Top"
+                        >
+
+            </TabControl>
+            <mapEditor:MultiBoard x:Name="multiBoard" Margin="0,30,0,0"/>
+        </Grid>
+
+
+
+        <!-- Side panel-->
+        <ScrollViewer Grid.Row="1" Grid.Column="1"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Visible">
+            <StackPanel Orientation="Vertical">
+                
+                <Expander Header="Tile"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
+                        <editorItems:TilePanel x:Name="tilePanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Object"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="objPanelHost" Visibility="Collapsed">
+                        <editorItems:ObjPanel x:Name="objPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Life"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="lifePanelHost" Visibility="Collapsed">
+                        <editorItems:LifePanel x:Name="lifePanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Portal"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="portalPanelHost" Visibility="Collapsed">
+                        <editorItems:PortalPanel x:Name="portalPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Background"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="bgPanelHost" Visibility="Collapsed">
+                        <editorItems:BackgroundPanel x:Name="bgPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
+                <Expander Header="Common"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">
+                        <editorItems:CommonPanel x:Name="commonPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+
+</Window>

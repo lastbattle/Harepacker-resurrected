@@ -46,7 +46,7 @@ namespace HaRepacker
             {
                 if (subprop is WzCanvasProperty)
                 {
-                    //WzVectorProperty origin = (WzVectorProperty)subprop["origin"];
+                    //System.Drawing.PointF origin = ((WzCanvasProperty)subprop).GetCanvasOriginPosition();
                     WzPngProperty png = ((WzCanvasProperty)subprop).PngProperty;
                     if (png.Height > biggestPng.Y)
                         biggestPng.Y = png.Height;
@@ -61,8 +61,9 @@ namespace HaRepacker
                 {
                     sortedProps.Add((WzCanvasProperty)subprop);
                     WzPngProperty png = ((WzCanvasProperty)subprop).PngProperty;
-                    WzVectorProperty origin = (WzVectorProperty)subprop["origin"];
-                    Point StartPoints = new Point(biggestPng.X - origin.X.Value, biggestPng.Y - origin.Y.Value);
+                    System.Drawing.PointF origin = ((WzCanvasProperty)subprop).GetCanvasOriginPosition();
+
+                    Point StartPoints = new Point(biggestPng.X - (int) origin.X, biggestPng.Y - (int)origin.Y);
                     Point PngMapppingEndingPts = new Point(StartPoints.X + png.Width, StartPoints.Y + png.Height);
                     if (StartPoints.X < SmallestEmptySpace.X)
                         SmallestEmptySpace.X = StartPoints.X;
@@ -84,10 +85,11 @@ namespace HaRepacker
                     return;
                 }
                 Bitmap bmp = subprop.PngProperty.GetPNG(false);
-                WzVectorProperty origin = (WzVectorProperty)subprop["origin"];
-                bmpList.Add(OptimizeBitmapTransparent(bmp, origin, biggestPng, SmallestEmptySpace, MaximumPngMappingEndingPts));
+                System.Drawing.PointF origin = subprop.GetCanvasOriginPosition();
+                bmpList.Add(OptimizeBitmapTransparent(bmp, new WzVectorProperty("", origin.X, origin.Y), biggestPng, SmallestEmptySpace, MaximumPngMappingEndingPts));
+
                 WzIntProperty delayProp = (WzIntProperty)subprop["delay"];
-                int delay =100;
+                int delay = 100;
                 if (delayProp != null) delay = delayProp.Value;
                 delayList.Add(delay);
             }

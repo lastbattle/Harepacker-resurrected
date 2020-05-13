@@ -1,5 +1,7 @@
 ﻿/*  MapleLib - A general-purpose MapleStory library
- * Copyright (C) 2009, 2010, 2015 Snow and haha01haha01
+ * Copyright (C) 
+ * 2009, 2010, 2015 Snow and haha01haha01
+ * 2020 lastbattle
    
  * This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -47,7 +49,7 @@ namespace MapleLib.WzLib.WzStructure
             this.strCategoryName = strCategoryName;
             WzFile file = (WzFile)image.WzFileParent;
             string loggerSuffix = ", map " + image.Name + ((file != null) ? (" of version " + Enum.GetName(typeof(WzMapleVersion), file.MapleVersion) + ", v" + file.Version.ToString()) : "");
-            foreach (WzImageProperty prop in image["info"].WzProperties) 
+            foreach (WzImageProperty prop in image["info"].WzProperties)
             {
                 switch (prop.Name)
                 {
@@ -91,13 +93,8 @@ namespace MapleLib.WzLib.WzStructure
                         version = InfoTool.GetInt(prop);
                         break;
                     case "fieldLimit":
-                        int fl = InfoTool.GetInt(prop);
-                        if (fl >= (int)Math.Pow(2, 23)) 
-                        {
-                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, "Invalid fieldlimit " + fl.ToString() + loggerSuffix);
-                            fl = fl & ((int)Math.Pow(2, 23) - 1);
-                        }
-                        fieldLimit = (FieldLimit)fl;
+                        long fl = InfoTool.GetLong(prop);
+                        fieldLimit = fl;
                         break;
                     case "VRTop":
                     case "VRBottom":
@@ -130,7 +127,7 @@ namespace MapleLib.WzLib.WzStructure
                         break;
                     case "fieldType":
                         int ft = InfoTool.GetInt(prop);
-                        if (!Enum.IsDefined(typeof(FieldType), ft)) 
+                        if (!Enum.IsDefined(typeof(FieldType), ft))
                         {
                             ErrorLogger.Log(ErrorLevel.IncorrectStructure, "Invalid fieldType " + ft.ToString() + loggerSuffix);
                             ft = 0;
@@ -260,8 +257,172 @@ namespace MapleLib.WzLib.WzStructure
                     case "consumeItemCoolTime":
                         consumeItemCoolTime = InfoTool.GetBool(prop);
                         break;
+
+                    case "AmbientBGM":
+                    case "AmbientBGMv":
+                    case "areaCtrl":
+                    case "onlyUseSkill":
+                    case "limitUseShop":
+                    case "limitUseTrunk":
+                    case "freeFallingVX":
+                    case "midAirAccelVX":
+                    case "midAirDecelVX":
+                    case "jumpSpeedR":
+                    case "jumpAccUpKey":
+                    case "jumpAccDownKey":
+                    case "jumpApplyVX":
+                    case "dashSkill":
+                    case "speedMaxOver":
+                    case "isSpecialMoveCheck":
+                    case "forceSpeed":
+                    case "forceJump":
+                    case "forceUseIndie":
+                    case "vanishPet":
+                    case "vanishAndroid":
+                    case "vanishDragon":
+                    case "limitUI":
+                    case "largeSplit":
+                    case "qrLimit":
+                    case "noChair":
+                    case "fieldScript":
+                    case "standAlone":
+                    case "partyStandAlone":
+                    case "HobbangKing":
+                    case "quarterView":
+                    case "MRLeft":
+                    case "MRTop":
+                    case "MRRight":
+                    case "MRBottom":
+                    case "limitSpeedAndJump":
+                    case "directionInfo":
+                    case "LBSide":
+                    case "LBTop":
+                    case "LBBottom":
+                    case "bgmSub":
+                    case "fieldLimit2":
+                    case "fieldLimit_tw":
+                    case "particle":
+                    case "qrLimitJob":
+                    case "individualMobPool":
+                    case "barrier":
+                    case "remoteEffect":
+                    case "isFixDec":
+                    case "decHPr":
+                    case "isDecView":
+                    case "forceFadeInTime":
+                    case "forceFadeOutTime":
+                    case "qrLimitState":
+                    case "qrLimitState2":
+                    case "difficulty":
+                    case "alarm":
+                    case "bossMobID":
+                    case "reviveCurField":
+                    case "ReviveCurFieldOfNoTransfer":
+                    case "ReviveCurFieldOfNoTransferPoint":
+                    case "limitUserEffectField":
+                    case "nofollowCharacter":
+                    case "functionObjInfo":
+                    case "quest":
+                    case "ridingMove":
+                    case "ridingField":
+                    case "noLanding":
+                    case "noCancelSkill":
+                    case "defaultAvatarDir":
+                    case "footStepSound":
+                    case "taggedObjRegenInfo":
+                    case "offSoulAbsorption":
+                    case "canPartyStatChangeIgnoreParty":
+                    case "forceReturnOnDead":
+                    case "zoomOutField":
+                    case "EscortMinTime":
+                    case "deathCount":
+                    case "onEnterResetFifthSkill":
+                    case "potionLimit":
+                    case "lifeCount":
+                    case "respawnCooltimeField":
+                    case "scale":
+                    case "skills":
+                    case "noResurection":
+                    case "incInterval":
+                    case "incMPr":
+                    case "bonusExpPerUserHPRate":
+                    case "barrierArc":
+                    case "noBackOverlapped":
+                    case "mirror_Bottom":
+                    case "partyBonusR":
+                    case "specialSound":
+                    case "inFieldsetForcedReturn":
+                    case "chaser":
+                    case "chaserEndTime":
+                    case "chaserEffect":
+                    case "cagePotal":
+                    case "cageLT":
+                    case "cageRB":
+                    case "chaserHoldTime":
+                    case "phase":
+                    case "boss":
+                    case "actionBarIdx":
+                    case "shadowzone":
+                    case "towerChairEnable":
+                    case "DiceMasterUpIndex":
+                    case "DiceMasterDownIndex":
+                    case "ChangeName":
+                    case "entrustedFishing":
+                    case "forcedScreenMode":
+                    case "isHideUI":
+                    case "resetRidingField":
+                    case "PL_Gunman":
+                    case "noHekatonEffect":
+                    case "mode":
+                    case "skill":
+                    case "MR":
+                    case "ratemob":
+                    case "bonusStageNoChangeBack":
+                    case "questAmbience":
+                    case "blockScriptItem":
+                    case "remoteTranslucenceView":
+                    case "rewardContentName":
+                    case "specialDeadAction":
+                    case "FriendsStoryBossDelay":
+                    case "zeroSideOnly":
+                    case "soulFieldType":
+                    case "cameraMoveY":
+                    case "subType":
+                    case "playTime":
+                    case "noEvent":
+                    case "forParty":
+                    case "whiteOut":
+                    case "UserInvisible":
+                    case "OnFirstUserEnter": // the same as onFirstUserEnter
+                    case "teamPortal":
+                    case "typingGame":
+                    case "lt":
+                    case "rb":
+                    case "fieldAttackObj":
+                    case "timeLeft":
+                    case "timeLeft_d":
+                    case "eventSummon":
+                    case "rankCheckMob":
+                    case "questCheckMob":
+                    case "bindSkillLimit":
+                    case "NoMobCapacityLimit":
+                    case "userTimer":
+                    case "eventChairIndex":
+                    case "onlyEventChair":
+                    case "waitReviveTime":
+                    case "RidingTop":
+                    case "temporarySkill":
+                    case "largeSplt":
+                    case "blockTakeOffItem":
+                    case "PartyOnly":
+                    case "climb":
+                    //case "speedMaxOver":
+                    //case "canPartyStatChangeIgnoreParty": // casing
+                    case "bulletConsume":
+                    case "gaugeDelay":
+                        break;
                     default:
-                        ErrorLogger.Log(ErrorLevel.MissingFeature, "Unknown Prop: " + prop.Name + loggerSuffix);
+                        ErrorLogger.Log(ErrorLevel.MissingFeature, "Unknown field info/ property: " + prop.Name + loggerSuffix);
                         additionalProps.Add(prop.DeepClone());
                         break;
                 }
@@ -315,7 +476,7 @@ namespace MapleLib.WzLib.WzStructure
             info["entrustedShop"] = InfoTool.SetOptionalBool(entrustedShop);
             info["effect"] = InfoTool.SetOptionalString(effect);
             info["lvForceMove"] = InfoTool.SetOptionalInt(lvForceMove);
-            if (timeMob != null) 
+            if (timeMob != null)
             {
                 WzSubProperty prop = new WzSubProperty();
                 prop["startHour"] = InfoTool.SetOptionalInt(timeMob.Value.startHour);
@@ -330,7 +491,7 @@ namespace MapleLib.WzLib.WzStructure
             info["dropExpire"] = InfoTool.SetOptionalInt(dropExpire);
             info["decHP"] = InfoTool.SetOptionalInt(decHP);
             info["decInterval"] = InfoTool.SetOptionalInt(decInterval);
-            if (autoLieDetector != null) 
+            if (autoLieDetector != null)
             {
                 WzSubProperty prop = new WzSubProperty();
                 prop["startHour"] = InfoTool.SetOptionalInt(autoLieDetector.Value.startHour);
@@ -366,7 +527,7 @@ namespace MapleLib.WzLib.WzStructure
             info["allMoveCheck"] = InfoTool.SetOptionalBool(allMoveCheck);
             info["VRLimit"] = InfoTool.SetOptionalBool(VRLimit);
             info["consumeItemCoolTime"] = InfoTool.SetOptionalBool(consumeItemCoolTime);
-            foreach (WzImageProperty prop in additionalProps) 
+            foreach (WzImageProperty prop in additionalProps)
             {
                 info.AddProperty(prop);
             }
@@ -386,7 +547,7 @@ namespace MapleLib.WzLib.WzStructure
         //Must have
         public string bgm = "Bgm00/GoPicnic";
         public string mapMark = "None";
-        public FieldLimit fieldLimit = FieldLimit.FIELDOPT_NONE;
+        public long fieldLimit = 0; // FieldLimitType a | FieldLimitType b | etc
         public int returnMap = 999999999;
         public int forcedReturn = 999999999;
         public bool cloud = false;

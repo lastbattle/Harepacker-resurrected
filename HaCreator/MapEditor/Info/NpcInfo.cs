@@ -39,12 +39,12 @@ namespace HaCreator.MapEditor.Info
             WzCanvasProperty npcImage = WzInfoTools.GetNpcImage(image);
             if (npcImage != null)
             {
-                Image = npcImage.PngProperty.GetPNG(false);
+                Image = npcImage.GetLinkedWzCanvasBitmap();
                 if(Image.Width==1 && Image.Height == 1)
                 {
                     Image = global::HaCreator.Properties.Resources.placeholder;
                 }
-                Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)npcImage["origin"]);
+                Origin = WzInfoTools.PointFToSystemPoint(npcImage.GetCanvasOriginPosition());
             }
             else
             {

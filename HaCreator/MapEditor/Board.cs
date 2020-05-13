@@ -49,9 +49,9 @@ namespace HaCreator.MapEditor
         private bool loading = false;
         private VRRectangle vrRect = null;
         private MinimapRectangle mmRect = null;
-        private ContextMenuStrip menu = null;
+        private System.Windows.Controls.ContextMenu menu = null;
         private SerializationManager serMan = null;
-        private HaCreator.ThirdParty.TabPages.TabPage page = null;
+        private System.Windows.Controls.TabItem page = null;
         private bool dirty;
         private int uid;
 
@@ -60,7 +60,7 @@ namespace HaCreator.MapEditor
         public ItemTypes VisibleTypes { get { return visibleTypes; } set { visibleTypes = value; } }
         public ItemTypes EditedTypes { get { return editedTypes; } set { editedTypes = value; } }
 
-        public Board(Point mapSize, Point centerPoint, MultiBoard parent, ContextMenuStrip menu, ItemTypes visibleTypes, ItemTypes editedTypes)
+        public Board(Point mapSize, Point centerPoint, MultiBoard parent, System.Windows.Controls.ContextMenu menu, ItemTypes visibleTypes, ItemTypes editedTypes)
         {
             this.uid = Interlocked.Increment(ref uidCounter);
             this.MapSize = mapSize;
@@ -203,7 +203,7 @@ namespace HaCreator.MapEditor
                     miniMapTexture = BoardItem.TextureFromBitmap(parent.Device, miniMap);
                 sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
                 // Render current location on minimap
-                parent.DrawRectangle(sprite, new Rectangle(hScroll / _mag, vScroll / _mag, parent.Width / _mag, parent.Height / _mag), Color.Blue);
+                parent.DrawRectangle(sprite, new Rectangle(hScroll / _mag, vScroll / _mag, parent.CurrentDXWindowSize.Width / _mag, (int)parent.CurrentDXWindowSize.Height / _mag), Color.Blue);
                 
                 // Render minimap borders
                 parent.DrawRectangle(sprite, minimapImageArea, Color.Black);
@@ -368,7 +368,7 @@ namespace HaCreator.MapEditor
             set 
             { 
                 vrRect = value;
-                menu.Items[1].Enabled = value == null;
+                ((System.Windows.Controls.MenuItem) menu.Items[1]).IsEnabled = value == null;
             }
         }
 
@@ -378,7 +378,7 @@ namespace HaCreator.MapEditor
             set 
             { 
                 mmRect = value;
-                menu.Items[2].Enabled = value == null;
+                ((System.Windows.Controls.MenuItem)menu.Items[2]).IsEnabled = value == null;
                 parent.OnMinimapStateChanged(this, mmRect != null);
             }
         }
@@ -428,7 +428,7 @@ namespace HaCreator.MapEditor
             set { selectedAllLayers = value; }
         }
 
-        public ContextMenuStrip Menu
+        public System.Windows.Controls.ContextMenu Menu
         {
             get { return menu; }
         }
@@ -462,7 +462,7 @@ namespace HaCreator.MapEditor
             get { return serMan; }
         }
 
-        public HaCreator.ThirdParty.TabPages.TabPage TabPage
+        public System.Windows.Controls.TabItem TabPage
         {
             get { return page; }
             set { page = value; }

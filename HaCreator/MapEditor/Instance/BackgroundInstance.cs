@@ -162,22 +162,30 @@ namespace HaCreator.MapEditor.Instance
 
         public int CalculateBackgroundPosX()
         {
-            return (rx * (Board.hScroll - Board.CenterPoint.X + 400) / 100) + base.X /*- Origin.X*/ + 400 - Board.CenterPoint.X + Board.hScroll;
+            int renderWidthHalf = (MapSimulator.MapSimulator.RenderWidth / 2);
+
+            return (rx * (Board.hScroll - Board.CenterPoint.X + renderWidthHalf) / 100) + base.X /*- Origin.X*/ + renderWidthHalf - Board.CenterPoint.X + Board.hScroll;
         }
 
         public int CalculateBackgroundPosY()
         {
-            return (ry * (Board.vScroll - Board.CenterPoint.Y + 300) / 100) + base.Y /*- Origin.X*/ + 300 - Board.CenterPoint.Y + Board.vScroll;
+            int renderHeightHalf = (MapSimulator.MapSimulator.RenderHeight / 2);
+
+            return (ry * (Board.vScroll - Board.CenterPoint.Y + renderHeightHalf) / 100) + base.Y /*- Origin.X*/ + renderHeightHalf - Board.CenterPoint.Y + Board.vScroll;
         }
 
         public int ReverseBackgroundPosX(int bgPos)
         {
-            return bgPos - Board.hScroll + Board.CenterPoint.X - 400 - (rx * (Board.hScroll - Board.CenterPoint.X + 400) / 100);
+            int renderWidthHalf = (MapSimulator.MapSimulator.RenderWidth / 2);
+
+            return bgPos - Board.hScroll + Board.CenterPoint.X - renderWidthHalf - (rx * (Board.hScroll - Board.CenterPoint.X + renderWidthHalf) / 100);
         }
 
         public int ReverseBackgroundPosY(int bgPos)
         {
-            return bgPos - Board.vScroll + Board.CenterPoint.Y - 300 - (ry * (Board.vScroll - Board.CenterPoint.Y + 300) / 100);
+            int renderHeightHalf = (MapSimulator.MapSimulator.RenderHeight / 2);
+
+            return bgPos - Board.vScroll + Board.CenterPoint.Y - renderHeightHalf - (ry * (Board.vScroll - Board.CenterPoint.Y + renderHeightHalf) / 100);
         }
 
         public override int X

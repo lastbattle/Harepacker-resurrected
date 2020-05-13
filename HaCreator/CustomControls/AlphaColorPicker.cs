@@ -51,6 +51,7 @@ namespace HaCreator.CustomControls
             // 
             // AlphaColorPicker
             // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.MaximumSize = new System.Drawing.Size(16, 16);
             this.MinimumSize = new System.Drawing.Size(16, 16);
             this.Name = "AlphaColorPicker";

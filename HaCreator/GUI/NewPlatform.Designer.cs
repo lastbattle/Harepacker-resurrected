@@ -39,9 +39,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(94, 38);
+            this.cancelButton.Location = new System.Drawing.Point(91, 54);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(73, 28);
+            this.cancelButton.Size = new System.Drawing.Size(85, 35);
             this.cancelButton.TabIndex = 6;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -49,23 +49,23 @@
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(12, 38);
+            this.okButton.Location = new System.Drawing.Point(3, 54);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(76, 28);
+            this.okButton.Size = new System.Drawing.Size(85, 35);
             this.okButton.TabIndex = 5;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
             // 
             // zmBox
             // 
-            this.zmBox.Location = new System.Drawing.Point(103, 12);
+            this.zmBox.Location = new System.Drawing.Point(109, 10);
             this.zmBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
             0,
             0});
             this.zmBox.Name = "zmBox";
-            this.zmBox.Size = new System.Drawing.Size(64, 20);
+            this.zmBox.Size = new System.Drawing.Size(64, 22);
             this.zmBox.TabIndex = 7;
             this.zmBox.ValueChanged += new System.EventHandler(this.zmBox_ValueChanged);
             this.zmBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.zmBox_KeyDown);
@@ -75,9 +75,9 @@
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(12, 14);
+            this.label1.Location = new System.Drawing.Point(9, 14);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(85, 13);
+            this.label1.Size = new System.Drawing.Size(94, 13);
             this.label1.TabIndex = 8;
             this.label1.Text = "Platform Number";
             // 
@@ -100,6 +100,7 @@
             this.Controls.Add(this.zmBox);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.KeyPreview = true;
             this.Name = "NewPlatform";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;

@@ -58,8 +58,8 @@
             // splitContainer6.Panel2
             // 
             this.splitContainer6.Panel2.Controls.Add(this.bgImageContainer);
-            this.splitContainer6.Size = new System.Drawing.Size(284, 435);
-            this.splitContainer6.SplitterDistance = 113;
+            this.splitContainer6.Size = new System.Drawing.Size(284, 658);
+            this.splitContainer6.SplitterDistance = 170;
             this.splitContainer6.TabIndex = 2;
             // 
             // splitContainer7
@@ -78,8 +78,8 @@
             this.splitContainer7.Panel2.Controls.Add(this.bgBack);
             this.splitContainer7.Panel2.Controls.Add(this.aniBg);
             this.splitContainer7.Panel2MinSize = 20;
-            this.splitContainer7.Size = new System.Drawing.Size(284, 113);
-            this.splitContainer7.SplitterDistance = 81;
+            this.splitContainer7.Size = new System.Drawing.Size(284, 170);
+            this.splitContainer7.SplitterDistance = 121;
             this.splitContainer7.TabIndex = 1;
             // 
             // bgSetListBox
@@ -88,7 +88,7 @@
             this.bgSetListBox.FormattingEnabled = true;
             this.bgSetListBox.Location = new System.Drawing.Point(0, 0);
             this.bgSetListBox.Name = "bgSetListBox";
-            this.bgSetListBox.Size = new System.Drawing.Size(284, 81);
+            this.bgSetListBox.Size = new System.Drawing.Size(284, 121);
             this.bgSetListBox.TabIndex = 0;
             this.bgSetListBox.SelectedIndexChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
             // 
@@ -119,21 +119,17 @@
             this.bgImageContainer.Dock = System.Windows.Forms.DockStyle.Fill;
             this.bgImageContainer.Location = new System.Drawing.Point(0, 0);
             this.bgImageContainer.Name = "bgImageContainer";
-            this.bgImageContainer.Size = new System.Drawing.Size(284, 318);
+            this.bgImageContainer.Size = new System.Drawing.Size(284, 484);
             this.bgImageContainer.TabIndex = 0;
             // 
             // BackgroundPanel
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(284, 435);
-            this.CloseButton = false;
-            this.CloseButtonVisible = false;
             this.Controls.Add(this.splitContainer6);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "BackgroundPanel";
-            this.ShowIcon = false;
-            this.Text = "Background";
+            this.Size = new System.Drawing.Size(284, 658);
             this.splitContainer6.Panel1.ResumeLayout(false);
             this.splitContainer6.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).EndInit();

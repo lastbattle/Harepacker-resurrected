@@ -39,16 +39,39 @@ namespace HaCreator.ThirdParty
         {
             ImageViewer imageViewer = new ImageViewer();
             imageViewer.Dock = DockStyle.Bottom;
-            imageViewer.Image = new Bitmap(bitmap); // Copying the bitmap for thread safety
+
+            if (bitmap == null)
+            {
+                Bitmap fallbackBmp = global::HaCreator.Properties.Resources.placeholder;
+
+                imageViewer.Image = fallbackBmp; // fallback in case its null
+                imageViewer.Width = fallbackBmp.Width + 8;
+                imageViewer.Height = fallbackBmp.Height + 8 + ((Text) ? 12 : 0);
+            }
+            else
+            {
+                imageViewer.Image = new Bitmap(bitmap); // Copying the bitmap for thread safety
+                imageViewer.Width = bitmap.Width + 8;
+                imageViewer.Height = bitmap.Height + 8 + ((Text) ? 12 : 0);
+            }
             imageViewer.IsText = Text;
-            imageViewer.Width = bitmap.Width + 8;
-            imageViewer.Height = bitmap.Height + 8 + ((Text) ? 12 : 0);
             imageViewer.Name = name;
             imageViewer.IsThumbnail = false;
 
             Controls.Add(imageViewer);
 
             return imageViewer;
+        }
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // ThumbnailFlowLayoutPanel
+            // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.ResumeLayout(false);
+
         }
     }
 }

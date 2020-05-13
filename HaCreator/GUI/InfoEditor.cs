@@ -18,6 +18,8 @@ using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using HaCreator.ThirdParty;
+using HaCreator.GUI.InstanceEditor;
 
 namespace HaCreator.GUI
 {
@@ -177,11 +179,11 @@ namespace HaCreator.GUI
             optionsList.SetChecked(20, info.allMoveCheck);
             optionsList.SetChecked(21, info.VRLimit);
 
-            for (int i = 0; i < fieldLimitList.Items.Count; i++)
-            {
-                int value = (int)Math.Pow(2, i);
-                fieldLimitList.SetChecked(i, ((int)info.fieldLimit & value) == value);
-            }
+            // Populate field limit items
+            // automatically populated via fieldLimitPanel1.Loaed
+            fieldLimitPanel1.PopulateDefaultListView();
+            fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) info.fieldLimit);
+
             if (info.fieldType != null)/* fieldType.SelectedIndex = -1;
             else*/
             {
@@ -274,14 +276,12 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            fieldLimitList.CheckOnClick = true;
-            bool a = fieldLimitList.Checked(0);
-            soundPlayer.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
         }
 
         private void InfoEditor_FormClosing(object sender, FormClosingEventArgs e)
         {
-            soundPlayer.SoundProperty = null;
+            soundPlayer1.SoundProperty = null;
         }
 
         private void markBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -311,7 +311,7 @@ namespace HaCreator.GUI
                     info.strCategoryName = categoryBox.Text;
 
                     // We do, however, need to change the tab's name/info
-                    board.TabPage.Text = info.strMapName;
+                    ((TabItemContainer)board.TabPage.Tag).Text = info.strMapName;
                 }
                 info.returnMap = cannotReturnCBX.Checked ? info.id : (int)returnBox.Value;
                 info.forcedReturn = returnHereCBX.Checked ? 999999999 : (int)forcedRet.Value;
@@ -379,14 +379,8 @@ namespace HaCreator.GUI
                 info.zakum2Hack = optionsList.Checked(19);
                 info.allMoveCheck = optionsList.Checked(20);
                 info.VRLimit = optionsList.Checked(21);
-                int fieldLimitInt = 0;
-                for (int i = 0; i < fieldLimitList.Items.Count; i++)
-                {
-                    int value = (int)Math.Pow(2, i);
-                    if (fieldLimitList.Checked(i))
-                        fieldLimitInt += value;
-                }
-                info.fieldLimit = (FieldLimit)fieldLimitInt;
+                info.fieldLimit = (long) fieldLimitPanel1.FieldLimit;
+
                 if (fieldType.SelectedIndex <= 0x22)
                     info.fieldType = (FieldType)fieldType.SelectedIndex;
                 else
@@ -469,6 +463,28 @@ namespace HaCreator.GUI
         private void allowedItemsAdd_Click(object sender, EventArgs e)
         {
             allowedItems.Items.Add(Microsoft.VisualBasic.Interaction.InputBox("Insert item ID", "Add Allowed Item", "", -1, -1));
+        }
+
+        /// <summary>
+        /// Select field ID for return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(returnBox);
+            selector.ShowDialog();
+        }
+
+        /// <summary>
+        /// Select field ID for forced return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectForcedReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(forcedRet);
+            selector.ShowDialog();
         }
     }
 }

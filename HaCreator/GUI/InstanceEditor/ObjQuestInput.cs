@@ -24,6 +24,12 @@ namespace HaCreator.GUI.InstanceEditor
         public ObjQuestInput()
         {
             InitializeComponent();
+
+            foreach (QuestState state in Enum.GetValues(typeof(QuestState)))
+            {
+                stateInput.Items.Add(state.ToString());
+            }
+
             DialogResult = System.Windows.Forms.DialogResult.No;
             stateInput.SelectedIndex = 0;
         }

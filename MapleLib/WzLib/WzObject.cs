@@ -75,6 +75,24 @@ namespace MapleLib.WzLib
             }
         }
 
+
+        /// <summary>
+        /// Gets the top most WZObject directory (i.e Map.wz, Skill.wz)
+        /// </summary>
+        /// <returns></returns>
+        public WzObject GetTopMostWzDirectory()
+        {
+            WzObject parent = this.Parent;
+            if (parent == null)
+                return this; // this
+
+            while (parent.Parent != null )
+            {
+                parent = parent.Parent;
+            }
+            return parent;
+        }
+
         public string FullPath
         {
             get

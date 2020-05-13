@@ -22,7 +22,6 @@ using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using System.Threading.Tasks;
 using MapleLib.PacketLib;
-using HaRepacker.Configuration;
 
 namespace MapleLib.WzLib
 {

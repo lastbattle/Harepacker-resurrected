@@ -40,21 +40,19 @@
             // stateInput
             // 
             this.stateInput.DisplayMember = "Text";
-            this.stateInput.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
+            this.stateInput.DropDownHeight = 190;
+            this.stateInput.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.stateInput.FormattingEnabled = true;
-            this.stateInput.ItemHeight = 14;
-            this.stateInput.Items.AddRange(new object[] {
-            "Available",
-            "In Progress",
-            "Completed"});
-            this.stateInput.Location = new System.Drawing.Point(47, 38);
+            this.stateInput.IntegralHeight = false;
+            this.stateInput.ItemHeight = 13;
+            this.stateInput.Location = new System.Drawing.Point(67, 53);
             this.stateInput.Name = "stateInput";
-            this.stateInput.Size = new System.Drawing.Size(118, 20);
+            this.stateInput.Size = new System.Drawing.Size(118, 21);
             this.stateInput.TabIndex = 1;
             // 
             // idInput
             // 
-            this.idInput.Location = new System.Drawing.Point(47, 12);
+            this.idInput.Location = new System.Drawing.Point(67, 12);
             this.idInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -66,33 +64,33 @@
             0,
             -2147483648});
             this.idInput.Name = "idInput";
-            this.idInput.Size = new System.Drawing.Size(118, 20);
+            this.idInput.Size = new System.Drawing.Size(118, 22);
             this.idInput.TabIndex = 0;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(12, 15);
+            this.label1.Location = new System.Drawing.Point(9, 16);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(21, 13);
+            this.label1.Size = new System.Drawing.Size(54, 13);
             this.label1.TabIndex = 3;
-            this.label1.Text = "ID:";
+            this.label1.Text = "Quest ID:";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(12, 41);
+            this.label2.Location = new System.Drawing.Point(9, 53);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(35, 13);
+            this.label2.Size = new System.Drawing.Size(36, 13);
             this.label2.TabIndex = 4;
             this.label2.Text = "State:";
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(12, 64);
+            this.okButton.Location = new System.Drawing.Point(1, 111);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(83, 30);
+            this.okButton.Size = new System.Drawing.Size(95, 30);
             this.okButton.TabIndex = 2;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -100,9 +98,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(101, 64);
+            this.cancelButton.Location = new System.Drawing.Point(98, 111);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(83, 30);
+            this.cancelButton.Size = new System.Drawing.Size(95, 30);
             this.cancelButton.TabIndex = 3;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -111,14 +109,16 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(192, 106);
+            this.ClientSize = new System.Drawing.Size(194, 142);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.label2);
             this.Controls.Add(this.label1);
             this.Controls.Add(this.idInput);
             this.Controls.Add(this.stateInput);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "ObjQuestInput";

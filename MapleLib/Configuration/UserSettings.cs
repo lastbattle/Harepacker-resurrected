@@ -7,7 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaRepacker.Configuration
+namespace MapleLib.Configuration
 {
     public class UserSettings
     {
@@ -32,9 +32,6 @@ namespace HaRepacker.Configuration
 
         [JsonProperty(PropertyName = "AutoAssociate")]
         public bool AutoAssociate = true;
-
-        [JsonProperty(PropertyName = "AutoUpdate")]
-        public bool AutoUpdate = false;
 
         [JsonProperty(PropertyName = "Sort")]
         public bool Sort = true;

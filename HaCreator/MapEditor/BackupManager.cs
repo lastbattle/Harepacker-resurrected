@@ -23,10 +23,10 @@ namespace HaCreator.MapEditor
         private InputHandler input;
         private MultiBoard multiBoard;
         private HaCreatorStateManager hcsm;
-        private HaCreator.ThirdParty.TabPages.PageCollection tabs;
+        private System.Windows.Controls.TabControl tabs;
         private bool enabled = false;
 
-        public BackupManager(MultiBoard multiBoard, InputHandler input, HaCreatorStateManager hcsm, HaCreator.ThirdParty.TabPages.PageCollection tabs)
+        public BackupManager(MultiBoard multiBoard, InputHandler input, HaCreatorStateManager hcsm, System.Windows.Controls.TabControl tabs)
         {
             this.input = input;
             this.multiBoard = multiBoard;

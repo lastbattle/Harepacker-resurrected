@@ -77,6 +77,28 @@ namespace MapleLib.WzLib.WzStructure
             return value.HasValue ? SetInt(value.Value) : null;
         }
 
+        #region Long
+        public static long GetLong(WzImageProperty source)
+        {
+            return source.GetLong();
+        }
+
+        public static WzLongProperty SetLong(long value)
+        {
+            return new WzLongProperty("", value);
+        }
+
+        public static long? GetOptionalLong(WzImageProperty source)
+        {
+            return source == null ? (long?)null : source.GetLong();
+        }
+
+        public static WzLongProperty SetOptionalLong(long? value)
+        {
+            return value.HasValue ? SetLong(value.Value) : null;
+        }
+        #endregion
+
         public static bool GetBool(WzImageProperty source)
         {
             if (source == null) 

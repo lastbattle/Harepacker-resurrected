@@ -8,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaRepacker.Configuration
+namespace MapleLib.Configuration
 {
     public class ApplicationSettings
     {
@@ -37,11 +37,6 @@ namespace HaRepacker.Configuration
 
         [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
         public string MapleVersion_EncryptionBytes = "0x00-0x00-0x00-0x00";
-        #endregion
-
-        #region Auto update
-        [JsonProperty(PropertyName = "UpdateServerURL")]
-        public string UpdateServer = "";
         #endregion
     }
 }

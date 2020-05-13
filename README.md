@@ -44,6 +44,7 @@ This is purely community driven and at my time, please dont expect me to fix thi
  - [@RajanGrewa](https://github.com/RajanGrewal) https://github.com/eaxvac/Harepacker-resurrected/pull/8
  - [@shavitush](https://github.com/shavitush) https://github.com/eaxvac/Harepacker-resurrected/pull/5
  - [@Lapig](https://github.com/Lapig) https://github.com/lastbattle/Harepacker-resurrected/pull/13
+ - [@Kagamia](https://github.com/Kagamia/) https://github.com/Kagamia/WzComparerR2
  - and many others that contributed too! 
 
 ##### MapleLib2 by haha01haha01;

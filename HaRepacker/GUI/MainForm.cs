@@ -25,11 +25,11 @@ using System.Windows.Threading;
 using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
-using static HaRepacker.Configuration.UserSettings;
 using System.Reflection;
 using HaRepacker.GUI.Panels.SubPanels;
 using MapleLib.PacketLib;
 using System.Timers;
+using static MapleLib.Configuration.UserSettings;
 
 namespace HaRepacker.GUI
 {
@@ -365,46 +365,9 @@ namespace HaRepacker.GUI
             catch { }
         }
 
-
-        public static Thread updater = null;
-
-        //a thread used by the updating feature
-        private void UpdaterThread()
-        {
-            Thread.Sleep(60000);
-            WebClient client = new WebClient();
-            try
-            {
-                int version = int.Parse(
-                    Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "version.txt"
-                    )));
-                string notice = Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "notice.txt"
-                    ));
-                string url = Encoding.ASCII.GetString(
-                    client.DownloadData(
-                    Program.ConfigurationManager.ApplicationSettings.UpdateServer + "url.txt"
-                    ));
-                if (version <= Program.Version_)
-                    return;
-                if (MessageBox.Show(string.Format(HaRepacker.Properties.Resources.MainUpdateAvailable, notice.Replace("%URL%", url)), HaRepacker.Properties.Resources.MainUpdateTitle, MessageBoxButtons.YesNo) == DialogResult.Yes)
-                    Process.Start(url);
-            }
-            catch { }
-        }
-
         #region Handlers
         private void MainForm_Load(object sender, EventArgs e)
         {
-            if (Program.ConfigurationManager.UserSettings.AutoUpdate && Program.ConfigurationManager.ApplicationSettings.UpdateServer != "")
-            {
-                updater = new Thread(new ThreadStart(UpdaterThread));
-                updater.IsBackground = true;
-                updater.Start();
-            }
         }
 
         /// <summary>
@@ -791,39 +754,27 @@ namespace HaRepacker.GUI
                     {
                         wzfilePathsToLoad.Add(filePath); // add to list, so we can load it concurrently
 
-                        if (filePathLowerCase.EndsWith("map.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)
-                        {
-                            string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Map*.wz");
-                            foreach (string filePath_Others in otherMapWzFiles)
+                        // Check if there are any related files
+                        string[] wzsWithRelatedFiles = { "Map", "Mob", "Skill", "Sound" };
+                        bool bWithRelated = false;
+                        string relatedFileName = null;
+
+                        foreach (string wz in wzsWithRelatedFiles) 
+                            if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz"))
                             {
-                                if (filePath_Others != filePath &&
-                                    (filePath_Others.EndsWith("Map001.wz") || filePath_Others.EndsWith("Map2.wz"))) // damn, ugly hack to only whitelist those that Nexon uses. but someone could be saving as say Map_bak.wz in their folder.
-                                {
-                                    wzfilePathsToLoad.Add(filePath_Others);
-                                }
+                                bWithRelated = true;
+                                relatedFileName = wz;
+                                break;
                             }
-                        }
-                        else if (filePathLowerCase.EndsWith("mob.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)  // Now pre-load the other part of Mob.wz
+                        if (bWithRelated)
                         {
-                            string[] otherMobWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Mob*.wz");
-                            foreach (string filePath_Others in otherMobWzFiles)
+                            if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)
                             {
-                                if (filePath_Others != filePath &&
-                                    (filePath_Others.EndsWith("Mob001.wz") || filePath_Others.EndsWith("Mob2.wz")))
+                                string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), relatedFileName + "*.wz");
+                                foreach (string filePath_Others in otherMapWzFiles)
                                 {
-                                    wzfilePathsToLoad.Add(filePath_Others);
-                                }
-                            }
-                        }
-                        else if (filePathLowerCase.EndsWith("skill.wz") && Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)  // Now pre-load the other part of Skill.wz
-                        {
-                            string[] otherSkillWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), "Skill*.wz");
-                            foreach (string filePath_Others in otherSkillWzFiles)
-                            {
-                                if (filePath_Others != filePath &&
-                                    filePath_Others.EndsWith("Skill001.wz"))
-                                {
-                                    wzfilePathsToLoad.Add(filePath_Others);
+                                    if (filePath_Others != filePath)
+                                        wzfilePathsToLoad.Add(filePath_Others);
                                 }
                             }
                         }

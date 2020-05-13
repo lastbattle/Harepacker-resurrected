@@ -1,6 +1,7 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
-VisualStudioVersion = 16.0.30011.22
+VisualStudioVersion = 16.0.30002.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib", "MapleLib\MapleLib.csproj", "{28AAB36D-942E-4476-A000-0E9DE380F390}"
 EndProject
@@ -10,7 +11,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Harepacker-resurrected", "H
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Win32", "Win32\Win32.csproj", "{638CA88A-8DEE-4AF4-9B43-7ABDFDB074F7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "spine-csharp", "spine-runtimes\spine-csharp\spine-csharp.csproj", "{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaSharedLibrary", "HaSharedLirary\HaSharedLibrary.csproj", "{5411388B-F3CB-4D52-9F55-ABD15CFE966C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "spine-csharp", "spine-runtimes-2.1.25\spine-csharp\spine-csharp.csproj", "{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -70,6 +73,18 @@ Global
 		{638CA88A-8DEE-4AF4-9B43-7ABDFDB074F7}.Release|x64.Build.0 = Release|Any CPU
 		{638CA88A-8DEE-4AF4-9B43-7ABDFDB074F7}.Release|x86.ActiveCfg = Release|Any CPU
 		{638CA88A-8DEE-4AF4-9B43-7ABDFDB074F7}.Release|x86.Build.0 = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|x64.Build.0 = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Debug|x86.Build.0 = Debug|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|x64.ActiveCfg = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|x64.Build.0 = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|x86.ActiveCfg = Release|Any CPU
+		{5411388B-F3CB-4D52-9F55-ABD15CFE966C}.Release|x86.Build.0 = Release|Any CPU
 		{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -88,5 +103,8 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {99E8C0B0-C5DA-4990-8805-EA45A1BCF299}
+	EndGlobalSection
+	GlobalSection(MonoDevelopProperties) = preSolution
+		StartupItem = spine-csharp.csproj
 	EndGlobalSection
 EndGlobal

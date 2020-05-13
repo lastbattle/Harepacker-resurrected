@@ -26,6 +26,12 @@ using System.Runtime.Serialization;
 
 namespace MapleLib.WzLib.WzProperties
 {
+    public enum WzSoundPropertyType
+    {
+        MP3,
+        WAV,
+    }
+
     /// <summary>
     /// A property that contains data for an MP3 file
     /// </summary>
@@ -371,7 +377,9 @@ namespace MapleLib.WzLib.WzProperties
                 return mp3bytes;
             else
             {
-                if (wzReader == null) return null;
+                if (wzReader == null) 
+                    return null;
+
                 long currentPos = wzReader.BaseStream.Position;
                 wzReader.BaseStream.Position = offs;
                 mp3bytes = wzReader.ReadBytes(soundDataLen);

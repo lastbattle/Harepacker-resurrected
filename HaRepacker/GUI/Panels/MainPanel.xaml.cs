@@ -2,7 +2,10 @@
 using HaRepacker.Converter;
 using HaRepacker.GUI.Input;
 using MapleLib.WzLib;
+using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Spine;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -21,7 +24,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
-using static HaRepacker.Configuration.UserSettings;
+using static MapleLib.Configuration.UserSettings;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -1179,12 +1182,13 @@ namespace HaRepacker.GUI.Panels
                 return;
 
             clipboard.Clear();
-            Parallel.ForEach(DataTree.SelectedNodes.ToArray(), node =>
+
+            foreach (WzNode node in DataTree.SelectedNodes)
             {
                 WzObject clone = CloneWzObject((WzObject)((WzNode)node).Tag);
                 if (clone != null)
                     clipboard.Add(clone);
-            });
+            }
         }
 
         private ReplaceResult replaceBoxResult = ReplaceResult.NoneSelectedYet;
@@ -1325,6 +1329,12 @@ namespace HaRepacker.GUI.Panels
 
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
+            bool bIsWzSoundProperty = obj is WzSoundProperty;
+            bool bIsWzStringProperty = obj is WzStringProperty;
+            bool bIsWzIntProperty = obj is WzIntProperty;
+            bool bIsWzDoubleProperty = obj is WzDoubleProperty;
+            bool bIsWzFloatProperty = obj is WzFloatProperty;
+            bool bIsWzShortProperty = obj is WzShortProperty;
 
             // Set layout visibility
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
@@ -1344,7 +1354,7 @@ namespace HaRepacker.GUI.Panels
                         canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
                 }
                 else
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetBitmap());
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetLinkedWzCanvasBitmap());
 
                 SetImageRenderView(canvas, null);
             }
@@ -1375,7 +1385,7 @@ namespace HaRepacker.GUI.Panels
                 textPropBox.Visibility = Visibility.Visible;
                 textPropBox.Text = obj.ToString();
             }
-            else if (obj is WzSoundProperty)
+            else if (bIsWzSoundProperty)
             {
                 mp3Player.Visibility = Visibility.Visible;
                 mp3Player.SoundProperty = (WzSoundProperty)obj;
@@ -1383,36 +1393,42 @@ namespace HaRepacker.GUI.Panels
                 menuItem_changeSound.Visibility = Visibility.Visible;
                 menuItem_saveSound.Visibility = Visibility.Visible;
             }
-            else if (obj is WzStringProperty || obj is WzIntProperty || obj is WzDoubleProperty || obj is WzFloatProperty || obj is WzShortProperty || bIsWzLuaProperty)
+            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
                 textPropBox.Text = obj.ToString();
 
                 // If text is a string property, expand the textbox
-                if (obj is WzStringProperty)
-                {
-                    textPropBox.AcceptsReturn = true;
-                    textPropBox.Height = 200;
-                } 
-                else if (bIsWzLuaProperty)
-                {
-                    textPropBox.AcceptsReturn = true;
-                    textPropBox.Height = 700;
-                }
-                else
-                {
-                    textPropBox.AcceptsReturn = false;
-                    textPropBox.Height = 35;
-                }
-
-
-                if (obj is WzStringProperty)
+                if (bIsWzStringProperty)
                 {
                     WzStringProperty stringObj = (WzStringProperty)obj;
 
-                    // Portal type name display
-                    if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // "pn" = portal name
+                    if (stringObj.IsSpineAtlasResources) // spine related resource
+                    {
+                        Thread thread = new Thread(() =>
+                        {
+                            try
+                            {
+                                SpineAnimationItem item = new SpineAnimationItem(stringObj);
+
+                                // Create xna window
+                                SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                Window.Run();
+                            }
+                            catch (Exception e) 
+                            {
+                                Warning.Error("Error initialising/ rendering spine object. " + e.ToString());
+                            }
+                        });
+                        thread.Start();
+                        thread.Join();
+
+                        // atlas string display
+                        textPropBox.AcceptsReturn = true;
+                        textPropBox.Height = 700;
+                    }
+                    else if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                     {
                         if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
                         {
@@ -1423,13 +1439,26 @@ namespace HaRepacker.GUI.Panels
                         {
                             toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
                         }
+                    } else
+                    {
+                        textPropBox.AcceptsReturn = true;
+                        if (stringObj.IsSpineRelatedResources)
+                        {
+                            textPropBox.Height = 700;
+                        }
+                        else
+                        {
+                            textPropBox.Height = 200;
+                        }
+
                     }
                 } 
                 else if (bIsWzLuaProperty)
                 {
-
+                    textPropBox.AcceptsReturn = true;
+                    textPropBox.Height = 700;
                 }
-                else if (obj is WzIntProperty)
+                else if (bIsWzIntProperty)
                 {
                     WzIntProperty intProperty = (WzIntProperty)obj;
 
@@ -1437,11 +1466,15 @@ namespace HaRepacker.GUI.Panels
                     {
                         isSelectingWzMapFieldLimit = true;
 
-                        fieldLimitPanel1.UpdateFieldLimitCheckboxes(intProperty);
+                        fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) intProperty.GetLong());
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
                     }
+                } else
+                {
+                    textPropBox.AcceptsReturn = false;
+                    textPropBox.Height = 35;
                 }
             }
             else if (obj is WzVectorProperty)

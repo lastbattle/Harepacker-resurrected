@@ -21,9 +21,8 @@ namespace HaCreator.CustomControls
 {
     public partial class MapBrowser : UserControl
     {
-        private bool mapLogin1 = false;
         private bool load = false;
-        List<string> maps = new List<string>();
+        private List<string> maps = new List<string>();
 
         public MapBrowser()
         {
@@ -60,44 +59,60 @@ namespace HaCreator.CustomControls
 
         public void InitializeMaps(bool special)
         {
-            mapLogin1 = Program.WzManager["ui"]["MapLogin1.img"] != null;
-            foreach (KeyValuePair<string, string> map in Program.InfoManager.Maps)
+            WzObject mapLogin1 = Program.WzManager["ui"]["MapLogin1.img"];
+            WzObject mapLogin2 = Program.WzManager["ui"]["MapLogin2.img"];
+            WzObject mapLogin3 = Program.WzManager["ui"]["MapLogin3.img"]; // pretty rare, happened a few times in ascension patch
+
+            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
             {
-                maps.Add(map.Key + " - " + map.Value);
+                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
             }
             maps.Sort();
             if (special)
             {
                 maps.Insert(0, "CashShopPreview");
                 maps.Insert(0, "MapLogin");
-                if (mapLogin1)
-                {
+                if (mapLogin1 != null)
                     maps.Insert(0, "MapLogin1");
-                }
+                if (mapLogin2 != null)
+                    maps.Insert(0, "MapLogin2");
+                if (mapLogin3 != null)
+                    maps.Insert(0, "MapLogin3");
             }
 
             object[] mapsObjs = maps.Cast<object>().ToArray();
             mapNamesBox.Items.AddRange(mapsObjs);
         }
 
+        private string _previousSeachText = string.Empty;
+        /// <summary>
+        /// On search box text changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         public void searchBox_TextChanged(object sender, EventArgs e)
         {
             TextBox searchBox = (TextBox)sender;
             string tosearch = searchBox.Text.ToLower();
+
+            if (_previousSeachText == tosearch)
+            {
+                return;
+            }
+            _previousSeachText = tosearch; // set
+
+
             mapNamesBox.Items.Clear();
-            if (tosearch == "")
+            if (tosearch == string.Empty)
             {
                 mapNamesBox.Items.AddRange(maps.Cast<object>().ToArray<object>());
             }
             else
             {
-                foreach (string map in maps)
-                {
+                maps.ForEach(map => {
                     if (map.ToLower().Contains(tosearch))
-                    {
                         mapNamesBox.Items.Add(map);
-                    }
-                }
+                });
             }
             mapNamesBox.SelectedItem = null;
             mapNamesBox.SelectedIndex = -1;
@@ -106,10 +121,14 @@ namespace HaCreator.CustomControls
 
         private void mapNamesBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if ((string)mapNamesBox.SelectedItem == "MapLogin" ||
-                (string)mapNamesBox.SelectedItem == "MapLogin1" ||
-                (string)mapNamesBox.SelectedItem == "CashShopPreview" ||
-                mapNamesBox.SelectedItem == null)
+            string selectedName = (string)mapNamesBox.SelectedItem;
+
+            if (selectedName == "MapLogin" ||
+                selectedName == "MapLogin1" ||
+                selectedName == "MapLogin2" ||
+                selectedName == "MapLogin3" ||
+                selectedName == "CashShopPreview" ||
+                selectedName == null)
             {
                 linkLabel.Visible = false;
                 mapNotExist.Visible = false;
@@ -118,17 +137,10 @@ namespace HaCreator.CustomControls
             }
             else
             {
-                string mapid = ((string)mapNamesBox.SelectedItem).Substring(0, 9);
+                string mapid = (selectedName).Substring(0, 9);
                 string mapcat = "Map" + mapid.Substring(0, 1);
-                WzImage mapImage = null;
-                if (Program.WzManager.wzFiles.ContainsKey("map002"))//i hate nexon so much
-                {
-                    mapImage = (WzImage)Program.WzManager["map002"]["Map"][mapcat][mapid + ".img"];
-                }
-                else
-                {
-                    mapImage = (WzImage)Program.WzManager["map"]["Map"][mapcat][mapid + ".img"];
-                }
+
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
                 {
                     linkLabel.Visible = false;
@@ -155,7 +167,7 @@ namespace HaCreator.CustomControls
                             WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
-                                minimapBox.Image = (Image)minimap.PngProperty.GetPNG(false);
+                                minimapBox.Image = (Image)minimap.GetLinkedWzCanvasBitmap();
                             }
                             else
                             {
@@ -164,7 +176,6 @@ namespace HaCreator.CustomControls
                             load = true;
                         }
                     }
-                    GC.Collect();
                 }
             }
             SelectionChanged.Invoke();

@@ -79,7 +79,7 @@
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(24, 42);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(21, 13);
+            this.label2.Size = new System.Drawing.Size(22, 13);
             this.label2.TabIndex = 11;
             this.label2.Text = "zM";
             // 
@@ -102,6 +102,7 @@
             this.Controls.Add(this.layerBox);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "LayerChange";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;

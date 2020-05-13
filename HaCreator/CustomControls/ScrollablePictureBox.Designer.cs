@@ -47,6 +47,7 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.AutoScroll = true;
             this.Controls.Add(this.pictureBox);
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "ScrollablePictureBox";
             this.SizeChanged += new System.EventHandler(this.ScrollablePictureBox_SizeChanged);
             ((System.ComponentModel.ISupportInitialize)(this.pictureBox)).EndInit();

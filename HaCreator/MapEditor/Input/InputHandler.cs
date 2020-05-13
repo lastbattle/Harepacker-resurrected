@@ -16,6 +16,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Exceptions;
 using HaCreator.MapEditor.Info;
+using HaRepacker.Utils;
 
 namespace HaCreator.MapEditor.Input
 {
@@ -63,6 +64,7 @@ namespace HaCreator.MapEditor.Input
         public InputHandler(MultiBoard parentBoard)
         {
             this.parentBoard = parentBoard;
+
             parentBoard.LeftMouseDown += new MultiBoard.LeftMouseDownDelegate(parentBoard_LeftMouseDown);
             parentBoard.LeftMouseUp += new MultiBoard.LeftMouseUpDelegate(parentBoard_LeftMouseUp);
             parentBoard.RightMouseClick += new MultiBoard.RightMouseClickDelegate(parentBoard_RightMouseClick);
@@ -152,16 +154,16 @@ namespace HaCreator.MapEditor.Input
                 {
                     // auto scrolling
                     // Bind physicalpos to our dxcontainer, to prevent extremely fast scrolling
-                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), parentBoard.Width), Math.Min(Math.Max(currPhysicalPos.Y, 0), parentBoard.Height));
+                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), (int) parentBoard.Width), Math.Min(Math.Max(currPhysicalPos.Y, 0),  (int) parentBoard.Height));
 
                     if (currPhysicalPos.X - UserSettings.ScrollDistance < 0 && oldPos.X > newPos.X) //move to left
                         selectedBoard.hScroll = (int)Math.Max(0, selectedBoard.hScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.X) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
                     else if (currPhysicalPos.X + UserSettings.ScrollDistance > parentBoard.Width && oldPos.X < newPos.X) //move to right
-                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - parentBoard.Width + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.maxHScroll);
+                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - parentBoard.Width + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxHScroll);
                     if (currPhysicalPos.Y - UserSettings.ScrollDistance < 0 && oldPos.Y > newPos.Y) //move to top
                         selectedBoard.vScroll = (int)Math.Max(0, selectedBoard.vScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.Y) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
                     else if (currPhysicalPos.Y + UserSettings.ScrollDistance > parentBoard.Height && oldPos.Y < newPos.Y) //move to bottom
-                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - parentBoard.Height + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.maxVScroll);
+                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - parentBoard.Height + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxVScroll);
                 }
             }
         }
@@ -527,14 +529,21 @@ namespace HaCreator.MapEditor.Input
                 if (mouseState == MouseState.Selection)
                 {
                     ClearBoundItems(selectedBoard);
-                    if (ClickOnMinimap(selectedBoard, realPosition)) return;
+                    if (ClickOnMinimap(selectedBoard, realPosition)) 
+                        return;
+
                     if (rightClickTarget == null)
                         return;
+
                     if (!rightClickTarget.Selected)
                         ClearSelectedItems(selectedBoard);
                     rightClickTarget.Selected = true;
                     BoardItemContextMenu bicm = new BoardItemContextMenu(parentBoard, selectedBoard, rightClickTarget);
-                    bicm.Menu.Show(parentBoard.PointToScreen(new System.Drawing.Point(realPosition.X, realPosition.Y)));
+
+                    // be warned when run under visual studio. it inherits VS's scaling and VS's window location
+                    System.Windows.Point point = parentBoard.PointToScreen(new System.Windows.Point(realPosition.X, realPosition.Y));
+
+                    bicm.Menu.Show(new System.Drawing.Point((int) (point.X), (int) (point.Y )));
                 }
                 else parentBoard.InvokeReturnToSelectionState();
             }
@@ -567,13 +576,15 @@ namespace HaCreator.MapEditor.Input
         
         private void HandleMinimapBrowse(Board selectedBoard, XNA.Point realPosition)
         {
-            int h = realPosition.X * selectedBoard.mag - parentBoard.Width / 2;
-            int v = realPosition.Y * selectedBoard.mag - parentBoard.Height / 2;
+            int h = realPosition.X * selectedBoard.mag - (int)parentBoard.Width / 2;
+            int v = realPosition.Y * selectedBoard.mag - (int)parentBoard.Height / 2;
             if (h < 0) selectedBoard.hScroll = 0;
-            else if (h > parentBoard.maxHScroll) selectedBoard.hScroll = parentBoard.maxHScroll;
+            else if (h > parentBoard.MaxHScroll) 
+                selectedBoard.hScroll = (int)parentBoard.MaxHScroll;
             else selectedBoard.hScroll = h;
             if (v < 0) selectedBoard.vScroll = 0;
-            else if (v > parentBoard.maxVScroll) selectedBoard.vScroll = parentBoard.maxVScroll;
+            else if (v > parentBoard.MaxVScroll) 
+                selectedBoard.vScroll = (int)parentBoard.MaxVScroll;
             else selectedBoard.vScroll = v;
         }
 

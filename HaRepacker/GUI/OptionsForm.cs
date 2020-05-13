@@ -8,7 +8,6 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.Serialization;
 using HaRepacker.GUI.Panels;
-using HaRepacker.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -32,7 +31,6 @@ namespace HaRepacker.GUI
             }
             indentBox.Value = Program.ConfigurationManager.UserSettings.Indentation;
             lineBreakBox.SelectedIndex = (int)Program.ConfigurationManager.UserSettings.LineBreakType;
-            autoUpdate.Checked = Program.ConfigurationManager.UserSettings.AutoUpdate;
 
             // Theme color
             themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
@@ -61,7 +59,6 @@ namespace HaRepacker.GUI
                 Program.ConfigurationManager.UserSettings.DefaultXmlFolder = "";
             Program.ConfigurationManager.UserSettings.Indentation = indentBox.Value;
             Program.ConfigurationManager.UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
-            Program.ConfigurationManager.UserSettings.AutoUpdate = autoUpdate.Checked;
             Program.ConfigurationManager.UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
 
             Program.ConfigurationManager.Save();
