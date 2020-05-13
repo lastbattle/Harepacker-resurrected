@@ -110,9 +110,14 @@ namespace MapleLib.WzLib.WzProperties
 		/// Spine runtime related resources
 		/// p.s just assuming it should be, if its a WzStingProperty and .atlas, .skel or .json until there is a better way to detect it
 		/// </summary>
-		public bool IsSpineResources
+		public bool IsSpineRelatedResources
 		{
 			get { return (name.EndsWith(".atlas") || name.EndsWith(".json") || name.EndsWith(".skel")); }
+		}
+
+		public bool IsSpineAtlasResources
+		{
+			get { return (name.EndsWith(".atlas")); }
 		}
 		#endregion
 

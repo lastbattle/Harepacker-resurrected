@@ -2,7 +2,10 @@
 using HaRepacker.Converter;
 using HaRepacker.GUI.Input;
 using MapleLib.WzLib;
+using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
+using Spine;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -1399,34 +1402,33 @@ namespace HaRepacker.GUI.Panels
                 // If text is a string property, expand the textbox
                 if (bIsWzStringProperty)
                 {
-                    textPropBox.AcceptsReturn = true;
-                    if (((WzStringProperty)obj).IsSpineResources)
-                    {
-                        textPropBox.Height = 700;
-                    }
-                    else
-                    {
-                        textPropBox.Height = 200;
-                    }
-                } 
-                else if (bIsWzLuaProperty)
-                {
-                    textPropBox.AcceptsReturn = true;
-                    textPropBox.Height = 700;
-                }
-                else
-                {
-                    textPropBox.AcceptsReturn = false;
-                    textPropBox.Height = 35;
-                }
-
-
-                if (bIsWzStringProperty)
-                {
                     WzStringProperty stringObj = (WzStringProperty)obj;
 
-                    // Portal type name display
-                    if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // "pn" = portal name
+                    if (stringObj.IsSpineAtlasResources) // spine related resource
+                    {
+                        Thread thread = new Thread(() =>
+                        {
+                            try
+                            {
+                                SpineAnimationItem item = new SpineAnimationItem(stringObj);
+
+                                // Create xna window
+                                SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                Window.Run();
+                            }
+                            catch (Exception e) 
+                            {
+                                Warning.Error("Error initialising/ rendering spine object. " + e.ToString());
+                            }
+                        });
+                        thread.Start();
+                        thread.Join();
+
+                        // atlas string display
+                        textPropBox.AcceptsReturn = true;
+                        textPropBox.Height = 700;
+                    }
+                    else if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                     {
                         if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
                         {
@@ -1437,11 +1439,24 @@ namespace HaRepacker.GUI.Panels
                         {
                             toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
                         }
+                    } else
+                    {
+                        textPropBox.AcceptsReturn = true;
+                        if (stringObj.IsSpineRelatedResources)
+                        {
+                            textPropBox.Height = 700;
+                        }
+                        else
+                        {
+                            textPropBox.Height = 200;
+                        }
+
                     }
                 } 
                 else if (bIsWzLuaProperty)
                 {
-
+                    textPropBox.AcceptsReturn = true;
+                    textPropBox.Height = 700;
                 }
                 else if (bIsWzIntProperty)
                 {
@@ -1456,6 +1471,10 @@ namespace HaRepacker.GUI.Panels
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
                     }
+                } else
+                {
+                    textPropBox.AcceptsReturn = false;
+                    textPropBox.Height = 35;
                 }
             }
             else if (obj is WzVectorProperty)

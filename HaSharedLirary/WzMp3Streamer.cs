@@ -18,13 +18,15 @@ namespace HaSharedLibrary
 {
     public class WzMp3Streamer
     {
-        private Stream byteStream;
+        private readonly Stream byteStream;
 
         private Mp3FileReader mpegStream;
         private WaveFileReader waveFileStream;
 
-        private WaveOut wavePlayer;
-        private WzSoundProperty sound;
+        private readonly bool bIsMP3File = true;
+
+        private readonly WaveOut wavePlayer;
+        private readonly WzSoundProperty sound;
         private bool repeat;
 
         private bool playbackSuccessfully = true;
@@ -35,24 +37,26 @@ namespace HaSharedLibrary
             this.sound = sound;
             byteStream = new MemoryStream(sound.GetBytes(false));
 
+            this.bIsMP3File = !sound.Name.EndsWith("wav"); // mp3 file does not end with any extension
+
             wavePlayer = new WaveOut(WaveCallbackInfo.FunctionCallback());
             try
             {
-                mpegStream = new Mp3FileReader(byteStream);
-                wavePlayer.Init(mpegStream);
-            }
-            catch (System.InvalidOperationException)
-            {
-                try
+                if (bIsMP3File)
+                {
+                    mpegStream = new Mp3FileReader(byteStream);
+                    wavePlayer.Init(mpegStream);
+                } else
                 {
                     waveFileStream = new WaveFileReader(byteStream);
                     wavePlayer.Init(waveFileStream);
                 }
-                catch (FormatException)
-                {
-                    playbackSuccessfully = false;
-                }
+            }
+            catch (System.Exception e)
+            {
+                playbackSuccessfully = false;
                 //InvalidDataException
+                // Message = "Not a WAVE file - no RIFF header"
             }
             Volume = 0.5f; // default volume
             wavePlayer.PlaybackStopped += new EventHandler<StoppedEventArgs>(wavePlayer_PlaybackStopped);
@@ -95,8 +99,6 @@ namespace HaSharedLibrary
                 waveFileStream = null;
             }
             byteStream.Dispose();
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
         }
 
         public void Play()

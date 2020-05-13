@@ -78,7 +78,7 @@ namespace HaCreator.MapSimulator
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
 
-            switch ((MapRenderResolution) UserSettings.SimulateResolution)
+            switch (UserSettings.SimulateResolution)
             {
 
                 case MapRenderResolution.Res_1024x768:  // 1024x768
@@ -124,6 +124,11 @@ namespace HaCreator.MapSimulator
             pParams.IsFullScreen = false;
 #endif
 
+            // default center
+            mapShiftX = vr.Left;
+            mapShiftY = vr.Top;
+
+
             DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
             this.minimap = BoardItem.TextureFromBitmap(DxDevice, mapBoard.MiniMap);
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
@@ -139,6 +144,7 @@ namespace HaCreator.MapSimulator
 
             DxDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
+
             foreach (BackgroundItem bg in backgrounds)
             {
                 if (!bg.Front)
