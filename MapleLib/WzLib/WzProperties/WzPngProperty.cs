@@ -19,6 +19,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using MapleLib.WzLib.Util;
 
@@ -210,33 +211,37 @@ namespace MapleLib.WzLib.WzProperties
 
         internal byte[] Decompress(byte[] compressedBuffer, int decompressedSize)
         {
-            MemoryStream memStream = new MemoryStream();
-            memStream.Write(compressedBuffer, 2, compressedBuffer.Length - 2);
-            byte[] buffer = new byte[decompressedSize];
-            memStream.Position = 0;
-            DeflateStream zip = new DeflateStream(memStream, CompressionMode.Decompress);
-            zip.Read(buffer, 0, buffer.Length);
-            zip.Close();
-            zip.Dispose();
-            memStream.Close();
-            memStream.Dispose();
-            return buffer;
+            using (MemoryStream memStream = new MemoryStream())
+            {
+                memStream.Write(compressedBuffer, 2, compressedBuffer.Length - 2);
+                byte[] buffer = new byte[decompressedSize];
+                memStream.Position = 0;
+
+                using (DeflateStream zip = new DeflateStream(memStream, CompressionMode.Decompress))
+                {
+                    zip.Read(buffer, 0, buffer.Length);
+                    return buffer;
+                }
+            }
         }
 
         internal byte[] Compress(byte[] decompressedBuffer)
         {
-            MemoryStream memStream = new MemoryStream();
-            DeflateStream zip = new DeflateStream(memStream, CompressionMode.Compress, true);
-            zip.Write(decompressedBuffer, 0, decompressedBuffer.Length);
-            zip.Close();
-            memStream.Position = 0;
-            byte[] buffer = new byte[memStream.Length + 2];
-            memStream.Read(buffer, 2, buffer.Length - 2);
-            memStream.Close();
-            memStream.Dispose();
-            zip.Dispose();
-            System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
-            return buffer;
+            using (MemoryStream memStream = new MemoryStream())
+            {
+                using (DeflateStream zip = new DeflateStream(memStream, CompressionMode.Compress, true))
+                {
+                    zip.Write(decompressedBuffer, 0, decompressedBuffer.Length);
+
+                    memStream.Position = 0;
+                    byte[] buffer = new byte[memStream.Length + 2];
+                    memStream.Read(buffer, 2, buffer.Length - 2);
+
+                    System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
+
+                    return buffer;
+                }
+            }
         }
 
         internal void ParsePng()
@@ -244,195 +249,155 @@ namespace MapleLib.WzLib.WzProperties
             try
             {
                 DeflateStream zlib;
-                int uncompressedSize = 0;
-                int x = 0, y = 0, b = 0, g = 0;
                 Bitmap bmp = null;
-                BitmapData bmpData;
                 WzImage imgParent = ParentImage;
-                byte[] decBuf;
 
-                BinaryReader reader = new BinaryReader(new MemoryStream(compressedBytes));
-                ushort header = reader.ReadUInt16();
-                listWzUsed = header != 0x9C78 && header != 0xDA78 && header != 0x0178 && header != 0x5E78;
-                if (!listWzUsed)
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(compressedBytes)))
                 {
-                    zlib = new DeflateStream(reader.BaseStream, CompressionMode.Decompress);
-                }
-                else
-                {
-                    reader.BaseStream.Position -= 2;
-                    MemoryStream dataStream = new MemoryStream();
-                    int blocksize = 0;
-                    int endOfPng = compressedBytes.Length;
-
-                    while (reader.BaseStream.Position < endOfPng)
+                    ushort header = reader.ReadUInt16();
+                    listWzUsed = header != 0x9C78 && header != 0xDA78 && header != 0x0178 && header != 0x5E78;
+                    if (!listWzUsed)
                     {
-                        blocksize = reader.ReadInt32();
-                        for (int i = 0; i < blocksize; i++)
-                        {
-                            dataStream.WriteByte((byte)(reader.ReadByte() ^ imgParent.reader.WzKey[i]));
-                        }
+                        zlib = new DeflateStream(reader.BaseStream, CompressionMode.Decompress);
                     }
-                    dataStream.Position = 2;
-                    zlib = new DeflateStream(dataStream, CompressionMode.Decompress);
-                }
+                    else
+                    {
+                        reader.BaseStream.Position -= 2;
+                        MemoryStream dataStream = new MemoryStream();
+                        int blocksize = 0;
+                        int endOfPng = compressedBytes.Length;
 
-                switch (format + format2)
-                {
-                    case 1:
-                        bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-                        uncompressedSize = width * height * 2;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
-                        byte[] argb = new Byte[uncompressedSize * 2];
-                        for (int i = 0; i < uncompressedSize; i++)
+                        while (reader.BaseStream.Position < endOfPng)
                         {
-                            b = decBuf[i] & 0x0F; 
-                            b |= (b << 4); 
-
-                            argb[i * 2] = (byte)b;
-
-                            g = decBuf[i] & 0xF0; 
-                            g |= (g >> 4); 
-
-                            argb[i * 2 + 1] = (byte)g;
-                        }
-                        Marshal.Copy(argb, 0, bmpData.Scan0, argb.Length);
-                        bmp.UnlockBits(bmpData);
-                        break;
-                    case 2:
-                        bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-                        uncompressedSize = width * height * 4;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
-                        Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
-                        bmp.UnlockBits(bmpData);
-                        break;
-                    case 3:
-                        // New format 黑白缩略图
-                        // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
-                        // you'll be remembered forever <3 
-                        bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                        bmpData = bmp.LockBits(new Rectangle(Point.Empty, bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-                        uncompressedSize = width * height * 4;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
-
-
-                        int[] argb2 = new int[this.width * this.height];
-                        {
-                            int index;
-                            int index2;
-                            int p;
-                            int w = ((int)Math.Ceiling(this.width / 4.0));
-                            int h = ((int)Math.Ceiling(this.height / 4.0));
-                            for (int y_ = 0; y_ < h; y_++)
+                            blocksize = reader.ReadInt32();
+                            for (int i = 0; i < blocksize; i++)
                             {
-                                for (int x_ = 0; x_ < w; x_++)
-                                {
-                                    index = (x_ + y_ * w) * 2; //原像素索引
-                                    index2 = x_ * 4 + y_ * this.width * 4; //目标像素索引
-                                    p = (decBuf[index] & 0x0F) | ((decBuf[index] & 0x0F) << 4);
-                                    p |= ((decBuf[index] & 0xF0) | ((decBuf[index] & 0xF0) >> 4)) << 8;
-                                    p |= ((decBuf[index + 1] & 0x0F) | ((decBuf[index + 1] & 0x0F) << 4)) << 16;
-                                    p |= ((decBuf[index + 1] & 0xF0) | ((decBuf[index] & 0xF0) >> 4)) << 24;
-
-                                    for (int i = 0; i < 4; i++)
-                                    {
-                                        if (x_ * 4 + i < this.width)
-                                        {
-                                            argb2[index2 + i] = p;
-                                        }
-                                        else
-                                        {
-                                            break;
-                                        }
-                                    }
-                                }
-                                //复制行
-                                index2 = y_ * this.width * 4;
-                                for (int j = 1; j < 4; j++)
-                                {
-                                    if (y_ * 4 + j < this.height)
-                                    {
-                                        Array.Copy(argb2, index2, argb2, index2 + j * this.width, this.width);
-                                    }
-                                    else
-                                    {
-                                        break;
-                                    }
-                                }
+                                dataStream.WriteByte((byte)(reader.ReadByte() ^ imgParent.reader.WzKey[i]));
                             }
                         }
-                        Marshal.Copy(decBuf, 0, bmpData.Scan0, argb2.Length);
-                        bmp.UnlockBits(bmpData);
-                        break;
-                    case 513:
-                        bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
-                        bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-                        uncompressedSize = width * height * 2;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
-                        Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
-                        bmp.UnlockBits(bmpData);
-                        break;
+                        dataStream.Position = 2;
+                        zlib = new DeflateStream(dataStream, CompressionMode.Decompress);
+                    }
 
-                    case 517:
-                        bmp = new Bitmap(width, height);
-                        uncompressedSize = width * height / 128;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
-                        byte iB = 0;
-                        for (int i = 0; i < uncompressedSize; i++)
-                        {
-                            for (byte j = 0; j < 8; j++)
+                    switch (format + format2)
+                    {
+                        case 1:
                             {
-                                iB = Convert.ToByte(((decBuf[i] & (0x01 << (7 - j))) >> (7 - j)) * 0xFF);
-                                for (int k = 0; k < 16; k++)
-                                {
-                                    if (x == width) { x = 0; y++; }
-                                    bmp.SetPixel(x, y, Color.FromArgb(0xFF, iB, iB, iB));
-                                    x++;
-                                }
+                                bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+                                int uncompressedSize = width * height * 2;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
+
+                                byte[] decoded = GetPixelDataBgra4444(decBuf, width, height);
+
+                                Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+                                bmp.UnlockBits(bmpData);
+                                break;
                             }
-                        }
-                        break;
+                        case 2:
+                            {
+                                bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                    case 1026:
-                        bmp = new Bitmap(this.width, this.height, PixelFormat.Format32bppArgb);
-                        bmpData = bmp.LockBits(new Rectangle(new Point(), bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                                int uncompressedSize = width * height * 4;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
 
-                        uncompressedSize = width * height * 4;
-                        decBuf = new byte[uncompressedSize];
-                        zlib.Read(decBuf, 0, uncompressedSize);
+                                Marshal.Copy(decBuf, 0, bmpData.Scan0, width * height);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        case 3:
+                            {
+                                // New format 黑白缩略图
+                                // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
+                                // you'll be remembered forever <3 
+                                bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(Point.Empty, bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                        decBuf = GetPixelDataDXT3(decBuf, this.width, this.height);
-                       
-                        Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
-                        bmp.UnlockBits(bmpData);
-                        break;
+                                int uncompressedSize = width * height * 4;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
 
-                    case 2050: // new
-                         bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                         bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                                byte[] decoded = GetPixelDataDXT3(decBuf, width, height);
 
-                         uncompressedSize = width * height;
-                         decBuf = new byte[uncompressedSize];
-                         zlib.Read(decBuf, 0, uncompressedSize);
+                                Marshal.Copy(decoded, 0, bmpData.Scan0, width * height);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        case 513:
+                            {
+                                bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                         decBuf = GetPixelDataDXT5(decBuf, Width, Height);
+                                int uncompressedSize = width * height * 2;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
 
-                         Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
-                         bmp.UnlockBits(bmpData);
-                         break;
+                                Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        case 517:
+                            {
+                                bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
 
-                    default:
-                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format {0} {1}", format, format2));
-                        break;
+                                int uncompressedSize = width * height / 128;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
+
+                                byte[] decoded = GetPixelDataForm517(decBuf, width, height);
+
+                                Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        case 1026:
+                            {
+                                bmp = new Bitmap(this.width, this.height, PixelFormat.Format32bppArgb);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(new Point(), bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+                                int uncompressedSize = width * height * 4;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
+
+                                decBuf = GetPixelDataDXT3(decBuf, this.width, this.height);
+
+                                Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        case 2050: // new
+                            {
+                                bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                                BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+
+                                int uncompressedSize = width * height;
+                                byte[] decBuf = new byte[uncompressedSize];
+                                zlib.Read(decBuf, 0, uncompressedSize);
+                                zlib.Close();
+
+                                decBuf = GetPixelDataDXT5(decBuf, Width, Height);
+
+                                Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
+                                bmp.UnlockBits(bmpData);
+                                break;
+                            }
+                        default:
+                            Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format {0} {1}", format, format2));
+                            break;
+                    }
+                    png = bmp;
                 }
-                png = bmp;
             }
             catch (InvalidDataException exp) { 
                 png = null;
@@ -440,6 +405,7 @@ namespace MapleLib.WzLib.WzProperties
         }
 
         #region Decoders
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static Color RGB565ToColor(ushort val)
         {
             const int rgb565_mask_r = 0xf800;
@@ -455,6 +421,29 @@ namespace MapleLib.WzLib.WzProperties
             return c;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] GetPixelDataBgra4444(byte[] rawData, int width, int height)
+        {
+            int b, g;
+
+            int uncompressedSize = width * height * 2;
+            byte[] argb = new byte[uncompressedSize * 2];
+            for (int i = 0; i < uncompressedSize; i++)
+            {
+                b = rawData[i] & 0x0F;
+                b |= (b << 4);
+
+                argb[i * 2] = (byte)b;
+
+                g = rawData[i] & 0xF0;
+                g |= (g >> 4);
+
+                argb[i * 2 + 1] = (byte)g;
+            }
+            return argb;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] GetPixelDataDXT3(byte[] rawData, int width, int height)
         {
             byte[] pixel = new byte[width * height * 4];
@@ -490,6 +479,38 @@ namespace MapleLib.WzLib.WzProperties
             return pixel;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte[] GetPixelDataForm517(byte[] rawData, int width, int height)
+        {
+            byte[] pixel = new byte[width * height * 2];
+            int lineIndex = 0;
+            for (int j0 = 0, j1 = height / 16; j0 < j1; j0++)
+            {
+                var dstIndex = lineIndex;
+                for (int i0 = 0, i1 = width / 16; i0 < i1; i0++)
+                {
+                    int idx = (i0 + j0 * i1) * 2;
+                    byte b0 = rawData[idx];
+                    byte b1 = rawData[idx + 1];
+                    for (int k = 0; k < 16; k++)
+                    {
+                        pixel[dstIndex++] = b0;
+                        pixel[dstIndex++] = b1;
+                    }
+                }
+
+                for (int k = 1; k < 16; k++)
+                {
+                    Array.Copy(pixel, lineIndex, pixel, dstIndex, width * 2);
+                    dstIndex += width * 2;
+                }
+
+                lineIndex += width * 32;
+            }
+            return pixel;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte[] GetPixelDataDXT5(byte[] rawData, int width, int height)
         {
             byte[] pixel = new byte[width * height * 4];
@@ -527,6 +548,7 @@ namespace MapleLib.WzLib.WzProperties
             return pixel;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void SetPixel(byte[] pixelData, int x, int y, int width, Color color, byte alpha)
         {
             int offset = (y * width + x) * 4;
@@ -537,8 +559,8 @@ namespace MapleLib.WzLib.WzProperties
         }
         #endregion
 
-
         #region DXT1 Color
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandColorTable(Color[] color, ushort c0, ushort c1)
         {
             color[0] = RGB565ToColor(c0);
@@ -555,6 +577,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandColorIndexTable(int[] colorIndex, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 4, offset++)
@@ -568,6 +591,7 @@ namespace MapleLib.WzLib.WzProperties
         #endregion
 
         #region DXT3/DXT5 Alpha
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaTableDXT3(byte[] alpha, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 2, offset++)
@@ -581,6 +605,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaTableDXT5(byte[] alpha, byte a0, byte a1)
         {
             alpha[0] = a0;
@@ -603,6 +628,7 @@ namespace MapleLib.WzLib.WzProperties
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaIndexTableDXT5(int[] alphaIndex, byte[] rawData, int offset)
         {
             for (int i = 0; i < 16; i += 8, offset += 3)
@@ -641,18 +667,19 @@ namespace MapleLib.WzLib.WzProperties
             compressedBytes = Compress(buf);
             if (listWzUsed)
             {
-                MemoryStream memStream = new MemoryStream();
-                WzBinaryWriter writer = new WzBinaryWriter(memStream, WzTool.GetIvByMapleVersion(WzMapleVersion.GMS));
-                writer.Write(2);
-                for (int i = 0; i < 2; i++)
+                using (MemoryStream memStream = new MemoryStream())
                 {
-                    writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i]));
+                    WzBinaryWriter writer = new WzBinaryWriter(memStream, WzTool.GetIvByMapleVersion(WzMapleVersion.GMS));
+                    writer.Write(2);
+                    for (int i = 0; i < 2; i++)
+                    {
+                        writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i]));
+                    }
+                    writer.Write(compressedBytes.Length - 2);
+                    for (int i = 2; i < compressedBytes.Length; i++)
+                        writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i - 2]));
+                    compressedBytes = memStream.GetBuffer();
                 }
-                writer.Write(compressedBytes.Length - 2);
-                for (int i = 2; i < compressedBytes.Length; i++)
-                    writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i - 2]));
-                compressedBytes = memStream.GetBuffer();
-                writer.Close();
             }
         }
         #endregion
