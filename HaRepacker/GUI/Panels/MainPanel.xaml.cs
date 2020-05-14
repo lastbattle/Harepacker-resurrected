@@ -1460,6 +1460,10 @@ namespace HaRepacker.GUI.Panels
                 }
                 else if (bIsWzIntProperty)
                 {
+                    textPropBox.AcceptsReturn = false;
+                    textPropBox.Height = 35;
+
+
                     WzIntProperty intProperty = (WzIntProperty)obj;
 
                     if (intProperty.Name == FIELD_LIMIT_OBJ_NAME)
