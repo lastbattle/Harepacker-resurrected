@@ -4,7 +4,14 @@ A collection of tools for MapleStory, i.e file/level editor for MapleStory .wz g
 A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite), continuing from where it's being left off.
 For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/
 
-[![N|Solid](https://user-images.githubusercontent.com/4586194/41190431-cd2d7146-6c10-11e8-90ac-b5d5a6fdaeb3.png)](https://github.com/lastbattle/Harepacker-resurrected)
+![N|Solid](https://i.imgur.com/sdq8wNo.png)
+
+![N|Solid](https://i.imgur.com/gm8jdFi.png)
+
+![N|Solid](https://i.imgur.com/EBAGnpn.png)
+
+![N|Solid](https://imgur.com/download/SrS8Lw8/) 
+
 
 ------------------------------
 # BUILD
