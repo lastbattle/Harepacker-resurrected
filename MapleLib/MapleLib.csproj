@@ -152,9 +152,9 @@
     <Compile Include="Helpers\ErrorLogger.cs" />
     <Compile Include="PacketLib\HexTool.cs" />
     <Compile Include="WzDataReader.cs" />
-    <Compile Include="WzLib\Spine\SpineAnimationItem.cs" />
-    <Compile Include="WzLib\Spine\SpineAtlasLoader.cs" />
-    <Compile Include="WzLib\Spine\SpineTextureLoader.cs" />
+    <Compile Include="WzLib\Spine\WzSpineAnimationItem.cs" />
+    <Compile Include="WzLib\Spine\WzSpineAtlasLoader.cs" />
+    <Compile Include="WzLib\Spine\WzSpineTextureLoader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />
     <Compile Include="WzLib\WzExtended.cs" />
     <Compile Include="MapleCryptoLib\AESEncryption.cs" />
@@ -196,7 +196,7 @@
     <Compile Include="WzLib\WzProperties\WzLuaProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzNullProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzPngProperty.cs" />
-    <Compile Include="WzLib\WzProperties\WzSoundProperty.cs" />
+    <Compile Include="WzLib\WzProperties\WzBinaryProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzStringProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzSubProperty.cs" />
     <Compile Include="WzLib\WzProperties\WzShortProperty.cs" />

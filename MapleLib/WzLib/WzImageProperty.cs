@@ -243,7 +243,7 @@ namespace MapleLib.WzLib
                     }
                     return convexProp;
                 case "Sound_DX8":
-                    WzSoundProperty soundProp = new WzSoundProperty(name, reader, imgParent.parseEverything) { Parent = parent };
+                    WzBinaryProperty soundProp = new WzBinaryProperty(name, reader, imgParent.parseEverything) { Parent = parent };
                     return soundProp;
                 case "UOL":
                     reader.BaseStream.Position++;

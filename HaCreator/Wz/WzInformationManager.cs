@@ -26,7 +26,7 @@ namespace HaCreator.Wz
         public Dictionary<string, WzImage> ObjectSets = new Dictionary<string, WzImage>();
 
         public Dictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
-        public Dictionary<string, WzSoundProperty> BGMs = new Dictionary<string, WzSoundProperty>();
+        public Dictionary<string, WzBinaryProperty> BGMs = new Dictionary<string, WzBinaryProperty>();
 
         public Dictionary<string, Bitmap> MapMarks = new Dictionary<string, Bitmap>();
         public Dictionary<string, Tuple<string, string>> Maps = new Dictionary<string, Tuple<string, string>>();

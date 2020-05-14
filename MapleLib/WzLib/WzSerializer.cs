@@ -149,9 +149,9 @@ namespace MapleLib.WzLib.Serialization
                 WzNullProperty property6 = (WzNullProperty)prop;
                 tw.Write(depth + "<null name=\"" + XmlUtil.SanitizeText(property6.Name) + "\"/>" + lineBreak);
             }
-            else if (prop is WzSoundProperty)
+            else if (prop is WzBinaryProperty)
             {
-                WzSoundProperty property7 = (WzSoundProperty)prop;
+                WzBinaryProperty property7 = (WzBinaryProperty)prop;
                 if (ExportBase64Data)
                     tw.Write(string.Concat(new object[] { depth, "<sound name=\"", XmlUtil.SanitizeText(property7.Name), "\" length=\"", property7.Length.ToString(), "\" basehead=\"", Convert.ToBase64String(property7.Header), "\" basedata=\"", Convert.ToBase64String(property7.GetBytes(false)), "\"/>" }) + lineBreak);
                 else
@@ -477,10 +477,10 @@ namespace MapleLib.WzLib.Serialization
                 bmp.Save(path, ImageFormat.Png);
                 //curr++;
             }
-            else if (currObj is WzSoundProperty)
+            else if (currObj is WzBinaryProperty)
             {
                 string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".mp3";
-                ((WzSoundProperty)currObj).SaveToFile(path);
+                ((WzBinaryProperty)currObj).SaveToFile(path);
             }
             else if (currObj is WzImage)
             {
@@ -785,7 +785,7 @@ namespace MapleLib.WzLib.Serialization
 
                 case "sound":
                     if (!element.HasAttribute("basedata") || !element.HasAttribute("basehead") || !element.HasAttribute("length")) throw new NoBase64DataException("no base64 data in sound element with name " + element.GetAttribute("name"));
-                    WzSoundProperty sound = new WzSoundProperty(element.GetAttribute("name"),
+                    WzBinaryProperty sound = new WzBinaryProperty(element.GetAttribute("name"),
                         int.Parse(element.GetAttribute("length")),
                         Convert.FromBase64String(element.GetAttribute("basehead")),
                         Convert.FromBase64String(element.GetAttribute("basedata")));

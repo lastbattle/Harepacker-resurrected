@@ -28,14 +28,15 @@ namespace MapleLib.WzLib.WzProperties
 {
     public enum WzSoundPropertyType
     {
+        Binary,
         MP3,
         WAV,
     }
 
     /// <summary>
-    /// A property that contains data for an MP3 file
+    /// A property that contains data for an MP3 or binary file
     /// </summary>
-    public class WzSoundProperty : WzExtended
+    public class WzBinaryProperty : WzExtended
     {
         #region Fields
         internal string name;
@@ -63,7 +64,7 @@ namespace MapleLib.WzLib.WzProperties
 
         public override WzImageProperty DeepClone()
         {
-            WzSoundProperty clone = new WzSoundProperty(this);
+            WzBinaryProperty clone = new WzBinaryProperty(this);
             return clone;
         }
 
@@ -139,7 +140,7 @@ namespace MapleLib.WzLib.WzProperties
         /// <param name="name">The name of the property</param>
         /// <param name="reader">The wz reader</param>
         /// <param name="parseNow">Indicating whether to parse the property now</param>
-        public WzSoundProperty(string name, WzBinaryReader reader, bool parseNow)
+        public WzBinaryProperty(string name, WzBinaryReader reader, bool parseNow)
         {
             this.name = name;
             wzReader = reader;
@@ -183,7 +184,7 @@ namespace MapleLib.WzLib.WzProperties
         /// <param name="headerClone"></param>
         /// <param name="data"></param>
         /// <param name="headerEncrypted"></param>
-        public WzSoundProperty(WzSoundProperty otherProperty)
+        public WzBinaryProperty(WzBinaryProperty otherProperty)
         {
             this.name = otherProperty.name;
             this.wavFormat = otherProperty.wavFormat;
@@ -215,7 +216,7 @@ namespace MapleLib.WzLib.WzProperties
         /// <param name="len_ms"></param>
         /// <param name="headerClone"></param>
         /// <param name="data"></param>
-        public WzSoundProperty(string name, int len_ms, byte[] headerClone, byte[] data)
+        public WzBinaryProperty(string name, int len_ms, byte[] headerClone, byte[] data)
         {
             this.name = name;
             this.len_ms = len_ms;
@@ -234,7 +235,7 @@ namespace MapleLib.WzLib.WzProperties
         /// </summary>
         /// <param name="name">The name of the property</param>
         /// <param name="file">The path to the sound file</param>
-        public WzSoundProperty(string name, string file)
+        public WzBinaryProperty(string name, string file)
         {
             this.name = name;
             Mp3FileReader reader = new Mp3FileReader(file);

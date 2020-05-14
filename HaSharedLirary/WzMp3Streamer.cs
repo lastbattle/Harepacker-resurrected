@@ -26,12 +26,12 @@ namespace HaSharedLibrary
         private readonly bool bIsMP3File = true;
 
         private readonly WaveOut wavePlayer;
-        private readonly WzSoundProperty sound;
+        private readonly WzBinaryProperty sound;
         private bool repeat;
 
         private bool playbackSuccessfully = true;
 
-        public WzMp3Streamer(WzSoundProperty sound, bool repeat)
+        public WzMp3Streamer(WzBinaryProperty sound, bool repeat)
         {
             this.repeat = repeat;
             this.sound = sound;
