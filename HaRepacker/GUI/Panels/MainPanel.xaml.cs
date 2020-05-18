@@ -895,6 +895,16 @@ namespace HaRepacker.GUI.Panels
                 }
                 ((WzIntProperty)obj).Value = val;
             }
+            else if (obj is WzLongProperty)
+            {
+                long val;
+                if (!long.TryParse(setText, out val))
+                {
+                    Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
+                    return;
+                }
+                ((WzLongProperty)obj).Value = val;
+            }
             else if (obj is WzDoubleProperty)
             {
                 double val;
@@ -1332,6 +1342,7 @@ namespace HaRepacker.GUI.Panels
             bool bIsWzSoundProperty = obj is WzBinaryProperty;
             bool bIsWzStringProperty = obj is WzStringProperty;
             bool bIsWzIntProperty = obj is WzIntProperty;
+            bool bIsWzLongProperty = obj is WzLongProperty;
             bool bIsWzDoubleProperty = obj is WzDoubleProperty;
             bool bIsWzFloatProperty = obj is WzFloatProperty;
             bool bIsWzShortProperty = obj is WzShortProperty;
@@ -1393,7 +1404,7 @@ namespace HaRepacker.GUI.Panels
                 menuItem_changeSound.Visibility = Visibility.Visible;
                 menuItem_saveSound.Visibility = Visibility.Visible;
             }
-            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
+            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzLongProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
@@ -1458,19 +1469,26 @@ namespace HaRepacker.GUI.Panels
                     textPropBox.AcceptsReturn = true;
                     textPropBox.Height = 700;
                 }
-                else if (bIsWzIntProperty)
+                else if (bIsWzLongProperty || bIsWzIntProperty)
                 {
                     textPropBox.AcceptsReturn = false;
                     textPropBox.Height = 35;
 
+                    ulong value_ = 0;
+                    if (bIsWzLongProperty)
+                    {
+                        value_ = (ulong) ((WzLongProperty)obj).GetLong();
+                    } else if (bIsWzIntProperty)
+                    {
+                        value_ = (ulong) ((WzIntProperty)obj).GetLong();
+                    }
 
-                    WzIntProperty intProperty = (WzIntProperty)obj;
-
-                    if (intProperty.Name == FIELD_LIMIT_OBJ_NAME)
+                    // field limit UI
+                    if (obj.Name == FIELD_LIMIT_OBJ_NAME)
                     {
                         isSelectingWzMapFieldLimit = true;
 
-                        fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) intProperty.GetLong());
+                        fieldLimitPanel1.UpdateFieldLimitCheckboxes(value_);
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
