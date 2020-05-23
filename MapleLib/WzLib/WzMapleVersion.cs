@@ -30,5 +30,7 @@ namespace MapleLib.WzLib
         GENERATE = 4,
         GETFROMZLZ = 5,
         CUSTOM = 6, // input bytes, for private servers
+
+        UNKNOWN = 99,
     }
 }

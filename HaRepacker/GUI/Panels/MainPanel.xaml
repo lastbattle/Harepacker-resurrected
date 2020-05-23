@@ -357,7 +357,7 @@
 
 
                 <Grid x:Name="grid1" Grid.Row="1" Grid.RowSpan="2">
-                    <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed">
+                    <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
                     <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"/>

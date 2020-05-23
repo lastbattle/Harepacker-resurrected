@@ -1,4 +1,27 @@
-﻿using MapleLib.WzLib.WzProperties;
+﻿/*
+ * Copyright (c) 2018~2020, LastBattle https://github.com/lastbattle
+ * Copyright (c) 2010~2013, haha01haha http://forum.ragezone.com/f701/release-universal-harepacker-version-892005/
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+using MapleLib.WzLib.WzProperties;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -11,7 +34,7 @@ using static MapleLib.WzDataReader;
 
 namespace MapleLib.WzLib.Spine
 {
-    public class SpineAtlasLoader
+    public class WzSpineAtlasLoader
     {
         /// <summary>
         /// Loads skeleton 
@@ -67,7 +90,7 @@ namespace MapleLib.WzLib.Spine
             {
                 WzStringProperty stringJsonProp = (WzStringProperty) childProperties.Where(child => child.Name.EndsWith(".json")).FirstOrDefault();
 
-                if (stringJsonProp != null)
+                if (stringJsonProp != null) // read json based 
                 {
                     StringReader skeletonReader = new StringReader(stringJsonProp.GetString());
                     SkeletonJson json = new SkeletonJson(atlas);
@@ -79,16 +102,13 @@ namespace MapleLib.WzLib.Spine
                     // try read binary based 
                     foreach (WzImageProperty property in childProperties)
                     {
-                        if (property is WzSoundProperty)
+                        if (property is WzBinaryProperty)
                         {
-                            WzSoundProperty soundProp = (WzSoundProperty)property; // should be called binaryproperty actually
+                            WzBinaryProperty soundProp = (WzBinaryProperty)property; // should be called binaryproperty actually
 
-                            byte[] bytes = soundProp.GetBytes(false);
-
-                            SkeletonBinary skeletonBinary = new SkeletonBinary(atlas);
-
-                            using (MemoryStream ms = new MemoryStream(bytes)) 
+                            using (MemoryStream ms = new MemoryStream(soundProp.GetBytes(false))) 
                             {
+                                SkeletonBinary skeletonBinary = new SkeletonBinary(atlas);
                                 data = skeletonBinary.ReadSkeletonData(ms);
                                 return true;
                             }
@@ -98,48 +118,5 @@ namespace MapleLib.WzLib.Spine
             }
             return false;
         }
-
-     /*   private static bool TryLoadSkeletonBinary(WzImageProperty atlasNode, Atlas atlas, out SkeletonData data)
-        {
-            data = null;
-
-            if (atlasNode == null || atlasNode.Parent == null || atlas == null)
-            {
-                return false;
-            }
-
-            var m = Regex.Match(atlasNode.GetString(), @"^(.+)\.atlas$", RegexOptions.IgnoreCase);
-            if (!m.Success)
-            {
-                return false;
-            }
-
-            throw new Exception("not implemented");*/
-
-         /*   WzImageProperty node = (WzImageProperty) atlasNode.Parent[m.Result("$1")];
-            WzUOLProperty uol;
-            while ((uol = node.GetValueEx<Wz_Uol>(null)) != null)
-            {
-                node = uol.HandleUol(node);
-            }
-
-            var skeletonSource = (WzSoundProperty) node;
-            if (skeletonSource == null || skeletonSource.SoundType != Wz_SoundType.Binary)
-            {
-                return false;
-            }
-
-            byte[] buffer = new byte[skeletonSource.DataLength];
-            skeletonSource.WzFile.FileStream.Seek(skeletonSource.Offset, SeekOrigin.Begin);
-            if (skeletonSource.WzFile.FileStream.Read(buffer, 0, buffer.Length) != buffer.Length)
-            {
-                return false;
-            }
-            MemoryStream ms = new MemoryStream(buffer);
-
-            SkeletonBinary binary = new SkeletonBinary(atlas);
-            data = binary.ReadSkeletonData(ms);
-            return true;*/
-      //  }
     }
 }

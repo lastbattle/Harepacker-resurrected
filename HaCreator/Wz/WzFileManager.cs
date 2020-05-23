@@ -234,7 +234,7 @@ namespace HaCreator.Wz
                     soundImage.ParseImage();
                 try
                 {
-                    foreach (WzSoundProperty bgm in soundImage.WzProperties)
+                    foreach (WzBinaryProperty bgm in soundImage.WzProperties)
                     {
                         Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + bgm.Name] = bgm;
                     }

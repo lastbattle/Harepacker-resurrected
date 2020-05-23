@@ -410,7 +410,7 @@ namespace HaRepacker.GUI.Panels
             }
             else if (!SoundInputBox.Show(Properties.Resources.MainAddSound, out name, out path))
                 return;
-            ((WzNode)target).AddObject(new WzSoundProperty(name, path), UndoRedoMan);
+            ((WzNode)target).AddObject(new WzBinaryProperty(name, path), UndoRedoMan);
         }
 
         /// <summary>
@@ -895,6 +895,16 @@ namespace HaRepacker.GUI.Panels
                 }
                 ((WzIntProperty)obj).Value = val;
             }
+            else if (obj is WzLongProperty)
+            {
+                long val;
+                if (!long.TryParse(setText, out val))
+                {
+                    Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
+                    return;
+                }
+                ((WzLongProperty)obj).Value = val;
+            }
             else if (obj is WzDoubleProperty)
             {
                 double val;
@@ -1022,7 +1032,7 @@ namespace HaRepacker.GUI.Panels
         /// <param name="e"></param>
         private void menuItem_changeSound_Click(object sender, RoutedEventArgs e)
         {
-            if (DataTree.SelectedNode.Tag is WzSoundProperty)
+            if (DataTree.SelectedNode.Tag is WzBinaryProperty)
             {
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
                 {
@@ -1030,19 +1040,19 @@ namespace HaRepacker.GUI.Panels
                     Filter = "Moving Pictures Experts Group Format 1 Audio Layer 3(*.mp3)|*.mp3"
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-                WzSoundProperty prop;
+                WzBinaryProperty prop;
                 try
                 {
-                    prop = new WzSoundProperty(((WzSoundProperty)DataTree.SelectedNode.Tag).Name, dialog.FileName);
+                    prop = new WzBinaryProperty(((WzBinaryProperty)DataTree.SelectedNode.Tag).Name, dialog.FileName);
                 }
                 catch
                 {
                     Warning.Error(Properties.Resources.MainImageLoadError);
                     return;
                 }
-                IPropertyContainer parent = (IPropertyContainer)((WzSoundProperty)DataTree.SelectedNode.Tag).Parent;
-                ((WzSoundProperty)DataTree.SelectedNode.Tag).ParentImage.Changed = true;
-                ((WzSoundProperty)DataTree.SelectedNode.Tag).Remove();
+                IPropertyContainer parent = (IPropertyContainer)((WzBinaryProperty)DataTree.SelectedNode.Tag).Parent;
+                ((WzBinaryProperty)DataTree.SelectedNode.Tag).ParentImage.Changed = true;
+                ((WzBinaryProperty)DataTree.SelectedNode.Tag).Remove();
                 DataTree.SelectedNode.Tag = prop;
                 parent.AddProperty(prop);
                 mp3Player.SoundProperty = prop;
@@ -1056,9 +1066,9 @@ namespace HaRepacker.GUI.Panels
         /// <param name="e"></param>
         private void menuItem_saveSound_Click(object sender, RoutedEventArgs e)
         {
-            if (!(DataTree.SelectedNode.Tag is WzSoundProperty))
+            if (!(DataTree.SelectedNode.Tag is WzBinaryProperty))
                 return;
-            WzSoundProperty mp3 = (WzSoundProperty)DataTree.SelectedNode.Tag;
+            WzBinaryProperty mp3 = (WzBinaryProperty)DataTree.SelectedNode.Tag;
 
             System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
             {
@@ -1329,9 +1339,10 @@ namespace HaRepacker.GUI.Panels
 
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
-            bool bIsWzSoundProperty = obj is WzSoundProperty;
+            bool bIsWzSoundProperty = obj is WzBinaryProperty;
             bool bIsWzStringProperty = obj is WzStringProperty;
             bool bIsWzIntProperty = obj is WzIntProperty;
+            bool bIsWzLongProperty = obj is WzLongProperty;
             bool bIsWzDoubleProperty = obj is WzDoubleProperty;
             bool bIsWzFloatProperty = obj is WzFloatProperty;
             bool bIsWzShortProperty = obj is WzShortProperty;
@@ -1372,10 +1383,10 @@ namespace HaRepacker.GUI.Panels
 
                     SetImageRenderView(linkProperty, null);
                 } 
-                else if (linkValue is WzSoundProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
+                else if (linkValue is WzBinaryProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
                 {
                     mp3Player.Visibility = Visibility.Visible;
-                    mp3Player.SoundProperty = (WzSoundProperty)linkValue;
+                    mp3Player.SoundProperty = (WzBinaryProperty)linkValue;
 
                     menuItem_changeSound.Visibility = Visibility.Visible;
                     menuItem_saveSound.Visibility = Visibility.Visible;
@@ -1388,12 +1399,12 @@ namespace HaRepacker.GUI.Panels
             else if (bIsWzSoundProperty)
             {
                 mp3Player.Visibility = Visibility.Visible;
-                mp3Player.SoundProperty = (WzSoundProperty)obj;
+                mp3Player.SoundProperty = (WzBinaryProperty)obj;
 
                 menuItem_changeSound.Visibility = Visibility.Visible;
                 menuItem_saveSound.Visibility = Visibility.Visible;
             }
-            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
+            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzLongProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
@@ -1410,7 +1421,7 @@ namespace HaRepacker.GUI.Panels
                         {
                             try
                             {
-                                SpineAnimationItem item = new SpineAnimationItem(stringObj);
+                                WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
 
                                 // Create xna window
                                 SpineAnimationWindow Window = new SpineAnimationWindow(item);
@@ -1458,15 +1469,26 @@ namespace HaRepacker.GUI.Panels
                     textPropBox.AcceptsReturn = true;
                     textPropBox.Height = 700;
                 }
-                else if (bIsWzIntProperty)
+                else if (bIsWzLongProperty || bIsWzIntProperty)
                 {
-                    WzIntProperty intProperty = (WzIntProperty)obj;
+                    textPropBox.AcceptsReturn = false;
+                    textPropBox.Height = 35;
 
-                    if (intProperty.Name == FIELD_LIMIT_OBJ_NAME)
+                    ulong value_ = 0;
+                    if (bIsWzLongProperty)
+                    {
+                        value_ = (ulong) ((WzLongProperty)obj).GetLong();
+                    } else if (bIsWzIntProperty)
+                    {
+                        value_ = (ulong) ((WzIntProperty)obj).GetLong();
+                    }
+
+                    // field limit UI
+                    if (obj.Name == FIELD_LIMIT_OBJ_NAME)
                     {
                         isSelectingWzMapFieldLimit = true;
 
-                        fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) intProperty.GetLong());
+                        fieldLimitPanel1.UpdateFieldLimitCheckboxes(value_);
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;

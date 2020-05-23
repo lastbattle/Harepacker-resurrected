@@ -70,7 +70,7 @@ namespace HaCreator.GUI
             yBox.Value = board.MapSize.Y;
 
             List<string> sortedBGMs = new List<string>();
-            foreach (KeyValuePair<string, WzSoundProperty> bgm in Program.InfoManager.BGMs)
+            foreach (KeyValuePair<string, WzBinaryProperty> bgm in Program.InfoManager.BGMs)
                 sortedBGMs.Add(bgm.Key);
             sortedBGMs.Sort();
             foreach (string bgm in sortedBGMs)
