@@ -125,8 +125,11 @@ namespace HaCreator.MapSimulator
 #endif
 
             // default center
-            mapShiftX = vr.Left;
-            mapShiftY = vr.Top;
+            int leftRightVRDifference = vr.Right - vr.Left;
+            int topDownVRDifference = vr.Bottom - vr.Top;
+
+            mapShiftX = ((leftRightVRDifference / 2) + vr.Left) - (RenderWidth / 2);
+            mapShiftY = ((topDownVRDifference / 2) + vr.Top) - (RenderHeight / 2);
 
 
             DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
