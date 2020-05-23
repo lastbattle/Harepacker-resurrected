@@ -40,6 +40,7 @@ namespace HaRepacker.GUI
             // 
             // encryptionBox
             // 
+            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.encryptionBox.FormattingEnabled = true;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";

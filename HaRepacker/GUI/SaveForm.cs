@@ -135,17 +135,20 @@ namespace HaRepacker.GUI
 
                     wzf.MapleVersion = wzMapleVersionSelected;
                     if (wzf is WzFile)
+                    {
                         ((WzFile)wzf).Version = (short)versionBox.Value;
+                    }
+
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
                     {
-                        wzf.SaveToDisk(dialog.FileName + "$tmp");
+                        wzf.SaveToDisk(dialog.FileName + "$tmp", wzMapleVersionSelected);
                         wzNode.Delete();
                         File.Delete(dialog.FileName);
                         File.Move(dialog.FileName + "$tmp", dialog.FileName);
                     }
                     else
                     {
-                        wzf.SaveToDisk(dialog.FileName);
+                        wzf.SaveToDisk(dialog.FileName, wzMapleVersionSelected);
                         wzNode.Delete();
                     }
 
@@ -203,9 +206,13 @@ namespace HaRepacker.GUI
         private void PrepareAllImgs(WzDirectory dir)
         {
             foreach (WzImage img in dir.WzImages)
+            {
                 img.Changed = true;
+            }
             foreach (WzDirectory subdir in dir.WzDirectories)
+            {
                 PrepareAllImgs(subdir);
+            }
         }
     }
 }

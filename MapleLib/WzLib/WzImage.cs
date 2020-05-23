@@ -279,16 +279,18 @@ namespace MapleLib.WzLib
 		/// </summary>
 		/// <param name="wzReader">The BinaryReader that is currently reading the wz file</param>
         /// <returns>bool Parse status</returns>
-        public bool ParseImage(bool parseEverything = false)
+        public bool ParseImage(bool parseEverything = false, bool forceReadFromData = false)
         {
-            if (Parsed)
-            {
-                return true;
-            }
-            else if (Changed)
-            {
-                Parsed = true;
-                return true;
+            if (!forceReadFromData) { // only check if parsed or changed if its not false read
+                if (Parsed)
+                {
+                    return true;
+                }
+                else if (Changed)
+                {
+                    Parsed = true;
+                    return true;
+                }
             }
 
             lock (reader) // for multi threaded XMLWZ export. 
@@ -380,7 +382,8 @@ namespace MapleLib.WzLib
             if (changed || forceReadFromData)
             {
                 if (reader != null && !parsed)
-                    ParseImage();
+                    ParseImage(true, forceReadFromData);
+
                 WzSubProperty imgProp = new WzSubProperty();
                 long startPos = writer.BaseStream.Position;
                 imgProp.AddPropertiesForWzImageDumping(WzProperties);

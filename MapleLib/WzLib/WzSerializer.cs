@@ -484,22 +484,24 @@ namespace MapleLib.WzLib.Serialization
             }
             else if (currObj is WzImage)
             {
+                WzImage wzImage = ((WzImage)currObj);
+
                 outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
                 if (!Directory.Exists(outPath)) 
                     Directory.CreateDirectory(outPath);
 
-                bool parse = ((WzImage)currObj).Parsed || ((WzImage)currObj).Changed;
+                bool parse = wzImage.Parsed || wzImage.Changed;
                 if (!parse)
                 {
-                    ((WzImage)currObj).ParseImage();
+                    wzImage.ParseImage();
                 }
-                foreach (WzImageProperty subprop in ((IPropertyContainer)currObj).WzProperties)
+                foreach (WzImageProperty subprop in wzImage.WzProperties)
                 {
                     ExportRecursion(subprop, outPath);
                 }
                 if (!parse)
                 {
-                    ((WzImage)currObj).UnparseImage();
+                    wzImage.UnparseImage();
                 }
                 curr++;
             }
@@ -590,7 +592,9 @@ namespace MapleLib.WzLib.Serialization
         internal void DumpImageToXML(TextWriter tw, string depth, WzImage img, string exportFilePath)
         {
             bool parsed = img.Parsed || img.Changed;
-            if (!parsed) img.ParseImage();
+            if (!parsed) 
+                img.ParseImage();
+
             curr++;
             tw.Write(depth + "<wzimg name=\"" + XmlUtil.SanitizeText(img.Name) + "\">" + lineBreak);
             string newDepth = depth + indent;
@@ -735,15 +739,18 @@ namespace MapleLib.WzLib.Serialization
             string name = imgElement.GetAttribute("name");
             WzImage result = new WzImage(name);
             foreach (XmlElement subelement in imgElement)
+            {
                 result.WzProperties.Add(ParsePropertyFromXMLElement(subelement));
+            }
             result.Changed = true;
             if (this.useMemorySaving)
             {
                 string path = Path.GetTempFileName();
-                WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), iv);
-                result.SaveImage(wzWriter);
-                wzWriter.Close();
-                result.Dispose();
+                using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), iv))
+                {
+                    result.SaveImage(wzWriter);
+                    result.Dispose();
+                }
 
                 bool successfullyParsedImage;
                 result = imgDeserializer.WzImageFromIMGFile(path, iv, name, out successfullyParsedImage);

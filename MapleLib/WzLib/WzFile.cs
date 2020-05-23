@@ -346,47 +346,54 @@ namespace MapleLib.WzLib
         /// Saves a wz file to the disk, AKA repacking.
         /// </summary>
         /// <param name="path">Path to the output wz file</param>
-        public void SaveToDisk(string path)
+        public void SaveToDisk(string path, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
-            WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion);
+            if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
+                WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion); // get from local WzFile
+            else
+                WzIv = WzTool.GetIvByMapleVersion(savingToPreferredWzVer); // custom selected
+            wzDir.WzIv = WzIv;
+
             CreateVersionHash();
             wzDir.SetHash(versionHash);
 
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
             File.Create(tempFile).Close();
-            wzDir.GenerateDataFile(tempFile);
+            wzDir.GenerateDataFile(tempFile, WzIv);
 
             WzTool.StringCache.Clear();
             uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
 
-            WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv);
-            wzWriter.Hash = (uint)versionHash;
-            Header.FSize = totalLen - Header.FStart;
-            for (int i = 0; i < 4; i++)
+            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
             {
-                wzWriter.Write((byte)Header.Ident[i]);
-            }
-            wzWriter.Write((long)Header.FSize);
-            wzWriter.Write(Header.FStart);
-            wzWriter.WriteNullTerminatedString(Header.Copyright);
-            long extraHeaderLength = Header.FStart - wzWriter.BaseStream.Position;
-            if (extraHeaderLength > 0)
-            {
-                wzWriter.Write(new byte[(int)extraHeaderLength]);
-            }
-            wzWriter.Write(version);
-            wzWriter.Header = Header;
-            wzDir.SaveDirectory(wzWriter);
-            wzWriter.StringCache.Clear();
+                wzWriter.Hash = (uint)versionHash;
+                Header.FSize = totalLen - Header.FStart;
+                for (int i = 0; i < 4; i++)
+                {
+                    wzWriter.Write((byte)Header.Ident[i]);
+                }
+                wzWriter.Write((long)Header.FSize);
+                wzWriter.Write(Header.FStart);
+                wzWriter.WriteNullTerminatedString(Header.Copyright);
 
-            using (FileStream fs = File.OpenRead(tempFile))
-            {
-                wzDir.SaveImages(wzWriter, fs);
-                fs.Close();
+                long extraHeaderLength = Header.FStart - wzWriter.BaseStream.Position;
+                if (extraHeaderLength > 0)
+                {
+                    wzWriter.Write(new byte[(int)extraHeaderLength]);
+                }
+                wzWriter.Write(version);
+                wzWriter.Header = Header;
+                wzDir.SaveDirectory(wzWriter);
+                wzWriter.StringCache.Clear();
+
+                using (FileStream fs = File.OpenRead(tempFile))
+                {
+                    wzDir.SaveImages(wzWriter, fs);
+                }
+                File.Delete(tempFile);
+
+                wzWriter.StringCache.Clear();
             }
-            File.Delete(tempFile);
-            wzWriter.StringCache.Clear();
-            wzWriter.Close();
 
 
             GC.Collect();

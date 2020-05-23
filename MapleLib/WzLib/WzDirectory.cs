@@ -305,9 +305,12 @@ namespace MapleLib.WzLib
         /// 
         /// </summary>
         /// <param name="fileName"></param>
+        /// <param name="useIv">The IV to use while generating the data file. If null, it'll use the WzDirectory default</param>
         /// <returns></returns>
-		internal int GenerateDataFile(string fileName)
+		internal int GenerateDataFile(string fileName, byte[] useIv)
         {
+            bool useCustomIv = useIv != null; // whole shit gonna be re-written if its a custom IV specified
+
             size = 0;
             int entryCount = subDirs.Count + images.Count;
             if (entryCount == 0)
@@ -319,25 +322,25 @@ namespace MapleLib.WzLib
             offsetSize = WzTool.GetCompressedIntLength(entryCount);
 
             WzBinaryWriter imgWriter = null;
-            MemoryStream memStream = null;
             FileStream fileWrite = new FileStream(fileName, FileMode.Append, FileAccess.Write);
 
             foreach (WzImage img in images)
             {
-                if (img.changed)
+                if (useCustomIv || img.changed)
                 {
-                    memStream = new MemoryStream();
-                    imgWriter = new WzBinaryWriter(memStream, this.WzIv);
-                    img.SaveImage(imgWriter);
-                    img.checksum = 0;
-                    foreach (byte b in memStream.ToArray())
+                    using (MemoryStream memStream = new MemoryStream())
                     {
-                        img.checksum += b;
+                        imgWriter = new WzBinaryWriter(memStream, useIv == null ? this.WzIv : useIv);
+                        img.SaveImage(imgWriter, useCustomIv);
+                        img.checksum = 0;
+                        foreach (byte b in memStream.ToArray())
+                        {
+                            img.checksum += b;
+                        }
+                        img.tempFileStart = fileWrite.Position;
+                        fileWrite.Write(memStream.ToArray(), 0, (int)memStream.Length);
+                        img.tempFileEnd = fileWrite.Position;
                     }
-                    img.tempFileStart = fileWrite.Position;
-                    fileWrite.Write(memStream.ToArray(), 0, (int)memStream.Length);
-                    img.tempFileEnd = fileWrite.Position;
-                    memStream.Dispose();
                 }
                 else
                 {
@@ -366,7 +369,7 @@ namespace MapleLib.WzLib
             {
                 int nameLen = WzTool.GetWzObjectValueLength(dir.name, 3);
                 size += nameLen;
-                size += dir.GenerateDataFile(fileName);
+                size += dir.GenerateDataFile(fileName, useIv);
                 size += WzTool.GetCompressedIntLength(dir.size);
                 size += WzTool.GetCompressedIntLength(dir.checksum);
                 size += 4;
