@@ -16,6 +16,8 @@ using System.Collections;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 
 namespace HaCreator.CustomControls
 {
@@ -85,6 +87,7 @@ namespace HaCreator.CustomControls
         }
 
         private string _previousSeachText = string.Empty;
+        private CancellationTokenSource _existingSearchTask = null;
         /// <summary>
         /// On search box text changed
         /// </summary>
@@ -102,6 +105,13 @@ namespace HaCreator.CustomControls
             _previousSeachText = tosearch; // set
 
 
+            // Cancel existing task if any
+            if (_existingSearchTask != null && !_existingSearchTask.IsCancellationRequested)
+            {
+                _existingSearchTask.Cancel();
+            }
+
+            // Clear 
             mapNamesBox.Items.Clear();
             if (tosearch == string.Empty)
             {
@@ -109,10 +119,36 @@ namespace HaCreator.CustomControls
             }
             else
             {
-                maps.ForEach(map => {
-                    if (map.ToLower().Contains(tosearch))
-                        mapNamesBox.Items.Add(map);
+
+                Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+
+                // new task
+                _existingSearchTask = new CancellationTokenSource();
+
+                Task t = Task.Run(() =>
+                {
+                    List<string> mapsFiltered = new List<string>();
+                    foreach (string map in maps)
+                    {
+                        if (_existingSearchTask.IsCancellationRequested)
+                            return; // stop immediately
+
+                        if (map.ToLower().Contains(tosearch))
+                            mapsFiltered.Add(map);
+                    }
+
+                    currentDispatcher.BeginInvoke(new Action(() =>
+                    {
+                        foreach (string map in mapsFiltered) 
+                        { 
+                            if (_existingSearchTask.IsCancellationRequested)
+                                return; // stop immediately
+
+                            mapNamesBox.Items.Add(map);
+                        }
+                    }));
                 });
+
             }
             mapNamesBox.SelectedItem = null;
             mapNamesBox.SelectedIndex = -1;
