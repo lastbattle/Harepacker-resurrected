@@ -49,7 +49,7 @@ namespace MapleLib.WzLib.WzStructure
 
         public static double GetDouble(WzImageProperty source)
         {
-            return source.GetDouble();
+            return source == null ? 0 : source.GetDouble();
         }
 
         public static WzDoubleProperty SetDouble(double value)
@@ -59,7 +59,7 @@ namespace MapleLib.WzLib.WzStructure
 
         public static int GetInt(WzImageProperty source)
         {
-            return source.GetInt();
+            return source == null ? 0 : source.GetInt();
         }
 
         public static WzIntProperty SetInt(int value)
@@ -124,7 +124,7 @@ namespace MapleLib.WzLib.WzStructure
 
         public static float GetFloat(WzImageProperty source)
         {
-            return source.GetFloat();
+            return source == null ? 0 : source.GetFloat();
         }
 
         public static WzFloatProperty SetFloat(float value)
