@@ -577,7 +577,7 @@ namespace HaCreator.MapEditor
         {
             multiBoard.DeviceReady = false;
 
-            MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulator.CreateMapSimulator(multiBoard.SelectedBoard);
+            MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulatorLoader.CreateMapSimulator(multiBoard.SelectedBoard);
             mapSimulator.ShowDialog();
 
             multiBoard.DeviceReady = true;

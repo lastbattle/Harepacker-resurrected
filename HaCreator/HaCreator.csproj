@@ -379,6 +379,7 @@
     <Compile Include="MapEditor\UserObjectsManager.cs" />
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />
     <Compile Include="GUI\TabItemContainer.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
@@ -701,6 +702,10 @@
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp.csproj">
+      <Project>{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}</Project>
+      <Name>spine-csharp</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

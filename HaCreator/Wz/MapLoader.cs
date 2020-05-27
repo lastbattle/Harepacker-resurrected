@@ -617,6 +617,7 @@ namespace HaCreator.Wz
                 Clock clockInstance = new Clock(mapBoard, new Rectangle(InfoTool.GetInt(clock["x"]), InfoTool.GetInt(clock["y"]), InfoTool.GetInt(clock["width"]), InfoTool.GetInt(clock["height"])));
                 mapBoard.BoardItems.Add(clockInstance, false);
             }
+
             if (ship != null)
             {
                 string objPath = InfoTool.GetString(ship["shipObj"]);
@@ -625,6 +626,7 @@ namespace HaCreator.Wz
                 string l0 = objPathParts[objPathParts.Length - 3];
                 string l1 = objPathParts[objPathParts.Length - 2];
                 string l2 = objPathParts[objPathParts.Length - 1];
+
                 ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
                 ShipObject shipInstance = new ShipObject(objInfo, mapBoard, 
                     InfoTool.GetInt(ship["x"]), 
@@ -636,6 +638,7 @@ namespace HaCreator.Wz
                     InfoTool.GetBool(ship["f"]));
                 mapBoard.BoardItems.Add(shipInstance, false);
             }
+
             if (area != null)
             {
                 foreach (WzImageProperty prop in area.WzProperties)
@@ -648,6 +651,7 @@ namespace HaCreator.Wz
                     mapBoard.BoardItems.Add(currArea, false);
                 }
             }
+
             if (healer != null)
             {
                 string objPath = InfoTool.GetString(healer["healer"]);
@@ -656,6 +660,7 @@ namespace HaCreator.Wz
                 string l0 = objPathParts[objPathParts.Length - 3];
                 string l1 = objPathParts[objPathParts.Length - 2];
                 string l2 = objPathParts[objPathParts.Length - 1];
+
                 ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
                 Healer healerInstance = new Healer(objInfo, mapBoard,
                     InfoTool.GetInt(healer["x"]),
@@ -667,6 +672,7 @@ namespace HaCreator.Wz
                     InfoTool.GetInt(healer["rise"]));
                 mapBoard.BoardItems.Add(healerInstance, false);
             }
+
             if (pulley != null)
             {
                 string objPath = InfoTool.GetString(pulley["pulley"]);
@@ -675,12 +681,14 @@ namespace HaCreator.Wz
                 string l0 = objPathParts[objPathParts.Length - 3];
                 string l1 = objPathParts[objPathParts.Length - 2];
                 string l2 = objPathParts[objPathParts.Length - 1];
+
                 ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
                 Pulley pulleyInstance = new Pulley(objInfo, mapBoard,
                     InfoTool.GetInt(pulley["x"]),
                     InfoTool.GetInt(pulley["y"]));
                 mapBoard.BoardItems.Add(pulleyInstance, false);
             }
+
             if (BuffZone != null)
             {
                 foreach (WzImageProperty zone in BuffZone.WzProperties)
@@ -692,10 +700,12 @@ namespace HaCreator.Wz
                     int id = InfoTool.GetInt(zone["ItemID"]);
                     int interval = InfoTool.GetInt(zone["Interval"]);
                     int duration = InfoTool.GetInt(zone["Duration"]);
+
                     BuffZone currZone = new BuffZone(mapBoard, new Rectangle(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1), Math.Abs(y2 - y1)), id, interval, duration, zone.Name);
                     mapBoard.BoardItems.Add(currZone, false);
                 }
             }
+
             if (swimArea != null)
             {
                 foreach (WzImageProperty prop in swimArea.WzProperties)
@@ -704,6 +714,7 @@ namespace HaCreator.Wz
                     int x2 = InfoTool.GetInt(prop["x2"]);
                     int y1 = InfoTool.GetInt(prop["y1"]);
                     int y2 = InfoTool.GetInt(prop["y2"]);
+
                     SwimArea currArea = new SwimArea(mapBoard, new Rectangle(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1), Math.Abs(y2 - y1)), prop.Name);
                     mapBoard.BoardItems.Add(currArea, false);
                 }

@@ -657,12 +657,6 @@
             // 
             this.comboBox_resolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.comboBox_resolution.FormattingEnabled = true;
-            this.comboBox_resolution.Items.AddRange(new object[] {
-            "800x600",
-            "1024x768",
-            "1280x720",
-            "1366x768",
-            "1920x1080"});
             this.comboBox_resolution.Location = new System.Drawing.Point(165, 347);
             this.comboBox_resolution.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
             this.comboBox_resolution.Name = "comboBox_resolution";
@@ -792,6 +786,7 @@
             // minimapColorPicker
             // 
             this.minimapColorPicker.Color = System.Drawing.Color.White;
+            this.minimapColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.minimapColorPicker.Location = new System.Drawing.Point(127, 405);
             this.minimapColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.minimapColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -811,6 +806,7 @@
             // originColorPicker
             // 
             this.originColorPicker.Color = System.Drawing.Color.White;
+            this.originColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.originColorPicker.Location = new System.Drawing.Point(127, 383);
             this.originColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.originColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -848,6 +844,7 @@
             // miscSelectedColorPicker
             // 
             this.miscSelectedColorPicker.Color = System.Drawing.Color.White;
+            this.miscSelectedColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.miscSelectedColorPicker.Location = new System.Drawing.Point(127, 361);
             this.miscSelectedColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.miscSelectedColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -858,6 +855,7 @@
             // miscFillColorPicker
             // 
             this.miscFillColorPicker.Color = System.Drawing.Color.White;
+            this.miscFillColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.miscFillColorPicker.Location = new System.Drawing.Point(127, 339);
             this.miscFillColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.miscFillColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -868,6 +866,7 @@
             // miscColorPicker
             // 
             this.miscColorPicker.Color = System.Drawing.Color.White;
+            this.miscColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.miscColorPicker.Location = new System.Drawing.Point(127, 317);
             this.miscColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.miscColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -996,6 +995,7 @@
             // ttLineColorPicker
             // 
             this.ttLineColorPicker.Color = System.Drawing.Color.White;
+            this.ttLineColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttLineColorPicker.Location = new System.Drawing.Point(127, 295);
             this.ttLineColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttLineColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1006,6 +1006,7 @@
             // ttcSelectColorPicker
             // 
             this.ttcSelectColorPicker.Color = System.Drawing.Color.White;
+            this.ttcSelectColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttcSelectColorPicker.Location = new System.Drawing.Point(127, 273);
             this.ttcSelectColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttcSelectColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1016,6 +1017,7 @@
             // ttcColorPicker
             // 
             this.ttcColorPicker.Color = System.Drawing.Color.White;
+            this.ttcColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttcColorPicker.Location = new System.Drawing.Point(127, 251);
             this.ttcColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttcColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1026,6 +1028,7 @@
             // ttSelectColorPicker
             // 
             this.ttSelectColorPicker.Color = System.Drawing.Color.White;
+            this.ttSelectColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttSelectColorPicker.Location = new System.Drawing.Point(127, 229);
             this.ttSelectColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttSelectColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1036,6 +1039,7 @@
             // ttFillColorPicker
             // 
             this.ttFillColorPicker.Color = System.Drawing.Color.White;
+            this.ttFillColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttFillColorPicker.Location = new System.Drawing.Point(127, 207);
             this.ttFillColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttFillColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1046,6 +1050,7 @@
             // ttColorPicker
             // 
             this.ttColorPicker.Color = System.Drawing.Color.White;
+            this.ttColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ttColorPicker.Location = new System.Drawing.Point(127, 185);
             this.ttColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.ttColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1056,6 +1061,7 @@
             // seatColorPicker
             // 
             this.seatColorPicker.Color = System.Drawing.Color.White;
+            this.seatColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.seatColorPicker.Location = new System.Drawing.Point(127, 163);
             this.seatColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.seatColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1066,6 +1072,7 @@
             // rlColorPicker
             // 
             this.rlColorPicker.Color = System.Drawing.Color.White;
+            this.rlColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.rlColorPicker.Location = new System.Drawing.Point(127, 141);
             this.rlColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.rlColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1076,6 +1083,7 @@
             // fhColorPicker
             // 
             this.fhColorPicker.Color = System.Drawing.Color.White;
+            this.fhColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.fhColorPicker.Location = new System.Drawing.Point(127, 119);
             this.fhColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.fhColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1086,6 +1094,7 @@
             // vrColorPicker
             // 
             this.vrColorPicker.Color = System.Drawing.Color.White;
+            this.vrColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.vrColorPicker.Location = new System.Drawing.Point(127, 97);
             this.vrColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.vrColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1096,6 +1105,7 @@
             // selectedColorPicker
             // 
             this.selectedColorPicker.Color = System.Drawing.Color.White;
+            this.selectedColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.selectedColorPicker.Location = new System.Drawing.Point(127, 75);
             this.selectedColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.selectedColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1106,6 +1116,7 @@
             // dragFillColorPicker
             // 
             this.dragFillColorPicker.Color = System.Drawing.Color.White;
+            this.dragFillColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.dragFillColorPicker.Location = new System.Drawing.Point(127, 53);
             this.dragFillColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.dragFillColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1116,6 +1127,7 @@
             // dragColorPicker
             // 
             this.dragColorPicker.Color = System.Drawing.Color.White;
+            this.dragColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.dragColorPicker.Location = new System.Drawing.Point(127, 31);
             this.dragColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.dragColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1126,6 +1138,7 @@
             // tabColorPicker
             // 
             this.tabColorPicker.Color = System.Drawing.Color.White;
+            this.tabColorPicker.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.tabColorPicker.Location = new System.Drawing.Point(127, 9);
             this.tabColorPicker.MaximumSize = new System.Drawing.Size(16, 16);
             this.tabColorPicker.MinimumSize = new System.Drawing.Size(16, 16);
@@ -1292,7 +1305,6 @@
             this.Controls.Add(this.okayButton);
             this.Controls.Add(this.tabControl1);
             this.DoubleBuffered = true;
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.Name = "UserSettingsForm";

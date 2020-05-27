@@ -30,6 +30,7 @@ using HaCreator.Collections;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Text;
+using HaCreator.MapSimulator;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -96,7 +97,7 @@ namespace HaCreator.MapEditor
 
         private void RenderLoop()
         {
-            PrepareDevice();
+            PrepareDXDevice();
             pixel = CreatePixel();
             DeviceReady = true;
 
@@ -181,7 +182,7 @@ namespace HaCreator.MapEditor
             return result;
         }
 
-        private void PrepareDevice()
+        private void PrepareDXDevice()
         {
             pParams.BackBufferWidth = Math.Max(_CurrentDXWindowSize.Width, 1);
             pParams.BackBufferHeight = Math.Max(_CurrentDXWindowSize.Height, 1);
@@ -287,7 +288,7 @@ namespace HaCreator.MapEditor
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
-            sprite.Begin(SpriteSortMode.Immediate, Microsoft.Xna.Framework.Graphics.BlendState.NonPremultiplied);
+            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(MapSimulator.MapSimulator.RenderObjectScaling));
 #endif
             lock (this)
             {
@@ -983,8 +984,6 @@ namespace HaCreator.MapEditor
         #endregion
 
         #region Static Settings
-        private const int ScrollbarWidth = 16;
-
         public static float FirstSnapVerification;
         public static Color InactiveColor;
         public static Color RopeInactiveColor;
