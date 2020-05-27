@@ -14,11 +14,20 @@ namespace HaCreator.MapSimulator
 {
     public enum MapRenderResolution :int
     {
-        Res_800x600 = 0,
-        Res_1024x768 = 1,
-        Res_1280x720 = 2,
-        Res_1366x768 = 3,
-        Res_1920x1080 = 4,
+        Res_800x600 = 0, // 800x600 4:3
 
+        Res_1024x768 = 1, // 1024x768 4:3
+
+        Res_1280x720 = 2, // 1280x720 16:9
+
+        Res_1366x768 = 3, // 1366x768 16:9
+
+        Res_1920x1080 = 4,  // 1920x1080 16:9
+        Res_1920x1080_120PercScaled = 5,  // 1920x1080 16:9 150% scale
+        Res_1920x1080_150PercScaled = 6,  // 1920x1080 16:9 150% scale
+
+        Res_1920x1200 = 7, // 1920x1200 16:9
+        Res_1920x1200_120PercScaled = 8, // 1920x1200 16:9 120% scale
+        Res_1920x1200_150PercScaled = 9, // 1920x1200 16:9 150% scale
     }
 }

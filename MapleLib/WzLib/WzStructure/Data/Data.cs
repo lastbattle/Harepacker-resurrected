@@ -55,5 +55,7 @@ namespace MapleLib.WzLib.WzStructure.Data
     {
         public const int MinMap = 0;
         public const int MaxMap = 999999999;
+
+        public const int MaxMapLayers = 8;
     }
 }

@@ -26,11 +26,17 @@ namespace HaCreator.GUI
             linewBox.Value = UserSettings.LineWidth;
             dotwBox.Value = UserSettings.DotWidth;
             inactiveaBox.Value = UserSettings.NonActiveAlpha;
-            comboBox_resolution.SelectedIndex = (int) UserSettings.SimulateResolution;
             clipBox.Checked = UserSettings.ClipText;
             fixFh.Checked = UserSettings.FixFootholdMispositions;
             invertUpDownBox.Checked = UserSettings.InverseUpDown;
             autoBackupBox.Checked = UserSettings.BackupEnabled;
+
+            // Resolutions
+            foreach (MapRenderResolution val in Enum.GetValues(typeof(MapRenderResolution)))
+            {
+                comboBox_resolution.Items.Add(val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale"));
+            }
+            comboBox_resolution.SelectedIndex = (int)UserSettings.SimulateResolution;
 
             tabColorPicker.Color = UserSettings.TabColor;
             dragColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquare);
