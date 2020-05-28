@@ -310,7 +310,7 @@ namespace MapleLib.WzLib.WzProperties
                                     zlib.Read(decBuf, 0, uncompressedSize);
                                     zlib.Close();
 
-                                    Marshal.Copy(decBuf, 0, bmpData.Scan0, width * height);
+                                    Marshal.Copy(decBuf, 0, bmpData.Scan0, decBuf.Length);
                                     bmp.UnlockBits(bmpData);
                                     break;
                                 }
