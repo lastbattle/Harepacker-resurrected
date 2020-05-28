@@ -54,12 +54,25 @@ namespace HaCreator.MapSimulator
 
         private SpriteBatch sprite;
         private PresentationParameters pParams = new PresentationParameters();
+
+        // Objects
         public List<MapItem>[] mapObjects = CreateLayersArray();
+
+        // Backgrounds
         public List<BackgroundItem> backgrounds = new List<BackgroundItem>();
+
+        // Boundary, borders
         private Rectangle vr;
-        private Texture2D minimap;
+        private List<Texture2D> borderPixels = new List<Texture2D>();
+
+        // Minimap
         private Texture2D pixel;
+
+        // Audio
         private WzMp3Streamer audio;
+
+        // Etc
+        private Texture2D minimap;
 
         private static List<MapItem>[] CreateLayersArray()
         {
@@ -140,6 +153,8 @@ namespace HaCreator.MapSimulator
                     RenderWidth = 800;
                     break;
             }
+            RenderHeight += SystemInformation.CaptionHeight;
+
             double dpi = ScreenDPIUtil.GetScreenScaleFactor();
 
             // set Form window height & width
@@ -168,7 +183,6 @@ namespace HaCreator.MapSimulator
             mapShiftX = ((leftRightVRDifference / 2) + vr.Left) - (RenderWidth / 2);
             mapShiftY = ((topDownVRDifference / 2) + vr.Top) - (RenderHeight / 2);
 
-
             _DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
             this.minimap = BoardItem.TextureFromBitmap(_DxDevice, mapBoard.MiniMap);
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
@@ -176,6 +190,17 @@ namespace HaCreator.MapSimulator
             pixel = BoardItem.TextureFromBitmap(_DxDevice, bmp);
 
             sprite = new SpriteBatch(_DxDevice);
+
+
+            // left, right, top, bottom window borders
+            for (int i = 0; i < 4; i++)
+            {
+                Texture2D borderPixel = new Texture2D(_DxDevice, 1, 1, false, SurfaceFormat.Color);
+                borderPixel.SetData(new[] { Color.Black });
+
+                borderPixels.Add(borderPixel);
+            }
+
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -185,22 +210,31 @@ namespace HaCreator.MapSimulator
             _DxDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling) );
 
+            // Front Backgrounds
             foreach (BackgroundItem bg in backgrounds)
             {
                 if (!bg.Front)
                     bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
             }
 
+            // Map objects
             for (int i = 0; i < mapObjects.Length; i++)
             {
                 foreach (MapItem item in mapObjects[i])
                     item.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
             }
 
+            // Back Backgrounds
             foreach (BackgroundItem bg in backgrounds)
                 if (bg.Front)
                     bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
 
+            // Borders
+            // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
+            Rectangle titleSafeRectangle = _DxDevice.Viewport.TitleSafeArea;
+            DrawBorder(sprite, titleSafeRectangle, 1, Color.Black);
+
+            // Minimap
             if (minimap != null)
             {
                 sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
@@ -208,6 +242,8 @@ namespace HaCreator.MapSimulator
                 int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
                 FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
             }
+
+
             sprite.End();
             try
             {
@@ -240,6 +276,33 @@ namespace HaCreator.MapSimulator
             pParams.DeviceWindowHandle = Handle;
 
             _DxDevice.Reset(_DxDevice.PresentationParameters);
+        }
+
+        /// <summary>
+        /// Draws a border
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="rectangleToDraw"></param>
+        /// <param name="thicknessOfBorder"></param>
+        /// <param name="borderColor"></param>
+        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
+        {
+            // Draw top line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
+
+            // Draw left line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
+
+            // Draw right line
+            sprite.Draw(pixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
+                                            rectangleToDraw.Y,
+                                            thicknessOfBorder,
+                                            rectangleToDraw.Height), borderColor);
+            // Draw bottom line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X,
+                                            rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
+                                            rectangleToDraw.Width,
+                                            thicknessOfBorder), borderColor);
         }
 
         public void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
