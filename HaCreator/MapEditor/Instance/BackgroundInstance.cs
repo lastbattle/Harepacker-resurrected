@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HaRepacker.Utils;
 
 namespace HaCreator.MapEditor.Instance
 {
@@ -162,30 +163,38 @@ namespace HaCreator.MapEditor.Instance
 
         public int CalculateBackgroundPosX()
         {
-            int renderWidthHalf = (MapSimulator.MapSimulator.RenderWidth / 2);
+            //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
+            double dpi = 1;
+            int width = (int)((Board.ParentControl.CurrentDXWindowSize.Width / 2) / dpi);// 400;
 
-            return (rx * (Board.hScroll - Board.CenterPoint.X + renderWidthHalf) / 100) + base.X /*- Origin.X*/ + renderWidthHalf - Board.CenterPoint.X + Board.hScroll;
+            return (rx * (Board.hScroll - Board.CenterPoint.X + width) / 100) + base.X /*- Origin.X*/ + width - Board.CenterPoint.X + Board.hScroll;
         }
 
         public int CalculateBackgroundPosY()
         {
-            int renderHeightHalf = (MapSimulator.MapSimulator.RenderHeight / 2);
+            //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
+            double dpi = 1;
+            int height = (int) ((Board.ParentControl.CurrentDXWindowSize.Height / 2) / dpi);// 300;
 
-            return (ry * (Board.vScroll - Board.CenterPoint.Y + renderHeightHalf) / 100) + base.Y /*- Origin.X*/ + renderHeightHalf - Board.CenterPoint.Y + Board.vScroll;
+            return (ry * (Board.vScroll - Board.CenterPoint.Y + height) / 100) + base.Y /*- Origin.X*/ + height - Board.CenterPoint.Y + Board.vScroll;
         }
 
         public int ReverseBackgroundPosX(int bgPos)
         {
-            int renderWidthHalf = (MapSimulator.MapSimulator.RenderWidth / 2);
+            //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
+            double dpi = 1;
+            int width = (int)((Board.ParentControl.CurrentDXWindowSize.Width / 2) / dpi);// 400;
 
-            return bgPos - Board.hScroll + Board.CenterPoint.X - renderWidthHalf - (rx * (Board.hScroll - Board.CenterPoint.X + renderWidthHalf) / 100);
+            return bgPos - Board.hScroll + Board.CenterPoint.X - width - (rx * (Board.hScroll - Board.CenterPoint.X + width) / 100);
         }
 
         public int ReverseBackgroundPosY(int bgPos)
         {
-            int renderHeightHalf = (MapSimulator.MapSimulator.RenderHeight / 2);
+            //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
+            double dpi = 1;
+            int height = (int)((Board.ParentControl.CurrentDXWindowSize.Height / 2) / dpi);// 300;
 
-            return bgPos - Board.vScroll + Board.CenterPoint.Y - renderHeightHalf - (ry * (Board.vScroll - Board.CenterPoint.Y + renderHeightHalf) / 100);
+            return bgPos - Board.vScroll + Board.CenterPoint.Y - height - (ry * (Board.vScroll - Board.CenterPoint.Y + height) / 100);
         }
 
         public override int X
@@ -194,14 +203,16 @@ namespace HaCreator.MapEditor.Instance
             {
                 if (UserSettings.emulateParallax)
                     return CalculateBackgroundPosX();
-                else return base.X;
+                else 
+                    return base.X;
             }
             set
             {
                 int newX;
                 if (UserSettings.emulateParallax)
                     newX = ReverseBackgroundPosX(value);
-                else newX = value;
+                else 
+                    newX = value;
                 base.Move(newX, base.Y);
             }
         }
