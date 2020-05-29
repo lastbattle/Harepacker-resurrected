@@ -1,69 +1,49 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-// #define FULLSCREEN
-
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
+﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.DX;
+using HaRepacker.Utils;
+using HaSharedLibrary;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Input;
-using System.IO;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using System.Collections;
-using HaCreator.MapEditor;
-using HaCreator.Wz;
-using MapleLib.WzLib.WzStructure.Data;
-using MapleLib.WzLib.WzStructure;
-using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapEditor.Instance;
-using HaCreator.MapEditor.Input;
-using HaSharedLibrary;
-using HaRepacker.Utils;
-using HaCreator.MapSimulator.DX;
+using Spine;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Threading.Tasks;
+
 
 namespace HaCreator.MapSimulator
 {
-    public partial class MapSimulator : Form
+    /// <summary>
+    /// http://rbwhitaker.wikidot.com/xna-tutorials
+    /// </summary>
+    public class MapSimulator : Microsoft.Xna.Framework.Game
     {
         public int mapShiftX = 0;
         public int mapShiftY = 0;
-        public Point mapCenter;
         public Point minimapPos;
 
         public static int RenderWidth;
         public static int RenderHeight;
         public static float RenderObjectScaling = 1.0f;
 
-        private GraphicsDevice _DxDevice;
-        public GraphicsDevice DxDevice
-        {
-            get { return _DxDevice; }
-            private set { }
-        }
+        private GraphicsDeviceManager _DxDeviceManager;
 
         private SpriteBatch sprite;
-        private PresentationParameters pParams = new PresentationParameters();
 
         // Objects
-        public List<MapItem>[] mapObjects = CreateLayersArray();
+        public List<MapItem>[] mapObjects;
 
         // Backgrounds
         public List<BackgroundItem> backgrounds = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
-        private List<Texture2D> borderPixels = new List<Texture2D>();
 
         // Minimap
         private Texture2D pixel;
@@ -73,30 +53,22 @@ namespace HaCreator.MapSimulator
 
         // Etc
         private Texture2D minimap;
+        private Board mapBoard;
 
-        private static List<MapItem>[] CreateLayersArray()
+        // Text
+        private SpriteFont font;
+
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="mapBoard"></param>
+        /// <param name="titleName"></param>
+        public MapSimulator(Board mapBoard, string titleName)
         {
-            List<MapItem>[] result = new List<MapItem>[WzConstants.MaxMapLayers];
-            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
-                result[i] = new List<MapItem>();
-            return result;
-        }
+            IsMouseVisible = true;
 
-        public MapSimulator(Board mapBoard)
-        {
-            InitializeComponent();
-
-            if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
-                audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
-
-            mapCenter = mapBoard.CenterPoint;
-            minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapCenter.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapCenter.Y) / (double)mapBoard.mag));
-            if (mapBoard.VRRectangle == null) 
-                vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
-            else 
-                vr = new Rectangle(mapBoard.VRRectangle.X + mapCenter.X, mapBoard.VRRectangle.Y + mapCenter.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
-
+            this.mapBoard = mapBoard;
 
             RenderObjectScaling = 1.0f;
             switch (UserSettings.SimulateResolution)
@@ -115,7 +87,7 @@ namespace HaCreator.MapSimulator
                     RenderWidth = 1366;
                     break;
 
-                    
+
                 case MapRenderResolution.Res_1920x1080: // 1920x1080
                     RenderHeight = 1080;
                     RenderWidth = 1920;
@@ -153,28 +125,13 @@ namespace HaCreator.MapSimulator
                     RenderWidth = 800;
                     break;
             }
-            RenderHeight += SystemInformation.CaptionHeight;
+            //RenderHeight += System.Windows.Forms.SystemInformation.CaptionHeight; // window title height
 
-            double dpi = ScreenDPIUtil.GetScreenScaleFactor();
+            //double dpi = ScreenDPIUtil.GetScreenScaleFactor();
 
             // set Form window height & width
-            this.Width = (int) (RenderWidth * dpi);
-            this.Height = (int) (RenderHeight * dpi);
-
-#if FULLSCREEN
-            pParams.BackBufferWidth = Math.Max(Width, 1);
-            pParams.BackBufferHeight = Math.Max(Height, 1);
-            pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.IsFullScreen = false;
-            pParams.DepthStencilFormat = DepthFormat.Depth24;
-#else
-            pParams.BackBufferWidth = Math.Max(RenderWidth, 1);
-            pParams.BackBufferHeight = Math.Max(RenderHeight, 1);
-            pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
-            pParams.DeviceWindowHandle = Handle;
-            pParams.IsFullScreen = false;
-#endif
+            //this.Width = (int)(RenderWidth * dpi);
+            //this.Height = (int)(RenderHeight * dpi);
 
             // default center
             int leftRightVRDifference = vr.Right - vr.Left;
@@ -183,154 +140,159 @@ namespace HaCreator.MapSimulator
             mapShiftX = ((leftRightVRDifference / 2) + vr.Left) - (RenderWidth / 2);
             mapShiftY = ((topDownVRDifference / 2) + vr.Top) - (RenderHeight / 2);
 
-            _DxDevice = MultiBoard.CreateGraphicsDevice(pParams);
-            this.minimap = BoardItem.TextureFromBitmap(_DxDevice, mapBoard.MiniMap);
+            //Window.IsBorderless = true;
+            //Window.Position = new Point(0, 0);
+            Window.Title = titleName;
+            IsFixedTimeStep = false; // dont cap fps
+
+            _DxDeviceManager = new GraphicsDeviceManager(this)
+            {
+                SynchronizeWithVerticalRetrace = false, // dont cap fps
+                HardwareModeSwitch = true,
+                GraphicsProfile = GraphicsProfile.HiDef,
+                IsFullScreen = false,
+                PreferMultiSampling = true,
+                SupportedOrientations = DisplayOrientation.Default,
+                PreferredBackBufferWidth = Math.Max(RenderWidth, 1),
+                PreferredBackBufferHeight = Math.Max(RenderHeight, 1),
+                PreferredBackBufferFormat = SurfaceFormat.Color,
+                PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
+            };
+            _DxDeviceManager.ApplyChanges();
+
+        }
+
+        protected override void Initialize()
+        {
+            // TODO: Add your initialization logic here
+
+            // Create map layers
+            mapObjects = new List<MapItem>[WzConstants.MaxMapLayers];
+            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
+            {
+                mapObjects[i] = new List<MapItem>();
+            }
+
+            //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
+
+            // https://stackoverflow.com/questions/55045066/how-do-i-convert-a-ttf-or-other-font-to-a-xnb-xna-game-studio-font
+            // if you're having issues building on w10, install Visual C++ Redistributable for Visual Studio 2012 Update 4
+            // 
+            // to build your own font: /MonoGame Font Builder/game.mgcb
+            // build -> obj -> copy it over to HaRepacker-resurrected [Content]
+            font = Content.Load<SpriteFont>("XnaDefaultFont");
+
+            base.Initialize();
+        }
+
+
+        /// <summary>
+        /// Load game assets
+        /// </summary>
+        protected override void LoadContent()
+        {
+            // BGM
+            if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
+            {
+                audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+                if (audio != null)
+                    audio.Play();
+            }
+            if (mapBoard.VRRectangle == null)
+                vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+            else
+                vr = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
+            //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
+
+
+            List<WzObject> usedProps = new List<WzObject>();
+            //WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
+            //WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
+
+            foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
+            {
+                mapObjects[tileObj.LayerNumber].Add(
+                    MapSimulatorLoader.CreateMapItemFromProperty((WzImageProperty)tileObj.BaseInfo.ParentObject, tileObj.X, tileObj.Y, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+            }
+            foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
+            {
+                backgrounds.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+            }
+            foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
+            {
+                backgrounds.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+            }
+            foreach (WzObject obj in usedProps)
+            {
+                obj.MSTag = null;
+            }
+            usedProps.Clear();
+
+
+            minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
+            this.minimap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
+
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
-            pixel = BoardItem.TextureFromBitmap(_DxDevice, bmp);
+            pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
 
-            sprite = new SpriteBatch(_DxDevice);
-
-
-            // left, right, top, bottom window borders
-            for (int i = 0; i < 4; i++)
-            {
-                Texture2D borderPixel = new Texture2D(_DxDevice, 1, 1, false, SurfaceFormat.Color);
-                borderPixel.SetData(new[] { Color.Black });
-
-                borderPixels.Add(borderPixel);
-            }
-
+            sprite = new SpriteBatch(GraphicsDevice);
         }
 
-        protected override void OnPaint(PaintEventArgs e)
+        protected override void UnloadContent()
         {
-            base.OnPaint(e);
-
-            _DxDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
-            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling) );
-
-            // Front Backgrounds
-            foreach (BackgroundItem bg in backgrounds)
+            if (audio != null)
             {
-                if (!bg.Front)
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
+                //audio.Pause();
+                audio.Dispose();
             }
 
-            // Map objects
-            for (int i = 0; i < mapObjects.Length; i++)
-            {
-                foreach (MapItem item in mapObjects[i])
-                    item.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
-            }
-
-            // Back Backgrounds
-            foreach (BackgroundItem bg in backgrounds)
-                if (bg.Front)
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapCenter.X, mapCenter.Y, RenderWidth, RenderHeight);
-
-            // Borders
-            // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
-            Rectangle titleSafeRectangle = _DxDevice.Viewport.TitleSafeArea;
-            DrawBorder(sprite, titleSafeRectangle, 1, Color.Black);
-
-            // Minimap
-            if (minimap != null)
-            {
-                sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
-                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
-                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
-                FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
-            }
-
-
-            sprite.End();
-            try
-            {
-                _DxDevice.Present();
-            }
-            catch (DeviceNotResetException)
-            {
-                try
-                {
-                    ResetDevice();
-                }
-                catch (DeviceLostException)
-                {
-                }
-            }
-            catch (DeviceLostException)
-            {
-            }
-            HandleKeyPresses();
-            System.Threading.Thread.Sleep(10);
-            Invalidate();
-        }
-
-        private void ResetDevice()
-        {
-            pParams.BackBufferHeight = Height;
-            pParams.BackBufferWidth = Width;
-            pParams.BackBufferFormat = SurfaceFormat.Color;
-            pParams.DepthStencilFormat = DepthFormat.Depth24Stencil8;
-            pParams.DeviceWindowHandle = Handle;
-
-            _DxDevice.Reset(_DxDevice.PresentationParameters);
+            _DxDeviceManager.EndDraw();
+            _DxDeviceManager.Dispose();
         }
 
         /// <summary>
-        /// Draws a border
+        /// Key handling
         /// </summary>
-        /// <param name="sprite"></param>
-        /// <param name="rectangleToDraw"></param>
-        /// <param name="thicknessOfBorder"></param>
-        /// <param name="borderColor"></param>
-        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
+        /// <param name="gameTime"></param>
+        protected override void Update(GameTime gameTime)
         {
-            // Draw top line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
 
-            // Draw left line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
-
-            // Draw right line
-            sprite.Draw(pixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
-                                            rectangleToDraw.Y,
-                                            thicknessOfBorder,
-                                            rectangleToDraw.Height), borderColor);
-            // Draw bottom line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X,
-                                            rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
-                                            rectangleToDraw.Width,
-                                            thicknessOfBorder), borderColor);
-        }
-
-        public void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
-        {
-            int width = (int)Vector2.Distance(start, end);
-            float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
-            sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
-        }
-
-        public void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
-        {
-            sprite.Draw(pixel, rectangle, color);
-        }
-
-        //int lastHotKeyPressTime = 0;
-
-        void HandleKeyPresses()
-        {
-            if (!Focused)
-                return;
-            int offset = (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.LShiftKey) || InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.RShiftKey)) ? 100 : 10;
-
-            bool bIsLeft = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Left);
-            bool bIsRight = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Right);
-
-            if (bIsLeft || bIsRight)
+            // Allows the game to exit
+#if !WINDOWS_STOREAPP
+            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
+                || Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                int leftRightVRDifference = (int) ((vr.Right - vr.Left) * RenderObjectScaling);
+                GraphicsDevice.Dispose();
+
+                this.Exit();
+                return;
+            }
+#endif
+            // Handle full screen
+            bool bIsAltEnterPressed = Keyboard.GetState().IsKeyDown(Keys.LeftAlt) && Keyboard.GetState().IsKeyDown(Keys.Enter);
+            if (bIsAltEnterPressed)
+            {
+                _DxDeviceManager.IsFullScreen = !_DxDeviceManager.IsFullScreen;
+                _DxDeviceManager.ApplyChanges();
+            }
+
+
+            // Navigate around the rendered object
+            bool bIsShiftPressed = Keyboard.GetState().IsKeyDown(Keys.LeftShift) || Keyboard.GetState().IsKeyDown(Keys.RightShift);
+
+            bool bIsUpKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Up);
+            bool bIsDownKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Down);
+            bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
+            bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
+
+            int offset = bIsShiftPressed ? 8 : 2;
+
+            if (bIsLeftKeyPressed || bIsRightKeyPressed)
+            {
+                int leftRightVRDifference = (int)((vr.Right - vr.Left) * RenderObjectScaling);
                 if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
                 {
                     /*
@@ -352,7 +314,7 @@ namespace HaCreator.MapSimulator
                      * Viewing Width = 1024 
                      * Relative viewing center = vr.Center - (Viewing Width / 2)
                      */
-                    mapShiftX = ((leftRightVRDifference/2) + (int) (vr.Left * RenderObjectScaling)) - (RenderWidth / 2);
+                    mapShiftX = ((leftRightVRDifference / 2) + (int)(vr.Left * RenderObjectScaling)) - (RenderWidth / 2);
                 }
                 else
                 {
@@ -360,29 +322,27 @@ namespace HaCreator.MapSimulator
                     //      vr.Right, RenderWidth, (int)(vr.Right - RenderWidth), (int)((vr.Right - (RenderWidth * RenderObjectScaling)) * RenderObjectScaling),
                     //     mapShiftX + offset);
 
-                    if (bIsLeft)
-                        mapShiftX = 
+                    if (bIsLeftKeyPressed)
+                        mapShiftX =
                             Math.Max(
                                 (int)(vr.Left * RenderObjectScaling),
                                 mapShiftX - offset);
 
-                    else if (bIsRight)
-                        mapShiftX = 
+                    else if (bIsRightKeyPressed)
+                        mapShiftX =
                             Math.Min(
                                  (int)((vr.Right - (RenderWidth / RenderObjectScaling))),
                                 mapShiftX + offset);
                 }
             }
 
-            bool bIsUp = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Up);
-            bool bIsDown = InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Down);
 
-            if (bIsUp || bIsDown)
+            if (bIsUpKeyPressed || bIsDownKeyPressed)
             {
-                int topDownVRDifference = (int) ((vr.Bottom - vr.Top) * RenderObjectScaling);
+                int topDownVRDifference = (int)((vr.Bottom - vr.Top) * RenderObjectScaling);
                 if (topDownVRDifference < RenderHeight)
                 {
-                    mapShiftY = ((topDownVRDifference / 2) + (int) (vr.Top * RenderObjectScaling)) - (RenderHeight / 2);
+                    mapShiftY = ((topDownVRDifference / 2) + (int)(vr.Top * RenderObjectScaling)) - (RenderHeight / 2);
                 }
                 else
                 {
@@ -392,47 +352,153 @@ namespace HaCreator.MapSimulator
                         mapShiftX + offset);*/
 
 
-                    if (bIsUp)
-                        mapShiftY = 
+                    if (bIsUpKeyPressed)
+                        mapShiftY =
                             Math.Max(
-                                (int) (vr.Top), 
+                                (int)(vr.Top),
                                 mapShiftY - offset);
 
-                    else if (bIsDown)
-                        mapShiftY = 
+                    else if (bIsDownKeyPressed)
+                        mapShiftY =
                             Math.Min(
-                                (int) ((vr.Bottom - (RenderHeight / RenderObjectScaling))), 
+                                (int)((vr.Bottom - (RenderHeight / RenderObjectScaling))),
                                 mapShiftY + offset);
                 }
             }
 
-            if (InputHandler.IsKeyPushedDown(System.Windows.Forms.Keys.Escape))
+            base.Update(gameTime);
+        }
+
+        protected override void Draw(GameTime gameTime)
+        {
+            float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
+
+            //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
+            GraphicsDevice.Clear(Color.Black);
+
+            sprite.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
+
+            // Front Backgrounds
+            backgrounds.ForEach(bg =>
             {
-                _DxDevice.Dispose();
-                Close();
-            }
-        }
+                if (!bg.Front)
+                {
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                }
+            });
 
-
-        private void MapSimulator_Resize(object sender, EventArgs e)
-        {
-            if (_DxDevice != null)
-                ResetDevice();
-        }
-
-        private void MapSimulator_Load(object sender, EventArgs e)
-        {
-            if (audio != null) 
-                audio.Play();
-        }
-
-        private void MapSimulator_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            if (audio != null)
+            // Map objects
+            foreach (List<MapItem> mapItem in mapObjects)
             {
-                //audio.Pause();
-                audio.Dispose();
+                foreach (MapItem item in mapItem)
+                {
+                    item.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                }
             }
+
+            // Back Backgrounds
+            backgrounds.ForEach(bg =>
+            {
+                if (bg.Front)
+                {
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                }
+            });
+
+            // Borders
+            // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
+            Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
+            DrawBorder(sprite, titleSafeRectangle, 1, Color.Black);
+
+            // Minimap
+            if (minimap != null)
+            {
+                sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
+                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
+                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
+
+                FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
+            }
+
+
+            if (gameTime.TotalGameTime.TotalSeconds < 3)
+                sprite.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+
+
+            sprite.End();
+
+            base.Draw(gameTime);
+        }
+
+        /// <summary>
+        /// Draws a border
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="rectangleToDraw"></param>
+        /// <param name="thicknessOfBorder"></param>
+        /// <param name="borderColor"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
+        {
+            // Draw top line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
+
+            // Draw left line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
+
+            // Draw right line
+            sprite.Draw(pixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
+                                            rectangleToDraw.Y,
+                                            thicknessOfBorder,
+                                            rectangleToDraw.Height), borderColor);
+            // Draw bottom line
+            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X,
+                                            rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
+                                            rectangleToDraw.Width,
+                                            thicknessOfBorder), borderColor);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
+        {
+            int width = (int)Vector2.Distance(start, end);
+            float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
+            sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
+        {
+            sprite.Draw(pixel, rectangle, color);
+        }
+
+
+        public void Start(AnimationState state, int trackIndex)
+        {
+#if !WINDOWS_STOREAPP
+            Console.WriteLine(trackIndex + " " + state.GetCurrent(trackIndex) + ": start");
+#endif
+        }
+
+        public void End(AnimationState state, int trackIndex)
+        {
+#if !WINDOWS_STOREAPP
+            Console.WriteLine(trackIndex + " " + state.GetCurrent(trackIndex) + ": end");
+#endif
+        }
+
+        public void Complete(AnimationState state, int trackIndex, int loopCount)
+        {
+#if !WINDOWS_STOREAPP
+            Console.WriteLine(trackIndex + " " + state.GetCurrent(trackIndex) + ": complete " + loopCount);
+#endif
+        }
+
+        public void Event(AnimationState state, int trackIndex, Event e)
+        {
+#if !WINDOWS_STOREAPP
+            Console.WriteLine(trackIndex + " " + state.GetCurrent(trackIndex) + ": event " + e);
+#endif
         }
     }
 }

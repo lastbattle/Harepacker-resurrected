@@ -874,7 +874,7 @@ namespace HaCreator.Wz
             
             lock (multiBoard)
             {
-                CreateMap(mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, 8, Tabs, multiBoard);
+                CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, 8, Tabs, multiBoard);
                 Board mapBoard = multiBoard.SelectedBoard;
                 mapBoard.Loading = true; // prevents TS Change callbacks
                 mapBoard.MapInfo = info;
@@ -919,6 +919,7 @@ namespace HaCreator.Wz
         /// <summary>
         /// 
         /// </summary>
+        /// <param name="streetName"></param>
         /// <param name="mapName"></param>
         /// <param name="mapId">May be -1 if none.</param>
         /// <param name="tooltip"></param>
@@ -928,7 +929,7 @@ namespace HaCreator.Wz
         /// <param name="layers"></param>
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
-        public void CreateMap(string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, int layers, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
+        public void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, int layers, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
         {
             lock (multiBoard)
             {
@@ -936,7 +937,7 @@ namespace HaCreator.Wz
                 GenerateDefaultZms(newBoard);
 
                 System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem();
-                newTabPage.Header = string.Format("[{0}] {1}", mapId == -1 ? "" : mapId.ToString(), mapName); // Header of the tab
+                newTabPage.Header = string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName); // Header of the tab
                 newTabPage.MouseRightButtonUp += (sender, e) =>
                 {
                     System.Windows.Controls.TabItem senderTab = (System.Windows.Controls.TabItem)sender;
@@ -961,7 +962,7 @@ namespace HaCreator.Wz
 
         public void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
-            CreateMap("", -1,  "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), 8, Tabs, multiBoard);
+            CreateMap("", "", -1,  "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), 8, Tabs, multiBoard);
             multiBoard.SelectedBoard.Loading = true; // Prevent TS Change callbacks while were loading
             lock (multiBoard)
             {

@@ -45,7 +45,7 @@ namespace MapleLib.WzLib
         internal long tempFileStart = 0;
         internal long tempFileEnd = 0;
         internal bool changed = false;
-        internal bool parseEverything = false;
+        private bool parseEverything = false;
 
         /// <summary>
         /// Wz image embedding .lua file.
@@ -108,10 +108,17 @@ namespace MapleLib.WzLib
         /// </summary>
         public override string Name { get { return name; } set { name = value; } }
         public override WzFile WzFileParent { get { return Parent != null ? Parent.WzFileParent : null; } }
+
         /// <summary>
         /// Is the object parsed
         /// </summary>
         public bool Parsed { get { return parsed; } set { parsed = value; } }
+
+        /// <summary>
+        /// Set the property if the image should be fully parsed
+        /// </summary>
+        public bool ParseEverything { get { return parseEverything; } set { this.parseEverything = value; } } 
+
         /// <summary>
         /// Was the image changed
         /// </summary>
@@ -279,7 +286,7 @@ namespace MapleLib.WzLib
 		/// </summary>
 		/// <param name="wzReader">The BinaryReader that is currently reading the wz file</param>
         /// <returns>bool Parse status</returns>
-        public bool ParseImage(bool parseEverything = false, bool forceReadFromData = false)
+        public bool ParseImage(bool forceReadFromData = false)
         {
             if (!forceReadFromData) { // only check if parsed or changed if its not false read
                 if (Parsed)
@@ -295,7 +302,6 @@ namespace MapleLib.WzLib
 
             lock (reader) // for multi threaded XMLWZ export. 
             {
-                this.parseEverything = parseEverything;
                 long originalPos = reader.BaseStream.Position;
                 reader.BaseStream.Position = offset;
 
@@ -382,7 +388,10 @@ namespace MapleLib.WzLib
             if (changed || forceReadFromData)
             {
                 if (reader != null && !parsed)
-                    ParseImage(true, forceReadFromData);
+                {
+                    this.ParseEverything = true;
+                    ParseImage(forceReadFromData);
+                }
 
                 WzSubProperty imgProp = new WzSubProperty();
                 long startPos = writer.BaseStream.Position;

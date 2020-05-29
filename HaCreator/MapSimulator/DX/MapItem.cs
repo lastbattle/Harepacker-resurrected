@@ -33,7 +33,8 @@ namespace HaCreator.MapSimulator.DX
 
         protected DXObject GetCurrFrame()
         {
-            if (notAnimated) return frame0;
+            if (notAnimated) 
+                return frame0;
             else
             {
                 int tc = Environment.TickCount;

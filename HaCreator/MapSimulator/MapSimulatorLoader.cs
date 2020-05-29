@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator
@@ -23,36 +24,26 @@ namespace HaCreator.MapSimulator
         /// Create map simulator board
         /// </summary>
         /// <param name="mapBoard"></param>
+        /// <param name="titleName"></param>
         /// <returns></returns>
-        public static MapSimulator CreateMapSimulator(Board mapBoard)
+        public static MapSimulator CreateAndShowMapSimulator(Board mapBoard, string titleName)
         {
             if (mapBoard.MiniMap == null)
                 mapBoard.RegenerateMinimap();
 
-            MapSimulator result = new MapSimulator(mapBoard);
-            List<WzObject> usedProps = new List<WzObject>();
-            WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
-            WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
-            GraphicsDevice device = result.DxDevice;
+            MapSimulator mapSimulator = null;
 
-            foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
-                result.mapObjects[tileObj.LayerNumber].Add(CreateMapItemFromProperty((WzImageProperty)tileObj.BaseInfo.ParentObject, tileObj.X, tileObj.Y, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, result.DxDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+            Thread thread = new Thread(() =>
+            {
+                mapSimulator = new MapSimulator(mapBoard, titleName);
+                mapSimulator.Run();
+            });
+            thread.Priority = ThreadPriority.Highest;
 
-            foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
-                result.backgrounds.Add(CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, result.DxDevice, ref usedProps, background.Flip));
+            thread.Start();
+            thread.Join();
 
-            foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
-                result.backgrounds.Add(CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, result.DxDevice, ref usedProps, background.Flip));
-
-            foreach (WzObject obj in usedProps)
-                obj.MSTag = null;
-
-            usedProps.Clear();
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
-            return result;
+            return mapSimulator;
         }
 
 
@@ -68,7 +59,7 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        private static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
 
@@ -149,7 +140,7 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        private static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, int x, int y, int rx, int ry, int cx, int cy, int a, BackgroundType type, bool front, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, int x, int y, int rx, int ry, int cx, int cy, int a, BackgroundType type, bool front, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
