@@ -108,6 +108,7 @@ namespace HaCreator.GUI
             // 
             // mapBrowser
             // 
+            this.mapBrowser.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.mapBrowser.Location = new System.Drawing.Point(10, 86);
             this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.mapBrowser.Name = "mapBrowser";
@@ -128,8 +129,8 @@ namespace HaCreator.GUI
             // 
             // Load
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(763, 591);
             this.Controls.Add(this.HAMBox);
             this.Controls.Add(this.HAMSelect);

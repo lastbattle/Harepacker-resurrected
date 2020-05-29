@@ -638,7 +638,7 @@
             this.tabPage1.Controls.Add(this.dotwBox);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Padding = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
             this.tabPage1.Size = new System.Drawing.Size(537, 447);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "General";
@@ -658,7 +658,7 @@
             this.comboBox_resolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.comboBox_resolution.FormattingEnabled = true;
             this.comboBox_resolution.Location = new System.Drawing.Point(165, 347);
-            this.comboBox_resolution.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.comboBox_resolution.Margin = new System.Windows.Forms.Padding(2);
             this.comboBox_resolution.Name = "comboBox_resolution";
             this.comboBox_resolution.Size = new System.Drawing.Size(157, 21);
             this.comboBox_resolution.TabIndex = 65;
@@ -769,7 +769,7 @@
             this.tabPage2.Controls.Add(this.tabColorPicker);
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Name = "tabPage2";
-            this.tabPage2.Padding = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
             this.tabPage2.Size = new System.Drawing.Size(537, 447);
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "Graphics";
@@ -1181,7 +1181,7 @@
             this.tabPage3.Controls.Add(this.label32);
             this.tabPage3.Location = new System.Drawing.Point(4, 22);
             this.tabPage3.Name = "tabPage3";
-            this.tabPage3.Padding = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.tabPage3.Padding = new System.Windows.Forms.Padding(3);
             this.tabPage3.Size = new System.Drawing.Size(537, 447);
             this.tabPage3.TabIndex = 2;
             this.tabPage3.Text = "Advanced";
@@ -1298,8 +1298,8 @@
             // 
             // UserSettingsForm
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(569, 531);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okayButton);

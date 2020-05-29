@@ -52,6 +52,8 @@ namespace HaCreator.GUI
             this.unknownProps = new System.Windows.Forms.TreeView();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.label22 = new System.Windows.Forms.Label();
+            this.label21 = new System.Windows.Forms.Label();
             this.elementHost1 = new System.Windows.Forms.Integration.ElementHost();
             this.soundPlayer1 = new HaSharedLibrary.GUI.SoundPlayer();
             this.button_selectForcedReturnMap = new System.Windows.Forms.Button();
@@ -147,8 +149,6 @@ namespace HaCreator.GUI
             this.label123 = new System.Windows.Forms.Label();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.label21 = new System.Windows.Forms.Label();
-            this.label22 = new System.Windows.Forms.Label();
             this.tabControl1.SuspendLayout();
             this.tabPage1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.yBox)).BeginInit();
@@ -399,15 +399,33 @@ namespace HaCreator.GUI
             this.tabPage1.Controls.Add(this.label11);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Padding = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
             this.tabPage1.Size = new System.Drawing.Size(772, 499);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "Essential Settings";
             // 
+            // label22
+            // 
+            this.label22.AutoSize = true;
+            this.label22.Location = new System.Drawing.Point(97, 444);
+            this.label22.Name = "label22";
+            this.label22.Size = new System.Drawing.Size(13, 13);
+            this.label22.TabIndex = 162;
+            this.label22.Text = "X";
+            // 
+            // label21
+            // 
+            this.label21.AutoSize = true;
+            this.label21.Location = new System.Drawing.Point(190, 444);
+            this.label21.Name = "label21";
+            this.label21.Size = new System.Drawing.Size(12, 13);
+            this.label21.TabIndex = 161;
+            this.label21.Text = "Y";
+            // 
             // elementHost1
             // 
             this.elementHost1.Location = new System.Drawing.Point(8, 219);
-            this.elementHost1.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.elementHost1.Margin = new System.Windows.Forms.Padding(2);
             this.elementHost1.Name = "elementHost1";
             this.elementHost1.Size = new System.Drawing.Size(473, 139);
             this.elementHost1.TabIndex = 160;
@@ -417,7 +435,7 @@ namespace HaCreator.GUI
             // button_selectForcedReturnMap
             // 
             this.button_selectForcedReturnMap.Location = new System.Drawing.Point(353, 117);
-            this.button_selectForcedReturnMap.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.button_selectForcedReturnMap.Margin = new System.Windows.Forms.Padding(2);
             this.button_selectForcedReturnMap.Name = "button_selectForcedReturnMap";
             this.button_selectForcedReturnMap.Size = new System.Drawing.Size(61, 19);
             this.button_selectForcedReturnMap.TabIndex = 159;
@@ -428,7 +446,7 @@ namespace HaCreator.GUI
             // button_selectReturnMap
             // 
             this.button_selectReturnMap.Location = new System.Drawing.Point(353, 89);
-            this.button_selectReturnMap.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.button_selectReturnMap.Margin = new System.Windows.Forms.Padding(2);
             this.button_selectReturnMap.Name = "button_selectReturnMap";
             this.button_selectReturnMap.Size = new System.Drawing.Size(61, 21);
             this.button_selectReturnMap.TabIndex = 158;
@@ -624,7 +642,7 @@ namespace HaCreator.GUI
             this.tabPage2.Controls.Add(this.lvLimit);
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Name = "tabPage2";
-            this.tabPage2.Padding = new System.Windows.Forms.Padding(3, 3, 3, 3);
+            this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
             this.tabPage2.Size = new System.Drawing.Size(772, 499);
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "Optional Settings";
@@ -1538,28 +1556,10 @@ namespace HaCreator.GUI
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
-            // label21
-            // 
-            this.label21.AutoSize = true;
-            this.label21.Location = new System.Drawing.Point(190, 444);
-            this.label21.Name = "label21";
-            this.label21.Size = new System.Drawing.Size(12, 13);
-            this.label21.TabIndex = 161;
-            this.label21.Text = "Y";
-            // 
-            // label22
-            // 
-            this.label22.AutoSize = true;
-            this.label22.Location = new System.Drawing.Point(97, 444);
-            this.label22.Name = "label22";
-            this.label22.Size = new System.Drawing.Size(13, 13);
-            this.label22.TabIndex = 162;
-            this.label22.Text = "X";
-            // 
             // InfoEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(794, 573);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
