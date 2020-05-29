@@ -171,16 +171,16 @@ namespace HaCreator.MapSimulator.DX
 
         public int CalculateBackgroundPosX(DXObject frame, int mapShiftX, int centerX)
         {
-            int renderWidthHalf = (MapSimulator.RenderWidth / 2);
+            int width = (int) ((MapSimulator.RenderWidth / 2) / MapSimulator.RenderObjectScaling);
 
-            return (rx * (mapShiftX - centerX + renderWidthHalf) / 100) + frame.X + renderWidthHalf;
+            return (rx * (mapShiftX - centerX + width) / 100) + frame.X + width;
         }
 
         public int CalculateBackgroundPosY(DXObject frame, int mapShiftY, int centerY)
         {
-            int renderHeightHalf = (MapSimulator.RenderHeight / 2);
+            int height = (int)((MapSimulator.RenderHeight / 2) / MapSimulator.RenderObjectScaling);
 
-            return (ry * (mapShiftY - centerY + renderHeightHalf) / 100) + frame.Y + renderHeightHalf;
+            return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height;
         }
 
         public Color Color

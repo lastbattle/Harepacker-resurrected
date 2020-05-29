@@ -222,8 +222,6 @@ namespace HaRepacker.GUI.Panels
 			spriteBatch.Begin(); 
 			if (gameTime.TotalGameTime.TotalSeconds < 3)
 				spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] for navigation.", new Vector2(20, 10), Color.White);
-			else
-				spriteBatch.DrawString(font, "", new Vector2(0, 0), Color.White);
 
 			spriteBatch.End();
 

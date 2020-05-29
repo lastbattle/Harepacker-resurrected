@@ -357,7 +357,9 @@ namespace MapleLib.WzLib.Serialization
             img.Offset = 0;
             if (freeResources)
             {
+                img.ParseEverything = true;
                 img.ParseImage(true);
+
                 img.Changed = true;
                 wzReader.Close();
             }
@@ -387,6 +389,8 @@ namespace MapleLib.WzLib.Serialization
             img.Offset = 0;
             if (freeResources)
             {
+                img.ParseEverything = true;
+
                 successfullyParsedImage = img.ParseImage(true);
                 img.Changed = true;
                 wzReader.Close();

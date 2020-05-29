@@ -34,7 +34,7 @@
             // 
             // pictureBox
             // 
-            this.pictureBox.Location = new System.Drawing.Point(24, 16);
+            this.pictureBox.Location = new System.Drawing.Point(16, 11);
             this.pictureBox.Name = "pictureBox";
             this.pictureBox.Size = new System.Drawing.Size(100, 67);
             this.pictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
@@ -43,8 +43,7 @@
             // 
             // ScrollablePictureBox
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Inherit;
             this.AutoScroll = true;
             this.Controls.Add(this.pictureBox);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);

@@ -474,6 +474,7 @@
             // portalImageBox
             // 
             this.portalImageBox.AutoScroll = true;
+            this.portalImageBox.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.portalImageBox.Image = null;
             this.portalImageBox.Location = new System.Drawing.Point(77, 361);
             this.portalImageBox.Name = "portalImageBox";
@@ -482,8 +483,8 @@
             // 
             // PortalInstanceEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(412, 528);
             this.Controls.Add(this.leftBlankLabel);
             this.Controls.Add(this.yRangeLabel);
@@ -523,7 +524,6 @@
             this.Controls.Add(this.label1);
             this.Controls.Add(this.xInput);
             this.DoubleBuffered = true;
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.MaximizeBox = false;
             this.MinimizeBox = false;

@@ -226,7 +226,7 @@ namespace MapleLib.WzLib
                         reader.BaseStream.Position += 2;
                         canvasProp.AddProperties(WzImageProperty.ParsePropertyList(offset, reader, canvasProp, imgParent));
                     }
-                    canvasProp.PngProperty = new WzPngProperty(reader, imgParent.parseEverything) { Parent = canvasProp };
+                    canvasProp.PngProperty = new WzPngProperty(reader, imgParent.ParseEverything) { Parent = canvasProp };
                     return canvasProp;
                 case "Shape2D#Vector2D":
                     WzVectorProperty vecProp = new WzVectorProperty(name) { Parent = parent };
@@ -243,7 +243,7 @@ namespace MapleLib.WzLib
                     }
                     return convexProp;
                 case "Sound_DX8":
-                    WzBinaryProperty soundProp = new WzBinaryProperty(name, reader, imgParent.parseEverything) { Parent = parent };
+                    WzBinaryProperty soundProp = new WzBinaryProperty(name, reader, imgParent.ParseEverything) { Parent = parent };
                     return soundProp;
                 case "UOL":
                     reader.BaseStream.Position++;

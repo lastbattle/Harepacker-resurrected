@@ -379,6 +379,7 @@
     <Compile Include="MapEditor\UserObjectsManager.cs" />
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />
     <Compile Include="GUI\TabItemContainer.cs" />
@@ -508,12 +509,6 @@
     <Compile Include="MapEditor\Layer.cs" />
     <Compile Include="MapEditor\Input\Mouse.cs" />
     <Compile Include="MapSimulator\DX\DXObject.cs" />
-    <Compile Include="MapSimulator\MapSimulator.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="MapSimulator\MapSimulator.Designer.cs">
-      <DependentUpon>MapSimulator.cs</DependentUpon>
-    </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Collections\AnchorEnumerator.cs" />
@@ -646,10 +641,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\WaitWindow.resx">
       <DependentUpon>WaitWindow.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="MapSimulator\MapSimulator.resx">
-      <DependentUpon>MapSimulator.cs</DependentUpon>
-      <SubType>Designer</SubType>
     </EmbeddedResource>
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
