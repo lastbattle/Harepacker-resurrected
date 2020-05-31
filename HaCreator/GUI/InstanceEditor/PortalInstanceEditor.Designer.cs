@@ -150,6 +150,7 @@
             // ptComboBox
             // 
             this.ptComboBox.DisplayMember = "Text";
+            this.ptComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.ptComboBox.FormattingEnabled = true;
             this.ptComboBox.ItemHeight = 13;
             this.ptComboBox.Location = new System.Drawing.Point(97, 37);

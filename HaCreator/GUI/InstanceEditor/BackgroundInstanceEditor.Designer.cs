@@ -175,6 +175,7 @@
             // 
             // typeBox
             // 
+            this.typeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.typeBox.FormattingEnabled = true;
             this.typeBox.ItemHeight = 13;
             this.typeBox.Location = new System.Drawing.Point(48, 79);

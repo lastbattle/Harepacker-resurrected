@@ -107,6 +107,7 @@ namespace HaCreator.MapEditor
                 moveLayer.Click += moveLayer_Click;
                 platformCategory.Add(moveLayer);
             }
+
             if (target is IContainsLayerInfo || (target is FootholdAnchor && getZmOfSelectedFoothold() != -1))
             {
                 ToolStripMenuItem selectZm = new ToolStripMenuItem("Select Platform");
