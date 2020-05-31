@@ -804,35 +804,35 @@ namespace HaCreator.MapEditor
         {
             if (item is TileInstance)
             {
-                return "Tile:" + lineBreak + ((TileInfo)item.BaseInfo).tS + @"\" + ((TileInfo)item.BaseInfo).u + @"\" + ((TileInfo)item.BaseInfo).no;
+                return "[Tile]" + lineBreak + ((TileInfo)item.BaseInfo).tS + @"\" + ((TileInfo)item.BaseInfo).u + @"\" + ((TileInfo)item.BaseInfo).no;
             }
             else if (item is ObjectInstance)
             {
-                return "Object:" + lineBreak + ((ObjectInfo)item.BaseInfo).oS + @"\" + ((ObjectInfo)item.BaseInfo).l0 + @"\" + ((ObjectInfo)item.BaseInfo).l1 + @"\" + ((ObjectInfo)item.BaseInfo).l2;
+                return "[Object]" + lineBreak + ((ObjectInfo)item.BaseInfo).oS + @"\" + ((ObjectInfo)item.BaseInfo).l0 + @"\" + ((ObjectInfo)item.BaseInfo).l1 + @"\" + ((ObjectInfo)item.BaseInfo).l2;
             }
             else if (item is BackgroundInstance)
             {
-                return "Background:" + lineBreak + ((BackgroundInfo)item.BaseInfo).bS + @"\" + (((BackgroundInfo)item.BaseInfo).ani ? "ani" : "back") + @"\" + ((BackgroundInfo)item.BaseInfo).no;
+                return "[Background]" + lineBreak + ((BackgroundInfo)item.BaseInfo).bS + @"\" + (((BackgroundInfo)item.BaseInfo).ani ? "ani" : "back") + @"\" + ((BackgroundInfo)item.BaseInfo).no;
             }
             else if (item is PortalInstance)
             {
-                return "Portal:" + lineBreak + "Name: " + ((PortalInstance)item).pn + lineBreak + "Type: " + Tables.PortalTypeNames[((PortalInstance)item).pt];
+                return "[Portal]" + lineBreak + "Name: " + ((PortalInstance)item).pn + lineBreak + "Type: " + Tables.PortalTypeNames[((PortalInstance)item).pt];
             }
             else if (item is MobInstance)
             {
-                return "Mob:" + lineBreak + "Name: " + ((MobInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((MobInfo)item.BaseInfo).ID;
+                return "[Mob]" + lineBreak + "Name: " + ((MobInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((MobInfo)item.BaseInfo).ID;
             }
             else if (item is NpcInstance)
             {
-                return "Npc:" + lineBreak + "Name: " + ((NpcInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((NpcInfo)item.BaseInfo).ID;
+                return "[Npc]" + lineBreak + "Name: " + ((NpcInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((NpcInfo)item.BaseInfo).ID;
             }
             else if (item is ReactorInstance)
             {
-                return "Reactor:" + lineBreak + "ID: " + ((ReactorInfo)item.BaseInfo).ID;
+                return "[Reactor]" + lineBreak + "ID: " + ((ReactorInfo)item.BaseInfo).ID;
             }
             else if (item is FootholdAnchor)
             {
-                return "Foothold";
+                return "[Foothold]";
             }
             else if (item is RopeAnchor)
             {
@@ -840,11 +840,11 @@ namespace HaCreator.MapEditor
             }
             else if (item is Chair)
             {
-                return "Chair";
+                return "[Chair]";
             }
             else if (item is ToolTipChar || item is ToolTipDot || item is ToolTipInstance)
             {
-                return "Tooltip";
+                return "[Tooltip]";
             }
             else if (item is INamedMisc)
             {

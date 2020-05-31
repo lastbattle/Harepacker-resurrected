@@ -5,7 +5,9 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:cc="clr-namespace:HaCreator.CustomControls"
              xmlns:ns="clr-namespace:HaCreator.GUI"
-             xmlns:sys="clr-namespace:System;assembly=mscorlib">
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             
+             >
     <Grid>
         <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Focusable="False">
             <Ribbon.CommandBindings>
@@ -188,19 +190,22 @@
 
         <StackPanel Orientation="Horizontal" 
                     HorizontalAlignment="Right" VerticalAlignment="Center">
-            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+            <StackPanel Orientation="Vertical" Margin="0,0,30,0">
+                <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Mouse Virtual:" Margin="0,0,20,0"/>
                 <TextBlock x:Name="virtualPos" Text="0"/>
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+            <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Mouse Physical:" Margin="0,0,20,0"/>
                 <TextBlock x:Name="physicalPos" Text="0"/>
+                </StackPanel>
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
                 <TextBlock Text="Selected Item:" Margin="0,0,20,0"/>
-                <TextBlock x:Name="itemDesc" Text="0"/>
+                <TextBlock x:Name="itemDesc" Text="0"
+                           MaxWidth="120"/>
             </StackPanel>
         </StackPanel>
     </Grid>
