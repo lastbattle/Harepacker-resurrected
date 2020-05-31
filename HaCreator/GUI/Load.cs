@@ -27,7 +27,17 @@ namespace HaCreator.GUI
         private System.Windows.Controls.TabControl Tabs;
         private System.Windows.RoutedEventHandler[] rightClickHandler;
 
-        public Load(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
+        private string defaultMapNameFilter;
+
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="board"></param>
+        /// <param name="Tabs"></param>
+        /// <param name="rightClickHandler"></param>
+        /// <param name="defaultMapNameFilter">The default text to set for the map name filter</param>
+        public Load(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler,
+            string defaultMapNameFilter = null)
         {
             InitializeComponent();
 
@@ -35,6 +45,7 @@ namespace HaCreator.GUI
             this.multiBoard = board;
             this.Tabs = Tabs;
             this.rightClickHandler = rightClickHandler;
+            this.defaultMapNameFilter = defaultMapNameFilter;
 
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
@@ -56,6 +67,15 @@ namespace HaCreator.GUI
                     break;
             }
             this.mapBrowser.InitializeMaps(true);
+
+            // after loading
+            if (defaultMapNameFilter != null)
+            {
+                this.searchBox.Focus();
+                this.searchBox.Text = defaultMapNameFilter;
+
+                this.mapBrowser.searchBox_TextChanged(this.searchBox, null);
+            }
         }
 
         private void selectionChanged(object sender, EventArgs e)

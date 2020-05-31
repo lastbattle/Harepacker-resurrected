@@ -45,6 +45,8 @@ namespace HaCreator.MapEditor
         public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input)
         {
             this.multiBoard = multiBoard;
+            multiBoard.HaCreatorStateManager = this;
+
             this.ribbon = ribbon;
             this.tabs = tabs;
             this.input = input;
@@ -714,6 +716,21 @@ namespace HaCreator.MapEditor
             LoadMap(new Load(multiBoard, tabs, MakeRightClickHandler()));
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tm">To map</param>
+        public void LoadMap(int tm)
+        {
+            Load load = new Load(multiBoard, tabs, MakeRightClickHandler(), tm.ToString());
+
+            LoadMap(load);
+        }
+
+        /// <summary>
+        /// Loads a new map
+        /// </summary>
+        /// <param name="loader"></param>
         public void LoadMap(Form loader = null)
         {
             lock (multiBoard)

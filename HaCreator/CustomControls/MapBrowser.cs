@@ -92,7 +92,7 @@ namespace HaCreator.CustomControls
         /// On search box text changed
         /// </summary>
         /// <param name="sender"></param>
-        /// <param name="e"></param>
+        /// <param name="e">May be null</param>
         public void searchBox_TextChanged(object sender, EventArgs e)
         {
             TextBox searchBox = (TextBox)sender;
@@ -153,8 +153,6 @@ namespace HaCreator.CustomControls
                 });
 
             }
-            mapNamesBox.SelectedItem = null;
-            mapNamesBox.SelectedIndex = -1;
             mapNamesBox_SelectedIndexChanged(null, null);
         }
 

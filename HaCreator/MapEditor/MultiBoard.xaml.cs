@@ -49,14 +49,28 @@ namespace HaCreator.MapEditor
         private Microsoft.Xna.Framework.Graphics.SpriteBatch sprite;
         private PresentationParameters pParams = new PresentationParameters();
         private Microsoft.Xna.Framework.Graphics.Texture2D pixel;
-        private List<Board> boards = new List<Board>();
-        private Board selectedBoard = null;
+
         private FontEngine fontEngine;
         private Thread renderer;
         private bool needsReset = false;
         private IntPtr dxHandle;
         private UserObjectsManager userObjs;
         private Scheduler scheduler;
+
+        // UI
+        private List<Board> boards = new List<Board>();
+        private Board selectedBoard = null;
+        private HaCreatorStateManager _HaCreatorStateManager = null;
+        public HaCreatorStateManager HaCreatorStateManager
+        {
+            get { return _HaCreatorStateManager; }
+            set
+            {
+                if (_HaCreatorStateManager != null)
+                    throw new Exception("HaCreatorStateManager already set.");
+                this._HaCreatorStateManager = value; 
+            }
+        }
 
         private System.Windows.WindowState CurrentHostWindowState = System.Windows.WindowState.Normal;
         private System.Drawing.Size _CurrentDXWindowSize = new System.Drawing.Size();
