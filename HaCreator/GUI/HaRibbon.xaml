@@ -170,7 +170,8 @@
                     <RibbonButton Label="Finalize Footholds" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Foothold.png" Command="ns:HaRibbon.Finalize" Focusable="False"/>
                 </RibbonGroup>
             </RibbonTab>
-            <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
+
+            <!-- <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
                 <RibbonGroup x:Name="mouseVirt" Header="Mouse Virtual">
                     <RibbonTwoLineText Text="Virtual&#x0a;" />
                     <RibbonTwoLineText x:Name="virtualPos" Text="mousepos" />
@@ -182,7 +183,25 @@
                 <RibbonGroup x:Name="itemSel" Header="Selected Item">
                     <RibbonTwoLineText x:Name="itemDesc" Text="itemdesc" />
                 </RibbonGroup>
-            </RibbonTab>
+            </RibbonTab>-->
         </Ribbon>
+
+        <StackPanel Orientation="Horizontal" 
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+                <TextBlock Text="Mouse Virtual:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="virtualPos" Text="0"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+                <TextBlock Text="Mouse Physical:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="physicalPos" Text="0"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,50,0">
+                <TextBlock Text="Selected Item:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="itemDesc" Text="0"/>
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </UserControl>

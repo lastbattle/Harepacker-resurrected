@@ -478,7 +478,6 @@ namespace HaCreator.GUI
         {
             viewTab.IsEnabled = enabled;
             toolsTab.IsEnabled = enabled;
-            statTab.IsEnabled = enabled;
             saveBtn.IsEnabled = enabled;
             exportBtn.IsEnabled = enabled;
             //resetLayerBoxIfNeeded();
