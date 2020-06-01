@@ -17,11 +17,25 @@ namespace HaCreator.MapSimulator.DX
         private int a;
         private Color color;
         private bool front;
+        private int screenMode;
 
         private double bgMoveShiftX = 0;
         private double bgMoveShiftY = 0;
 
-        public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, List<DXObject> frames, bool flip)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="cy"></param>
+        /// <param name="rx"></param>
+        /// <param name="ry"></param>
+        /// <param name="type"></param>
+        /// <param name="a"></param>
+        /// <param name="front"></param>
+        /// <param name="frames"></param>
+        /// <param name="flip"></param>
+        /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
+        public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, List<DXObject> frames, bool flip, int screenMode)
             : base(frames, flip)
         {
             LastShiftIncreaseX = Environment.TickCount;
@@ -33,10 +47,24 @@ namespace HaCreator.MapSimulator.DX
             this.type = type;
             this.a = a;
             this.front = front;
+            this.screenMode = screenMode;
+
             color = new Color(0xFF, 0xFF, 0xFF, a);
         }
 
-        public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, DXObject frame0, bool flip)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="cy"></param>
+        /// <param name="rx"></param>
+        /// <param name="ry"></param>
+        /// <param name="type"></param>
+        /// <param name="a"></param>
+        /// <param name="front"></param>
+        /// <param name="frame0"></param>
+        /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
+        public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, DXObject frame0, bool flip, int screenMode)
             : base(frame0, flip)
         {
             LastShiftIncreaseX = Environment.TickCount;
@@ -47,7 +75,9 @@ namespace HaCreator.MapSimulator.DX
             this.cy = cy;
             this.type = type;
             this.a = a;
-            this.front = front;
+            this.front = front; 
+            this.screenMode = screenMode;
+
             color = new Color(0xFF, 0xFF, 0xFF, a);
         }
 
@@ -113,25 +143,30 @@ namespace HaCreator.MapSimulator.DX
         private int LastShiftIncreaseX = 0;
         private int LastShiftIncreaseY = 0;
 
-        public void IncreaseShiftX(int cx)
+        public void IncreaseShiftX(int cx, int TickCount)
         {
-            bgMoveShiftX += rx * (Environment.TickCount - LastShiftIncreaseX) / 200d;
+            bgMoveShiftX += rx * (TickCount - LastShiftIncreaseX) / 200d;
             bgMoveShiftX %= cx;
-            LastShiftIncreaseX = Environment.TickCount;
+            LastShiftIncreaseX = TickCount;
         }
 
-        public void IncreaseShiftY(int cy)
+        public void IncreaseShiftY(int cy, int TickCount)
         {
-            bgMoveShiftY += ry * (Environment.TickCount - LastShiftIncreaseY) / 200d;
+            bgMoveShiftY += ry * (TickCount - LastShiftIncreaseY) / 200d;
             bgMoveShiftY %= cy;
-            LastShiftIncreaseY = Environment.TickCount;
+            LastShiftIncreaseY = TickCount;
         }
 
-        public override void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, int simWidth, int simHeight)
+        public override void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, 
+            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int TickCount)
         {
+            if (((int) mapRenderResolution & screenMode) != screenMode) // dont draw if the screenMode isnt for this
+                return;
+
             DXObject frame = GetCurrFrame();
-            int X = CalculateBackgroundPosX(frame, mapShiftX, centerX);
-            int Y = CalculateBackgroundPosY(frame, mapShiftY, centerY);
+            int X = CalculateBackgroundPosX(frame, mapShiftX, centerX, renderWidth, RenderObjectScaling);
+            int Y = CalculateBackgroundPosY(frame, mapShiftY, centerY, renderHeight, RenderObjectScaling);
             int _cx = cx == 0 ? frame.Width : cx;
             int _cy = cy == 0 ? frame.Height : cy;
 
@@ -142,43 +177,43 @@ namespace HaCreator.MapSimulator.DX
                     Draw2D(sprite, X, Y, frame);
                     break;
                 case BackgroundType.HorizontalTiling:
-                    DrawHorizontalCopies(sprite, simWidth, X, Y, _cx, frame);
+                    DrawHorizontalCopies(sprite, renderWidth, X, Y, _cx, frame);
                     break;
                 case BackgroundType.VerticalTiling:
-                    DrawVerticalCopies(sprite, simHeight, X, Y, _cy, frame);
+                    DrawVerticalCopies(sprite, renderHeight, X, Y, _cy, frame);
                     break;
                 case BackgroundType.HVTiling:
-                    DrawHVCopies(sprite, simWidth, simHeight, X, Y, _cx, _cy, frame);
+                    DrawHVCopies(sprite, renderWidth, renderHeight, X, Y, _cx, _cy, frame);
                     break;
                 case BackgroundType.HorizontalMoving:
-                    DrawHorizontalCopies(sprite, simWidth, X + (int)bgMoveShiftX, Y, _cx, frame);
-                    IncreaseShiftX(_cx);
+                    DrawHorizontalCopies(sprite, renderWidth, X + (int)bgMoveShiftX, Y, _cx, frame);
+                    IncreaseShiftX(_cx, TickCount);
                     break;
                 case BackgroundType.VerticalMoving:
-                    DrawVerticalCopies(sprite, simHeight, X, Y + (int)bgMoveShiftY, _cy, frame);
-                    IncreaseShiftY(_cy);
+                    DrawVerticalCopies(sprite, renderHeight, X, Y + (int)bgMoveShiftY, _cy, frame);
+                    IncreaseShiftY(_cy, TickCount);
                     break;
                 case BackgroundType.HorizontalMovingHVTiling:
-                    DrawHVCopies(sprite, simWidth, simHeight, X + (int)bgMoveShiftX, Y, _cx, _cy, frame);
-                    IncreaseShiftX(_cx);
+                    DrawHVCopies(sprite, renderWidth, renderHeight, X + (int)bgMoveShiftX, Y, _cx, _cy, frame);
+                    IncreaseShiftX(_cx, TickCount);
                     break;
                 case BackgroundType.VerticalMovingHVTiling:
-                    DrawHVCopies(sprite, simWidth, simHeight, X, Y + (int)bgMoveShiftY, _cx, _cy, frame);
-                    IncreaseShiftX(_cy);
+                    DrawHVCopies(sprite, renderWidth, renderHeight, X, Y + (int)bgMoveShiftY, _cx, _cy, frame);
+                    IncreaseShiftX(_cy, TickCount);
                     break;
             }
         }
 
-        public int CalculateBackgroundPosX(DXObject frame, int mapShiftX, int centerX)
+        public int CalculateBackgroundPosX(DXObject frame, int mapShiftX, int centerX, int RenderWidth, float RenderObjectScaling)
         {
-            int width = (int) ((MapSimulator.RenderWidth / 2) / MapSimulator.RenderObjectScaling);
+            int width = (int) ((RenderWidth / 2) / RenderObjectScaling);
 
             return (rx * (mapShiftX - centerX + width) / 100) + frame.X + width;
         }
 
-        public int CalculateBackgroundPosY(DXObject frame, int mapShiftY, int centerY)
+        public int CalculateBackgroundPosY(DXObject frame, int mapShiftY, int centerY, int RenderHeight, float RenderObjectScaling)
         {
-            int height = (int)((MapSimulator.RenderHeight / 2) / MapSimulator.RenderObjectScaling);
+            int height = (int)((RenderHeight / 2) / RenderObjectScaling);
 
             return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height;
         }

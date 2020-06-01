@@ -62,10 +62,25 @@ namespace HaRepacker.GUI.Panels
 		{
 			IsMouseVisible = true;
 
-			graphicsDeviceMgr = new GraphicsDeviceManager(this);
-			graphicsDeviceMgr.IsFullScreen = false;
-			graphicsDeviceMgr.PreferredBackBufferWidth = 1366;
-			graphicsDeviceMgr.PreferredBackBufferHeight = 768;
+			//Window.IsBorderless = true;
+			//Window.Position = new Point(0, 0);
+			Window.Title = "Spine";
+			IsFixedTimeStep = false; // dont cap fps
+
+			graphicsDeviceMgr = new GraphicsDeviceManager(this)
+			{
+				SynchronizeWithVerticalRetrace = false, // dont cap fps
+				HardwareModeSwitch = true,
+				GraphicsProfile = GraphicsProfile.HiDef,
+				IsFullScreen = false,
+				PreferMultiSampling = true,
+				SupportedOrientations = DisplayOrientation.Default,
+				PreferredBackBufferWidth = 1366,
+				PreferredBackBufferHeight = 768,
+				PreferredBackBufferFormat = SurfaceFormat.Color,
+				PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
+			};
+			graphicsDeviceMgr.ApplyChanges();
 
 			this.spineAnimationItem = spineAnimationItem;
 		}
@@ -165,6 +180,14 @@ namespace HaRepacker.GUI.Panels
 				|| Keyboard.GetState().IsKeyDown(Keys.Escape))
 				this.Exit();
 #endif
+			// Handle full screen
+			bool bIsAltEnterPressed = Keyboard.GetState().IsKeyDown(Keys.LeftAlt) && Keyboard.GetState().IsKeyDown(Keys.Enter);
+			if (bIsAltEnterPressed)
+			{
+				graphicsDeviceMgr.IsFullScreen = !graphicsDeviceMgr.IsFullScreen;
+				graphicsDeviceMgr.ApplyChanges();
+			}
+
 			// Navigate around the rendered object
 			bool bIsShiftPressed = Keyboard.GetState().IsKeyDown(Keys.LeftShift) || Keyboard.GetState().IsKeyDown(Keys.RightShift);
 
@@ -173,7 +196,7 @@ namespace HaRepacker.GUI.Panels
 			bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
 			bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-			int MOVE_XY_POSITION = 4;
+			int MOVE_XY_POSITION = 2;
 			if (bIsShiftPressed) // Move 2x as fast with shift pressed
 				MOVE_XY_POSITION *= 2;
 

@@ -52,6 +52,8 @@
             this.cyBox = new System.Windows.Forms.NumericUpDown();
             this.cxLabel = new System.Windows.Forms.Label();
             this.cxBox = new System.Windows.Forms.NumericUpDown();
+            this.label9 = new System.Windows.Forms.Label();
+            this.comboBox_screenMode = new System.Windows.Forms.ComboBox();
             ((System.ComponentModel.ISupportInitialize)(this.xInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.zInput)).BeginInit();
@@ -147,7 +149,7 @@
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(2, 185);
+            this.okButton.Location = new System.Drawing.Point(1, 211);
             this.okButton.Name = "okButton";
             this.okButton.Size = new System.Drawing.Size(122, 28);
             this.okButton.TabIndex = 10;
@@ -157,7 +159,7 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(124, 185);
+            this.cancelButton.Location = new System.Drawing.Point(123, 211);
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.Size = new System.Drawing.Size(121, 28);
             this.cancelButton.TabIndex = 11;
@@ -335,11 +337,32 @@
             this.cxBox.Size = new System.Drawing.Size(50, 22);
             this.cxBox.TabIndex = 8;
             // 
+            // label9
+            // 
+            this.label9.AutoSize = true;
+            this.label9.Location = new System.Drawing.Point(-1, 185);
+            this.label9.Name = "label9";
+            this.label9.Size = new System.Drawing.Size(77, 13);
+            this.label9.TabIndex = 24;
+            this.label9.Text = "Screen Mode:";
+            // 
+            // comboBox_screenMode
+            // 
+            this.comboBox_screenMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboBox_screenMode.FormattingEnabled = true;
+            this.comboBox_screenMode.ItemHeight = 13;
+            this.comboBox_screenMode.Location = new System.Drawing.Point(79, 182);
+            this.comboBox_screenMode.Name = "comboBox_screenMode";
+            this.comboBox_screenMode.Size = new System.Drawing.Size(159, 21);
+            this.comboBox_screenMode.TabIndex = 25;
+            // 
             // BackgroundInstanceEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(246, 218);
+            this.ClientSize = new System.Drawing.Size(246, 240);
+            this.Controls.Add(this.comboBox_screenMode);
+            this.Controls.Add(this.label9);
             this.Controls.Add(this.copyLabel);
             this.Controls.Add(this.cyLabel);
             this.Controls.Add(this.cyBox);
@@ -412,5 +435,7 @@
         private System.Windows.Forms.NumericUpDown cyBox;
         private System.Windows.Forms.Label cxLabel;
         private System.Windows.Forms.NumericUpDown cxBox;
+        private System.Windows.Forms.Label label9;
+        private System.Windows.Forms.ComboBox comboBox_screenMode;
     }
 }

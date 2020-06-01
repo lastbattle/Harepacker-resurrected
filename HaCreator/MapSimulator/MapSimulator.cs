@@ -28,9 +28,10 @@ namespace HaCreator.MapSimulator
         public int mapShiftY = 0;
         public Point minimapPos;
 
-        public static int RenderWidth;
-        public static int RenderHeight;
-        public static float RenderObjectScaling = 1.0f;
+        private int RenderWidth;
+        private int RenderHeight;
+        private float RenderObjectScaling = 1.0f;
+        private MapRenderResolution mapRenderResolution;
 
         private GraphicsDeviceManager _DxDeviceManager;
 
@@ -70,61 +71,9 @@ namespace HaCreator.MapSimulator
 
             this.mapBoard = mapBoard;
 
-            RenderObjectScaling = 1.0f;
-            switch (UserSettings.SimulateResolution)
-            {
+            this.mapRenderResolution = UserSettings.SimulateResolution;
+            InitialiseMapWidthHeight();
 
-                case MapRenderResolution.Res_1024x768:  // 1024x768
-                    RenderHeight = 768;
-                    RenderWidth = 1024;
-                    break;
-                case MapRenderResolution.Res_1280x720: // 1280x720
-                    RenderHeight = 720;
-                    RenderWidth = 1280;
-                    break;
-                case MapRenderResolution.Res_1366x768:  // 1366x768
-                    RenderHeight = 768;
-                    RenderWidth = 1366;
-                    break;
-
-
-                case MapRenderResolution.Res_1920x1080: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    break;
-                case MapRenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.2f;
-                    break;
-                case MapRenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.5f;
-                    break;
-
-
-                case MapRenderResolution.Res_1920x1200: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    break;
-                case MapRenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.2f;
-                    break;
-                case MapRenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.5f;
-                    break;
-
-                case MapRenderResolution.Res_800x600: // 800x600
-                default:
-                    RenderHeight = 600;
-                    RenderWidth = 800;
-                    break;
-            }
             //RenderHeight += System.Windows.Forms.SystemInformation.CaptionHeight; // window title height
 
             //double dpi = ScreenDPIUtil.GetScreenScaleFactor();
@@ -160,6 +109,66 @@ namespace HaCreator.MapSimulator
             };
             _DxDeviceManager.ApplyChanges();
 
+        }
+
+        private void InitialiseMapWidthHeight()
+        {
+            RenderObjectScaling = 1.0f;
+            switch (this.mapRenderResolution)
+            {
+                case MapRenderResolution.Res_1024x768:  // 1024x768
+                    RenderHeight = 768;
+                    RenderWidth = 1024;
+                    break;
+                case MapRenderResolution.Res_1280x720: // 1280x720
+                    RenderHeight = 720;
+                    RenderWidth = 1280;
+                    break;
+                case MapRenderResolution.Res_1366x768:  // 1366x768
+                    RenderHeight = 768;
+                    RenderWidth = 1366;
+                    break;
+
+
+                case MapRenderResolution.Res_1920x1080: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    break;
+                case MapRenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.2f;
+                    break;
+                case MapRenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.5f;
+                    this.mapRenderResolution |= MapRenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
+                    break;
+
+
+                case MapRenderResolution.Res_1920x1200: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    break;
+                case MapRenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.2f;
+                    break;
+                case MapRenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.5f;
+                    break;
+
+                case MapRenderResolution.Res_All:
+                case MapRenderResolution.Res_800x600: // 800x600
+                default:
+                    RenderHeight = 600;
+                    RenderWidth = 800;
+                    break;
+            }
         }
 
         protected override void Initialize()
@@ -204,25 +213,31 @@ namespace HaCreator.MapSimulator
                 vr = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
-
+            // Background and objects
             List<WzObject> usedProps = new List<WzObject>();
             //WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
             //WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
 
             foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
             {
+                WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
+
                 mapObjects[tileObj.LayerNumber].Add(
-                    MapSimulatorLoader.CreateMapItemFromProperty((WzImageProperty)tileObj.BaseInfo.ParentObject, tileObj.X, tileObj.Y, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    MapSimulatorLoader.CreateMapItemFromProperty(tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
             {
+                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+
                 backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
+                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+
                 backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (WzObject obj in usedProps)
             {
@@ -230,10 +245,13 @@ namespace HaCreator.MapSimulator
             }
             usedProps.Clear();
 
+            // Spine object
 
+            // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
             this.minimap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
 
+            //
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
             pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
@@ -265,8 +283,6 @@ namespace HaCreator.MapSimulator
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
                 || Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                GraphicsDevice.Dispose();
-
                 this.Exit();
                 return;
             }
@@ -372,18 +388,23 @@ namespace HaCreator.MapSimulator
         protected override void Draw(GameTime gameTime)
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
+            int TickCount = Environment.TickCount;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
-            sprite.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
+            sprite.Begin(
+                SpriteSortMode.Deferred, // drawing right away causes pixelation and image tearing it seems
+                BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
 
             // Front Backgrounds
             backgrounds.ForEach(bg =>
             {
                 if (!bg.Front)
                 {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
                 }
             });
 
@@ -392,7 +413,9 @@ namespace HaCreator.MapSimulator
             {
                 foreach (MapItem item in mapItem)
                 {
-                    item.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                    item.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
                 }
             }
 
@@ -401,7 +424,9 @@ namespace HaCreator.MapSimulator
             {
                 if (bg.Front)
                 {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
                 }
             });
 

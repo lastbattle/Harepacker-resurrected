@@ -302,7 +302,7 @@ namespace HaCreator.MapEditor
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
-            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(MapSimulator.MapSimulator.RenderObjectScaling));
+            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(1.0f));
 #endif
             lock (this)
             {

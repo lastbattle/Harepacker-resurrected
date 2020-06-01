@@ -13,6 +13,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Windows.Controls;
 using System.Windows.Forms;
 
 namespace HaCreator.GUI
@@ -34,10 +35,24 @@ namespace HaCreator.GUI
             // Resolutions
             foreach (MapRenderResolution val in Enum.GetValues(typeof(MapRenderResolution)))
             {
-                comboBox_resolution.Items.Add(val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale"));
-            }
-            comboBox_resolution.SelectedIndex = (int)UserSettings.SimulateResolution;
+                ComboBoxItem comboBoxItem = new ComboBoxItem();
+                comboBoxItem.Tag = val;
+                comboBoxItem.Content = val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
 
+                comboBox_resolution.Items.Add(comboBoxItem);
+            }
+            comboBox_resolution.DisplayMember = "Content";
+
+            int i = 0;
+            foreach (ComboBoxItem item in comboBox_resolution.Items)
+            {
+                if ((MapRenderResolution)item.Tag == UserSettings.SimulateResolution)
+                {
+                    comboBox_resolution.SelectedIndex = i;
+                    break;
+                }
+                i++;
+            }
             tabColorPicker.Color = UserSettings.TabColor;
             dragColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquare);
             dragFillColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquareFill);
@@ -99,7 +114,7 @@ namespace HaCreator.GUI
             UserSettings.DotWidth = (int)dotwBox.Value;
             MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
             UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.SimulateResolution = (MapRenderResolution) comboBox_resolution.SelectedIndex;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+            UserSettings.SimulateResolution = ((MapRenderResolution) ((ComboBoxItem) comboBox_resolution.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
             UserSettings.ClipText = clipBox.Checked;
             UserSettings.FixFootholdMispositions = fixFh.Checked;
             UserSettings.InverseUpDown = invertUpDownBox.Checked;

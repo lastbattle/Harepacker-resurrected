@@ -5,10 +5,14 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaCreator.MapEditor.Instance;
+using HaCreator.Properties;
 using HaCreator.Wz;
 using MapleLib.WzLib;
+using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework;
+using Spine;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -32,6 +36,13 @@ namespace HaCreator.MapEditor.Info
             _no = no;
         }
 
+        /// <summary>
+        /// Get background by name
+        /// </summary>
+        /// <param name="bS"></param>
+        /// <param name="ani"></param>
+        /// <param name="no"></param>
+        /// <returns></returns>
         public static BackgroundInfo Get(string bS, bool ani, string no)
         {
             if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
@@ -39,63 +50,75 @@ namespace HaCreator.MapEditor.Info
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
             WzImageProperty bgInfoProp = bsImg[ani ? "ani" : "back"][no];
+
+            WzImageProperty bgSpineInfoProp = bsImg["spine"]?[no]; // if its a spine related resource, the WzSubProperty path should be available here
             if (bgInfoProp.HCTag == null)
-                bgInfoProp.HCTag = BackgroundInfo.Load(bgInfoProp, bS, ani, no);
+            {
+                bgInfoProp.HCTag = Load(bgInfoProp, bgSpineInfoProp, bS, ani, no);
+            }
             return (BackgroundInfo)bgInfoProp.HCTag;
         }
 
-        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, bool ani, string no)
+        /// <summary>
+        /// Load background from WzImageProperty
+        /// </summary>
+        /// <param name="parentObject"></param>
+        /// <param name="spineParentObject"></param>
+        /// <param name="bS"></param>
+        /// <param name="ani"></param>
+        /// <param name="no"></param>
+        /// <returns></returns>
+        private static BackgroundInfo Load(WzImageProperty parentObject, WzImageProperty spineParentObject, string bS, bool ani, string no)
         {
             WzCanvasProperty frame0 = ani ? (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]) : (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
-
+            
             PointF origin = frame0.GetCanvasOriginPosition();
             return new BackgroundInfo(frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, ani, no, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            return new BackgroundInstance(this, board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip);
+            return CreateInstance(board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip, 0);
         }
 
-        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip)
+        /// <summary>
+        /// Creates an instance of BoardItem
+        /// </summary>
+        /// <param name="board"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="z"></param>
+        /// <param name="rx"></param>
+        /// <param name="ry"></param>
+        /// <param name="cx"></param>
+        /// <param name="cy"></param>
+        /// <param name="type"></param>
+        /// <param name="a"></param>
+        /// <param name="front"></param>
+        /// <param name="flip"></param>
+        /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
+        /// <returns></returns>
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode)
         {
-            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip);
+            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode);
         }
 
         public string bS
         {
-            get
-            {
-                return _bS;
-            }
-            set
-            {
-                this._bS = value;
-            }
+            get { return _bS; }
+            set { this._bS = value; }
         }
 
         public bool ani
         {
-            get
-            {
-                return _ani;
-            }
-            set
-            {
-                this._ani = value;
-            }
+            get { return _ani; }
+            set { this._ani = value; }
         }
 
         public string no
         {
-            get
-            {
-                return _no;
-            }
-            set
-            {
-                this._no = value;
-            }
+            get { return _no; }
+            set { this._no = value; }
         }
     }
 }

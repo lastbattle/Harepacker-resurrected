@@ -1012,6 +1012,7 @@ namespace HaRepacker.GUI.Panels
 
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
+                    childInlinkNode.Delete(); // Delete '_inlink' node
                 }
 
                 selectedWzCanvas.PngProperty.SetPNG(bmp);

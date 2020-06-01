@@ -587,16 +587,19 @@ namespace HaCreator.Wz
                 int a = InfoTool.GetInt(bgProp["a"]);
                 BackgroundType type = (BackgroundType)InfoTool.GetInt(bgProp["type"]);
                 bool front = InfoTool.GetBool(bgProp["front"]);
+                int screenMode = InfoTool.GetInt(bgProp["screenMode"]);
                 bool? flip_t = InfoTool.GetOptionalBool(bgProp["f"]);
                 bool flip = flip_t.HasValue ? flip_t.Value : false;
                 string bS = InfoTool.GetString(bgProp["bS"]);
                 bool ani = InfoTool.GetBool(bgProp["ani"]);
                 string no = InfoTool.GetInt(bgProp["no"]).ToString();
+
                 BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani, no);
                 if (bgInfo == null)
                     continue;
+
                 IList list = front ? mapBoard.BoardItems.FrontBackgrounds : mapBoard.BoardItems.BackBackgrounds;
-                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip));
+                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, screenMode));
             }
         }
 

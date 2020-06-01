@@ -67,9 +67,9 @@ namespace MapleLib.WzLib.WzStructure
             return new WzIntProperty("", value);
         }
 
-        public static int? GetOptionalInt(WzImageProperty source)
+        public static int? GetOptionalInt(WzImageProperty source, int? default_ = null)
         {
-            return source == null ? (int?)null : source.GetInt();
+            return source == null ? (int?)default_ : source.GetInt();
         }
 
         public static WzIntProperty SetOptionalInt(int? value)

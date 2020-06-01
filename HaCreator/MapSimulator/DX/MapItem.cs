@@ -48,7 +48,20 @@ namespace HaCreator.MapSimulator.DX
             }
         }
 
-        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, int width, int height)
+        /// <summary>
+        /// Draw
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="mapShiftX"></param>
+        /// <param name="mapShiftY"></param>
+        /// <param name="centerX"></param>
+        /// <param name="centerY"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <param name="TickCount">Ticks since system startup</param>
+        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, 
+            int width, int height, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int TickCount)
         {
             if (notAnimated)
             {

@@ -7,6 +7,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
@@ -59,7 +60,7 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
 
@@ -79,7 +80,7 @@ namespace HaCreator.MapSimulator
                 if (texture != null)
                 {
                     System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
-                    return new MapItem(new DXObject(x - (int)origin.X + mapCenterX, y - (int)origin.Y + mapCenterY, texture), flip);
+                    return new MapItem(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture), flip);
                 }
                 else
                 {
@@ -109,7 +110,7 @@ namespace HaCreator.MapSimulator
                     if (texture != null)
                     {
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        frames.Add(new DXObject(x - (int)origin.X + mapCenterX, y - (int)origin.Y + mapCenterY, texture, (int)delay));
+                        frames.Add(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture, (int)delay));
                     }
                     else
                     {
@@ -125,22 +126,14 @@ namespace HaCreator.MapSimulator
         /// Background
         /// </summary>
         /// <param name="source"></param>
-        /// <param name="x"></param>
-        /// <param name="y"></param>
-        /// <param name="rx"></param>
-        /// <param name="ry"></param>
-        /// <param name="cx"></param>
-        /// <param name="cy"></param>
-        /// <param name="a"></param>
-        /// <param name="type"></param>
-        /// <param name="front"></param>
+        /// <param name="bgInstance"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, int x, int y, int rx, int ry, int cx, int cy, int a, BackgroundType type, bool front, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
@@ -158,9 +151,9 @@ namespace HaCreator.MapSimulator
                 if (texture != null)
                 {
                     System.Drawing.PointF origin = ((WzCanvasProperty) source).GetCanvasOriginPosition();
-                    DXObject dxobj = new DXObject(x - (int)origin.X/* - mapCenterX*/, y - (int)origin.Y/* - mapCenterY*/, texture);
+                    DXObject dxobj = new DXObject(bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture);
 
-                    return new BackgroundItem(cx, cy, rx, ry, type, a, front, dxobj, flip);
+                    return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, dxobj, flip, bgInstance.screenMode);
                 } else
                 {
                     throw new Exception("Texture is null for the background property.");
@@ -173,9 +166,7 @@ namespace HaCreator.MapSimulator
                 List<DXObject> frames = new List<DXObject>();
                 while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
                 {
-                    int? delay = InfoTool.GetOptionalInt(frameProp["delay"]);
-                    if (delay == null) 
-                        delay = 100;
+                    int? delay = InfoTool.GetOptionalInt(frameProp["delay"], 100);
 
                     if (frameProp.MSTag == null)
                     {
@@ -187,12 +178,12 @@ namespace HaCreator.MapSimulator
                     if (texture != null)
                     {
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        frames.Add(new DXObject(x - (int) origin.X/* - mapCenterX*/, y - (int)origin.Y/* - mapCenterY*/, texture, (int)delay));
+                        frames.Add(new DXObject(bgInstance.BaseX - (int) origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture, (int)delay));
                     }
                     else
                         throw new Exception("Texture is null for the animation");
                 }
-                return new BackgroundItem(cx, cy, rx, ry, type, a, front, frames, flip);
+                return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames, flip, bgInstance.screenMode);
             }
             else throw new Exception("Unsupported property type in map simulator");
         }
