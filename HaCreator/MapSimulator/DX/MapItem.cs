@@ -31,18 +31,17 @@ namespace HaCreator.MapSimulator.DX
             this.flip = flip;
         }
 
-        protected DXObject GetCurrFrame()
+        protected DXObject GetCurrFrame(int TickCount)
         {
             if (notAnimated) 
                 return frame0;
             else
             {
-                int tc = Environment.TickCount;
-                if (tc - lastFrameSwitchTime > frames[currFrame].Delay)
+                if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
                 { //advance frame
                     currFrame++;
                     if (currFrame == frames.Count) currFrame = 0;
-                    lastFrameSwitchTime = tc;
+                    lastFrameSwitchTime = TickCount;
                 }
                 return frames[currFrame];
             }
@@ -69,7 +68,7 @@ namespace HaCreator.MapSimulator.DX
                     frame0.Draw(sprite, mapShiftX, mapShiftY, flip);
             }
             else
-                GetCurrFrame().Draw(sprite, mapShiftX, mapShiftY, flip);
+                GetCurrFrame(TickCount).Draw(sprite, mapShiftX, mapShiftY, flip);
         }
     }
 }

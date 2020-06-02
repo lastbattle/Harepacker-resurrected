@@ -35,13 +35,13 @@ namespace HaCreator.MapEditor.Instance
         {
             this.baseInfo = baseInfo;
             this.flip = flip;
-            _rx = rx;
-            _ry = ry;
-            _cx = cx;
-            _cy = cy;
-            _a = a;
-            _type = type;
-            _front = front;
+            this._rx = rx;
+            this._ry = ry;
+            this._cx = cx;
+            this._cy = cy;
+            this._a = a;
+            this._type = type;
+            this._front = front;
             this._screenMode = _screenMode;
 
             if (flip)

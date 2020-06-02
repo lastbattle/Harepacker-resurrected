@@ -3,7 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
-
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.DX
 {
@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.DX
             color = new Color(0xFF, 0xFF, 0xFF, a);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHorizontalCopies(SpriteBatch sprite, int simWidth, int x, int y, int cx, DXObject frame)
         {
             int width = frame.Width;
@@ -99,6 +100,7 @@ namespace HaCreator.MapSimulator.DX
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawVerticalCopies(SpriteBatch sprite, int simHeight, int x, int y, int cy, DXObject frame)
         {
             int height = frame.Height;
@@ -117,6 +119,7 @@ namespace HaCreator.MapSimulator.DX
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHVCopies(SpriteBatch sprite, int simWidth, int simHeight, int x, int y, int cx, int cy, DXObject frame)
         {
             int width = frame.Width;
@@ -135,6 +138,7 @@ namespace HaCreator.MapSimulator.DX
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Draw2D(SpriteBatch sprite, int x, int y, DXObject frame)
         {
             frame.Draw(sprite, x, y, Color, flip);
@@ -143,6 +147,7 @@ namespace HaCreator.MapSimulator.DX
         private int LastShiftIncreaseX = 0;
         private int LastShiftIncreaseY = 0;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void IncreaseShiftX(int cx, int TickCount)
         {
             bgMoveShiftX += rx * (TickCount - LastShiftIncreaseX) / 200d;
@@ -150,6 +155,7 @@ namespace HaCreator.MapSimulator.DX
             LastShiftIncreaseX = TickCount;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void IncreaseShiftY(int cy, int TickCount)
         {
             bgMoveShiftY += ry * (TickCount - LastShiftIncreaseY) / 200d;
@@ -164,7 +170,7 @@ namespace HaCreator.MapSimulator.DX
             if (((int) mapRenderResolution & screenMode) != screenMode) // dont draw if the screenMode isnt for this
                 return;
 
-            DXObject frame = GetCurrFrame();
+            DXObject frame = GetCurrFrame(TickCount);
             int X = CalculateBackgroundPosX(frame, mapShiftX, centerX, renderWidth, RenderObjectScaling);
             int Y = CalculateBackgroundPosY(frame, mapShiftY, centerY, renderHeight, RenderObjectScaling);
             int _cx = cx == 0 ? frame.Width : cx;
@@ -204,6 +210,7 @@ namespace HaCreator.MapSimulator.DX
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int CalculateBackgroundPosX(DXObject frame, int mapShiftX, int centerX, int RenderWidth, float RenderObjectScaling)
         {
             int width = (int) ((RenderWidth / 2) / RenderObjectScaling);
@@ -211,6 +218,7 @@ namespace HaCreator.MapSimulator.DX
             return (rx * (mapShiftX - centerX + width) / 100) + frame.X + width;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int CalculateBackgroundPosY(DXObject frame, int mapShiftY, int centerY, int RenderHeight, float RenderObjectScaling)
         {
             int height = (int)((RenderHeight / 2) / RenderObjectScaling);

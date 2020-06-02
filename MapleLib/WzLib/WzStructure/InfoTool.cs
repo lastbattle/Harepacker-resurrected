@@ -57,9 +57,9 @@ namespace MapleLib.WzLib.WzStructure
             return new WzDoubleProperty("", value);
         }
 
-        public static int GetInt(WzImageProperty source)
+        public static int GetInt(WzImageProperty source, int default_ = 0)
         {
-            return source == null ? 0 : source.GetInt();
+            return source == null ? default_ : source.GetInt();
         }
 
         public static WzIntProperty SetInt(int value)

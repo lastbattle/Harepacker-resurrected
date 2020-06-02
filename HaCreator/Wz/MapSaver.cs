@@ -19,6 +19,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Collections;
+using HaCreator.MapSimulator;
 
 namespace HaCreator.Wz
 {
@@ -448,6 +449,10 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
+                if (bgInst.screenMode != (int) MapRenderResolution.Res_All) // 0
+                {
+                    bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
+                }
                 bgProp["f"] = InfoTool.SetOptionalBool(bgInst.Flip);
                 bgProp["bS"] = InfoTool.SetString(bgInfo.bS);
                 bgProp["ani"] = InfoTool.SetBool(bgInfo.ani);
