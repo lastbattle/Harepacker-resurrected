@@ -77,7 +77,6 @@ namespace HaCreator.MapSimulator
                 if (!bLoadedSpine)
                 {
                     if (source.MSTag == null)
-
                         source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
                 }
                 usedProps.Add(source);

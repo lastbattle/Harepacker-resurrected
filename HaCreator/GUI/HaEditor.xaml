@@ -31,11 +31,16 @@
 
         <!-- editor board-->
         <Grid Grid.Row="1" Grid.Column="0">
-            <TabControl x:Name="tabControl1" VerticalAlignment="Top"
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <TabControl x:Name="tabControl1" Grid.Row="0"
                         >
 
             </TabControl>
-            <mapEditor:MultiBoard x:Name="multiBoard" Margin="0,30,0,0"/>
+            <mapEditor:MultiBoard x:Name="multiBoard" Grid.Row="1"/>
         </Grid>
 
 
