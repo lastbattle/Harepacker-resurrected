@@ -155,7 +155,8 @@ namespace HaCreator.Wz
         {
             foreach (string directive in path.Split("/".ToCharArray()))
             {
-                if (directive == "..") currentObject = currentObject.Parent;
+                if (directive == "..") 
+                    currentObject = currentObject.Parent;
                 else if (currentObject is WzImageProperty)
                     currentObject = ((WzImageProperty)currentObject)[directive];
                 else if (currentObject is WzImage)
@@ -169,7 +170,9 @@ namespace HaCreator.Wz
 
         public static WzObject ResolveUOL(WzUOLProperty uol)
         {
-            return (WzObject)GetObjectByRelativePath(uol.Parent, uol.Value);
+            WzObject wzObjectInCurrentWz = (WzObject)GetObjectByRelativePath(uol.Parent, uol.Value);
+                
+            return wzObjectInCurrentWz;
         }
 
         public static string RemoveExtension(string source)
@@ -181,8 +184,10 @@ namespace HaCreator.Wz
 
         public static WzImageProperty GetRealProperty(WzImageProperty prop)
         {
-            if (prop is WzUOLProperty) return (WzImageProperty)ResolveUOL((WzUOLProperty)prop);
-            else return prop;
+            if (prop is WzUOLProperty) 
+                return (WzImageProperty)ResolveUOL((WzUOLProperty)prop);
+            else 
+                return prop;
         }
 
         public static WzCanvasProperty GetMobImage(WzImage parentImage)

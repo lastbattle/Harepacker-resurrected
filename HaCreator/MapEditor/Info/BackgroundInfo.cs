@@ -51,10 +51,10 @@ namespace HaCreator.MapEditor.Info
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
             WzImageProperty bgInfoProp = bsImg[ani ? "ani" : "back"][no];
 
-            WzImageProperty bgSpineInfoProp = bsImg["spine"]?[no]; // if its a spine related resource, the WzSubProperty path should be available here
+            //WzImageProperty bgSpineInfoProp = bsImg["spine"]?[no]; // if its a spine related resource, the WzSubProperty path should be available here
             if (bgInfoProp.HCTag == null)
             {
-                bgInfoProp.HCTag = Load(bgInfoProp, bgSpineInfoProp, bS, ani, no);
+                bgInfoProp.HCTag = Load(bgInfoProp, bS, ani, no);
             }
             return (BackgroundInfo)bgInfoProp.HCTag;
         }
@@ -68,7 +68,7 @@ namespace HaCreator.MapEditor.Info
         /// <param name="ani"></param>
         /// <param name="no"></param>
         /// <returns></returns>
-        private static BackgroundInfo Load(WzImageProperty parentObject, WzImageProperty spineParentObject, string bS, bool ani, string no)
+        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, bool ani, string no)
         {
             WzCanvasProperty frame0 = ani ? (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]) : (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
             
@@ -78,7 +78,7 @@ namespace HaCreator.MapEditor.Info
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            return CreateInstance(board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip, 0);
+            return CreateInstance(board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip, 0, null, false);
         }
 
         /// <summary>
@@ -97,10 +97,14 @@ namespace HaCreator.MapEditor.Info
         /// <param name="front"></param>
         /// <param name="flip"></param>
         /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
+        /// <param name="spineAni"></param>
+        /// <param name="spineRandomStart"></param>
         /// <returns></returns>
-        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode)
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode, 
+            string spineAni, bool spineRandomStart)
         {
-            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode);
+            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode, 
+                spineAni, spineRandomStart);
         }
 
         public string bS

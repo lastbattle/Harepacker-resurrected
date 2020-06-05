@@ -103,15 +103,13 @@ namespace HaCreator.MapEditor
             {
                 return null; //todo handle this in a useful way
             }
-            Texture2D texture;
+
             using (System.IO.MemoryStream s = new System.IO.MemoryStream())
             {
                 bitmap.Save(s, System.Drawing.Imaging.ImageFormat.Png);
                 s.Seek(0, System.IO.SeekOrigin.Begin);
-                texture = Texture2D.FromStream(device, s);
-                //texture = Texture2D.FromFile(device, s);
+                return Texture2D.FromStream(device, s);
             }
-            return texture;
         }
 
         public virtual void BindItem(BoardItem item, XNA.Point distance)

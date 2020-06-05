@@ -25,6 +25,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -36,6 +37,7 @@ namespace MapleLib.WzLib.Spine
     {
         public WzObject ParentNode { get; private set; }
         private GraphicsDevice graphicsDevice;
+
 
         public WzSpineTextureLoader(WzObject ParentNode, GraphicsDevice graphicsDevice)
         {
@@ -79,29 +81,31 @@ namespace MapleLib.WzLib.Spine
             if (canvasProperty != null)
             {
                 Bitmap bitmap = canvasProperty.GetLinkedWzCanvasBitmap();
-
                 if (bitmap != null)
                 {
-                    Texture2D tex = new Texture2D(graphicsDevice, bitmap.Width, bitmap.Height, true, SurfaceFormat.Color);
-                    BitmapData data = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, bitmap.PixelFormat);
+                    if (graphicsDevice != null)
+                    {
+                        Texture2D tex = new Texture2D(graphicsDevice, bitmap.Width, bitmap.Height, true, SurfaceFormat.Color);
+                        BitmapData data = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, bitmap.PixelFormat);
 
-                    int bufferSize = data.Height * data.Stride;
+                        int bufferSize = data.Height * data.Stride;
 
-                    //create data buffer 
-                    byte[] bytes = new byte[bufferSize];
+                        //create data buffer 
+                        byte[] bytes = new byte[bufferSize];
 
-                    // copy bitmap data into buffer
-                    Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+                        // copy bitmap data into buffer
+                        Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
 
-                    // copy our buffer to the texture
-                    tex.SetData(bytes);
+                        // copy our buffer to the texture
+                        tex.SetData(bytes);
 
-                    // unlock the bitmap data
-                    bitmap.UnlockBits(data);
+                        // unlock the bitmap data
+                        bitmap.UnlockBits(data);
 
-                    page.rendererObject = tex;
-                    page.width = bitmap.Width;
-                    page.height = bitmap.Height;
+                        page.rendererObject = tex;
+                        page.width = bitmap.Width;
+                        page.height = bitmap.Height;
+                    }
                 }
             }
         }

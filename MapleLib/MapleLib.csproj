@@ -154,6 +154,7 @@
     <Compile Include="WzDataReader.cs" />
     <Compile Include="WzLib\Spine\WzSpineAnimationItem.cs" />
     <Compile Include="WzLib\Spine\WzSpineAtlasLoader.cs" />
+    <Compile Include="WzLib\Spine\WzSpineObject.cs" />
     <Compile Include="WzLib\Spine\WzSpineTextureLoader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />
     <Compile Include="WzLib\WzExtended.cs" />

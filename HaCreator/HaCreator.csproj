@@ -381,6 +381,8 @@
     <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
     <Compile Include="MapEditor\UserObjectsManager.cs" />
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
+    <Compile Include="MapSimulator\DX\IDXObject.cs" />
+    <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />

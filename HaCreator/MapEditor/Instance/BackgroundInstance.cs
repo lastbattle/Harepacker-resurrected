@@ -19,7 +19,7 @@ namespace HaCreator.MapEditor.Instance
 {
     public class BackgroundInstance : BoardItem, IFlippable, ISerializable
     {
-        private BackgroundInfo baseInfo;
+        private readonly BackgroundInfo baseInfo;
         private bool flip;
         private int _a; //alpha
         private int _cx; //copy x
@@ -28,9 +28,12 @@ namespace HaCreator.MapEditor.Instance
         private int _ry;
         private bool _front;
         private int _screenMode;
+        private string _spineAni;
+        private bool _spineRandomStart;
         private BackgroundType _type;
 
-        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int _screenMode)
+        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int _screenMode, 
+            string _spineAni, bool _spineRandomStart)
             : base(board, x, y, z)
         {
             this.baseInfo = baseInfo;
@@ -43,6 +46,8 @@ namespace HaCreator.MapEditor.Instance
             this._type = type;
             this._front = front;
             this._screenMode = _screenMode;
+            this._spineAni = _spineAni;
+            this._spineRandomStart = _spineRandomStart;
 
             if (flip)
                 BaseX -= Width - 2 * Origin.X;
@@ -173,6 +178,21 @@ namespace HaCreator.MapEditor.Instance
             set { _screenMode = value; }
         }
 
+        /// <summary>
+        /// Spine animation path 
+        /// </summary>
+        public string SpineAni
+        {
+            get { return _spineAni; }
+            set { this._spineAni = value; }
+        }
+
+        public bool SpineRandomStart
+        {
+            get { return _spineRandomStart; }
+            set { this._spineRandomStart = value; }
+        }
+
         public int CalculateBackgroundPosX()
         {
             //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
@@ -269,7 +289,8 @@ namespace HaCreator.MapEditor.Instance
             public string bs;
             public bool ani;
             public string no;
-
+            public string spineAni;
+            public bool spineRandomStart;
         }
 
         public override object Serialize()
@@ -290,11 +311,12 @@ namespace HaCreator.MapEditor.Instance
             result.ry = _ry;
             result.front = _front;
             result.screenMode = _screenMode;
+            result.spineAni = _spineAni;
+            result.spineRandomStart = _spineRandomStart;
             result.type = _type;
             result.bs = baseInfo.bS;
             result.ani = baseInfo.ani;
             result.no = baseInfo.no;
-           
         }
 
         public BackgroundInstance(Board board, SerializationForm json)
@@ -309,6 +331,8 @@ namespace HaCreator.MapEditor.Instance
             _front = json.front;
             _type = json.type;
             _screenMode = json.screenMode;
+            _spineAni = json.spineAni;
+            _spineRandomStart = json.spineRandomStart;
 
             baseInfo = BackgroundInfo.Get(json.bs, json.ani, json.no);
         }

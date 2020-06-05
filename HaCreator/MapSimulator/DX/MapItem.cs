@@ -1,4 +1,6 @@
-﻿using Microsoft.Xna.Framework.Graphics;
+﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,29 +11,29 @@ namespace HaCreator.MapSimulator.DX
 {
     public class MapItem
     {
-        private List<DXObject> frames;
+        private List<IDXObject> frames;
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
 
         protected bool flip;
         protected bool notAnimated;
-        private DXObject frame0;
+        private IDXObject frame0;
 
-        public MapItem(List<DXObject> frames, bool flip)
+        public MapItem(List<IDXObject> frames, bool flip)
         {
             this.frames = frames;
             notAnimated = false;
             this.flip = flip;
         }
 
-        public MapItem(DXObject frame0, bool flip)
+        public MapItem(IDXObject frame0, bool flip)
         {
             this.frame0 = frame0;
             notAnimated = true;
             this.flip = flip;
         }
 
-        protected DXObject GetCurrFrame(int TickCount)
+        protected IDXObject GetCurrFrame(int TickCount)
         {
             if (notAnimated) 
                 return frame0;
@@ -51,6 +53,7 @@ namespace HaCreator.MapSimulator.DX
         /// Draw
         /// </summary>
         /// <param name="sprite"></param>
+        /// <param name="skeletonMeshRenderer"></param>
         /// <param name="mapShiftX"></param>
         /// <param name="mapShiftY"></param>
         /// <param name="centerX"></param>
@@ -58,17 +61,18 @@ namespace HaCreator.MapSimulator.DX
         /// <param name="width"></param>
         /// <param name="height"></param>
         /// <param name="TickCount">Ticks since system startup</param>
-        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, int centerX, int centerY, 
+        public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY, 
             int width, int height, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
             int TickCount)
         {
             if (notAnimated)
             {
                 if (frame0.X - mapShiftX + frame0.Width > 0 && frame0.Y - mapShiftY + frame0.Height > 0 && frame0.X - mapShiftX < width && frame0.Y - mapShiftY < height)
-                    frame0.Draw(sprite, mapShiftX, mapShiftY, flip);
+                    frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
             }
             else
-                GetCurrFrame(TickCount).Draw(sprite, mapShiftX, mapShiftY, flip);
+                GetCurrFrame(TickCount).DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
         }
     }
 }

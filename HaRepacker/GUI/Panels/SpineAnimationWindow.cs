@@ -42,11 +42,7 @@ namespace HaRepacker.GUI.Panels
 
 		private SkeletonMeshRenderer skeletonRenderer;
 
-		private readonly WzSpineAnimationItem spineAnimationItem;
-
-		private Skeleton skeleton;
-		private AnimationState state;
-		private readonly SkeletonBounds bounds = new SkeletonBounds();
+		private WzSpineObject wzSpineObject;
 
 		// Text
 		private SpriteBatch spriteBatch;
@@ -82,7 +78,7 @@ namespace HaRepacker.GUI.Panels
 			};
 			graphicsDeviceMgr.ApplyChanges();
 
-			this.spineAnimationItem = spineAnimationItem;
+			this.wzSpineObject = new WzSpineObject(spineAnimationItem);
 		}
 		protected override void Initialize()
 		{
@@ -108,27 +104,27 @@ namespace HaRepacker.GUI.Panels
 
 
 			// Spine
-			spineAnimationItem.LoadResources(graphicsDeviceMgr.GraphicsDevice); //  load spine resources (this must happen after window is loaded)
-			this.skeleton = new Skeleton(spineAnimationItem.SkeletonData);
+			wzSpineObject.spineAnimationItem.LoadResources(graphicsDeviceMgr.GraphicsDevice); //  load spine resources (this must happen after window is loaded)
+			wzSpineObject.skeleton = new Skeleton(wzSpineObject.spineAnimationItem.SkeletonData);
 
 			skeletonRenderer = new SkeletonMeshRenderer(GraphicsDevice);
-			skeletonRenderer.PremultipliedAlpha = spineAnimationItem.PremultipliedAlpha;
+			skeletonRenderer.PremultipliedAlpha = wzSpineObject.spineAnimationItem.PremultipliedAlpha;
 
 			// Skin
-			foreach (Skin skin in spineAnimationItem.SkeletonData.Skins)
+			foreach (Skin skin in wzSpineObject.spineAnimationItem.SkeletonData.Skins)
 			{
-				this.skeleton.SetSkin(skin.Name); // just set the first skin
+				wzSpineObject.skeleton.SetSkin(skin.Name); // just set the first skin
 				break;
 			}
 
 			// Define mixing between animations.
-			AnimationStateData stateData = new AnimationStateData(skeleton.Data);
-			state = new AnimationState(stateData);
+			wzSpineObject.stateData = new AnimationStateData(wzSpineObject.skeleton.Data);
+			wzSpineObject.state = new AnimationState(wzSpineObject.stateData);
 
 			int i = 0;
-			foreach (Animation animation in spineAnimationItem.SkeletonData.Animations)
+			foreach (Animation animation in wzSpineObject.spineAnimationItem.SkeletonData.Animations)
 			{
-				state.SetAnimation(i++, animation.Name, true);
+				wzSpineObject.state.SetAnimation(i++, animation.Name, true);
 			}
 			/*if (name == "spineboy")
 			{
@@ -157,9 +153,9 @@ namespace HaRepacker.GUI.Panels
 				state.SetAnimation(0, "walk", true);
 			}*/
 
-			skeleton.X = 800;
-			skeleton.Y = 600;
-			skeleton.UpdateWorldTransform();
+			wzSpineObject.skeleton.X = 800;
+			wzSpineObject.skeleton.Y = 600;
+			wzSpineObject.skeleton.UpdateWorldTransform();
 		}
 
 		protected override void UnloadContent()
@@ -201,13 +197,13 @@ namespace HaRepacker.GUI.Panels
 				MOVE_XY_POSITION *= 2;
 
 			if (bIsUpKeyPressed)
-				skeleton.Y += MOVE_XY_POSITION;
+				wzSpineObject.skeleton.Y += MOVE_XY_POSITION;
 			if (bIsDownKeyPressed)
-				skeleton.Y -= MOVE_XY_POSITION;
+				wzSpineObject.skeleton.Y -= MOVE_XY_POSITION;
 			if (bIsLeftKeyPressed)
-				skeleton.X += MOVE_XY_POSITION;
+				wzSpineObject.skeleton.X += MOVE_XY_POSITION;
 			if (bIsRightKeyPressed)
-				skeleton.X -= MOVE_XY_POSITION;
+				wzSpineObject.skeleton.X -= MOVE_XY_POSITION;
 
 			base.Update(gameTime);
 		}
@@ -216,16 +212,16 @@ namespace HaRepacker.GUI.Panels
 		{
 			GraphicsDevice.Clear(Color.Black);
 
-			state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
-			state.Apply(skeleton);
+			wzSpineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
+			wzSpineObject.state.Apply(wzSpineObject.skeleton);
 
-			skeleton.UpdateWorldTransform();
+			wzSpineObject.skeleton.UpdateWorldTransform();
 
 			skeletonRenderer.Begin();
-			skeletonRenderer.Draw(skeleton);
+			skeletonRenderer.Draw(wzSpineObject.skeleton);
 			skeletonRenderer.End();
 
-			bounds.Update(skeleton, true);
+			wzSpineObject.bounds.Update(wzSpineObject.skeleton, true);
 			/*MouseState mouse = Mouse.GetState();
 			if (headSlot != null)
 			{

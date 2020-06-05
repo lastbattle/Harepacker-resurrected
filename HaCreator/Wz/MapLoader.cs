@@ -591,6 +591,8 @@ namespace HaCreator.Wz
                 BackgroundType type = (BackgroundType)InfoTool.GetInt(bgProp["type"]);
                 bool front = InfoTool.GetBool(bgProp["front"]);
                 int screenMode = InfoTool.GetInt(bgProp["screenMode"], (int) MapRenderResolution.Res_All);
+                string spineAni = InfoTool.GetString(bgProp["spineAni"]);
+                bool spineRandomStart = InfoTool.GetBool(bgProp["spineRandomStart"]);
                 bool? flip_t = InfoTool.GetOptionalBool(bgProp["f"]);
                 bool flip = flip_t.HasValue ? flip_t.Value : false;
                 string bS = InfoTool.GetString(bgProp["bS"]);
@@ -602,7 +604,8 @@ namespace HaCreator.Wz
                     continue;
 
                 IList list = front ? mapBoard.BoardItems.FrontBackgrounds : mapBoard.BoardItems.BackBackgrounds;
-                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, screenMode));
+                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, screenMode, 
+                    spineAni, spineRandomStart));
             }
         }
 

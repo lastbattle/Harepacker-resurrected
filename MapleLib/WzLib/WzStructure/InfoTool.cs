@@ -29,7 +29,7 @@ namespace MapleLib.WzLib.WzStructure
     {
         public static string GetString(WzImageProperty source)
         {
-            return source.GetString();
+            return source == null ? null : source.GetString();
         }
 
         public static WzStringProperty SetString(string value)

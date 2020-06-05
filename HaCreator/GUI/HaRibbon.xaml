@@ -205,7 +205,7 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
                 <TextBlock Text="Selected Item:" Margin="0,0,20,0"/>
                 <TextBlock x:Name="itemDesc" Text="0"
-                           MaxWidth="120"/>
+                           MaxWidth="120" TextWrapping="WrapWithOverflow"/>
             </StackPanel>
         </StackPanel>
     </Grid>

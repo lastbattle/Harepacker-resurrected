@@ -54,6 +54,11 @@
             this.cxBox = new System.Windows.Forms.NumericUpDown();
             this.label9 = new System.Windows.Forms.Label();
             this.comboBox_screenMode = new System.Windows.Forms.ComboBox();
+            this.label10 = new System.Windows.Forms.Label();
+            this.checkBox_spineRandomStart = new System.Windows.Forms.CheckBox();
+            this.label11 = new System.Windows.Forms.Label();
+            this.checkBox_spineAni = new System.Windows.Forms.CheckBox();
+            this.textBox_spineAni = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.xInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.zInput)).BeginInit();
@@ -66,9 +71,9 @@
             // 
             // pathLabel
             // 
-            this.pathLabel.Location = new System.Drawing.Point(12, 12);
+            this.pathLabel.Location = new System.Drawing.Point(12, 4);
             this.pathLabel.Name = "pathLabel";
-            this.pathLabel.Size = new System.Drawing.Size(226, 35);
+            this.pathLabel.Size = new System.Drawing.Size(226, 43);
             this.pathLabel.TabIndex = 0;
             this.pathLabel.Text = "label1";
             this.pathLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
@@ -149,7 +154,7 @@
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(1, 211);
+            this.okButton.Location = new System.Drawing.Point(1, 340);
             this.okButton.Name = "okButton";
             this.okButton.Size = new System.Drawing.Size(122, 28);
             this.okButton.TabIndex = 10;
@@ -159,7 +164,7 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(123, 211);
+            this.cancelButton.Location = new System.Drawing.Point(123, 340);
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.Size = new System.Drawing.Size(121, 28);
             this.cancelButton.TabIndex = 11;
@@ -169,7 +174,7 @@
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(12, 81);
+            this.label4.Location = new System.Drawing.Point(14, 169);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(33, 13);
             this.label4.TabIndex = 9;
@@ -180,36 +185,36 @@
             this.typeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.typeBox.FormattingEnabled = true;
             this.typeBox.ItemHeight = 13;
-            this.typeBox.Location = new System.Drawing.Point(48, 79);
+            this.typeBox.Location = new System.Drawing.Point(50, 167);
             this.typeBox.Name = "typeBox";
-            this.typeBox.Size = new System.Drawing.Size(186, 21);
+            this.typeBox.Size = new System.Drawing.Size(184, 21);
             this.typeBox.TabIndex = 3;
             // 
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(12, 108);
+            this.label5.Location = new System.Drawing.Point(12, 136);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(40, 13);
+            this.label5.Size = new System.Drawing.Size(116, 13);
             this.label5.TabIndex = 11;
-            this.label5.Text = "Alpha:";
+            this.label5.Text = "Alpha: (Transparency)";
             // 
             // alphaBox
             // 
-            this.alphaBox.Location = new System.Drawing.Point(52, 105);
+            this.alphaBox.Location = new System.Drawing.Point(134, 133);
             this.alphaBox.Maximum = new decimal(new int[] {
             255,
             0,
             0,
             0});
             this.alphaBox.Name = "alphaBox";
-            this.alphaBox.Size = new System.Drawing.Size(50, 22);
+            this.alphaBox.Size = new System.Drawing.Size(100, 22);
             this.alphaBox.TabIndex = 4;
             // 
             // front
             // 
             this.front.AutoSize = true;
-            this.front.Location = new System.Drawing.Point(121, 108);
+            this.front.Location = new System.Drawing.Point(15, 219);
             this.front.Name = "front";
             this.front.Size = new System.Drawing.Size(119, 17);
             this.front.TabIndex = 5;
@@ -218,7 +223,7 @@
             // label6
             // 
             this.label6.AutoSize = true;
-            this.label6.Location = new System.Drawing.Point(140, 134);
+            this.label6.Location = new System.Drawing.Point(140, 82);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(12, 13);
             this.label6.TabIndex = 17;
@@ -226,7 +231,7 @@
             // 
             // ryBox
             // 
-            this.ryBox.Location = new System.Drawing.Point(156, 131);
+            this.ryBox.Location = new System.Drawing.Point(156, 79);
             this.ryBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -244,7 +249,7 @@
             // label7
             // 
             this.label7.AutoSize = true;
-            this.label7.Location = new System.Drawing.Point(63, 134);
+            this.label7.Location = new System.Drawing.Point(63, 82);
             this.label7.Name = "label7";
             this.label7.Size = new System.Drawing.Size(13, 13);
             this.label7.TabIndex = 15;
@@ -252,7 +257,7 @@
             // 
             // rxBox
             // 
-            this.rxBox.Location = new System.Drawing.Point(79, 131);
+            this.rxBox.Location = new System.Drawing.Point(79, 79);
             this.rxBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -270,7 +275,7 @@
             // label8
             // 
             this.label8.AutoSize = true;
-            this.label8.Location = new System.Drawing.Point(12, 134);
+            this.label8.Location = new System.Drawing.Point(12, 82);
             this.label8.Name = "label8";
             this.label8.Size = new System.Drawing.Size(49, 13);
             this.label8.TabIndex = 18;
@@ -279,7 +284,7 @@
             // copyLabel
             // 
             this.copyLabel.AutoSize = true;
-            this.copyLabel.Location = new System.Drawing.Point(12, 160);
+            this.copyLabel.Location = new System.Drawing.Point(12, 108);
             this.copyLabel.Name = "copyLabel";
             this.copyLabel.Size = new System.Drawing.Size(36, 13);
             this.copyLabel.TabIndex = 23;
@@ -288,7 +293,7 @@
             // cyLabel
             // 
             this.cyLabel.AutoSize = true;
-            this.cyLabel.Location = new System.Drawing.Point(140, 160);
+            this.cyLabel.Location = new System.Drawing.Point(140, 108);
             this.cyLabel.Name = "cyLabel";
             this.cyLabel.Size = new System.Drawing.Size(12, 13);
             this.cyLabel.TabIndex = 22;
@@ -296,7 +301,7 @@
             // 
             // cyBox
             // 
-            this.cyBox.Location = new System.Drawing.Point(156, 157);
+            this.cyBox.Location = new System.Drawing.Point(156, 105);
             this.cyBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -314,7 +319,7 @@
             // cxLabel
             // 
             this.cxLabel.AutoSize = true;
-            this.cxLabel.Location = new System.Drawing.Point(63, 160);
+            this.cxLabel.Location = new System.Drawing.Point(63, 108);
             this.cxLabel.Name = "cxLabel";
             this.cxLabel.Size = new System.Drawing.Size(13, 13);
             this.cxLabel.TabIndex = 20;
@@ -322,7 +327,7 @@
             // 
             // cxBox
             // 
-            this.cxBox.Location = new System.Drawing.Point(79, 157);
+            this.cxBox.Location = new System.Drawing.Point(79, 105);
             this.cxBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -340,7 +345,7 @@
             // label9
             // 
             this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(-1, 185);
+            this.label9.Location = new System.Drawing.Point(12, 195);
             this.label9.Name = "label9";
             this.label9.Size = new System.Drawing.Size(77, 13);
             this.label9.TabIndex = 24;
@@ -351,16 +356,66 @@
             this.comboBox_screenMode.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.comboBox_screenMode.FormattingEnabled = true;
             this.comboBox_screenMode.ItemHeight = 13;
-            this.comboBox_screenMode.Location = new System.Drawing.Point(79, 182);
+            this.comboBox_screenMode.Location = new System.Drawing.Point(92, 192);
             this.comboBox_screenMode.Name = "comboBox_screenMode";
-            this.comboBox_screenMode.Size = new System.Drawing.Size(159, 21);
+            this.comboBox_screenMode.Size = new System.Drawing.Size(142, 21);
             this.comboBox_screenMode.TabIndex = 25;
+            // 
+            // label10
+            // 
+            this.label10.BorderStyle = System.Windows.Forms.BorderStyle.Fixed3D;
+            this.label10.Location = new System.Drawing.Point(10, 250);
+            this.label10.Name = "label10";
+            this.label10.Size = new System.Drawing.Size(230, 2);
+            this.label10.TabIndex = 26;
+            // 
+            // checkBox_spineRandomStart
+            // 
+            this.checkBox_spineRandomStart.AutoSize = true;
+            this.checkBox_spineRandomStart.Location = new System.Drawing.Point(15, 280);
+            this.checkBox_spineRandomStart.Name = "checkBox_spineRandomStart";
+            this.checkBox_spineRandomStart.Size = new System.Drawing.Size(96, 17);
+            this.checkBox_spineRandomStart.TabIndex = 27;
+            this.checkBox_spineRandomStart.Text = "Random Start";
+            // 
+            // label11
+            // 
+            this.label11.AutoSize = true;
+            this.label11.Location = new System.Drawing.Point(12, 264);
+            this.label11.Name = "label11";
+            this.label11.Size = new System.Drawing.Size(82, 13);
+            this.label11.TabIndex = 28;
+            this.label11.Text = "Spine runtime:";
+            // 
+            // checkBox_spineAni
+            // 
+            this.checkBox_spineAni.AutoSize = true;
+            this.checkBox_spineAni.Location = new System.Drawing.Point(15, 303);
+            this.checkBox_spineAni.Name = "checkBox_spineAni";
+            this.checkBox_spineAni.Size = new System.Drawing.Size(79, 17);
+            this.checkBox_spineAni.TabIndex = 29;
+            this.checkBox_spineAni.Text = "Animation";
+            this.checkBox_spineAni.CheckedChanged += new System.EventHandler(this.checkbox_spineAni_CheckChanged);
+            // 
+            // textBox_spineAni
+            // 
+            this.textBox_spineAni.Location = new System.Drawing.Point(128, 298);
+            this.textBox_spineAni.Name = "textBox_spineAni";
+            this.textBox_spineAni.ReadOnly = true;
+            this.textBox_spineAni.Size = new System.Drawing.Size(112, 22);
+            this.textBox_spineAni.TabIndex = 30;
             // 
             // BackgroundInstanceEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(246, 240);
+            this.ClientSize = new System.Drawing.Size(246, 372);
+            this.Controls.Add(this.textBox_spineAni);
+            this.Controls.Add(this.checkBox_spineAni);
+            this.Controls.Add(this.label11);
+            this.Controls.Add(this.checkBox_spineRandomStart);
+            this.Controls.Add(this.label10);
+            this.Controls.Add(this.front);
             this.Controls.Add(this.comboBox_screenMode);
             this.Controls.Add(this.label9);
             this.Controls.Add(this.copyLabel);
@@ -373,7 +428,6 @@
             this.Controls.Add(this.ryBox);
             this.Controls.Add(this.label7);
             this.Controls.Add(this.rxBox);
-            this.Controls.Add(this.front);
             this.Controls.Add(this.alphaBox);
             this.Controls.Add(this.label5);
             this.Controls.Add(this.typeBox);
@@ -437,5 +491,10 @@
         private System.Windows.Forms.NumericUpDown cxBox;
         private System.Windows.Forms.Label label9;
         private System.Windows.Forms.ComboBox comboBox_screenMode;
+        private System.Windows.Forms.Label label10;
+        private System.Windows.Forms.CheckBox checkBox_spineRandomStart;
+        private System.Windows.Forms.Label label11;
+        private System.Windows.Forms.CheckBox checkBox_spineAni;
+        private System.Windows.Forms.TextBox textBox_spineAni;
     }
 }

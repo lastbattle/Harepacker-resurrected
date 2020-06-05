@@ -4,18 +4,15 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
-using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure.Data;
+using Spine;
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.DX
 {
-    public class DXObject
+    public class DXObject : IDXObject
     {
         protected Texture2D texture;
         private int x;
@@ -32,12 +29,35 @@ namespace HaCreator.MapSimulator.DX
             this.delay = delay;
         }
 
-        public virtual void Draw(SpriteBatch sprite, int mapShiftX, int mapShiftY, bool flip)
+        /// <summary>
+        /// Draw map objects
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="meshRenderer"></param>
+        /// <param name="gameTime"></param>
+        /// <param name="mapShiftX"></param>
+        /// <param name="mapShiftY"></param>
+        /// <param name="flip"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void DrawObject(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, bool flip)
         {
-            sprite.Draw(texture, new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), null, Color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+            sprite.Draw(texture, new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), null, Color.White, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
 
-        public virtual void Draw(SpriteBatch sprite, int x, int y, Color color, bool flip)
+        /// <summary>
+        /// Draw background
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="meshRenderer"></param>
+        /// <param name="gameTime"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="color"></param>
+        /// <param name="flip"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void DrawBackground(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
+            int x, int y, Color color, bool flip)
         {
             sprite.Draw(texture, new Rectangle(x, y, texture.Width, texture.Height), null, color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
@@ -47,11 +67,10 @@ namespace HaCreator.MapSimulator.DX
             get { return delay; }
         }
 
-        public virtual Color Color { get { return Color.White; } }
-        public virtual int X { get { return x; } }
-        public virtual int Y { get { return y; } }
+        public int X { get { return x; } }
+        public int Y { get { return y; } }
 
-        public virtual int Width { get { return texture.Width; } }
-        public virtual int Height { get { return texture.Height; } }
+        public int Width { get { return texture.Width; } }
+        public int Height { get { return texture.Height; } }
     }
 }

@@ -44,6 +44,7 @@ namespace HaCreator.GUI.InstanceEditor
             DialogResult = DialogResult.Cancel;
 
             this.numericUpDown = numericUpDown;
+
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
 

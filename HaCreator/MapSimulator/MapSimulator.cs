@@ -41,7 +41,8 @@ namespace HaCreator.MapSimulator
         public List<MapItem>[] mapObjects;
 
         // Backgrounds
-        public List<BackgroundItem> backgrounds = new List<BackgroundItem>();
+        public List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
+        public List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
@@ -55,6 +56,9 @@ namespace HaCreator.MapSimulator
         // Etc
         private Texture2D minimap;
         private Board mapBoard;
+
+        // Spine
+        private SkeletonMeshRenderer skeletonMeshRenderer;
 
         // Text
         private SpriteFont font;
@@ -205,7 +209,10 @@ namespace HaCreator.MapSimulator
             {
                 audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
                 if (audio != null)
+                {
+                    audio.Volume = 0.3f;
                     audio.Play();
+                }
             }
             if (mapBoard.VRRectangle == null)
                 vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
@@ -223,29 +230,32 @@ namespace HaCreator.MapSimulator
                 WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
 
                 mapObjects[tileObj.LayerNumber].Add(
-                    MapSimulatorLoader.CreateMapItemFromProperty(tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    MapSimulatorLoader.CreateMapItemFromProperty(tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
-                backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                backgrounds_back.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
-                backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                backgrounds_front.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (WzObject obj in usedProps)
             {
                 obj.MSTag = null;
+                obj.MSTagSpine = null; // cleanup
             }
             usedProps.Clear();
 
             // Spine object
+            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
+            skeletonMeshRenderer.PremultipliedAlpha = false;
 
             // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
@@ -266,6 +276,8 @@ namespace HaCreator.MapSimulator
                 //audio.Pause();
                 audio.Dispose();
             }
+
+            skeletonMeshRenderer.End();
 
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
@@ -389,23 +401,24 @@ namespace HaCreator.MapSimulator
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             int TickCount = Environment.TickCount;
+            float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
             sprite.Begin(
-                SpriteSortMode.Deferred, // drawing right away causes pixelation and image tearing it seems
+                SpriteSortMode.Immediate, // spine :(
+                //SpriteSortMode.Deferred, // drawing right away causes pixelation and image tearing it seems
                 BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
+            //skeletonMeshRenderer.Begin();
 
-            // Front Backgrounds
-            backgrounds.ForEach(bg =>
+            // Back Backgrounds
+            backgrounds_back.ForEach(bg =>
             {
-                if (!bg.Front)
-                {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
-                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
-                }
+                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             });
 
             // Map objects
@@ -413,21 +426,20 @@ namespace HaCreator.MapSimulator
             {
                 foreach (MapItem item in mapItem)
                 {
-                    item.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
+                    item.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
             }
 
-            // Back Backgrounds
-            backgrounds.ForEach(bg =>
+            // Front Backgrounds
+            backgrounds_front.ForEach(bg =>
             {
-                if (bg.Front)
-                {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, 
-                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
-                }
+                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             });
 
             // Borders
@@ -449,8 +461,8 @@ namespace HaCreator.MapSimulator
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 sprite.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
 
-
             sprite.End();
+           //skeletonMeshRenderer.End();
 
             base.Draw(gameTime);
         }
@@ -496,6 +508,7 @@ namespace HaCreator.MapSimulator
         {
             sprite.Draw(pixel, rectangle, color);
         }
+
 
 
         public void Start(AnimationState state, int trackIndex)
