@@ -407,8 +407,8 @@ namespace HaCreator.MapSimulator
             GraphicsDevice.Clear(Color.Black);
 
             sprite.Begin(
-                SpriteSortMode.Immediate, // spine :(
-                //SpriteSortMode.Deferred, // drawing right away causes pixelation and image tearing it seems
+                SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
+                //SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
             //skeletonMeshRenderer.Begin();
 

@@ -8,25 +8,7 @@
 #define SPACETIME
 
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Text;
 using System.Windows.Forms;
-using System.Collections;
-using System.Xml;
-using System.Linq;
-using System.IO;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using HaCreator.MapEditor;
-using XNA = Microsoft.Xna.Framework;
-using MapleLib.WzLib.WzStructure.Data;
-using MapleLib.WzLib.WzStructure;
-using MapleLib.Helpers;
-using HaCreator.Wz;
-using MapleLib.WzLib.Serialization;
 
 namespace HaCreator.GUI.InstanceEditor
 {

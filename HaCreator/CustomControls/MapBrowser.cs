@@ -130,7 +130,7 @@ namespace HaCreator.CustomControls
 
                 Task t = Task.Run(() =>
                 {
-                    Thread.Sleep(300); // average key typing speed
+                    Thread.Sleep(1000); // average key typing speed
 
                     List<string> mapsFiltered = new List<string>();
                     foreach (string map in maps)

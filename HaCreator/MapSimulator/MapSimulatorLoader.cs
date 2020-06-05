@@ -293,6 +293,10 @@ namespace HaCreator.MapSimulator
 
                         spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
                         spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
+                        //spineObject.skeleton.R =153;
+                        //spineObject.skeleton.G = 255;
+                        //spineObject.skeleton.B = 0;
+                        //spineObject.skeleton.A = 1f;
 
                         // Skin
                         foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)

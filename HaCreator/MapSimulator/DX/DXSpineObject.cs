@@ -14,17 +14,19 @@ namespace HaCreator.MapSimulator.DX
     public class DXSpineObject : IDXObject
     {
         private readonly WzSpineObject spineObject;
-        private int x;
-        private int y;
+        private readonly int _x;
+        private readonly int _y;
 
-        private int delay;
+        private readonly int delay;
 
         public DXSpineObject(WzSpineObject spineObject, int x, int y, int delay = 0)
         {
             this.spineObject = spineObject;
-            this.x = x;
-            this.y = y;
+            this._x = x;
+            this._y = y;
             this.delay = delay;
+
+            spineObject.bounds.Update(spineObject.skeleton, true);
         }
 
         /// <summary>
@@ -37,7 +39,7 @@ namespace HaCreator.MapSimulator.DX
         /// <param name="mapShiftY"></param>
         /// <param name="flip"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawObject(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, 
+        public void DrawObject(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, bool flip)
         {
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
@@ -51,10 +53,8 @@ namespace HaCreator.MapSimulator.DX
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
 
             skeletonMeshRenderer.Begin();
-            skeletonMeshRenderer.Draw(spineObject.skeleton); 
-            skeletonMeshRenderer.End(); // if its a map object, the order should be drawn according to the layers
-
-            spineObject.bounds.Update(spineObject.skeleton, true);
+            skeletonMeshRenderer.Draw(spineObject.skeleton);
+            skeletonMeshRenderer.End();
         }
 
         /// <summary>
@@ -68,28 +68,22 @@ namespace HaCreator.MapSimulator.DX
         /// <param name="color"></param>
         /// <param name="flip"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawBackground(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, 
+        public void DrawBackground(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int x, int y, Color color, bool flip)
         {
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
             spineObject.state.Apply(spineObject.skeleton);
 
-            //if (spineObject.skeleton.X != x || spineObject.skeleton.Y != y) // reduce the amount of updates
-            //{
-                spineObject.skeleton.FlipX = flip;
-                spineObject.skeleton.X = x;
-                spineObject.skeleton.Y = y ;
-                spineObject.skeleton.UpdateWorldTransform();
-            //}
-            
+            spineObject.skeleton.FlipX = flip;
+            spineObject.skeleton.X = x;
+            spineObject.skeleton.Y = y;
+            spineObject.skeleton.UpdateWorldTransform();
 
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
 
             skeletonMeshRenderer.Begin();
             skeletonMeshRenderer.Draw(spineObject.skeleton);
             skeletonMeshRenderer.End();
-
-            spineObject.bounds.Update(spineObject.skeleton, true);
         }
 
         public int Delay
@@ -97,10 +91,10 @@ namespace HaCreator.MapSimulator.DX
             get { return delay; }
         }
 
-        public int X { get { return x; } }
-        public int Y { get { return y; } }
+        public int X { get { return _x; } }
+        public int Y { get { return _y; } }
 
-        public int Width { get { return (int) spineObject.skeleton.Data.Width; } }
+        public int Width { get { return (int)spineObject.skeleton.Data.Width; } }
         public int Height { get { return (int)spineObject.skeleton.Data.Height; } }
     }
 }

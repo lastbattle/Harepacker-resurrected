@@ -15,15 +15,15 @@ namespace HaCreator.MapSimulator.DX
     public class DXObject : IDXObject
     {
         protected Texture2D texture;
-        private int x;
-        private int y;
+        private readonly int _x;
+        private readonly int _y;
 
-        private int delay;
+        private readonly int delay;
 
         public DXObject(int x, int y, Texture2D texture, int delay = 0)
         {
-            this.x = x;
-            this.y = y;
+            this._x = x;
+            this._y = y;
             this.texture = texture;
 
             this.delay = delay;
@@ -67,8 +67,8 @@ namespace HaCreator.MapSimulator.DX
             get { return delay; }
         }
 
-        public int X { get { return x; } }
-        public int Y { get { return y; } }
+        public int X { get { return _x; } }
+        public int Y { get { return _y; } }
 
         public int Width { get { return texture.Width; } }
         public int Height { get { return texture.Height; } }
