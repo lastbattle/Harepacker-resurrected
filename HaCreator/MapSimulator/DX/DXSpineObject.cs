@@ -16,14 +16,16 @@ namespace HaCreator.MapSimulator.DX
         private readonly WzSpineObject spineObject;
         private readonly int _x;
         private readonly int _y;
+        private System.Drawing.PointF _origin;
 
         private readonly int delay;
 
-        public DXSpineObject(WzSpineObject spineObject, int x, int y, int delay = 0)
+        public DXSpineObject(WzSpineObject spineObject, int x, int y, System.Drawing.PointF _origin, int delay = 0)
         {
             this.spineObject = spineObject;
             this._x = x;
             this._y = y;
+            this._origin = _origin;
             this.delay = delay;
 
             spineObject.bounds.Update(spineObject.skeleton, true);
@@ -74,10 +76,13 @@ namespace HaCreator.MapSimulator.DX
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
             spineObject.state.Apply(spineObject.skeleton);
 
-            spineObject.skeleton.FlipX = flip;
-            spineObject.skeleton.X = x;
-            spineObject.skeleton.Y = y;
-            spineObject.skeleton.UpdateWorldTransform();
+            if (spineObject.skeleton.FlipX != flip || spineObject.skeleton.X != x || spineObject.skeleton.Y != y) // reduce the number of updates
+            {
+                spineObject.skeleton.FlipX = flip;
+                spineObject.skeleton.X = x; //x + (Width);
+                spineObject.skeleton.Y = y;//y + (Height / 2);
+                spineObject.skeleton.UpdateWorldTransform();
+            }
 
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
 
@@ -85,6 +90,8 @@ namespace HaCreator.MapSimulator.DX
             skeletonMeshRenderer.Draw(spineObject.skeleton);
             skeletonMeshRenderer.End();
         }
+
+        public bool IsSpineDxObject { get { return true; } }
 
         public int Delay
         {

@@ -86,7 +86,7 @@ namespace HaCreator.MapSimulator
                     WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
                     System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
 
-                    return new MapItem(new DXSpineObject(spineObject, x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y), flip);
+                    return new MapItem(new DXSpineObject(spineObject, x + mapCenter.X, y + mapCenter.Y, origin), flip);
                 }
                 else if (source.MSTag != null)
                 {
@@ -125,7 +125,7 @@ namespace HaCreator.MapSimulator
                         WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                        frames.Add(new DXSpineObject(spineObject, x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, delay));
+                        frames.Add(new DXSpineObject(spineObject, x  + mapCenter.X, y + mapCenter.Y, origin, delay));
                     }
                     else if (frameProp.MSTag != null)
                     {
@@ -179,7 +179,7 @@ namespace HaCreator.MapSimulator
                 {
                     WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
                     System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
-                    DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/);
+                    DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, origin);
 
                     return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, dxobj, flip, bgInstance.screenMode);
                 }
@@ -223,7 +223,7 @@ namespace HaCreator.MapSimulator
                     {
                         WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, delay);
+                        DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, origin, delay);
 
                         frames.Add(dxobj);
                     }

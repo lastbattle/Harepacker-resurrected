@@ -69,7 +69,9 @@ namespace HaCreator.MapSimulator.DX
             if (notAnimated)
             {
                 if (frame0.X - mapShiftX + frame0.Width > 0 && frame0.Y - mapShiftY + frame0.Height > 0 && frame0.X - mapShiftX < width && frame0.Y - mapShiftY < height)
+                {
                     frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
+                }
             }
             else
                 GetCurrFrame(TickCount).DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
