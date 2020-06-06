@@ -40,21 +40,21 @@ namespace HaCreator.MapEditor.Info
         /// Get background by name
         /// </summary>
         /// <param name="bS"></param>
-        /// <param name="ani"></param>
+        /// <param name="ani">Select animate path</param>
+        /// <param name="spine">Select spine path</param>
         /// <param name="no"></param>
         /// <returns></returns>
-        public static BackgroundInfo Get(string bS, bool ani, string no)
+        public static BackgroundInfo Get(string bS, bool ani, bool spine, string no)
         {
             if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
                 return null;
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
-            WzImageProperty bgInfoProp = bsImg[ani ? "ani" : "back"][no];
+            WzImageProperty bgInfoProp = bsImg[ani ? "ani" : spine ? "spine" : "back"][no];
 
-            //WzImageProperty bgSpineInfoProp = bsImg["spine"]?[no]; // if its a spine related resource, the WzSubProperty path should be available here
             if (bgInfoProp.HCTag == null)
             {
-                bgInfoProp.HCTag = Load(bgInfoProp, bS, ani, no);
+                bgInfoProp.HCTag = Load(bgInfoProp, bS, ani, spine, no);
             }
             return (BackgroundInfo)bgInfoProp.HCTag;
         }
@@ -66,12 +66,25 @@ namespace HaCreator.MapEditor.Info
         /// <param name="spineParentObject"></param>
         /// <param name="bS"></param>
         /// <param name="ani"></param>
+        /// <param name="spine"></param>
         /// <param name="no"></param>
         /// <returns></returns>
-        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, bool ani, string no)
+        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, bool ani, bool spine, string no)
         {
-            WzCanvasProperty frame0 = ani ? (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]) : (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
-            
+            WzCanvasProperty frame0;
+            if (ani)
+                frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
+            else if (spine)
+            {
+                // TODO: make a preview of the spine image ffs
+                //WzSubProperty subProperty = (WzSubProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
+
+                PointF origin_ = new PointF();
+                return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, ani, no, parentObject);
+            } 
+            else 
+                frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
+
             PointF origin = frame0.GetCanvasOriginPosition();
             return new BackgroundInfo(frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, ani, no, parentObject);
         }

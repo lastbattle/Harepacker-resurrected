@@ -599,7 +599,7 @@ namespace HaCreator.Wz
                 bool ani = InfoTool.GetBool(bgProp["ani"]);
                 string no = InfoTool.GetInt(bgProp["no"]).ToString();
 
-                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani, no);
+                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani, false, no);
                 if (bgInfo == null)
                     continue;
 

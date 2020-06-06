@@ -55,12 +55,20 @@ namespace HaCreator.GUI.EditorPanels
                 return;
             bgImageContainer.Controls.Clear();
 
-            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem][aniBg.Checked ? "ani" : "back"];
+            string path;
+            if (radioButton_spine.Checked)
+                path = "spine";
+            else if (aniBg.Checked)
+                path = "ani";
+            else
+                path = "back";
+
+            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem][path];
             if (parentProp == null || parentProp.WzProperties == null)
                 return;
             foreach (WzImageProperty prop in parentProp.WzProperties)
             {
-                BackgroundInfo bgInfo = BackgroundInfo.Get((string)bgSetListBox.SelectedItem, aniBg.Checked, prop.Name);
+                BackgroundInfo bgInfo = BackgroundInfo.Get((string)bgSetListBox.SelectedItem, aniBg.Checked, radioButton_spine.Checked, prop.Name);
                 if (bgInfo == null)
                     continue;
 

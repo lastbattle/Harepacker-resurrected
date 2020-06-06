@@ -34,6 +34,8 @@
             this.bgBack = new System.Windows.Forms.RadioButton();
             this.aniBg = new System.Windows.Forms.RadioButton();
             this.bgImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.radioButton_spine = new System.Windows.Forms.RadioButton();
+            this.groupBox1 = new System.Windows.Forms.GroupBox();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).BeginInit();
             this.splitContainer6.Panel1.SuspendLayout();
             this.splitContainer6.Panel2.SuspendLayout();
@@ -42,6 +44,7 @@
             this.splitContainer7.Panel1.SuspendLayout();
             this.splitContainer7.Panel2.SuspendLayout();
             this.splitContainer7.SuspendLayout();
+            this.groupBox1.SuspendLayout();
             this.SuspendLayout();
             // 
             // splitContainer6
@@ -75,8 +78,7 @@
             // 
             // splitContainer7.Panel2
             // 
-            this.splitContainer7.Panel2.Controls.Add(this.bgBack);
-            this.splitContainer7.Panel2.Controls.Add(this.aniBg);
+            this.splitContainer7.Panel2.Controls.Add(this.groupBox1);
             this.splitContainer7.Panel2MinSize = 20;
             this.splitContainer7.Size = new System.Drawing.Size(284, 170);
             this.splitContainer7.SplitterDistance = 121;
@@ -95,17 +97,16 @@
             // bgBack
             // 
             this.bgBack.Checked = true;
-            this.bgBack.Location = new System.Drawing.Point(120, 3);
+            this.bgBack.Location = new System.Drawing.Point(103, 15);
             this.bgBack.Name = "bgBack";
             this.bgBack.Size = new System.Drawing.Size(68, 18);
             this.bgBack.TabIndex = 1;
-            this.bgBack.TabStop = true;
             this.bgBack.Text = "Static";
             this.bgBack.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
             // 
             // aniBg
             // 
-            this.aniBg.Location = new System.Drawing.Point(3, 3);
+            this.aniBg.Location = new System.Drawing.Point(6, 15);
             this.aniBg.Name = "aniBg";
             this.aniBg.Size = new System.Drawing.Size(67, 18);
             this.aniBg.TabIndex = 0;
@@ -121,6 +122,26 @@
             this.bgImageContainer.Name = "bgImageContainer";
             this.bgImageContainer.Size = new System.Drawing.Size(284, 484);
             this.bgImageContainer.TabIndex = 0;
+            // 
+            // radioButton_spine
+            // 
+            this.radioButton_spine.Location = new System.Drawing.Point(200, 15);
+            this.radioButton_spine.Name = "radioButton_spine";
+            this.radioButton_spine.Size = new System.Drawing.Size(68, 18);
+            this.radioButton_spine.TabIndex = 2;
+            this.radioButton_spine.Text = "Spine";
+            // 
+            // groupBox1
+            // 
+            this.groupBox1.Controls.Add(this.aniBg);
+            this.groupBox1.Controls.Add(this.radioButton_spine);
+            this.groupBox1.Controls.Add(this.bgBack);
+            this.groupBox1.Location = new System.Drawing.Point(3, 3);
+            this.groupBox1.Name = "groupBox1";
+            this.groupBox1.Size = new System.Drawing.Size(278, 39);
+            this.groupBox1.TabIndex = 3;
+            this.groupBox1.TabStop = false;
+            this.groupBox1.Text = "Select";
             // 
             // BackgroundPanel
             // 
@@ -138,6 +159,7 @@
             this.splitContainer7.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer7)).EndInit();
             this.splitContainer7.ResumeLayout(false);
+            this.groupBox1.ResumeLayout(false);
             this.ResumeLayout(false);
 
         }
@@ -150,5 +172,7 @@
         private System.Windows.Forms.RadioButton bgBack;
         private System.Windows.Forms.RadioButton aniBg;
         private ThirdParty.ThumbnailFlowLayoutPanel bgImageContainer;
+        private System.Windows.Forms.GroupBox groupBox1;
+        private System.Windows.Forms.RadioButton radioButton_spine;
     }
 }

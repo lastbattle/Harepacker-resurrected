@@ -334,7 +334,7 @@ namespace HaCreator.MapEditor.Instance
             _spineAni = json.spineAni;
             _spineRandomStart = json.spineRandomStart;
 
-            baseInfo = BackgroundInfo.Get(json.bs, json.ani, json.no);
+            baseInfo = BackgroundInfo.Get(json.bs, json.ani, false, json.no);
         }
 
         public override void PostDeserializationActions(bool? selected, XNA.Point? offset)
