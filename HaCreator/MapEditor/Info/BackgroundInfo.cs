@@ -77,10 +77,19 @@ namespace HaCreator.MapEditor.Info
             else if (spine)
             {
                 // TODO: make a preview of the spine image ffs
-                //WzSubProperty subProperty = (WzSubProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
+                WzCanvasProperty spineCanvas = (WzCanvasProperty) parentObject["0"];
+                if (spineCanvas != null)
+                {
+                    Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
+                    PointF origin__ = spineCanvas.GetCanvasOriginPosition();
 
-                PointF origin_ = new PointF();
-                return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, ani, no, parentObject);
+                    return new BackgroundInfo(bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, ani, no, parentObject);
+                }
+                else
+                {
+                    PointF origin_ = new PointF();
+                    return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, ani, no, parentObject);
+                }
             } 
             else 
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
