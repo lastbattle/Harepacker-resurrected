@@ -25,36 +25,35 @@ namespace HaCreator.MapEditor.Info
     public class BackgroundInfo : MapleDrawableInfo
     {
         private string _bS;
-        private bool _ani;
         private string _no;
+        private BackgroundInfoType _type;
 
-        public BackgroundInfo(Bitmap image, System.Drawing.Point origin, string bS, bool ani, string no, WzObject parentObject)
+        public BackgroundInfo(Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject)
             : base(image, origin, parentObject)
         {
-            _bS = bS;
-            _ani = ani;
-            _no = no;
+            this._bS = bS;
+            this._type = _type;
+            this._no = no;
         }
 
         /// <summary>
         /// Get background by name
         /// </summary>
         /// <param name="bS"></param>
-        /// <param name="ani">Select animate path</param>
-        /// <param name="spine">Select spine path</param>
+        /// <param name="type">Select type</param>
         /// <param name="no"></param>
         /// <returns></returns>
-        public static BackgroundInfo Get(string bS, bool ani, bool spine, string no)
+        public static BackgroundInfo Get(string bS, BackgroundInfoType type, string no)
         {
             if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
                 return null;
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
-            WzImageProperty bgInfoProp = bsImg[ani ? "ani" : spine ? "spine" : "back"][no];
+            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"][no];
 
             if (bgInfoProp.HCTag == null)
             {
-                bgInfoProp.HCTag = Load(bgInfoProp, bS, ani, spine, no);
+                bgInfoProp.HCTag = Load(bgInfoProp, bS, type, no);
             }
             return (BackgroundInfo)bgInfoProp.HCTag;
         }
@@ -65,37 +64,38 @@ namespace HaCreator.MapEditor.Info
         /// <param name="parentObject"></param>
         /// <param name="spineParentObject"></param>
         /// <param name="bS"></param>
-        /// <param name="ani"></param>
-        /// <param name="spine"></param>
+        /// <param name="type"></param>
         /// <param name="no"></param>
         /// <returns></returns>
-        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, bool ani, bool spine, string no)
+        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, BackgroundInfoType type, string no)
         {
             WzCanvasProperty frame0;
-            if (ani)
+            if (type == BackgroundInfoType.Animation)
+            {
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
-            else if (spine)
+            }
+            else if (type == BackgroundInfoType.Spine)
             {
                 // TODO: make a preview of the spine image ffs
-                WzCanvasProperty spineCanvas = (WzCanvasProperty) parentObject["0"];
+                WzCanvasProperty spineCanvas = (WzCanvasProperty)parentObject["0"];
                 if (spineCanvas != null)
                 {
                     Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
                     PointF origin__ = spineCanvas.GetCanvasOriginPosition();
 
-                    return new BackgroundInfo(bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, ani, no, parentObject);
+                    return new BackgroundInfo(bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject);
                 }
                 else
                 {
                     PointF origin_ = new PointF();
-                    return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, ani, no, parentObject);
+                    return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject);
                 }
-            } 
-            else 
+            }
+            else
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
 
             PointF origin = frame0.GetCanvasOriginPosition();
-            return new BackgroundInfo(frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, ani, no, parentObject);
+            return new BackgroundInfo(frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
@@ -129,16 +129,21 @@ namespace HaCreator.MapEditor.Info
                 spineAni, spineRandomStart);
         }
 
+
+        #region Members
         public string bS
         {
             get { return _bS; }
             set { this._bS = value; }
         }
 
-        public bool ani
+        /// <summary>
+        /// The background information type (animation, spine, background)
+        /// </summary>
+        public BackgroundInfoType Type
         {
-            get { return _ani; }
-            set { this._ani = value; }
+            get { return _type; }
+            set { this._type = value; }
         }
 
         public string no
@@ -146,5 +151,6 @@ namespace HaCreator.MapEditor.Info
             get { return _no; }
             set { this._no = value; }
         }
+        #endregion
     }
 }

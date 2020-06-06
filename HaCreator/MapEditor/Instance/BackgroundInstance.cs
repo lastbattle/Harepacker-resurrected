@@ -287,7 +287,7 @@ namespace HaCreator.MapEditor.Instance
             public int screenMode;
             public BackgroundType type;
             public string bs;
-            public bool ani;
+            public BackgroundInfoType backgroundInfoType;
             public string no;
             public string spineAni;
             public bool spineRandomStart;
@@ -315,7 +315,7 @@ namespace HaCreator.MapEditor.Instance
             result.spineRandomStart = _spineRandomStart;
             result.type = _type;
             result.bs = baseInfo.bS;
-            result.ani = baseInfo.ani;
+            result.backgroundInfoType = baseInfo.Type;
             result.no = baseInfo.no;
         }
 
@@ -334,7 +334,7 @@ namespace HaCreator.MapEditor.Instance
             _spineAni = json.spineAni;
             _spineRandomStart = json.spineRandomStart;
 
-            baseInfo = BackgroundInfo.Get(json.bs, json.ani, false, json.no);
+            baseInfo = BackgroundInfo.Get(json.bs, json.backgroundInfoType, json.no);
         }
 
         public override void PostDeserializationActions(bool? selected, XNA.Point? offset)

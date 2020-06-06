@@ -812,7 +812,7 @@ namespace HaCreator.MapEditor
             }
             else if (item is BackgroundInstance)
             {
-                return "[Background]" + lineBreak + ((BackgroundInfo)item.BaseInfo).bS + @"\" + (((BackgroundInfo)item.BaseInfo).ani ? "ani" : "back") + @"\" + ((BackgroundInfo)item.BaseInfo).no;
+                return "[Background]" + lineBreak + ((BackgroundInfo)item.BaseInfo).bS + @"\" + (((BackgroundInfo)item.BaseInfo).Type.ToString()) + @"\" + ((BackgroundInfo)item.BaseInfo).no;
             }
             else if (item is PortalInstance)
             {

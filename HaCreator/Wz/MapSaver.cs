@@ -459,7 +459,7 @@ namespace HaCreator.Wz
 
                 bgProp["f"] = InfoTool.SetOptionalBool(bgInst.Flip);
                 bgProp["bS"] = InfoTool.SetString(bgInfo.bS);
-                bgProp["ani"] = InfoTool.SetBool(bgInfo.ani);
+                bgProp["ani"] = InfoTool.SetBool(bgInfo.Type == BackgroundInfoType.Animation);
                 bgProp["no"] = InfoTool.SetInt(int.Parse(bgInfo.no));
                 bgParent[i.ToString()] = bgProp;
             }

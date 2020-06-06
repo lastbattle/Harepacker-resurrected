@@ -302,6 +302,7 @@
     <Compile Include="Collections\IMapleList.cs" />
     <Compile Include="Collections\MapleList.cs" />
     <Compile Include="MapEditor\Info\BackgroundInfo.cs" />
+    <Compile Include="MapEditor\Info\BackgroundInfoType.cs" />
     <Compile Include="MapEditor\Info\MapleExtractableInfo.cs" />
     <Compile Include="MapEditor\Info\MapleDrawableInfo.cs" />
     <Compile Include="MapEditor\Info\MobInfo.cs" />
