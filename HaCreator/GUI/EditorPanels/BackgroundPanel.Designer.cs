@@ -31,11 +31,11 @@
             this.splitContainer6 = new System.Windows.Forms.SplitContainer();
             this.splitContainer7 = new System.Windows.Forms.SplitContainer();
             this.bgSetListBox = new System.Windows.Forms.ListBox();
-            this.bgBack = new System.Windows.Forms.RadioButton();
-            this.aniBg = new System.Windows.Forms.RadioButton();
-            this.bgImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
-            this.radioButton_spine = new System.Windows.Forms.RadioButton();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
+            this.aniBg = new System.Windows.Forms.RadioButton();
+            this.radioButton_spine = new System.Windows.Forms.RadioButton();
+            this.bgBack = new System.Windows.Forms.RadioButton();
+            this.bgImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).BeginInit();
             this.splitContainer6.Panel1.SuspendLayout();
             this.splitContainer6.Panel2.SuspendLayout();
@@ -94,43 +94,6 @@
             this.bgSetListBox.TabIndex = 0;
             this.bgSetListBox.SelectedIndexChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
             // 
-            // bgBack
-            // 
-            this.bgBack.Checked = true;
-            this.bgBack.Location = new System.Drawing.Point(103, 15);
-            this.bgBack.Name = "bgBack";
-            this.bgBack.Size = new System.Drawing.Size(68, 18);
-            this.bgBack.TabIndex = 1;
-            this.bgBack.Text = "Static";
-            this.bgBack.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
-            // 
-            // aniBg
-            // 
-            this.aniBg.Location = new System.Drawing.Point(6, 15);
-            this.aniBg.Name = "aniBg";
-            this.aniBg.Size = new System.Drawing.Size(67, 18);
-            this.aniBg.TabIndex = 0;
-            this.aniBg.Text = "Animated";
-            this.aniBg.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
-            // 
-            // bgImageContainer
-            // 
-            this.bgImageContainer.AutoScroll = true;
-            this.bgImageContainer.BackColor = System.Drawing.Color.White;
-            this.bgImageContainer.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.bgImageContainer.Location = new System.Drawing.Point(0, 0);
-            this.bgImageContainer.Name = "bgImageContainer";
-            this.bgImageContainer.Size = new System.Drawing.Size(284, 484);
-            this.bgImageContainer.TabIndex = 0;
-            // 
-            // radioButton_spine
-            // 
-            this.radioButton_spine.Location = new System.Drawing.Point(200, 15);
-            this.radioButton_spine.Name = "radioButton_spine";
-            this.radioButton_spine.Size = new System.Drawing.Size(68, 18);
-            this.radioButton_spine.TabIndex = 2;
-            this.radioButton_spine.Text = "Spine";
-            // 
             // groupBox1
             // 
             this.groupBox1.Controls.Add(this.aniBg);
@@ -142,6 +105,47 @@
             this.groupBox1.TabIndex = 3;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "Select";
+            // 
+            // aniBg
+            // 
+            this.aniBg.Location = new System.Drawing.Point(6, 15);
+            this.aniBg.Name = "aniBg";
+            this.aniBg.Size = new System.Drawing.Size(67, 18);
+            this.aniBg.TabIndex = 0;
+            this.aniBg.Text = "Animated";
+            this.aniBg.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
+            // 
+            // radioButton_spine
+            // 
+            this.radioButton_spine.Location = new System.Drawing.Point(200, 15);
+            this.radioButton_spine.Name = "radioButton_spine";
+            this.radioButton_spine.Size = new System.Drawing.Size(68, 18);
+            this.radioButton_spine.TabIndex = 2;
+            this.radioButton_spine.Text = "Spine";
+            // 
+            // bgBack
+            // 
+            this.bgBack.Checked = true;
+            this.bgBack.Location = new System.Drawing.Point(103, 15);
+            this.bgBack.Name = "bgBack";
+            this.bgBack.Size = new System.Drawing.Size(68, 18);
+            this.bgBack.TabIndex = 1;
+            this.bgBack.TabStop = true;
+            this.bgBack.Text = "Static";
+            this.bgBack.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
+            // 
+            // bgImageContainer
+            // 
+            this.bgImageContainer.AutoScroll = true;
+            this.bgImageContainer.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.bgImageContainer.BackColor = System.Drawing.Color.White;
+            this.bgImageContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.bgImageContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
+            this.bgImageContainer.Location = new System.Drawing.Point(0, 0);
+            this.bgImageContainer.Name = "bgImageContainer";
+            this.bgImageContainer.Size = new System.Drawing.Size(284, 484);
+            this.bgImageContainer.TabIndex = 0;
+            this.bgImageContainer.WrapContents = false;
             // 
             // BackgroundPanel
             // 

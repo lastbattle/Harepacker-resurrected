@@ -31,14 +31,22 @@ namespace HaCreator.ThirdParty
 {
     public class ThumbnailFlowLayoutPanel : FlowLayoutPanel
     {
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        public ThumbnailFlowLayoutPanel()
+        {
+        }
+
         protected override Point ScrollToControl(Control activeControl)
         {
             return this.AutoScrollPosition;
         }
+
         public ImageViewer Add(Bitmap bitmap, String name, bool Text)
         {
             ImageViewer imageViewer = new ImageViewer();
-            imageViewer.Dock = DockStyle.Bottom;
+            imageViewer.Dock = DockStyle.Left;
 
             if (bitmap == null)
             {
@@ -71,7 +79,6 @@ namespace HaCreator.ThirdParty
             // 
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.ResumeLayout(false);
-
         }
     }
 }
