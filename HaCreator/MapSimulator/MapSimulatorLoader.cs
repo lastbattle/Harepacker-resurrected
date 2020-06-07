@@ -7,16 +7,12 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
-using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator
 {
@@ -283,9 +279,11 @@ namespace HaCreator.MapSimulator
 
             if (spineAtlas != null)
             {
-                if (spineAtlas is WzStringProperty && ((WzStringProperty)spineAtlas).IsSpineAtlasResources)
+                if (spineAtlas is WzStringProperty)
                 {
                     WzStringProperty stringObj = (WzStringProperty)spineAtlas;
+                    if (!stringObj.IsSpineAtlasResources)
+                        return false;
 
                     try
                     {
@@ -323,9 +321,7 @@ namespace HaCreator.MapSimulator
                                 spineObject.state.SetAnimation(i++, animation.Name, true);
                             }
                         }
-
                         prop.MSTagSpine = spineObject;
-
                         return true;
                     }
                     catch (Exception e)

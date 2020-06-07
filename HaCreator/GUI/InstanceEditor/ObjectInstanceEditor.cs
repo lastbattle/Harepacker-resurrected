@@ -41,7 +41,7 @@ namespace HaCreator.GUI.InstanceEditor
             rBox.Checked = item.r;
             flipBox.Checked = item.Flip;
             hideBox.Checked = !item.hide.HasValue ? false : item.hide.Value;
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
             if (item.Name != null)
             {
                 nameEnable.Checked = true;

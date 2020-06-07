@@ -28,7 +28,7 @@ namespace HaCreator.GUI.InstanceEditor
             this.item = item;
             xInput.Value = item.X;
             yInput.Value = item.Y;
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
             if (item.Name == null) useName.Checked = false;
             else nameBox.Text = item.Name;
             timeBox.Value = item.ReactorTime;

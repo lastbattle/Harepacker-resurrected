@@ -29,7 +29,7 @@ namespace HaCreator.GUI.InstanceEditor
             xInput.Value = item.X;
             yInput.Value = item.Y;
             zInput.Value = item.Z;
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)
