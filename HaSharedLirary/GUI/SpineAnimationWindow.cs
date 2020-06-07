@@ -27,14 +27,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
-
-namespace HaRepacker.GUI.Panels
+namespace HaSharedLibrary.GUI
 {
 	public class SpineAnimationWindow : Microsoft.Xna.Framework.Game
     {

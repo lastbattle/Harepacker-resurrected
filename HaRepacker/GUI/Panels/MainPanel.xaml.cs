@@ -1,6 +1,7 @@
 ﻿using HaRepacker.Comparer;
 using HaRepacker.Converter;
 using HaRepacker.GUI.Input;
+using HaSharedLibrary.GUI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;

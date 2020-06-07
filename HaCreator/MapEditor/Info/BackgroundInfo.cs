@@ -11,14 +11,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
-using Microsoft.Xna.Framework;
-using Spine;
-using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.Info
 {
@@ -27,10 +20,22 @@ namespace HaCreator.MapEditor.Info
         private string _bS;
         private string _no;
         private BackgroundInfoType _type;
+        private readonly WzImageProperty imageProperty;
 
-        public BackgroundInfo(Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject)
+        /// <summary>
+        /// Constructor
+        /// Only to be initialized in Get
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="bS"></param>
+        /// <param name="_type"></param>
+        /// <param name="no"></param>
+        /// <param name="parentObject"></param>
+        private BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject)
             : base(image, origin, parentObject)
         {
+            this.imageProperty = imageProperty;
             this._bS = bS;
             this._type = _type;
             this._no = no;
@@ -83,28 +88,38 @@ namespace HaCreator.MapEditor.Info
                     Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
                     PointF origin__ = spineCanvas.GetCanvasOriginPosition();
 
-                    return new BackgroundInfo(bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject);
+                    return new BackgroundInfo(parentObject, bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject);
                 }
                 else
                 {
                     PointF origin_ = new PointF();
-                    return new BackgroundInfo(Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject);
+                    return new BackgroundInfo(parentObject, Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject);
                 }
             }
             else
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
 
             PointF origin = frame0.GetCanvasOriginPosition();
-            return new BackgroundInfo(frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject);
+            return new BackgroundInfo(frame0, frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject);
         }
 
+        /// <summary>
+        /// Creates an instance of BoardItem from editor panels
+        /// </summary>
+        /// <param name="layer"></param>
+        /// <param name="board"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="z"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
             return CreateInstance(board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip, 0, null, false);
         }
 
         /// <summary>
-        /// Creates an instance of BoardItem
+        /// Creates an instance of BoardItem from file
         /// </summary>
         /// <param name="board"></param>
         /// <param name="x"></param>
@@ -150,6 +165,15 @@ namespace HaCreator.MapEditor.Info
         {
             get { return _no; }
             set { this._no = value; }
+        }
+
+        /// <summary>
+        /// The WzImageProperty where the BackgroundInfo is loaded from
+        /// </summary>
+        public WzImageProperty WzImageProperty
+        {
+            get { return imageProperty; }
+            private set {  }
         }
         #endregion
     }
