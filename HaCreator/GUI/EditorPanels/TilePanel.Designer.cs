@@ -105,10 +105,12 @@
             this.tileImagesContainer.AutoScroll = true;
             this.tileImagesContainer.BackColor = System.Drawing.Color.White;
             this.tileImagesContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tileImagesContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.tileImagesContainer.Location = new System.Drawing.Point(0, 0);
             this.tileImagesContainer.Name = "tileImagesContainer";
             this.tileImagesContainer.Size = new System.Drawing.Size(284, 471);
             this.tileImagesContainer.TabIndex = 0;
+            this.tileImagesContainer.WrapContents = false;
             // 
             // TilePanel
             // 

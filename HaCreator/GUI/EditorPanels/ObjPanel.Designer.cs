@@ -138,10 +138,12 @@
             this.objImagesContainer.AutoScroll = true;
             this.objImagesContainer.BackColor = System.Drawing.Color.White;
             this.objImagesContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.objImagesContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.objImagesContainer.Location = new System.Drawing.Point(0, 0);
             this.objImagesContainer.Name = "objImagesContainer";
             this.objImagesContainer.Size = new System.Drawing.Size(284, 394);
             this.objImagesContainer.TabIndex = 0;
+            this.objImagesContainer.WrapContents = false;
             // 
             // ObjPanel
             // 
