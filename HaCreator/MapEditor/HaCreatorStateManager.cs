@@ -45,6 +45,8 @@ namespace HaCreator.MapEditor
         public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input)
         {
             this.multiBoard = multiBoard;
+            multiBoard.HaCreatorStateManager = this;
+
             this.ribbon = ribbon;
             this.tabs = tabs;
             this.input = input;
@@ -169,7 +171,7 @@ namespace HaCreator.MapEditor
         {
             if (selectedItem != null)
             {
-                ribbon.SetItemDesc(CreateItemDescription(selectedItem, "\n"));
+                ribbon.SetItemDesc(CreateItemDescription(selectedItem));
             }
             else
             {
@@ -714,6 +716,21 @@ namespace HaCreator.MapEditor
             LoadMap(new Load(multiBoard, tabs, MakeRightClickHandler()));
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tm">To map</param>
+        public void LoadMap(int tm)
+        {
+            Load load = new Load(multiBoard, tabs, MakeRightClickHandler(), tm.ToString());
+
+            LoadMap(load);
+        }
+
+        /// <summary>
+        /// Loads a new map
+        /// </summary>
+        /// <param name="loader"></param>
         public void LoadMap(Form loader = null)
         {
             lock (multiBoard)
@@ -783,60 +800,83 @@ namespace HaCreator.MapEditor
         public event EmptyDelegate CloseRequested;
         public event EmptyDelegate FirstMapLoaded;
 
-        public static string CreateItemDescription(BoardItem item, string lineBreak)
+        /// <summary>
+        /// Creates the description of the selected item to be displayed on the top right corner of HaRibbon
+        /// </summary>
+        /// <param name="item"></param>
+        /// <returns></returns>
+        public static string CreateItemDescription(BoardItem item)
         {
+            string lineBreak = Environment.NewLine;
+            const string firstLineSpacer = " ";
+
+            StringBuilder sb = new StringBuilder();
             if (item is TileInstance)
             {
-                return "Tile:" + lineBreak + ((TileInfo)item.BaseInfo).tS + @"\" + ((TileInfo)item.BaseInfo).u + @"\" + ((TileInfo)item.BaseInfo).no;
+                sb.Append("[Tile]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append(((TileInfo)item.BaseInfo).tS).Append(@"\").Append(((TileInfo)item.BaseInfo).u).Append(@"\").Append(((TileInfo)item.BaseInfo).no);
             }
             else if (item is ObjectInstance)
             {
-                return "Object:" + lineBreak + ((ObjectInfo)item.BaseInfo).oS + @"\" + ((ObjectInfo)item.BaseInfo).l0 + @"\" + ((ObjectInfo)item.BaseInfo).l1 + @"\" + ((ObjectInfo)item.BaseInfo).l2;
+                sb.Append("[Object]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append(((ObjectInfo)item.BaseInfo).oS).Append(@"\").Append(((ObjectInfo)item.BaseInfo).l0).Append(@"\")
+                    .Append(((ObjectInfo)item.BaseInfo).l1).Append(@"\").Append(((ObjectInfo)item.BaseInfo).l2);
             }
             else if (item is BackgroundInstance)
             {
-                return "Background:" + lineBreak + ((BackgroundInfo)item.BaseInfo).bS + @"\" + (((BackgroundInfo)item.BaseInfo).ani ? "ani" : "back") + @"\" + ((BackgroundInfo)item.BaseInfo).no;
+                sb.Append("[Background]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append(((BackgroundInfo)item.BaseInfo).bS).Append(@"\").Append((((BackgroundInfo)item.BaseInfo).Type.ToString())).Append(@"\")
+                    .Append(((BackgroundInfo)item.BaseInfo).no);
             }
             else if (item is PortalInstance)
             {
-                return "Portal:" + lineBreak + "Name: " + ((PortalInstance)item).pn + lineBreak + "Type: " + Tables.PortalTypeNames[((PortalInstance)item).pt];
+                sb.Append("[Portal]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("Name: ").Append(((PortalInstance)item).pn).Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("Type: ").Append(Tables.PortalTypeNames[((PortalInstance)item).pt]);
             }
             else if (item is MobInstance)
             {
-                return "Mob:" + lineBreak + "Name: " + ((MobInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((MobInfo)item.BaseInfo).ID;
+                sb.Append("[Mob]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("Name: ").Append(((MobInfo)item.BaseInfo).Name).Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("ID: ").Append(((MobInfo)item.BaseInfo).ID);
             }
             else if (item is NpcInstance)
             {
-                return "Npc:" + lineBreak + "Name: " + ((NpcInfo)item.BaseInfo).Name + lineBreak + "ID: " + ((NpcInfo)item.BaseInfo).ID;
+                sb.Append("[Npc]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("Name: ").Append(((NpcInfo)item.BaseInfo).Name).Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("ID: ").Append(((NpcInfo)item.BaseInfo).ID);
             }
             else if (item is ReactorInstance)
             {
-                return "Reactor:" + lineBreak + "ID: " + ((ReactorInfo)item.BaseInfo).ID;
+                sb.Append("[Reactor]").Append(lineBreak);
+                sb.Append(firstLineSpacer).Append("ID: ").Append(((ReactorInfo)item.BaseInfo).ID);
             }
             else if (item is FootholdAnchor)
             {
-                return "Foothold";
+                sb.Append("[Foothold]");
             }
             else if (item is RopeAnchor)
             {
-                return ((RopeAnchor)item).ParentRope.ladder ? "Ladder" : "Rope";
+                RopeAnchor rope = (RopeAnchor)item;
+                sb.Append(rope.ParentRope.ladder ? "[Ladder]" : "[Rope]");
             }
             else if (item is Chair)
             {
-                return "Chair";
+                sb.Append("[Chair]");
             }
             else if (item is ToolTipChar || item is ToolTipDot || item is ToolTipInstance)
             {
-                return "Tooltip";
+                sb.Append("[Tooltip]");
             }
             else if (item is INamedMisc)
             {
-                return ((INamedMisc)item).Name;
+                sb.Append(((INamedMisc)item).Name);
             }
-            else
-            {
-                return "";
-            }
+
+            sb.Append(lineBreak);
+            sb.Append("W: ").Append(item.Width).Append(", H: ").Append(item.Height);
+
+            return sb.ToString();
         }
 
         public void SetTilePanel(TilePanel tp)

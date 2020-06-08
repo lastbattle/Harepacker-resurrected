@@ -45,7 +45,7 @@ namespace HaCreator.GUI.InstanceEditor
             hideBox.Checked = item.Hide;
             flipBox.Checked = item.Flip;
 
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)

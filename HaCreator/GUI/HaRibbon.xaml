@@ -5,7 +5,8 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:cc="clr-namespace:HaCreator.CustomControls"
              xmlns:ns="clr-namespace:HaCreator.GUI"
-             xmlns:sys="clr-namespace:System;assembly=mscorlib">
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             >
     <Grid>
         <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Focusable="False">
             <Ribbon.CommandBindings>
@@ -170,7 +171,8 @@
                     <RibbonButton Label="Finalize Footholds" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Foothold.png" Command="ns:HaRibbon.Finalize" Focusable="False"/>
                 </RibbonGroup>
             </RibbonTab>
-            <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
+
+            <!-- <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
                 <RibbonGroup x:Name="mouseVirt" Header="Mouse Virtual">
                     <RibbonTwoLineText Text="Virtual&#x0a;" />
                     <RibbonTwoLineText x:Name="virtualPos" Text="mousepos" />
@@ -182,7 +184,28 @@
                 <RibbonGroup x:Name="itemSel" Header="Selected Item">
                     <RibbonTwoLineText x:Name="itemDesc" Text="itemdesc" />
                 </RibbonGroup>
-            </RibbonTab>
+            </RibbonTab>-->
         </Ribbon>
+
+        <StackPanel Orientation="Horizontal" 
+                    HorizontalAlignment="Right" VerticalAlignment="Center">
+            <StackPanel Orientation="Vertical" Margin="0,0,30,0">
+                <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Mouse Virtual:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="virtualPos" Text="0"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Mouse Physical:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="physicalPos" Text="0"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                <TextBlock Text="Item:" Margin="0,0,20,0"/>
+                <TextBlock x:Name="itemDesc" Text="0"
+                           MaxWidth="120" TextWrapping="WrapWithOverflow"/>
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </UserControl>

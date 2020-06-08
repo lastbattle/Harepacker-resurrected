@@ -26,6 +26,7 @@ using System.Runtime.Remoting.Channels;
 using System.Windows.Media;
 using HaSharedLibrary.Util;
 using HaCreator.GUI;
+using HaCreator.MapSimulator;
 
 namespace HaCreator.Wz
 {
@@ -170,6 +171,7 @@ namespace HaCreator.Wz
                         int x2 = InfoTool.GetInt(fh["x2"]);
                         int y1 = InfoTool.GetInt(fh["y1"]);
                         int y2 = InfoTool.GetInt(fh["y2"]);
+
                         if (x1 > mostRight) mostRight = x1;
                         if (x1 < mostLeft) mostLeft = x1;
                         if (x2 > mostRight) mostRight = x2;
@@ -248,6 +250,7 @@ namespace HaCreator.Wz
                     string u = InfoTool.GetString(tile["u"]);
                     int no = InfoTool.GetInt(tile["no"]);
                     Layer l = mapBoard.Layers[layer];
+
                     TileInfo tileInfo = TileInfo.Get(tS, u, no.ToString());
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)tileInfo.CreateInstance(l, mapBoard, x, y, int.Parse(tile.Name), zM, false, false));
                     l.zMList.Add(zM);
@@ -587,16 +590,22 @@ namespace HaCreator.Wz
                 int a = InfoTool.GetInt(bgProp["a"]);
                 BackgroundType type = (BackgroundType)InfoTool.GetInt(bgProp["type"]);
                 bool front = InfoTool.GetBool(bgProp["front"]);
+                int screenMode = InfoTool.GetInt(bgProp["screenMode"], (int) MapRenderResolution.Res_All);
+                string spineAni = InfoTool.GetString(bgProp["spineAni"]);
+                bool spineRandomStart = InfoTool.GetBool(bgProp["spineRandomStart"]);
                 bool? flip_t = InfoTool.GetOptionalBool(bgProp["f"]);
                 bool flip = flip_t.HasValue ? flip_t.Value : false;
                 string bS = InfoTool.GetString(bgProp["bS"]);
                 bool ani = InfoTool.GetBool(bgProp["ani"]);
                 string no = InfoTool.GetInt(bgProp["no"]).ToString();
-                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani, no);
+
+                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani ? BackgroundInfoType.Animation : BackgroundInfoType.Background, no);
                 if (bgInfo == null)
                     continue;
+
                 IList list = front ? mapBoard.BoardItems.FrontBackgrounds : mapBoard.BoardItems.BackBackgrounds;
-                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip));
+                list.Add((BackgroundInstance)bgInfo.CreateInstance(mapBoard, x, y, i, rx, ry, cx, cy, type, a, front, flip, screenMode, 
+                    spineAni, spineRandomStart));
             }
         }
 

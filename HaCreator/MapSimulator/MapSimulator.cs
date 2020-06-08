@@ -28,9 +28,10 @@ namespace HaCreator.MapSimulator
         public int mapShiftY = 0;
         public Point minimapPos;
 
-        public static int RenderWidth;
-        public static int RenderHeight;
-        public static float RenderObjectScaling = 1.0f;
+        private int RenderWidth;
+        private int RenderHeight;
+        private float RenderObjectScaling = 1.0f;
+        private MapRenderResolution mapRenderResolution;
 
         private GraphicsDeviceManager _DxDeviceManager;
 
@@ -40,7 +41,8 @@ namespace HaCreator.MapSimulator
         public List<MapItem>[] mapObjects;
 
         // Backgrounds
-        public List<BackgroundItem> backgrounds = new List<BackgroundItem>();
+        public List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
+        public List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
@@ -54,6 +56,9 @@ namespace HaCreator.MapSimulator
         // Etc
         private Texture2D minimap;
         private Board mapBoard;
+
+        // Spine
+        private SkeletonMeshRenderer skeletonMeshRenderer;
 
         // Text
         private SpriteFont font;
@@ -70,61 +75,9 @@ namespace HaCreator.MapSimulator
 
             this.mapBoard = mapBoard;
 
-            RenderObjectScaling = 1.0f;
-            switch (UserSettings.SimulateResolution)
-            {
+            this.mapRenderResolution = UserSettings.SimulateResolution;
+            InitialiseMapWidthHeight();
 
-                case MapRenderResolution.Res_1024x768:  // 1024x768
-                    RenderHeight = 768;
-                    RenderWidth = 1024;
-                    break;
-                case MapRenderResolution.Res_1280x720: // 1280x720
-                    RenderHeight = 720;
-                    RenderWidth = 1280;
-                    break;
-                case MapRenderResolution.Res_1366x768:  // 1366x768
-                    RenderHeight = 768;
-                    RenderWidth = 1366;
-                    break;
-
-
-                case MapRenderResolution.Res_1920x1080: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    break;
-                case MapRenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.2f;
-                    break;
-                case MapRenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
-                    RenderHeight = 1080;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.5f;
-                    break;
-
-
-                case MapRenderResolution.Res_1920x1200: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    break;
-                case MapRenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.2f;
-                    break;
-                case MapRenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
-                    RenderHeight = 1200;
-                    RenderWidth = 1920;
-                    RenderObjectScaling = 1.5f;
-                    break;
-
-                case MapRenderResolution.Res_800x600: // 800x600
-                default:
-                    RenderHeight = 600;
-                    RenderWidth = 800;
-                    break;
-            }
             //RenderHeight += System.Windows.Forms.SystemInformation.CaptionHeight; // window title height
 
             //double dpi = ScreenDPIUtil.GetScreenScaleFactor();
@@ -162,6 +115,66 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void InitialiseMapWidthHeight()
+        {
+            RenderObjectScaling = 1.0f;
+            switch (this.mapRenderResolution)
+            {
+                case MapRenderResolution.Res_1024x768:  // 1024x768
+                    RenderHeight = 768;
+                    RenderWidth = 1024;
+                    break;
+                case MapRenderResolution.Res_1280x720: // 1280x720
+                    RenderHeight = 720;
+                    RenderWidth = 1280;
+                    break;
+                case MapRenderResolution.Res_1366x768:  // 1366x768
+                    RenderHeight = 768;
+                    RenderWidth = 1366;
+                    break;
+
+
+                case MapRenderResolution.Res_1920x1080: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    break;
+                case MapRenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.2f;
+                    break;
+                case MapRenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
+                    RenderHeight = 1080;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.5f;
+                    this.mapRenderResolution |= MapRenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
+                    break;
+
+
+                case MapRenderResolution.Res_1920x1200: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    break;
+                case MapRenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.2f;
+                    break;
+                case MapRenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
+                    RenderHeight = 1200;
+                    RenderWidth = 1920;
+                    RenderObjectScaling = 1.5f;
+                    break;
+
+                case MapRenderResolution.Res_All:
+                case MapRenderResolution.Res_800x600: // 800x600
+                default:
+                    RenderHeight = 600;
+                    RenderWidth = 800;
+                    break;
+            }
+        }
+
         protected override void Initialize()
         {
             // TODO: Add your initialization logic here
@@ -196,7 +209,10 @@ namespace HaCreator.MapSimulator
             {
                 audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
                 if (audio != null)
+                {
+                    audio.Volume = 0.3f;
                     audio.Play();
+                }
             }
             if (mapBoard.VRRectangle == null)
                 vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
@@ -204,36 +220,48 @@ namespace HaCreator.MapSimulator
                 vr = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
-
+            // Background and objects
             List<WzObject> usedProps = new List<WzObject>();
             //WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
             //WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
 
             foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
             {
+                WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
+
                 mapObjects[tileObj.LayerNumber].Add(
-                    MapSimulatorLoader.CreateMapItemFromProperty((WzImageProperty)tileObj.BaseInfo.ParentObject, tileObj.X, tileObj.Y, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    MapSimulatorLoader.CreateMapItemFromProperty(tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
             {
-                backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+
+                backgrounds_back.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
-                backgrounds.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty((WzImageProperty)background.BaseInfo.ParentObject, background.BaseX, background.BaseY, background.rx, background.ry, background.cx, background.cy, background.a, background.type, background.front, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, GraphicsDevice, ref usedProps, background.Flip));
+                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+
+                backgrounds_front.Add(
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (WzObject obj in usedProps)
             {
                 obj.MSTag = null;
+                obj.MSTagSpine = null; // cleanup
             }
             usedProps.Clear();
 
+            // Spine object
+            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
+            skeletonMeshRenderer.PremultipliedAlpha = false;
 
+            // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
             this.minimap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
 
+            //
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
             pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
@@ -248,6 +276,8 @@ namespace HaCreator.MapSimulator
                 //audio.Pause();
                 audio.Dispose();
             }
+
+            skeletonMeshRenderer.End();
 
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
@@ -265,8 +295,6 @@ namespace HaCreator.MapSimulator
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
                 || Keyboard.GetState().IsKeyDown(Keys.Escape))
             {
-                GraphicsDevice.Dispose();
-
                 this.Exit();
                 return;
             }
@@ -372,19 +400,25 @@ namespace HaCreator.MapSimulator
         protected override void Draw(GameTime gameTime)
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
+            int TickCount = Environment.TickCount;
+            float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
-            sprite.Begin(SpriteSortMode.Deferred, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
+            sprite.Begin(
+                SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
+                //SpriteSortMode.Deferred,
+                BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
+            //skeletonMeshRenderer.Begin();
 
-            // Front Backgrounds
-            backgrounds.ForEach(bg =>
+            // Back Backgrounds
+            backgrounds_back.ForEach(bg =>
             {
-                if (!bg.Front)
-                {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
-                }
+                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             });
 
             // Map objects
@@ -392,17 +426,20 @@ namespace HaCreator.MapSimulator
             {
                 foreach (MapItem item in mapItem)
                 {
-                    item.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
+                    item.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
                 }
             }
 
-            // Back Backgrounds
-            backgrounds.ForEach(bg =>
+            // Front Backgrounds
+            backgrounds_front.ForEach(bg =>
             {
-                if (bg.Front)
-                {
-                    bg.Draw(sprite, mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, RenderWidth, RenderHeight);
-                }
+                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             });
 
             // Borders
@@ -424,8 +461,8 @@ namespace HaCreator.MapSimulator
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 sprite.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
 
-
             sprite.End();
+           //skeletonMeshRenderer.End();
 
             base.Draw(gameTime);
         }
@@ -471,6 +508,7 @@ namespace HaCreator.MapSimulator
         {
             sprite.Draw(pixel, rectangle, color);
         }
+
 
 
         public void Start(AnimationState state, int trackIndex)

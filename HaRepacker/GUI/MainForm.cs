@@ -22,7 +22,6 @@ using System.IO.Pipes;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Threading;
-using Win32;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Input;
 using System.Reflection;
@@ -30,6 +29,7 @@ using HaRepacker.GUI.Panels.SubPanels;
 using MapleLib.PacketLib;
 using System.Timers;
 using static MapleLib.Configuration.UserSettings;
+using HaSharedLibrary;
 
 namespace HaRepacker.GUI
 {

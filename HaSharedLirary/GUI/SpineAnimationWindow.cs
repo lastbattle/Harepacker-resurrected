@@ -27,14 +27,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
-
-namespace HaRepacker.GUI.Panels
+namespace HaSharedLibrary.GUI
 {
 	public class SpineAnimationWindow : Microsoft.Xna.Framework.Game
     {
@@ -42,11 +36,7 @@ namespace HaRepacker.GUI.Panels
 
 		private SkeletonMeshRenderer skeletonRenderer;
 
-		private readonly WzSpineAnimationItem spineAnimationItem;
-
-		private Skeleton skeleton;
-		private AnimationState state;
-		private readonly SkeletonBounds bounds = new SkeletonBounds();
+		private WzSpineObject wzSpineObject;
 
 		// Text
 		private SpriteBatch spriteBatch;
@@ -62,12 +52,27 @@ namespace HaRepacker.GUI.Panels
 		{
 			IsMouseVisible = true;
 
-			graphicsDeviceMgr = new GraphicsDeviceManager(this);
-			graphicsDeviceMgr.IsFullScreen = false;
-			graphicsDeviceMgr.PreferredBackBufferWidth = 1366;
-			graphicsDeviceMgr.PreferredBackBufferHeight = 768;
+			//Window.IsBorderless = true;
+			//Window.Position = new Point(0, 0);
+			Window.Title = "Spine";
+			IsFixedTimeStep = false; // dont cap fps
 
-			this.spineAnimationItem = spineAnimationItem;
+			graphicsDeviceMgr = new GraphicsDeviceManager(this)
+			{
+				SynchronizeWithVerticalRetrace = false, // dont cap fps
+				HardwareModeSwitch = true,
+				GraphicsProfile = GraphicsProfile.HiDef,
+				IsFullScreen = false,
+				PreferMultiSampling = true,
+				SupportedOrientations = DisplayOrientation.Default,
+				PreferredBackBufferWidth = 1366,
+				PreferredBackBufferHeight = 768,
+				PreferredBackBufferFormat = SurfaceFormat.Color,
+				PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
+			};
+			graphicsDeviceMgr.ApplyChanges();
+
+			this.wzSpineObject = new WzSpineObject(spineAnimationItem);
 		}
 		protected override void Initialize()
 		{
@@ -93,27 +98,27 @@ namespace HaRepacker.GUI.Panels
 
 
 			// Spine
-			spineAnimationItem.LoadResources(graphicsDeviceMgr.GraphicsDevice); //  load spine resources (this must happen after window is loaded)
-			this.skeleton = new Skeleton(spineAnimationItem.SkeletonData);
+			wzSpineObject.spineAnimationItem.LoadResources(graphicsDeviceMgr.GraphicsDevice); //  load spine resources (this must happen after window is loaded)
+			wzSpineObject.skeleton = new Skeleton(wzSpineObject.spineAnimationItem.SkeletonData);
 
 			skeletonRenderer = new SkeletonMeshRenderer(GraphicsDevice);
-			skeletonRenderer.PremultipliedAlpha = spineAnimationItem.PremultipliedAlpha;
+			skeletonRenderer.PremultipliedAlpha = wzSpineObject.spineAnimationItem.PremultipliedAlpha;
 
 			// Skin
-			foreach (Skin skin in spineAnimationItem.SkeletonData.Skins)
+			foreach (Skin skin in wzSpineObject.spineAnimationItem.SkeletonData.Skins)
 			{
-				this.skeleton.SetSkin(skin.Name); // just set the first skin
+				wzSpineObject.skeleton.SetSkin(skin.Name); // just set the first skin
 				break;
 			}
 
 			// Define mixing between animations.
-			AnimationStateData stateData = new AnimationStateData(skeleton.Data);
-			state = new AnimationState(stateData);
+			wzSpineObject.stateData = new AnimationStateData(wzSpineObject.skeleton.Data);
+			wzSpineObject.state = new AnimationState(wzSpineObject.stateData);
 
 			int i = 0;
-			foreach (Animation animation in spineAnimationItem.SkeletonData.Animations)
+			foreach (Animation animation in wzSpineObject.spineAnimationItem.SkeletonData.Animations)
 			{
-				state.SetAnimation(i++, animation.Name, true);
+				wzSpineObject.state.SetAnimation(i++, animation.Name, true);
 			}
 			/*if (name == "spineboy")
 			{
@@ -142,9 +147,9 @@ namespace HaRepacker.GUI.Panels
 				state.SetAnimation(0, "walk", true);
 			}*/
 
-			skeleton.X = 800;
-			skeleton.Y = 600;
-			skeleton.UpdateWorldTransform();
+			wzSpineObject.skeleton.X = 800;
+			wzSpineObject.skeleton.Y = 600;
+			wzSpineObject.skeleton.UpdateWorldTransform();
 		}
 
 		protected override void UnloadContent()
@@ -165,6 +170,14 @@ namespace HaRepacker.GUI.Panels
 				|| Keyboard.GetState().IsKeyDown(Keys.Escape))
 				this.Exit();
 #endif
+			// Handle full screen
+			bool bIsAltEnterPressed = Keyboard.GetState().IsKeyDown(Keys.LeftAlt) && Keyboard.GetState().IsKeyDown(Keys.Enter);
+			if (bIsAltEnterPressed)
+			{
+				graphicsDeviceMgr.IsFullScreen = !graphicsDeviceMgr.IsFullScreen;
+				graphicsDeviceMgr.ApplyChanges();
+			}
+
 			// Navigate around the rendered object
 			bool bIsShiftPressed = Keyboard.GetState().IsKeyDown(Keys.LeftShift) || Keyboard.GetState().IsKeyDown(Keys.RightShift);
 
@@ -173,18 +186,18 @@ namespace HaRepacker.GUI.Panels
 			bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
 			bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-			int MOVE_XY_POSITION = 4;
+			int MOVE_XY_POSITION = 2;
 			if (bIsShiftPressed) // Move 2x as fast with shift pressed
 				MOVE_XY_POSITION *= 2;
 
 			if (bIsUpKeyPressed)
-				skeleton.Y += MOVE_XY_POSITION;
+				wzSpineObject.skeleton.Y += MOVE_XY_POSITION;
 			if (bIsDownKeyPressed)
-				skeleton.Y -= MOVE_XY_POSITION;
+				wzSpineObject.skeleton.Y -= MOVE_XY_POSITION;
 			if (bIsLeftKeyPressed)
-				skeleton.X += MOVE_XY_POSITION;
+				wzSpineObject.skeleton.X += MOVE_XY_POSITION;
 			if (bIsRightKeyPressed)
-				skeleton.X -= MOVE_XY_POSITION;
+				wzSpineObject.skeleton.X -= MOVE_XY_POSITION;
 
 			base.Update(gameTime);
 		}
@@ -193,16 +206,16 @@ namespace HaRepacker.GUI.Panels
 		{
 			GraphicsDevice.Clear(Color.Black);
 
-			state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
-			state.Apply(skeleton);
+			wzSpineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
+			wzSpineObject.state.Apply(wzSpineObject.skeleton);
 
-			skeleton.UpdateWorldTransform();
+			wzSpineObject.skeleton.UpdateWorldTransform();
 
 			skeletonRenderer.Begin();
-			skeletonRenderer.Draw(skeleton);
+			skeletonRenderer.Draw(wzSpineObject.skeleton);
 			skeletonRenderer.End();
 
-			bounds.Update(skeleton, true);
+			wzSpineObject.bounds.Update(wzSpineObject.skeleton, true);
 			/*MouseState mouse = Mouse.GetState();
 			if (headSlot != null)
 			{

@@ -154,6 +154,7 @@
     <Compile Include="WzDataReader.cs" />
     <Compile Include="WzLib\Spine\WzSpineAnimationItem.cs" />
     <Compile Include="WzLib\Spine\WzSpineAtlasLoader.cs" />
+    <Compile Include="WzLib\Spine\WzSpineObject.cs" />
     <Compile Include="WzLib\Spine\WzSpineTextureLoader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />
     <Compile Include="WzLib\WzExtended.cs" />
@@ -237,12 +238,13 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
+    <None Include="app.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp.csproj">
+    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
       <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
-      <Name>spine-csharp</Name>
+      <Name>spine-csharp 2.1.25</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

@@ -16,6 +16,8 @@ using HaCreator.MapEditor;
 using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.UndoRedo;
+using HaCreator.MapSimulator;
+using System.Windows.Controls;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -26,12 +28,16 @@ namespace HaCreator.GUI.InstanceEditor
         public BackgroundInstanceEditor(BackgroundInstance item)
         {
             InitializeComponent();
+
             this.item = item;
             xInput.Value = item.BaseX;
             yInput.Value = item.BaseY;
-            if (item.Z == -1) zInput.Enabled = false;
-            else zInput.Value = item.Z;
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            if (item.Z == -1) 
+                zInput.Enabled = false;
+            else 
+                zInput.Value = item.Z;
+
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
             typeBox.Items.AddRange((object[])Tables.BackgroundTypeNames.Cast<object>());
             typeBox.SelectedIndex = (int)item.type;
             alphaBox.Value = item.a;
@@ -40,6 +46,38 @@ namespace HaCreator.GUI.InstanceEditor
             ryBox.Value = item.ry;
             cxBox.Value = item.cx;
             cyBox.Value = item.cy;
+
+            // Resolutions
+            foreach (MapRenderResolution val in Enum.GetValues(typeof(MapRenderResolution)))
+            {
+                ComboBoxItem comboBoxItem = new ComboBoxItem();
+                comboBoxItem.Tag = val;
+                comboBoxItem.Content = val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
+
+                comboBox_screenMode.Items.Add(comboBoxItem);
+            }
+            comboBox_screenMode.DisplayMember = "Content";
+
+            int i = 0;
+            foreach (ComboBoxItem citem in comboBox_screenMode.Items)
+            {
+                if ((int) ((MapRenderResolution)citem.Tag) == item.screenMode)
+                {
+                    comboBox_screenMode.SelectedIndex = i;
+                    break;
+                }
+                i++;
+            }
+            if (item.screenMode < 0)
+                comboBox_screenMode.SelectedIndex = 0;
+
+            // Spine
+            if (item.SpineAni != null)
+            {
+                checkBox_spineAni.Checked = true;
+                textBox_spineAni.Text = item.SpineAni;
+            }
+            checkBox_spineRandomStart.Checked = item.SpineRandomStart;
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)
@@ -81,8 +119,27 @@ namespace HaCreator.GUI.InstanceEditor
                 item.ry = (int)ryBox.Value;
                 item.cx = (int)cxBox.Value;
                 item.cy = (int)cyBox.Value;
+                item.screenMode = (int) ((MapRenderResolution)((ComboBoxItem)comboBox_screenMode.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+
+                // Spine
+                item.SpineRandomStart = checkBox_spineRandomStart.Checked;
+                item.SpineAni = checkBox_spineAni.Checked == false ? null: textBox_spineAni.Text;
             }
             Close();
+        }
+
+        /// <summary>
+        /// CheckBox changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void checkbox_spineAni_CheckChanged(object sender, EventArgs e)
+        {
+            System.Windows.Forms.CheckBox checkbox = (System.Windows.Forms.CheckBox)sender;
+            if (checkbox == null)
+                return;
+
+            textBox_spineAni.ReadOnly = !checkbox.Checked;
         }
     }
 }

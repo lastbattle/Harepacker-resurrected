@@ -1,6 +1,7 @@
 ﻿using HaRepacker.Comparer;
 using HaRepacker.Converter;
 using HaRepacker.GUI.Input;
+using HaSharedLibrary.GUI;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -1012,6 +1013,7 @@ namespace HaRepacker.GUI.Panels
 
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
+                    childInlinkNode.Delete(); // Delete '_inlink' node
                 }
 
                 selectedWzCanvas.PngProperty.SetPNG(bmp);

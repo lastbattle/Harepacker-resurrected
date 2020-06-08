@@ -58,6 +58,7 @@
             // 
             // layerBox
             // 
+            this.layerBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.layerBox.FormattingEnabled = true;
             this.layerBox.Location = new System.Drawing.Point(52, 12);
             this.layerBox.Name = "layerBox";

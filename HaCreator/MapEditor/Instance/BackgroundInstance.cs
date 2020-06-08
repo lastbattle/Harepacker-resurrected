@@ -19,7 +19,7 @@ namespace HaCreator.MapEditor.Instance
 {
     public class BackgroundInstance : BoardItem, IFlippable, ISerializable
     {
-        private BackgroundInfo baseInfo;
+        private readonly BackgroundInfo baseInfo;
         private bool flip;
         private int _a; //alpha
         private int _cx; //copy x
@@ -27,20 +27,28 @@ namespace HaCreator.MapEditor.Instance
         private int _rx;
         private int _ry;
         private bool _front;
+        private int _screenMode;
+        private string _spineAni;
+        private bool _spineRandomStart;
         private BackgroundType _type;
 
-        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip)
+        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int _screenMode, 
+            string _spineAni, bool _spineRandomStart)
             : base(board, x, y, z)
         {
             this.baseInfo = baseInfo;
             this.flip = flip;
-            _rx = rx;
-            _ry = ry;
-            _cx = cx;
-            _cy = cy;
-            _a = a;
-            _type = type;
-            _front = front;
+            this._rx = rx;
+            this._ry = ry;
+            this._cx = cx;
+            this._cy = cy;
+            this._a = a;
+            this._type = type;
+            this._front = front;
+            this._screenMode = _screenMode;
+            this._spineAni = _spineAni;
+            this._spineRandomStart = _spineRandomStart;
+
             if (flip)
                 BaseX -= Width - 2 * Origin.X;
         }
@@ -161,6 +169,30 @@ namespace HaCreator.MapEditor.Instance
             set { _front = value; }
         }
 
+        /// <summary>
+        /// The screen resolution to display this background object. (0 = all res)
+        /// </summary>
+        public int screenMode
+        {
+            get { return _screenMode; }
+            set { _screenMode = value; }
+        }
+
+        /// <summary>
+        /// Spine animation path 
+        /// </summary>
+        public string SpineAni
+        {
+            get { return _spineAni; }
+            set { this._spineAni = value; }
+        }
+
+        public bool SpineRandomStart
+        {
+            get { return _spineRandomStart; }
+            set { this._spineRandomStart = value; }
+        }
+
         public int CalculateBackgroundPosX()
         {
             //double dpi = ScreenDPIUtil.GetScreenScaleFactor(); // dpi affected via window.. does not have to be calculated manually
@@ -252,10 +284,13 @@ namespace HaCreator.MapEditor.Instance
             public bool flip;
             public int a, cx, cy, rx, ry;
             public bool front;
+            public int screenMode;
             public BackgroundType type;
             public string bs;
-            public bool ani;
+            public BackgroundInfoType backgroundInfoType;
             public string no;
+            public string spineAni;
+            public bool spineRandomStart;
         }
 
         public override object Serialize()
@@ -275,9 +310,12 @@ namespace HaCreator.MapEditor.Instance
             result.rx = _rx;
             result.ry = _ry;
             result.front = _front;
+            result.screenMode = _screenMode;
+            result.spineAni = _spineAni;
+            result.spineRandomStart = _spineRandomStart;
             result.type = _type;
             result.bs = baseInfo.bS;
-            result.ani = baseInfo.ani;
+            result.backgroundInfoType = baseInfo.Type;
             result.no = baseInfo.no;
         }
 
@@ -292,7 +330,11 @@ namespace HaCreator.MapEditor.Instance
             _ry = json.ry;
             _front = json.front;
             _type = json.type;
-            baseInfo = BackgroundInfo.Get(json.bs, json.ani, json.no);
+            _screenMode = json.screenMode;
+            _spineAni = json.spineAni;
+            _spineRandomStart = json.spineRandomStart;
+
+            baseInfo = BackgroundInfo.Get(json.bs, json.backgroundInfoType, json.no);
         }
 
         public override void PostDeserializationActions(bool? selected, XNA.Point? offset)

@@ -27,6 +27,7 @@ namespace MapleLib.WzLib
 	{
         private object tag = null;
         private object tag2 = null;
+        private object tag_spine = null;
         private object tag3 = null;
 
 		public abstract void Dispose();
@@ -125,6 +126,15 @@ namespace MapleLib.WzLib
         {
             get { return tag2; }
             set { tag2 = value; }
+        }
+
+        /// <summary>
+        /// Used in HaCreator's MapSimulator to save already parsed spine objects
+        /// </summary>
+        public virtual object MSTagSpine
+        {
+            get { return tag_spine; }
+            set { tag_spine = value; }
         }
 
         /// <summary>

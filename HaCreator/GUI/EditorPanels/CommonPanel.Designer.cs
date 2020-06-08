@@ -35,10 +35,12 @@
             // 
             this.miscItemsContainer.BackColor = System.Drawing.Color.White;
             this.miscItemsContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.miscItemsContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.miscItemsContainer.Location = new System.Drawing.Point(0, 0);
             this.miscItemsContainer.Name = "miscItemsContainer";
             this.miscItemsContainer.Size = new System.Drawing.Size(284, 658);
             this.miscItemsContainer.TabIndex = 2;
+            this.miscItemsContainer.WrapContents = false;
             // 
             // CommonPanel
             // 

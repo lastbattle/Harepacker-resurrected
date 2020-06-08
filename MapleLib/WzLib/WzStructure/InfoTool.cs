@@ -29,7 +29,7 @@ namespace MapleLib.WzLib.WzStructure
     {
         public static string GetString(WzImageProperty source)
         {
-            return source.GetString();
+            return source == null ? null : source.GetString();
         }
 
         public static WzStringProperty SetString(string value)
@@ -57,9 +57,9 @@ namespace MapleLib.WzLib.WzStructure
             return new WzDoubleProperty("", value);
         }
 
-        public static int GetInt(WzImageProperty source)
+        public static int GetInt(WzImageProperty source, int default_ = 0)
         {
-            return source == null ? 0 : source.GetInt();
+            return source == null ? default_ : source.GetInt();
         }
 
         public static WzIntProperty SetInt(int value)
@@ -67,9 +67,9 @@ namespace MapleLib.WzLib.WzStructure
             return new WzIntProperty("", value);
         }
 
-        public static int? GetOptionalInt(WzImageProperty source)
+        public static int? GetOptionalInt(WzImageProperty source, int? default_ = null)
         {
-            return source == null ? (int?)null : source.GetInt();
+            return source == null ? (int?)default_ : source.GetInt();
         }
 
         public static WzIntProperty SetOptionalInt(int? value)

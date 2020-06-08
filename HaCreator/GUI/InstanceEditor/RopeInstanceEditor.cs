@@ -37,7 +37,7 @@ namespace HaCreator.GUI.InstanceEditor
             {
                 ladderBox.Checked = false;
             }
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)

@@ -122,6 +122,9 @@
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  <PropertyGroup>
+    <SignManifests>false</SignManifests>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Build.Framework" />
     <Reference Include="Microsoft.CSharp" />
@@ -299,6 +302,7 @@
     <Compile Include="Collections\IMapleList.cs" />
     <Compile Include="Collections\MapleList.cs" />
     <Compile Include="MapEditor\Info\BackgroundInfo.cs" />
+    <Compile Include="MapEditor\Info\BackgroundInfoType.cs" />
     <Compile Include="MapEditor\Info\MapleExtractableInfo.cs" />
     <Compile Include="MapEditor\Info\MapleDrawableInfo.cs" />
     <Compile Include="MapEditor\Info\MobInfo.cs" />
@@ -378,6 +382,8 @@
     <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
     <Compile Include="MapEditor\UserObjectsManager.cs" />
     <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
+    <Compile Include="MapSimulator\DX\IDXObject.cs" />
+    <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
@@ -694,9 +700,9 @@
       <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
       <Name>MapleLib</Name>
     </ProjectReference>
-    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp.csproj">
+    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
       <Project>{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}</Project>
-      <Name>spine-csharp</Name>
+      <Name>spine-csharp 2.1.25</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
@@ -725,6 +731,11 @@
     <Resource Include="Images\ColorSwatchSquare2.png" />
   </ItemGroup>
   <ItemGroup>
+    <BootstrapperPackage Include=".NETFramework,Version=v4.7.2">
+      <Visible>False</Visible>
+      <ProductName>Microsoft .NET Framework 4.7.2 %28x86 and x64%29</ProductName>
+      <Install>true</Install>
+    </BootstrapperPackage>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
       <Visible>False</Visible>
       <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
@@ -733,7 +744,7 @@
     <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
       <Visible>False</Visible>
       <ProductName>.NET Framework 3.5 SP1</ProductName>
-      <Install>true</Install>
+      <Install>false</Install>
     </BootstrapperPackage>
     <BootstrapperPackage Include="Microsoft.Windows.Installer.3.1">
       <Visible>False</Visible>

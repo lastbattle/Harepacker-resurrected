@@ -92,7 +92,7 @@ namespace HaCreator.CustomControls
         /// On search box text changed
         /// </summary>
         /// <param name="sender"></param>
-        /// <param name="e"></param>
+        /// <param name="e">May be null</param>
         public void searchBox_TextChanged(object sender, EventArgs e)
         {
             TextBox searchBox = (TextBox)sender;
@@ -116,6 +116,8 @@ namespace HaCreator.CustomControls
             if (tosearch == string.Empty)
             {
                 mapNamesBox.Items.AddRange(maps.Cast<object>().ToArray<object>());
+
+                mapNamesBox_SelectedIndexChanged(null, null);
             }
             else
             {
@@ -128,7 +130,7 @@ namespace HaCreator.CustomControls
 
                 Task t = Task.Run(() =>
                 {
-                    Thread.Sleep(300); // average key typing speed
+                    Thread.Sleep(1000); // average key typing speed
 
                     List<string> mapsFiltered = new List<string>();
                     foreach (string map in maps)
@@ -149,13 +151,15 @@ namespace HaCreator.CustomControls
 
                             mapNamesBox.Items.Add(map);
                         }
+
+                        if (mapNamesBox.Items.Count > 0)
+                        {
+                            mapNamesBox.SelectedIndex = 0; // set default selection to reduce clicks
+                        }
                     }));
                 });
 
             }
-            mapNamesBox.SelectedItem = null;
-            mapNamesBox.SelectedIndex = -1;
-            mapNamesBox_SelectedIndexChanged(null, null);
         }
 
         private void mapNamesBox_SelectedIndexChanged(object sender, EventArgs e)

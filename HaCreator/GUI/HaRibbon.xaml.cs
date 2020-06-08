@@ -478,7 +478,6 @@ namespace HaCreator.GUI
         {
             viewTab.IsEnabled = enabled;
             toolsTab.IsEnabled = enabled;
-            statTab.IsEnabled = enabled;
             saveBtn.IsEnabled = enabled;
             exportBtn.IsEnabled = enabled;
             //resetLayerBoxIfNeeded();
@@ -499,6 +498,10 @@ namespace HaCreator.GUI
             this.physicalPos.Text = "X: " + physicalX.ToString() + "\nY: " + physicalY.ToString();
         }
 
+        /// <summary>
+        /// Set selected items description on the ribbon
+        /// </summary>
+        /// <param name="desc"></param>
         public void SetItemDesc(string desc)
         {
             itemDesc.Text = desc;

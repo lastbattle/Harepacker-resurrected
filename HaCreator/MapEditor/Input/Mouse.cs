@@ -53,7 +53,7 @@ namespace HaCreator.MapEditor.Input
         {
             lock (Board.ParentControl)
             {
-                if (state == MouseState.StaticObjectAdding || state == MouseState.RandomTiles)
+                if (state == MouseState.StaticObjectAdding || state == MouseState.RandomTiles) // tiles, obj
                 {
                     List<UndoRedoAction> undoPipe = new List<UndoRedoAction>();
                     currAddedObj.OnItemPlaced(undoPipe);
@@ -63,18 +63,28 @@ namespace HaCreator.MapEditor.Input
                     {
                         int highestZ = 0;
                         foreach (LayeredItem item in Board.BoardItems.TileObjs)
-                            if (item.Z > highestZ) highestZ = item.Z;
+                        {
+                            if (item.Z > highestZ) 
+                                highestZ = item.Z;
+                        }
                         currAddedObj.Z = highestZ;
                         Board.BoardItems.Sort();
                     }
                     if (state == MouseState.StaticObjectAdding)
-                        currAddedObj = currAddedInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                    {
+                        BoardItem boardItem = currAddedInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                        currAddedObj = boardItem;
+                    }
                     else
-                        currAddedObj = tileRandomList[NextInt32(tileRandomList.Length)].CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                    {
+                        BoardItem boardItem = tileRandomList[NextInt32(tileRandomList.Length)].CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                        currAddedObj = boardItem;
+                    }
+
                     Board.BoardItems.Add(currAddedObj, false);
                     BindItem(currAddedObj, new Microsoft.Xna.Framework.Point(currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2));
                 }
-                else if (state == MouseState.Chairs)
+                else if (state == MouseState.Chairs) // Chair
                 {
                     Board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(currAddedObj) });
                     ReleaseItem(currAddedObj);
@@ -82,7 +92,7 @@ namespace HaCreator.MapEditor.Input
                     Board.BoardItems.Add(currAddedObj, false);
                     BindItem(currAddedObj, new Microsoft.Xna.Framework.Point());
                 }
-                else if (state == MouseState.Ropes)
+                else if (state == MouseState.Ropes) // Ropes
                 {
                     int count = BoundItems.Count;
                     RopeAnchor anchor = (RopeAnchor)BoundItems.Keys.ElementAt(0);
@@ -93,7 +103,7 @@ namespace HaCreator.MapEditor.Input
                         CreateRope();
                     }
                 }
-                else if (state == MouseState.Tooltip)
+                else if (state == MouseState.Tooltip) // Tooltip
                 {
                     int count = BoundItems.Count;
                     ToolTipDot dot = (ToolTipDot)BoundItems.Keys.ElementAt(0);
@@ -106,7 +116,7 @@ namespace HaCreator.MapEditor.Input
                         CreateTooltip();
                     }
                 }
-                else if (state == MouseState.Clock)
+                else if (state == MouseState.Clock) // Clock
                 {
                     int count = BoundItems.Count;
                     List<BoardItem> items = BoundItems.Keys.ToList();
