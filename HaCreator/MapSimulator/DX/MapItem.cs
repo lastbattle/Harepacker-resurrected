@@ -50,7 +50,7 @@ namespace HaCreator.MapSimulator.DX
         }
 
         /// <summary>
-        /// Draw
+        /// Draw as object
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
@@ -76,5 +76,6 @@ namespace HaCreator.MapSimulator.DX
             else
                 GetCurrFrame(TickCount).DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
         }
+
     }
 }

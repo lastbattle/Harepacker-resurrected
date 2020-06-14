@@ -299,7 +299,7 @@ namespace HaCreator.MapSimulator
                         // Skin
                         foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
                         {
-                            spineObject.skeleton.SetSkin(skin.Name); // just set the first skin
+                            spineObject.skeleton.SetSkin(skin); // just set the first skin
                             break;
                         }
 

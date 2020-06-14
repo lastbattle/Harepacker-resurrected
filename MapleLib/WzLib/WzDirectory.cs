@@ -108,12 +108,15 @@ namespace MapleLib.WzLib
         {
             get
             {
+                string nameLower = name.ToLower();
+
                 foreach (WzImage i in images)
-                    if (i.Name.ToLower() == name.ToLower())
+                    if (i.Name.ToLower() == nameLower)
                         return i;
                 foreach (WzDirectory d in subDirs)
-                    if (d.Name.ToLower() == name.ToLower())
+                    if (d.Name.ToLower() == nameLower)
                         return d;
+
                 //throw new KeyNotFoundException("No wz image or directory was found with the specified name");
                 return null;
             }

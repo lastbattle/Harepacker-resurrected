@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.DX;
 using HaRepacker.Utils;
 using HaSharedLibrary;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -35,7 +36,7 @@ namespace HaCreator.MapSimulator
 
         private GraphicsDeviceManager _DxDeviceManager;
 
-        private SpriteBatch sprite;
+        private SpriteBatch spriteBatch;
 
         // Objects
         public List<MapItem>[] mapObjects;
@@ -49,6 +50,10 @@ namespace HaCreator.MapSimulator
 
         // Minimap
         private Texture2D pixel;
+
+        // Cursor
+        private MapItem cursorItem, 
+            cursorItemPressed, cursorItemInventoryPicked;
 
         // Audio
         private WzMp3Streamer audio;
@@ -97,6 +102,7 @@ namespace HaCreator.MapSimulator
             //Window.Position = new Point(0, 0);
             Window.Title = titleName;
             IsFixedTimeStep = false; // dont cap fps
+            IsMouseVisible = false;
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -204,6 +210,11 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
+            WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
+            WzDirectory UIWZFile = Program.WzManager["ui"];
+
+            WzDirectory tileDir = (WzDirectory)MapWzFile["Tile"];
+
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
@@ -222,8 +233,6 @@ namespace HaCreator.MapSimulator
 
             // Background and objects
             List<WzObject> usedProps = new List<WzObject>();
-            //WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
-            //WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
 
             foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
             {
@@ -251,7 +260,17 @@ namespace HaCreator.MapSimulator
                 obj.MSTag = null;
                 obj.MSTagSpine = null; // cleanup
             }
-            usedProps.Clear();
+
+            // Cursor
+            WzSubProperty cursorCanvas = (WzSubProperty) UIWZFile["Basic.img"]?["Cursor"]?["0"];
+            cursorItem = MapSimulatorLoader.CreateMapItemFromProperty(cursorCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+
+            WzSubProperty cursorPressedCanvas = (WzSubProperty)UIWZFile["Basic.img"]?["Cursor"]?["1"];
+            cursorItemPressed = MapSimulatorLoader.CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+
+            WzSubProperty cursorInventoryPickedCanvas = (WzSubProperty)UIWZFile["Basic.img"]?["Cursor"]?["5"];
+            cursorItemInventoryPicked = MapSimulatorLoader.CreateMapItemFromProperty(cursorInventoryPickedCanvas, 0, 0, new Point(0,0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+
 
             // Spine object
             skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
@@ -266,7 +285,11 @@ namespace HaCreator.MapSimulator
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
             pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
 
-            sprite = new SpriteBatch(GraphicsDevice);
+            spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            // clear used items
+            usedProps.Clear();
+
         }
 
         protected override void UnloadContent()
@@ -305,6 +328,7 @@ namespace HaCreator.MapSimulator
             {
                 _DxDeviceManager.IsFullScreen = !_DxDeviceManager.IsFullScreen;
                 _DxDeviceManager.ApplyChanges();
+                return;
             }
 
 
@@ -406,7 +430,7 @@ namespace HaCreator.MapSimulator
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
-            sprite.Begin(
+            spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
                 //SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
@@ -415,7 +439,7 @@ namespace HaCreator.MapSimulator
             // Back Backgrounds
             backgrounds_back.ForEach(bg =>
             {
-                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
@@ -426,7 +450,7 @@ namespace HaCreator.MapSimulator
             {
                 foreach (MapItem item in mapItem)
                 {
-                    item.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
@@ -436,7 +460,7 @@ namespace HaCreator.MapSimulator
             // Front Backgrounds
             backgrounds_front.ForEach(bg =>
             {
-                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
@@ -445,23 +469,30 @@ namespace HaCreator.MapSimulator
             // Borders
             // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
             Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
-            DrawBorder(sprite, titleSafeRectangle, 1, Color.Black);
+            DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             // Minimap
             if (minimap != null)
             {
-                sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
+                spriteBatch.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
                 int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
                 int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
 
-                FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
+                FillRectangle(spriteBatch, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
             }
 
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
-                sprite.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+                spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
 
-            sprite.End();
+            // Cursor [this is in front of everything else]
+            Point MousePos = Mouse.GetState().Position; // relative to the window already
+            cursorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                -MousePos.X, -MousePos.Y, 0,0,
+                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
+
+            spriteBatch.End();
            //skeletonMeshRenderer.End();
 
             base.Draw(gameTime);
@@ -496,7 +527,7 @@ namespace HaCreator.MapSimulator
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
+        private void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
@@ -504,7 +535,7 @@ namespace HaCreator.MapSimulator
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
+        private void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
         {
             sprite.Draw(pixel, rectangle, color);
         }

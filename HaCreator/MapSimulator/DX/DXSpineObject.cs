@@ -32,7 +32,7 @@ namespace HaCreator.MapSimulator.DX
         }
 
         /// <summary>
-        /// For objects
+        /// Draw spine objects
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.DX
         }
 
         /// <summary>
-        /// For background 
+        /// Draw spine background 
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
