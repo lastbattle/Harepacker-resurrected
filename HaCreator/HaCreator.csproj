@@ -386,6 +386,7 @@
     <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
     <Compile Include="MapSimulator\Objects\MapItem.cs" />
     <Compile Include="MapSimulator\Objects\MobItem.cs" />
+    <Compile Include="MapSimulator\Objects\MouseCursorItem.cs" />
     <Compile Include="MapSimulator\Objects\NpcItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />

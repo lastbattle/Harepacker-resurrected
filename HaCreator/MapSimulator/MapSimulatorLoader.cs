@@ -123,7 +123,7 @@ namespace HaCreator.MapSimulator
                         WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                        frames.Add(new DXSpineObject(spineObject, x  + mapCenter.X, y + mapCenter.Y, origin, delay));
+                        frames.Add(new DXSpineObject(spineObject, x + mapCenter.X, y + mapCenter.Y, origin, delay));
                     }
                     else if (frameProp.MSTag != null)
                     {
@@ -404,13 +404,13 @@ namespace HaCreator.MapSimulator
                             while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(npcStateProperty[(i++).ToString()])) != null)
                             {
                                 int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
-                                
+
                                 if (frameProp.MSTag == null)
                                 {
                                     frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
                                 }
                                 usedProps.Add(npcStateProperty);
-                                
+
                                 if (frameProp.MSTag != null)
                                 {
                                     Texture2D texture = (Texture2D)frameProp.MSTag;
@@ -433,6 +433,57 @@ namespace HaCreator.MapSimulator
                 }
             }
             return new NpcItem(npcInstance, frames);
+        }
+        #endregion
+
+        #region UI
+
+        /// <summary>
+        /// Map item
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
+        public static MouseCursorItem CreateMouseCursorFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"];
+            WzSubProperty cursorPressedCanvas = (WzSubProperty)source?["1"]; // click
+
+            WzCanvasProperty frameProp;
+            int i = 0;
+            List<IDXObject> frames = new List<IDXObject>();
+            while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(cursorCanvas[(i++).ToString()])) != null)
+            {
+                int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
+
+                if (frameProp.MSTag == null)
+                    frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                usedProps.Add(frameProp);
+
+                if (frameProp.MSTag != null)
+                {
+                    Texture2D texture = (Texture2D)frameProp.MSTag;
+                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+
+                    frames.Add(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture, delay));
+                }
+                else
+                {
+                    Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+
+                    frames.Add(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture, delay));
+                }
+            }
+
+            MapItem clickedState = CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            return new MouseCursorItem(frames, clickedState);
         }
         #endregion
 

@@ -56,9 +56,7 @@ namespace HaCreator.MapSimulator
         private Texture2D pixel;
 
         // Cursor, mouse
-        private MouseState previousMouseState;
-        private MapItem cursorItem, 
-            cursorItemPressed, cursorItemInventoryPicked;
+        private MouseCursorItem mouseCursor;
 
         // Audio
         private WzMp3Streamer audio;
@@ -206,9 +204,6 @@ namespace HaCreator.MapSimulator
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
             font = Content.Load<SpriteFont>("XnaDefaultFont");
 
-            // Mouse, cursor
-            previousMouseState = Mouse.GetState();
-
             base.Initialize();
         }
 
@@ -288,16 +283,7 @@ namespace HaCreator.MapSimulator
 
             // Cursor
             WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
-
-            WzSubProperty cursorCanvas = (WzSubProperty) cursorImageProperty?["0"];
-            cursorItem = MapSimulatorLoader.CreateMapItemFromProperty(cursorCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
-
-            WzSubProperty cursorPressedCanvas = (WzSubProperty)cursorImageProperty?["1"];
-            cursorItemPressed = MapSimulatorLoader.CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
-
-            WzSubProperty cursorInventoryPickedCanvas = (WzSubProperty) cursorImageProperty?["5"];
-            cursorItemInventoryPicked = MapSimulatorLoader.CreateMapItemFromProperty(cursorInventoryPickedCanvas, 0, 0, new Point(0,0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
-
+            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
             // Spine object
             skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
@@ -367,17 +353,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-
             // Handle mouse
-            if (previousMouseState.LeftButton == ButtonState.Released && Mouse.GetState().LeftButton == ButtonState.Pressed) // Left click
-            {
-
-            }
-            if (previousMouseState.RightButton == ButtonState.Released && Mouse.GetState().RightButton == ButtonState.Pressed) // Right click
-            {
-
-            }
-            previousMouseState = Mouse.GetState(); // save
+            mouseCursor.UpdateCursorState();
 
 
             // Navigate around the rendered object
@@ -548,9 +525,8 @@ namespace HaCreator.MapSimulator
                 spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
 
             // Cursor [this is in front of everything else]
-            Point MousePos = Mouse.GetState().Position; // relative to the window already
-            cursorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                -MousePos.X, -MousePos.Y, 0,0,
+            mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                0, 0, 0, 0, // pos determined in the class
                 RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
 
             spriteBatch.End();
