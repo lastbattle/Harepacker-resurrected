@@ -51,7 +51,8 @@ namespace HaCreator.MapSimulator
         // Minimap
         private Texture2D pixel;
 
-        // Cursor
+        // Cursor, mouse
+        private MouseState previousMouseState;
         private MapItem cursorItem, 
             cursorItemPressed, cursorItemInventoryPicked;
 
@@ -201,6 +202,9 @@ namespace HaCreator.MapSimulator
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
             font = Content.Load<SpriteFont>("XnaDefaultFont");
 
+            // Mouse, cursor
+            previousMouseState = Mouse.GetState();
+
             base.Initialize();
         }
 
@@ -255,20 +259,17 @@ namespace HaCreator.MapSimulator
                 backgrounds_front.Add(
                     MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
-            foreach (WzObject obj in usedProps)
-            {
-                obj.MSTag = null;
-                obj.MSTagSpine = null; // cleanup
-            }
 
             // Cursor
-            WzSubProperty cursorCanvas = (WzSubProperty) UIWZFile["Basic.img"]?["Cursor"]?["0"];
+            WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
+
+            WzSubProperty cursorCanvas = (WzSubProperty) cursorImageProperty?["0"];
             cursorItem = MapSimulatorLoader.CreateMapItemFromProperty(cursorCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
-            WzSubProperty cursorPressedCanvas = (WzSubProperty)UIWZFile["Basic.img"]?["Cursor"]?["1"];
+            WzSubProperty cursorPressedCanvas = (WzSubProperty)cursorImageProperty?["1"];
             cursorItemPressed = MapSimulatorLoader.CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
-            WzSubProperty cursorInventoryPickedCanvas = (WzSubProperty)UIWZFile["Basic.img"]?["Cursor"]?["5"];
+            WzSubProperty cursorInventoryPickedCanvas = (WzSubProperty) cursorImageProperty?["5"];
             cursorItemInventoryPicked = MapSimulatorLoader.CreateMapItemFromProperty(cursorInventoryPickedCanvas, 0, 0, new Point(0,0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
 
@@ -287,7 +288,13 @@ namespace HaCreator.MapSimulator
 
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
+            // cleanup
             // clear used items
+            foreach (WzObject obj in usedProps)
+            {
+                obj.MSTag = null;
+                obj.MSTagSpine = null; // cleanup
+            }
             usedProps.Clear();
 
         }
@@ -312,6 +319,9 @@ namespace HaCreator.MapSimulator
         /// <param name="gameTime"></param>
         protected override void Update(GameTime gameTime)
         {
+            float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
+            int TickCount = Environment.TickCount;
+            float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             // Allows the game to exit
 #if !WINDOWS_STOREAPP
@@ -330,6 +340,18 @@ namespace HaCreator.MapSimulator
                 _DxDeviceManager.ApplyChanges();
                 return;
             }
+
+
+            // Handle mouse
+            if (previousMouseState.LeftButton == ButtonState.Released && Mouse.GetState().LeftButton == ButtonState.Pressed) // Left click
+            {
+
+            }
+            if (previousMouseState.RightButton == ButtonState.Released && Mouse.GetState().RightButton == ButtonState.Pressed) // Right click
+            {
+
+            }
+            previousMouseState = Mouse.GetState(); // save
 
 
             // Navigate around the rendered object
@@ -489,8 +511,7 @@ namespace HaCreator.MapSimulator
             Point MousePos = Mouse.GetState().Position; // relative to the window already
             cursorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                 -MousePos.X, -MousePos.Y, 0,0,
-                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
+                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
 
             spriteBatch.End();
            //skeletonMeshRenderer.End();

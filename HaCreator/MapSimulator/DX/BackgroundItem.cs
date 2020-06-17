@@ -23,6 +23,9 @@ namespace HaCreator.MapSimulator.DX
         private double bgMoveShiftX = 0;
         private double bgMoveShiftY = 0;
 
+        // Custom property
+        private bool disabledBackground; // disabled background for images that are removed from Map.wz/bg, but entry still presist in maps
+
         /// <summary>
         /// 
         /// </summary>
@@ -51,6 +54,8 @@ namespace HaCreator.MapSimulator.DX
             this.screenMode = screenMode;
 
             color = new Color(0xFF, 0xFF, 0xFF, a);
+
+            this.disabledBackground = false;
         }
 
         /// <summary>
@@ -80,6 +85,11 @@ namespace HaCreator.MapSimulator.DX
             this.screenMode = screenMode;
 
             color = new Color(0xFF, 0xFF, 0xFF, a);
+
+            if (frame0.Height <= 1 && frame0.Width <= 1)
+                this.disabledBackground = true; // removed from Map.wz/bg, but entry still presist in maps
+            else
+                this.disabledBackground = false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -172,7 +182,7 @@ namespace HaCreator.MapSimulator.DX
             int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
             int TickCount)
         {
-            if (((int) mapRenderResolution & screenMode) != screenMode) // dont draw if the screenMode isnt for this
+            if (((int) mapRenderResolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this
                 return;
 
             IDXObject frame = GetCurrFrame(TickCount);
@@ -240,5 +250,7 @@ namespace HaCreator.MapSimulator.DX
         }
 
         public bool Front { get { return front; } }
+
+        public bool DisabledBackground { get { return disabledBackground; } }
     }
 }
