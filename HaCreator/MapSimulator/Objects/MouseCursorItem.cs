@@ -85,14 +85,14 @@ namespace HaCreator.MapSimulator.Objects
                  && (mouseCursorItemStates & (int)MouseCursorItemStates.RightPress) != (int)MouseCursorItemStates.RightPress)  // default
             {
                 base.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -MousePos.X, -MousePos.Y, 0, 0,
+                    -MousePos.X, -MousePos.Y, centerX, centerY,
                     renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
             else // if left or right press is active, draw pressed state
             {
                 cursorItemPressedState.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -MousePos.X, -MousePos.Y, 0, 0,
+                    -MousePos.X, -MousePos.Y, centerX, centerY,
                     renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }

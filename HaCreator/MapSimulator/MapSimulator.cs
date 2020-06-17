@@ -283,7 +283,7 @@ namespace HaCreator.MapSimulator
 
             // Cursor
             WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
-            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, new Point(0, 0), _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
             // Spine object
             skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);

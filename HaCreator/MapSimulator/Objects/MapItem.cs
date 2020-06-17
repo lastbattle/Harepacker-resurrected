@@ -20,13 +20,32 @@ namespace HaCreator.MapSimulator.Objects
         protected bool notAnimated;
         private IDXObject frame0;
 
+        /// <summary>
+        /// Creates an instance of MapItem
+        /// </summary>
+        /// <param name="frames"></param>
+        /// <param name="flip"></param>
         public MapItem(List<IDXObject> frames, bool flip)
         {
-            this.frames = frames;
-            notAnimated = false;
-            this.flip = flip;
+            if (frames.Count == 1) // not animated if its just 1 frame
+            {
+                this.frame0 = frames[0];
+                notAnimated = true;
+                this.flip = flip;
+            }
+            else
+            {
+                this.frames = frames;
+                notAnimated = false;
+                this.flip = flip;
+            }
         }
 
+        /// <summary>
+        /// Creates an instance of non-animated map item
+        /// </summary>
+        /// <param name="frame0"></param>
+        /// <param name="flip"></param>
         public MapItem(IDXObject frame0, bool flip)
         {
             this.frame0 = frame0;
@@ -67,17 +86,24 @@ namespace HaCreator.MapSimulator.Objects
             int width, int height, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
             int TickCount)
         {
+            int shiftCenteredX = mapShiftX - centerX;
+            int shiftCenteredY = mapShiftY - centerY;
+
             if (notAnimated)
             {
-                if (frame0.X - mapShiftX + frame0.Width > 0 && frame0.Y - mapShiftY + frame0.Height > 0 && frame0.X - mapShiftX < width && frame0.Y - mapShiftY < height)
+                if (frame0.X - shiftCenteredX + frame0.Width > 0 && frame0.Y - shiftCenteredY + frame0.Height > 0 && frame0.X - shiftCenteredX < width && frame0.Y - shiftCenteredY < height)
                 {
-                    frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
+                    frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                        shiftCenteredX, shiftCenteredY, 
+                        flip);
                 }
             }
             else
             {
                 IDXObject frame = GetCurrFrame(TickCount);
-                frame.DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
+                frame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                    shiftCenteredX, shiftCenteredY,
+                    flip);
             }
         }
 
