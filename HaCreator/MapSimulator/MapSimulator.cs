@@ -2,6 +2,7 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.DX;
+using HaCreator.MapSimulator.Objects;
 using HaRepacker.Utils;
 using HaSharedLibrary;
 using MapleLib.WzLib;
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator
         // Objects, NPCs
         public List<MapItem>[] mapObjects;
         private List<MapItem> mapObjects_NPCs = new List<MapItem>();
+        private List<MapItem> mapObjects_Mobs = new List<MapItem>();
 
         // Backgrounds
         private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -269,9 +271,19 @@ namespace HaCreator.MapSimulator
                 NpcInfo npcInfo = (NpcInfo)npc.BaseInfo;
 
                 WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
-                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(imageProperty, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps, npc.Flip);
 
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(imageProperty, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_NPCs.Add(npcItem);
+            }
+            // Load Mobs
+            foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
+            {
+                MobInfo mobInfo = (MobInfo)mob.BaseInfo;
+
+                WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
+
+                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(imageProperty, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                mapObjects_Mobs.Add(npcItem);
             }
 
             // Cursor
@@ -492,9 +504,16 @@ namespace HaCreator.MapSimulator
                         TickCount);
                 }
             }
-            foreach (NpcItem mapNpc in mapObjects_NPCs)
+            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs
             {
                 mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
+            {
+                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);

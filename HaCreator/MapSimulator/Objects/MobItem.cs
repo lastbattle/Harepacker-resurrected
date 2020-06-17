@@ -1,4 +1,5 @@
 ﻿using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -8,23 +9,23 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.DX
+namespace HaCreator.MapSimulator.Objects
 {
-    public class NpcItem : MapItem
+    public class MobItem : MapItem
     {
-        private readonly NpcInstance npcInstance;
+        private readonly MobInstance mobInstance;
 
-        public NpcItem(NpcInstance npcInstance, List<IDXObject> frames)
-            : base(frames, npcInstance.Flip)
+        public MobItem(MobInstance mobInstance, List<IDXObject> frames)
+            : base(frames, mobInstance.Flip)
         {
-            this.npcInstance = npcInstance;
+            this.mobInstance = mobInstance;
         }
 
 
-        public NpcItem(NpcInstance npcInstance, IDXObject frame0)
-            : base(frame0, npcInstance.Flip)
+        public MobItem(MobInstance mobInstance, IDXObject frame0)
+            : base(frame0, mobInstance.Flip)
         {
-            this.npcInstance = npcInstance;
+            this.mobInstance = mobInstance;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,

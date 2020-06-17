@@ -1,4 +1,5 @@
-﻿using Microsoft.Xna.Framework;
+﻿using HaCreator.MapSimulator.DX;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
@@ -7,7 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.DX
+namespace HaCreator.MapSimulator.Objects
 {
     public class MapItem
     {

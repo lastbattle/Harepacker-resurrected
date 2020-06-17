@@ -3,6 +3,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.DX;
+using HaCreator.MapSimulator.Objects;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
@@ -332,12 +333,58 @@ namespace HaCreator.MapSimulator
         #endregion
 
         #region Life
-        public static NpcItem CreateMobFromProperty(WzImageProperty source, MobInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static MobItem CreateMobFromProperty(WzImage source, MobInstance mobInstance, MobInfo mobInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
-            return null;
+            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                WzSubProperty npcStateProperty = (WzSubProperty)childProperty;
+                switch (npcStateProperty.Name)
+                {
+                    case "info": // info/speak/0 WzStringProperty
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            WzCanvasProperty frameProp;
+                            int i = 0;
+                            while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(npcStateProperty[(i++).ToString()])) != null)
+                            {
+                                int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
+
+                                if (frameProp.MSTag == null)
+                                {
+                                    frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                                }
+                                usedProps.Add(npcStateProperty);
+
+                                if (frameProp.MSTag != null)
+                                {
+                                    Texture2D texture = (Texture2D)frameProp.MSTag;
+                                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                                    DXObject dxObj = new DXObject(mobInstance.X - (int)origin.X, mobInstance.Y - (int)origin.Y, texture, delay);
+
+                                    frames.Add(dxObj);
+                                }
+                                else // default fallback if all things fail
+                                {
+                                    Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                                    DXObject dxObj = new DXObject(mobInstance.X - (int)origin.X, mobInstance.Y - (int)origin.Y, texture, delay);
+
+                                    frames.Add(dxObj);
+                                }
+                            }
+                            break;
+                        }
+                }
+            }
+            return new MobItem(mobInstance, frames);
         }
 
-        public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 

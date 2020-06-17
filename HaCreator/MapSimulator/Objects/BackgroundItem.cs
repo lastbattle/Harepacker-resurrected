@@ -1,4 +1,5 @@
-﻿using MapleLib.WzLib.WzStructure.Data;
+﻿using HaCreator.MapSimulator.DX;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -6,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace HaCreator.MapSimulator.DX
+namespace HaCreator.MapSimulator.Objects
 {
     public class BackgroundItem : MapItem
     {
