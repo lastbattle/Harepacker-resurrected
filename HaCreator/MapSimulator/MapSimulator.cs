@@ -1,4 +1,5 @@
 ﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.DX;
 using HaRepacker.Utils;
@@ -38,12 +39,13 @@ namespace HaCreator.MapSimulator
 
         private SpriteBatch spriteBatch;
 
-        // Objects
+        // Objects, NPCs
         public List<MapItem>[] mapObjects;
+        private List<MapItem> mapObjects_NPCs = new List<MapItem>();
 
         // Backgrounds
-        public List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
-        public List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
+        private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
+        private List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
@@ -216,6 +218,7 @@ namespace HaCreator.MapSimulator
         {
             WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
             WzDirectory UIWZFile = Program.WzManager["ui"];
+            WzDirectory NPCWZFile = Program.WzManager["npc"];
 
             WzDirectory tileDir = (WzDirectory)MapWzFile["Tile"];
 
@@ -250,14 +253,25 @@ namespace HaCreator.MapSimulator
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_back.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_front.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+            }
+
+            // Load NPCs
+            foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
+            {
+                NpcInfo npcInfo = (NpcInfo)npc.BaseInfo;
+
+                WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(imageProperty, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps, npc.Flip);
+
+                mapObjects_NPCs.Add(npcItem);
             }
 
             // Cursor
@@ -477,6 +491,13 @@ namespace HaCreator.MapSimulator
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
+            }
+            foreach (NpcItem mapNpc in mapObjects_NPCs)
+            {
+                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             }
 
             // Front Backgrounds

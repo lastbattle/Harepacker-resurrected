@@ -385,6 +385,7 @@
     <Compile Include="MapSimulator\DX\IDXObject.cs" />
     <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
     <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="MapSimulator\DX\NpcItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />

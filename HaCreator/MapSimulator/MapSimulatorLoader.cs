@@ -1,4 +1,5 @@
 ﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.DX;
@@ -148,13 +149,11 @@ namespace HaCreator.MapSimulator
         /// </summary>
         /// <param name="source"></param>
         /// <param name="bgInstance"></param>
-        /// <param name="mapCenterX"></param>
-        /// <param name="mapCenterY"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             source = WzInfoTools.GetRealProperty(source);
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
@@ -162,7 +161,6 @@ namespace HaCreator.MapSimulator
 
             if (source is WzCanvasProperty) //one-frame
             {
-
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, bgInstance.SpineAni);
                 if (!bLoadedSpine)
                 {
@@ -245,7 +243,7 @@ namespace HaCreator.MapSimulator
             else throw new Exception("Unsupported property type in map simulator");
         }
 
-
+        #region Spine
         /// <summary>
         /// Load spine object from WzImageProperty (bg, map item)
         /// </summary>
@@ -331,6 +329,65 @@ namespace HaCreator.MapSimulator
             }
             return false;
         }
+        #endregion
+
+        #region Life
+        public static NpcItem CreateMobFromProperty(WzImageProperty source, MobInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            return null;
+        }
+
+        public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                WzSubProperty npcStateProperty = (WzSubProperty)childProperty;
+                switch (npcStateProperty.Name)
+                {
+                    case "info": // info/speak/0 WzStringProperty
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            WzCanvasProperty frameProp;
+                            int i = 0;
+                            while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(npcStateProperty[(i++).ToString()])) != null)
+                            {
+                                int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
+                                
+                                if (frameProp.MSTag == null)
+                                {
+                                    frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                                }
+                                usedProps.Add(npcStateProperty);
+                                
+                                if (frameProp.MSTag != null)
+                                {
+                                    Texture2D texture = (Texture2D)frameProp.MSTag;
+                                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                                    DXObject dxObj = new DXObject(npcInstance.X - (int)origin.X, npcInstance.Y - (int)origin.Y, texture, delay);
+
+                                    frames.Add(dxObj);
+                                }
+                                else // default fallback if all things fail
+                                {
+                                    Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                                    System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                                    DXObject dxObj = new DXObject(npcInstance.X - (int)origin.X, npcInstance.Y - (int)origin.Y, texture, delay);
+
+                                    frames.Add(dxObj);
+                                }
+                            }
+                            break;
+                        }
+                }
+            }
+            return new NpcItem(npcInstance, frames);
+        }
+        #endregion
 
         private static string DumpFhList(List<FootholdLine> fhs)
         {

@@ -74,7 +74,10 @@ namespace HaCreator.MapSimulator.DX
                 }
             }
             else
-                GetCurrFrame(TickCount).DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
+            {
+                IDXObject frame = GetCurrFrame(TickCount);
+                frame.DrawObject(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, flip);
+            }
         }
 
     }
