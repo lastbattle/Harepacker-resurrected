@@ -520,6 +520,7 @@ namespace HaCreator.Wz
                 int? delay = InfoTool.GetOptionalInt(portal["delay"]);
                 MapleBool hideTooltip = InfoTool.GetOptionalBool(portal["hideTooltip"]);
                 MapleBool onlyOnce = InfoTool.GetOptionalBool(portal["onlyOnce"]);
+
                 mapBoard.BoardItems.Portals.Add(PortalInfo.GetPortalInfoByType(pt).CreateInstance(mapBoard, x, y, pn, tn, tm, script, delay, hideTooltip, onlyOnce, horizontalImpact, verticalImpact, image, hRange, vRange));
             }
         }

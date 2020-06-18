@@ -12,13 +12,13 @@ namespace HaCreator.MapSimulator.Objects
 {
     public class MapItem
     {
-        private List<IDXObject> frames;
+        private readonly List<IDXObject> frames;
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
 
         protected bool flip;
-        protected bool notAnimated;
-        private IDXObject frame0;
+        protected readonly bool notAnimated;
+        private readonly IDXObject frame0;
 
         /// <summary>
         /// Creates an instance of MapItem
@@ -55,18 +55,18 @@ namespace HaCreator.MapSimulator.Objects
 
         protected IDXObject GetCurrFrame(int TickCount)
         {
-            if (notAnimated) 
+            if (notAnimated)
                 return frame0;
-            else
+
+            // Animated
+            if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
             {
-                if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
-                { //advance frame
-                    currFrame++;
-                    if (currFrame == frames.Count) currFrame = 0;
-                    lastFrameSwitchTime = TickCount;
-                }
-                return frames[currFrame];
+                currFrame++;  //advance frame
+                if (currFrame == frames.Count)
+                    currFrame = 0;
+                lastFrameSwitchTime = TickCount;
             }
+            return frames[currFrame];
         }
 
         /// <summary>
@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator.Objects
         /// <param name="height"></param>
         /// <param name="TickCount">Ticks since system startup</param>
         public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, 
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
             int width, int height, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
             int TickCount)
         {
@@ -91,19 +91,28 @@ namespace HaCreator.MapSimulator.Objects
 
             if (notAnimated)
             {
-                if (frame0.X - shiftCenteredX + frame0.Width > 0 && frame0.Y - shiftCenteredY + frame0.Height > 0 && frame0.X - shiftCenteredX < width && frame0.Y - shiftCenteredY < height)
+                if (frame0.X - shiftCenteredX + frame0.Width > 0 &&
+                    frame0.Y - shiftCenteredY + frame0.Height > 0 &&
+                    frame0.X - shiftCenteredX < width &&
+                    frame0.Y - shiftCenteredY < height)
                 {
                     frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                        shiftCenteredX, shiftCenteredY, 
+                        shiftCenteredX, shiftCenteredY,
                         flip);
                 }
             }
             else
             {
                 IDXObject frame = GetCurrFrame(TickCount);
-                frame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                if (frame.X - shiftCenteredX + frame.Width > 0 &&
+                    frame.Y - shiftCenteredY + frame.Height > 0 &&
+                    frame.X - shiftCenteredX < width &&
+                    frame.Y - shiftCenteredY < height)
+                {
+                    frame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX, shiftCenteredY,
                     flip);
+                }
             }
         }
 

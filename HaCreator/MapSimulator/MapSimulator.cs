@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator
         public List<MapItem>[] mapObjects;
         private List<MapItem> mapObjects_NPCs = new List<MapItem>();
         private List<MapItem> mapObjects_Mobs = new List<MapItem>();
+        private List<MapItem> mapObjects_Portal = new List<MapItem>(); // perhaps mapobjects should be in a single pool
 
         // Backgrounds
         private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -281,6 +282,56 @@ namespace HaCreator.MapSimulator
                 mapObjects_Mobs.Add(npcItem);
             }
 
+            // Load portals
+            WzSubProperty portalParent = (WzSubProperty) MapWzFile["MapHelper.img"]["portal"];
+
+            WzSubProperty gameParent = (WzSubProperty) portalParent["game"];
+            WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
+
+            foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
+            {
+                PortalInfo portalInfo = (PortalInfo)portal.BaseInfo;
+
+                string portalType = portal.pt;
+                //int portalId = Program.InfoManager.PortalIdByType[portal.pt];
+
+                if (portalType == PortalType.PORTALTYPE_STARTPOINT || 
+                    portalType == PortalType.PORTALTYPE_INVISIBLE ||
+                    //portalType == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
+                    portalType == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
+                    portalType == PortalType.PORTALTYPE_SCRIPT)
+                    continue;
+
+                WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalType];
+                if (portalTypeProperty == null)
+                    portalTypeProperty = (WzSubProperty)gameParent["pv"];
+
+                if (portalTypeProperty != null)
+                {
+                    WzSubProperty portalImageProperty = (WzSubProperty)portalTypeProperty[portal.image == null ? "default" : portal.image];
+
+                    if (portalImageProperty != null)
+                    {
+                        WzSubProperty framesPropertyParent = null;
+                        if (portalImageProperty["portalContinue"] != null)
+                            framesPropertyParent = (WzSubProperty)portalImageProperty["portalContinue"];
+                        else
+                            framesPropertyParent = (WzSubProperty)portalImageProperty;
+
+                        if (framesPropertyParent != null)
+                        {
+                            PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(framesPropertyParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                            mapObjects_Portal.Add(portalItem);
+                        }
+                    }
+                }
+                //int portalTypeId = Program.InfoManager.PortalIdByType[portal.pt];
+                //WzSubProperty framesPropertyParent = (WzSubProperty) pvParent[portalTypeId == 0 ? "default" : portalTypeId.ToString()];
+
+                //PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(framesPropertyParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                //mapObjects_Portal.Add(portalItem);
+            }
+
             // Cursor
             WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
             this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
@@ -365,7 +416,7 @@ namespace HaCreator.MapSimulator
             bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
             bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-            int offset = bIsShiftPressed ? 8 : 2;
+            int offset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
 
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
             {
@@ -453,7 +504,7 @@ namespace HaCreator.MapSimulator
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
-            GraphicsDevice.Clear(Color.Black);
+            //GraphicsDevice.Clear(Color.Black);
 
             spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
@@ -481,6 +532,16 @@ namespace HaCreator.MapSimulator
                         TickCount);
                 }
             }
+            // Portals
+            foreach (PortalItem portalItem in mapObjects_Portal)
+            {
+                portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+
+            // Life (NPC + Mobs)
             foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs
             {
                 mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
@@ -507,8 +568,8 @@ namespace HaCreator.MapSimulator
 
             // Borders
             // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
-            Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
-            DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
+            //Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
+            //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             // Minimap
             if (minimap != null)

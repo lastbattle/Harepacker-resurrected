@@ -392,6 +392,7 @@
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />
     <Compile Include="GUI\TabItemContainer.cs" />
+    <Compile Include="MapSimulator\Objects\PortalItem.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>
