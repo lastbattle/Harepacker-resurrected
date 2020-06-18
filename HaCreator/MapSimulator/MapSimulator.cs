@@ -309,7 +309,8 @@ namespace HaCreator.MapSimulator
                     //portal.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
                     portal.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
                     portal.pt == PortalType.PORTALTYPE_SCRIPT ||
-                    portal.pt == PortalType.PORTALTYPE_COLLISION)
+                    portal.pt == PortalType.PORTALTYPE_COLLISION ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
                     continue;
 
                 PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
