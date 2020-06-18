@@ -14,6 +14,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace HaCreator.MapSimulator
@@ -260,12 +261,63 @@ namespace HaCreator.MapSimulator
         }
         #endregion
 
+        #region Reactor
+        /// <summary>
+        /// Create reactor item
+        /// </summary>
+        /// <param name="linkedReactorImage"></param>
+        /// <param name="reactorInstance"></param>
+        /// <param name="reactorInfo"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <returns></returns>
+        public static ReactorItem CreateReactorFromProperty(WzImage linkedReactorImage, ReactorInstance reactorInstance, ReactorInfo reactorInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        {
+            List<IDXObject> frames = new List<IDXObject>();
+
+            WzImageProperty framesImage = (WzImageProperty) linkedReactorImage["0"]?["0"];
+            if (framesImage != null)
+            {
+                frames = LoadFrames(framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps, reactorInstance.Flip);
+            }
+            if (frames.Count == 0)
+                return null;
+            return new ReactorItem(reactorInstance, frames);
+        }
+        #endregion
+
         #region Portal       
-        public static PortalItem CreatePortalFromProperty(WzSubProperty source, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static PortalItem CreatePortalFromProperty(WzSubProperty gameParent, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
-            frames.AddRange(LoadFrames(source, portalInstance.X, portalInstance.Y, device, ref usedProps, false));
 
+            //string portalType = portalInstance.pt;
+            //int portalId = Program.InfoManager.PortalIdByType[portalInstance.pt];
+
+            WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt];
+            if (portalTypeProperty == null)
+                portalTypeProperty = (WzSubProperty)gameParent["pv"];
+
+            if (portalTypeProperty != null)
+            {
+                WzSubProperty portalImageProperty = (WzSubProperty)portalTypeProperty[portalInstance.image == null ? "default" : portalInstance.image];
+
+                if (portalImageProperty != null)
+                {
+                    WzSubProperty framesPropertyParent;
+                    if (portalImageProperty["portalContinue"] != null)
+                        framesPropertyParent = (WzSubProperty)portalImageProperty["portalContinue"];
+                    else
+                        framesPropertyParent = (WzSubProperty)portalImageProperty;
+
+                    if (framesPropertyParent != null)
+                    {
+                        frames.AddRange(LoadFrames(framesPropertyParent, portalInstance.X, portalInstance.Y, device, ref usedProps, false));
+                    }
+                }
+            }
+            if (frames.Count == 0)
+                return null;
             return new PortalItem(portalInstance, frames);
         }
         #endregion

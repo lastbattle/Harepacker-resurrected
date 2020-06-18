@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator
         public List<MapItem>[] mapObjects;
         private List<MapItem> mapObjects_NPCs = new List<MapItem>();
         private List<MapItem> mapObjects_Mobs = new List<MapItem>();
+        private List<MapItem> mapObjects_Reactors = new List<MapItem>();
         private List<MapItem> mapObjects_Portal = new List<MapItem>(); // perhaps mapobjects should be in a single pool
 
         // Backgrounds
@@ -261,14 +262,25 @@ namespace HaCreator.MapSimulator
                     MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
 
+            // Load reactors
+            foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
+            {
+                ReactorInfo reactorInfo = (ReactorInfo)reactor.BaseInfo;
+
+                //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
+
+                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(reactorInfo.LinkedWzImage, reactor, reactorInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                mapObjects_Reactors.Add(reactorItem);
+            }
+
             // Load NPCs
             foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
             {
                 NpcInfo npcInfo = (NpcInfo)npc.BaseInfo;
 
-                WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
+                //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
 
-                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(imageProperty, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(npcInfo.LinkedWzImage, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_NPCs.Add(npcItem);
             }
             // Load Mobs
@@ -276,9 +288,9 @@ namespace HaCreator.MapSimulator
             {
                 MobInfo mobInfo = (MobInfo)mob.BaseInfo;
 
-                WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
+                //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
 
-                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(imageProperty, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(mobInfo.LinkedWzImage, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_Mobs.Add(npcItem);
             }
 
@@ -286,50 +298,23 @@ namespace HaCreator.MapSimulator
             WzSubProperty portalParent = (WzSubProperty) MapWzFile["MapHelper.img"]["portal"];
 
             WzSubProperty gameParent = (WzSubProperty) portalParent["game"];
-            WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
+            //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
 
             foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
             {
                 PortalInfo portalInfo = (PortalInfo)portal.BaseInfo;
 
-                string portalType = portal.pt;
-                //int portalId = Program.InfoManager.PortalIdByType[portal.pt];
-
-                if (portalType == PortalType.PORTALTYPE_STARTPOINT || 
-                    portalType == PortalType.PORTALTYPE_INVISIBLE ||
-                    //portalType == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
-                    portalType == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
-                    portalType == PortalType.PORTALTYPE_SCRIPT)
+                if (portal.pt == PortalType.PORTALTYPE_STARTPOINT ||
+                    portal.pt == PortalType.PORTALTYPE_INVISIBLE ||
+                    //portal.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
+                    portal.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
+                    portal.pt == PortalType.PORTALTYPE_SCRIPT ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION)
                     continue;
 
-                WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalType];
-                if (portalTypeProperty == null)
-                    portalTypeProperty = (WzSubProperty)gameParent["pv"];
-
-                if (portalTypeProperty != null)
-                {
-                    WzSubProperty portalImageProperty = (WzSubProperty)portalTypeProperty[portal.image == null ? "default" : portal.image];
-
-                    if (portalImageProperty != null)
-                    {
-                        WzSubProperty framesPropertyParent = null;
-                        if (portalImageProperty["portalContinue"] != null)
-                            framesPropertyParent = (WzSubProperty)portalImageProperty["portalContinue"];
-                        else
-                            framesPropertyParent = (WzSubProperty)portalImageProperty;
-
-                        if (framesPropertyParent != null)
-                        {
-                            PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(framesPropertyParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                            mapObjects_Portal.Add(portalItem);
-                        }
-                    }
-                }
-                //int portalTypeId = Program.InfoManager.PortalIdByType[portal.pt];
-                //WzSubProperty framesPropertyParent = (WzSubProperty) pvParent[portalTypeId == 0 ? "default" : portalTypeId.ToString()];
-
-                //PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(framesPropertyParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                //mapObjects_Portal.Add(portalItem);
+                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                if (portalItem != null) 
+                    mapObjects_Portal.Add(portalItem);
             }
 
             // Cursor
@@ -504,7 +489,7 @@ namespace HaCreator.MapSimulator
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
-            //GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(Color.Black);
 
             spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
@@ -536,6 +521,15 @@ namespace HaCreator.MapSimulator
             foreach (PortalItem portalItem in mapObjects_Portal)
             {
                 portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+
+            // Reactors
+            foreach (ReactorItem reactorItem in mapObjects_Reactors)
+            {
+                reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);

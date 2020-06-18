@@ -336,6 +336,7 @@ namespace HaCreator.Wz
                 Program.InfoManager.PortalTypeById.Add(portal.Name);
                 PortalInfo.Load(portal);
             }
+
             WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
             foreach (WzImageProperty portal in gameParent.WzProperties)
             {
@@ -371,7 +372,10 @@ namespace HaCreator.Wz
                         }
                         Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
                     }
-                    catch (InvalidCastException) { continue; } //nexon likes to toss ints in here zType etc
+                    catch (InvalidCastException) 
+                    { 
+                        continue; 
+                    } //nexon likes to toss ints in here zType etc
                 }
             }
 
