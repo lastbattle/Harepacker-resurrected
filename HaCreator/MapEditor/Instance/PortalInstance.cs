@@ -38,19 +38,19 @@ namespace HaCreator.MapEditor.Instance
             : base(board, x, y, -1)
         {
             this.baseInfo = baseInfo;
-            _pn = pn;
-            _pt = pt;
-            _tn = tn;
-            _tm = tm;
-            _script = script;
-            _delay = delay;
-            _hideTooltip = hideTooltip;
-            _onlyOnce = onlyOnce;
-            _horizontalImpact = horizontalImpact;
-            _verticalImpact = verticalImpact;
-            _image = image;
-            _hRange = hRange;
-            _vRange = vRange;
+            this._pn = pn;
+            this._pt = pt;
+            this._tn = tn;
+            this._tm = tm;
+            this._script = script;
+            this._delay = delay;
+            this._hideTooltip = hideTooltip;
+            this._onlyOnce = onlyOnce;
+            this._horizontalImpact = horizontalImpact;
+            this._verticalImpact = verticalImpact;
+            this._image = image;
+            this._hRange = hRange;
+            this._vRange = vRange;
         }
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
@@ -96,6 +96,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// The image number in Map.wz/MapHelper.img/portal/game/(portal type)/(image number)
+        /// </summary>
         public string image
         {
             get { return _image; }

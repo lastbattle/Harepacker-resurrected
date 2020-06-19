@@ -9,21 +9,16 @@ using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
-using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.Info
 {
     public class MobInfo : MapleExtractableInfo
     {
-        private string id;
-        private string name;
+        private readonly string id;
+        private readonly string name;
 
-        private WzImage LinkedImage;
+        private WzImage _LinkedWzImage;
 
         public MobInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
@@ -49,18 +44,10 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)
-                ((WzImage)ParentObject)["info"])["link"];
-            if (link != null)
-            {
-                LinkedImage = Program.WzManager.FindMobImage(link.Value);
-
-                ExtractPNGFromImage(LinkedImage);
-            }
+            if (LinkedWzImage != null) // load from here too
+                ExtractPNGFromImage(_LinkedWzImage);
             else
-            {
                 ExtractPNGFromImage((WzImage)ParentObject);
-            }
         }
 
         /// <summary>
@@ -117,13 +104,30 @@ namespace HaCreator.MapEditor.Info
         public string ID
         {
             get { return id; }
-            set { this.id = value; }
+            private set { }
         }
 
         public string Name
         {
             get { return name; }
-            set { this.name = value; }
+            private set { }
+        }
+
+        /// <summary>
+        /// The source WzImage of the reactor
+        /// </summary>
+        public WzImage LinkedWzImage
+        {
+            get {
+                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                if (link != null)
+                    _LinkedWzImage = Program.WzManager.FindMobImage(link.Value);
+                else
+                    _LinkedWzImage = Program.WzManager.FindMobImage(id); // default
+
+                return _LinkedWzImage; 
+            }
+            set { this._LinkedWzImage = value; }
         }
     }
 }

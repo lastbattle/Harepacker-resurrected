@@ -20,10 +20,10 @@ namespace HaCreator.MapEditor.Info
 {
     public class NpcInfo : MapleExtractableInfo
     {
-        private string id;
-        private string name;
+        private readonly string id;
+        private readonly string name;
 
-        private WzImage LinkedImage;
+        private WzImage _LinkedWzImage;
 
         public NpcInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
@@ -55,16 +55,10 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-            if (link != null)
-            {
-                LinkedImage = (WzImage)Program.WzManager["npc"][link.Value + ".img"];
-                ExtractPNGFromImage(LinkedImage);
-            }
+            if (LinkedWzImage != null) // attempt to load from here too
+                ExtractPNGFromImage(LinkedWzImage);
             else
-            {
                 ExtractPNGFromImage((WzImage)ParentObject);
-            }
         }
 
         public static NpcInfo Get(string id)
@@ -101,26 +95,33 @@ namespace HaCreator.MapEditor.Info
 
         public string ID
         {
-            get
-            {
-                return id;
-            }
-            set
-            {
-                this.id = value;
-            }
+            get { return id; }
+            private set { }
         }
 
         public string Name
         {
-            get
-            {
-                return name;
+            get { return name; }
+            private set {  }
+        }
+
+        /// <summary>
+        /// The source WzImage of the reactor or default
+        /// </summary>
+        public WzImage LinkedWzImage
+        {
+            get {
+                if (_LinkedWzImage == null)
+                {
+                    WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                    if (link != null)
+                        _LinkedWzImage = (WzImage)Program.WzManager["npc"][link.Value + ".img"];
+                    else
+                        _LinkedWzImage = (WzImage)Program.WzManager["npc"][id + ".img"]; // default
+                }
+                return _LinkedWzImage; 
             }
-            set
-            {
-                this.name = value;
-            }
+            set { this._LinkedWzImage = value; }
         }
     }
 }

@@ -44,30 +44,44 @@ namespace HaCreator.MapEditor.Info
             switch (type)
             {
                 case PortalType.PORTALTYPE_STARTPOINT:
-                    return new PortalInstance(this, board, x, y, "sp", type, "", 999999999, null, null, null, null, null, null, null, null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "sp", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
                 case PortalType.PORTALTYPE_INVISIBLE:
                 case PortalType.PORTALTYPE_VISIBLE:
                 case PortalType.PORTALTYPE_COLLISION:
                 case PortalType.PORTALTYPE_CHANGABLE:
                 case PortalType.PORTALTYPE_CHANGABLE_INVISIBLE:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, null, null, null, null, null, null, null, null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
                 case PortalType.PORTALTYPE_TOWNPORTAL_POINT:
-                    return new PortalInstance(this, board, x, y, "tp", type, "", 999999999, null, null, null, null, null, null, null, null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "tp", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
                 case PortalType.PORTALTYPE_SCRIPT:
                 case PortalType.PORTALTYPE_SCRIPT_INVISIBLE:
                 case PortalType.PORTALTYPE_COLLISION_SCRIPT:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, null, null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, null, null, null);
+                    }
                 case PortalType.PORTALTYPE_HIDDEN:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, null, null, null, null, null, null, "", null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, null, null, null, null, null, null, "", null, null);
+                    }
                 case PortalType.PORTALTYPE_SCRIPT_HIDDEN:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, "", null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                    }
                 case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
                 case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
                 case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
-              //  case PortalType.PORTALTYPE_SCRIPT_HIDDEN_UNG:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, "", null, null);
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                    }
+                case PortalType.PORTALTYPE_SCRIPT_HIDDEN_UNG: // TODO
                 default:
-                    throw new Exception("unknown pt @ CreateInstance");
+                    throw new Exception("unknown pt @ CreateInstance, type: " + type);
             }
         }
 

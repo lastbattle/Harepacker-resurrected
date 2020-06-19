@@ -216,10 +216,12 @@ namespace HaCreator.MapEditor
             }
         }
 
-        public void CreateLayers(int num)
+        public void CreateLayers()
         {
-            for (int i = 0; i < num; i++)
+            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
+            {
                 new Layer(this);
+            }
         }
 
         public void Dispose()

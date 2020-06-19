@@ -1,9 +1,14 @@
 ﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.DX;
+using HaCreator.MapSimulator.Objects;
+using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Objects.UIObject;
 using HaRepacker.Utils;
 using HaSharedLibrary;
 using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -35,20 +40,27 @@ namespace HaCreator.MapSimulator
 
         private GraphicsDeviceManager _DxDeviceManager;
 
-        private SpriteBatch sprite;
+        private SpriteBatch spriteBatch;
 
-        // Objects
-        public List<MapItem>[] mapObjects;
+        // Objects, NPCs
+        public List<BaseItem>[] mapObjects;
+        private List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
 
         // Backgrounds
-        public List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
-        public List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
+        private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
+        private List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
 
         // Minimap
         private Texture2D pixel;
+
+        // Cursor, mouse
+        private MouseCursorItem mouseCursor;
 
         // Audio
         private WzMp3Streamer audio;
@@ -97,6 +109,7 @@ namespace HaCreator.MapSimulator
             //Window.Position = new Point(0, 0);
             Window.Title = titleName;
             IsFixedTimeStep = false; // dont cap fps
+            IsMouseVisible = false;
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -180,10 +193,10 @@ namespace HaCreator.MapSimulator
             // TODO: Add your initialization logic here
 
             // Create map layers
-            mapObjects = new List<MapItem>[WzConstants.MaxMapLayers];
+            mapObjects = new List<BaseItem>[WzConstants.MaxMapLayers];
             for (int i = 0; i < WzConstants.MaxMapLayers; i++)
             {
-                mapObjects[i] = new List<MapItem>();
+                mapObjects[i] = new List<BaseItem>();
             }
 
             //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
@@ -204,6 +217,12 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
+            WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
+            WzDirectory UIWZFile = Program.WzManager["ui"];
+            WzDirectory NPCWZFile = Program.WzManager["npc"];
+
+            WzDirectory tileDir = (WzDirectory)MapWzFile["Tile"];
+
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
@@ -222,8 +241,6 @@ namespace HaCreator.MapSimulator
 
             // Background and objects
             List<WzObject> usedProps = new List<WzObject>();
-            //WzDirectory MapFile = Program.WzManager["map"]; // Map.wz
-            //WzDirectory tileDir = (WzDirectory)MapFile["Tile"];
 
             foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
             {
@@ -237,25 +254,83 @@ namespace HaCreator.MapSimulator
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_back.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_front.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
-            foreach (WzObject obj in usedProps)
+
+            // Load reactors
+            foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
             {
-                obj.MSTag = null;
-                obj.MSTagSpine = null; // cleanup
+                ReactorInfo reactorInfo = (ReactorInfo)reactor.BaseInfo;
+
+                //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
+
+                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(reactorInfo.LinkedWzImage, reactor, reactorInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                mapObjects_Reactors.Add(reactorItem);
             }
-            usedProps.Clear();
+
+            // Load NPCs
+            foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
+            {
+                NpcInfo npcInfo = (NpcInfo)npc.BaseInfo;
+
+                //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
+
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(npcInfo.LinkedWzImage, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                mapObjects_NPCs.Add(npcItem);
+            }
+            // Load Mobs
+            foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
+            {
+                MobInfo mobInfo = (MobInfo)mob.BaseInfo;
+
+                //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
+
+                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(mobInfo.LinkedWzImage, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                mapObjects_Mobs.Add(npcItem);
+            }
+
+            // Load portals
+            WzSubProperty portalParent = (WzSubProperty) MapWzFile["MapHelper.img"]["portal"];
+
+            WzSubProperty gameParent = (WzSubProperty) portalParent["game"];
+            //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
+
+            foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
+            {
+                PortalInfo portalInfo = (PortalInfo)portal.BaseInfo;
+
+                if (portal.pt == PortalType.PORTALTYPE_STARTPOINT ||
+                    portal.pt == PortalType.PORTALTYPE_INVISIBLE ||
+                    //portal.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
+                    portal.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
+                    portal.pt == PortalType.PORTALTYPE_SCRIPT ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_SCRIPT ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT || // springs in Mechanical grave 350040240
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
+                    continue;
+
+                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                if (portalItem != null) 
+                    mapObjects_Portal.Add(portalItem);
+            }
+
+            // Cursor
+            WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
+            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
             // Spine object
-            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
-            skeletonMeshRenderer.PremultipliedAlpha = false;
+            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+            {
+                PremultipliedAlpha = false
+            };
 
             // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
@@ -266,7 +341,17 @@ namespace HaCreator.MapSimulator
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
             pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
 
-            sprite = new SpriteBatch(GraphicsDevice);
+            spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            // cleanup
+            // clear used items
+            foreach (WzObject obj in usedProps)
+            {
+                obj.MSTag = null;
+                obj.MSTagSpine = null; // cleanup
+            }
+            usedProps.Clear();
+
         }
 
         protected override void UnloadContent()
@@ -277,11 +362,20 @@ namespace HaCreator.MapSimulator
                 audio.Dispose();
             }
 
-            skeletonMeshRenderer.End();
-
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
-        }
+
+            skeletonMeshRenderer.End();
+
+            mapObjects_NPCs.Clear();
+            mapObjects_Mobs.Clear();
+            mapObjects_Reactors.Clear();
+            mapObjects_Portal.Clear();
+
+            backgrounds_front.Clear();
+            backgrounds_back.Clear();
+
+    }
 
         /// <summary>
         /// Key handling
@@ -289,6 +383,9 @@ namespace HaCreator.MapSimulator
         /// <param name="gameTime"></param>
         protected override void Update(GameTime gameTime)
         {
+            float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
+            int TickCount = Environment.TickCount;
+            float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
             // Allows the game to exit
 #if !WINDOWS_STOREAPP
@@ -305,7 +402,11 @@ namespace HaCreator.MapSimulator
             {
                 _DxDeviceManager.IsFullScreen = !_DxDeviceManager.IsFullScreen;
                 _DxDeviceManager.ApplyChanges();
+                return;
             }
+
+            // Handle mouse
+            mouseCursor.UpdateCursorState();
 
 
             // Navigate around the rendered object
@@ -316,7 +417,7 @@ namespace HaCreator.MapSimulator
             bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
             bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-            int offset = bIsShiftPressed ? 8 : 2;
+            int offset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
 
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
             {
@@ -406,7 +507,7 @@ namespace HaCreator.MapSimulator
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
-            sprite.Begin(
+            spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
                 //SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
@@ -415,28 +516,61 @@ namespace HaCreator.MapSimulator
             // Back Backgrounds
             backgrounds_back.ForEach(bg =>
             {
-                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             });
 
             // Map objects
-            foreach (List<MapItem> mapItem in mapObjects)
+            foreach (List<BaseItem> mapItem in mapObjects)
             {
-                foreach (MapItem item in mapItem)
+                foreach (BaseItem item in mapItem)
                 {
-                    item.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
             }
+            // Portals
+            foreach (PortalItem portalItem in mapObjects_Portal)
+            {
+                portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+
+            // Reactors
+            foreach (ReactorItem reactorItem in mapObjects_Reactors)
+            {
+                reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+
+            // Life (NPC + Mobs)
+            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs
+            {
+                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
+            {
+                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
 
             // Front Backgrounds
             backgrounds_front.ForEach(bg =>
             {
-                bg.Draw(sprite, skeletonMeshRenderer, gameTime,
+                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
@@ -444,24 +578,29 @@ namespace HaCreator.MapSimulator
 
             // Borders
             // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
-            Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
-            DrawBorder(sprite, titleSafeRectangle, 1, Color.Black);
+            //Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
+            //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             // Minimap
             if (minimap != null)
             {
-                sprite.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
+                spriteBatch.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
                 int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
                 int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
 
-                FillRectangle(sprite, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
+                FillRectangle(spriteBatch, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
             }
 
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
-                sprite.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+                spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
 
-            sprite.End();
+            // Cursor [this is in front of everything else]
+            mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                0, 0, 0, 0, // pos determined in the class
+                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
+
+            spriteBatch.End();
            //skeletonMeshRenderer.End();
 
             base.Draw(gameTime);
@@ -496,7 +635,7 @@ namespace HaCreator.MapSimulator
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
+        private void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
@@ -504,7 +643,7 @@ namespace HaCreator.MapSimulator
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
+        private void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
         {
             sprite.Draw(pixel, rectangle, color);
         }

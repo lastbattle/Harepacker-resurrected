@@ -8,20 +8,15 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.Info
 {
     public class ReactorInfo : MapleExtractableInfo
     {
-        private string id;
+        private readonly string id;
 
-        private WzImage LinkedImage;
+        private WzImage _LinkedWzImage;
 
         public ReactorInfo(Bitmap image, System.Drawing.Point origin, string id, WzObject parentObject)
             : base(image, origin, parentObject)
@@ -46,16 +41,10 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-            if (link != null)
-            {
-                LinkedImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
-                ExtractPNGFromImage(LinkedImage);
-            }
+            if (LinkedWzImage != null) // load from here too
+                ExtractPNGFromImage(_LinkedWzImage);
             else
-            {
                 ExtractPNGFromImage((WzImage)ParentObject);
-            }
         }
 
         public static ReactorInfo Get(string id)
@@ -84,14 +73,24 @@ namespace HaCreator.MapEditor.Info
 
         public string ID
         {
-            get
-            {
-                return id;
+            get { return id; }
+            private set { }
+        }
+
+        /// <summary>
+        /// The source WzImage of the reactor
+        /// </summary>
+        public WzImage LinkedWzImage
+        {
+            get {
+                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                if (link != null)
+                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
+                else
+                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][id + ".img"];
+                return _LinkedWzImage; 
             }
-            set
-            {
-                this.id = value;
-            }
+            set { this._LinkedWzImage = value; }
         }
     }
 }

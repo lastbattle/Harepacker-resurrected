@@ -1,7 +1,11 @@
 ﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.DX;
+using HaCreator.MapSimulator.Objects;
+using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
@@ -12,13 +16,13 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 
 namespace HaCreator.MapSimulator
 {
     public class MapSimulatorLoader
     {
-
         /// <summary>
         /// Create map simulator board
         /// </summary>
@@ -45,21 +49,11 @@ namespace HaCreator.MapSimulator
             return mapSimulator;
         }
 
-
-        /// <summary>
-        /// Map item
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="x"></param>
-        /// <param name="y"></param>
-        /// <param name="mapCenterX"></param>
-        /// <param name="mapCenterY"></param>
-        /// <param name="device"></param>
-        /// <param name="usedProps"></param>
-        /// <param name="flip"></param>
-        /// <returns></returns>
-        public static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        #region Common
+        private static List<IDXObject> LoadFrames(WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
+            List<IDXObject> frames = new List<IDXObject>();
+
             source = WzInfoTools.GetRealProperty(source);
 
             if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
@@ -67,43 +61,43 @@ namespace HaCreator.MapSimulator
                 source = ((WzSubProperty)source).WzProperties[0];
             }
 
-            if (source is WzCanvasProperty) //one-frame
+            if (source is WzCanvasProperty property) //one-frame
             {
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, null);
                 if (!bLoadedSpine)
                 {
                     if (source.MSTag == null)
-                        source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
+                        source.MSTag = BoardItem.TextureFromBitmap(device, property.GetLinkedWzCanvasBitmap());
                 }
                 usedProps.Add(source);
 
                 if (source.MSTagSpine != null)
                 {
                     WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
+                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
-                    return new MapItem(new DXSpineObject(spineObject, x + mapCenter.X, y + mapCenter.Y, origin), flip);
+                    frames.Add(new DXSpineObject(spineObject, x, y, origin));
                 }
                 else if (source.MSTag != null)
                 {
                     Texture2D texture = (Texture2D)source.MSTag;
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
+                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
-                    return new MapItem(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture), flip);
+                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
                 }
                 else // fallback
                 {
                     Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
+                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
-                    return new MapItem(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture), flip);
+                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
                 }
             }
             else if (source is WzSubProperty) // animated
             {
                 WzCanvasProperty frameProp;
                 int i = 0;
-                List<IDXObject> frames = new List<IDXObject>();
+
                 while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
                 {
                     int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
@@ -121,26 +115,44 @@ namespace HaCreator.MapSimulator
                         WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                        frames.Add(new DXSpineObject(spineObject, x  + mapCenter.X, y + mapCenter.Y, origin, delay));
+                        frames.Add(new DXSpineObject(spineObject, x, y, origin, delay));
                     }
                     else if (frameProp.MSTag != null)
                     {
                         Texture2D texture = (Texture2D)frameProp.MSTag;
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                        frames.Add(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture, delay));
+                        frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
                     }
                     else
                     {
                         Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
                         System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
-                        frames.Add(new DXObject(x - (int)origin.X + mapCenter.X, y - (int)origin.Y + mapCenter.Y, texture, delay));
+                        frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
                     }
                 }
-                return new MapItem(frames, flip);
             }
-            else throw new Exception("unsupported property type in map simulator");
+            return frames;
+        }
+        #endregion
+
+        /// <summary>
+        /// Map item
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
+        public static BaseItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            BaseItem mapItem = new BaseItem(LoadFrames(source, x, y, device, ref usedProps, flip), flip);
+            return mapItem;
         }
 
         /// <summary>
@@ -148,104 +160,21 @@ namespace HaCreator.MapSimulator
         /// </summary>
         /// <param name="source"></param>
         /// <param name="bgInstance"></param>
-        /// <param name="mapCenterX"></param>
-        /// <param name="mapCenterY"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, int mapCenterX, int mapCenterY, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
-            source = WzInfoTools.GetRealProperty(source);
-            if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
-                source = ((WzSubProperty)source).WzProperties[0];
-
-            if (source is WzCanvasProperty) //one-frame
+            List<IDXObject> frames = LoadFrames(source, bgInstance.BaseX, bgInstance.BaseY, device, ref usedProps, flip);
+            if (frames.Count == 1)
             {
-
-                bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, bgInstance.SpineAni);
-                if (!bLoadedSpine)
-                {
-                    if (source.MSTag == null)
-                        source.MSTag = BoardItem.TextureFromBitmap(device, ((WzCanvasProperty)source).GetLinkedWzCanvasBitmap());
-                }
-                usedProps.Add(source);
-
-                if (source.MSTagSpine != null)
-                {
-                    WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
-                    DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, origin);
-
-                    return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, dxobj, flip, bgInstance.screenMode);
-                }
-                else if (source.MSTag != null)
-                {
-                    Texture2D texture = (Texture2D)source.MSTag;
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
-                    DXObject dxobj = new DXObject(bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture);
-
-                    return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, dxobj, flip, bgInstance.screenMode);
-                }
-                else  // default fallback if all things fail
-                {
-                    Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
-                    System.Drawing.PointF origin = ((WzCanvasProperty)source).GetCanvasOriginPosition();
-                    DXObject dxobj = new DXObject(bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture);
-
-                    return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, dxobj, flip, bgInstance.screenMode);
-                }
+                return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames[0], flip, bgInstance.screenMode);
             }
-            else if (source is WzSubProperty) // animated
-            {
-                WzCanvasProperty frameProp;
-                int i = 0;
-                List<IDXObject> frames = new List<IDXObject>();
-                while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
-                {
-                    int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
-
-                    bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, bgInstance.SpineAni);
-                    if (!bLoadedSpine)
-                    {
-                        if (frameProp.MSTag == null)
-                        {
-                            frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
-                        }
-                    }
-                    usedProps.Add(source);
-
-                    if (frameProp.MSTagSpine != null)
-                    {
-                        WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        DXSpineObject dxobj = new DXSpineObject(spineObject, bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, origin, delay);
-
-                        frames.Add(dxobj);
-                    }
-                    else if (frameProp.MSTag != null)
-                    {
-                        Texture2D texture = (Texture2D)frameProp.MSTag;
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        DXObject dxObj = new DXObject(bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture, delay);
-
-                        frames.Add(dxObj);
-                    }
-                    else // default fallback if all things fail
-                    {
-                        Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-                        DXObject dxObj = new DXObject(bgInstance.BaseX - (int)origin.X/* - mapCenterX*/, bgInstance.BaseY - (int)origin.Y/* - mapCenterY*/, texture, delay);
-
-                        frames.Add(dxObj);
-                    }
-                }
-                return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames, flip, bgInstance.screenMode);
-            }
-            else throw new Exception("Unsupported property type in map simulator");
+            return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames, flip, bgInstance.screenMode);
         }
 
-
+        #region Spine
         /// <summary>
         /// Load spine object from WzImageProperty (bg, map item)
         /// </summary>
@@ -299,7 +228,7 @@ namespace HaCreator.MapSimulator
                         // Skin
                         foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
                         {
-                            spineObject.skeleton.SetSkin(skin.Name); // just set the first skin
+                            spineObject.skeleton.SetSkin(skin); // just set the first skin
                             break;
                         }
 
@@ -331,6 +260,142 @@ namespace HaCreator.MapSimulator
             }
             return false;
         }
+        #endregion
+
+        #region Reactor
+        /// <summary>
+        /// Create reactor item
+        /// </summary>
+        /// <param name="linkedReactorImage"></param>
+        /// <param name="reactorInstance"></param>
+        /// <param name="reactorInfo"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <returns></returns>
+        public static ReactorItem CreateReactorFromProperty(WzImage linkedReactorImage, ReactorInstance reactorInstance, ReactorInfo reactorInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        {
+            List<IDXObject> frames = new List<IDXObject>();
+
+            WzImageProperty framesImage = (WzImageProperty) linkedReactorImage["0"]?["0"];
+            if (framesImage != null)
+            {
+                frames = LoadFrames(framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps, reactorInstance.Flip);
+            }
+            if (frames.Count == 0)
+                return null;
+            return new ReactorItem(reactorInstance, frames);
+        }
+        #endregion
+
+        #region Portal       
+        public static PortalItem CreatePortalFromProperty(WzSubProperty gameParent, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        {
+            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+
+            //string portalType = portalInstance.pt;
+            //int portalId = Program.InfoManager.PortalIdByType[portalInstance.pt];
+
+            WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt];
+            if (portalTypeProperty == null)
+                portalTypeProperty = (WzSubProperty)gameParent["pv"];
+
+            if (portalTypeProperty != null)
+            {
+                WzSubProperty portalImageProperty = (WzSubProperty)portalTypeProperty[portalInstance.image == null ? "default" : portalInstance.image];
+
+                if (portalImageProperty != null)
+                {
+                    WzSubProperty framesPropertyParent;
+                    if (portalImageProperty["portalContinue"] != null)
+                        framesPropertyParent = (WzSubProperty)portalImageProperty["portalContinue"];
+                    else
+                        framesPropertyParent = (WzSubProperty)portalImageProperty;
+
+                    if (framesPropertyParent != null)
+                    {
+                        frames.AddRange(LoadFrames(framesPropertyParent, portalInstance.X, portalInstance.Y, device, ref usedProps, false));
+                    }
+                }
+            }
+            if (frames.Count == 0)
+                return null;
+            return new PortalItem(portalInstance, frames);
+        }
+        #endregion
+
+        #region Life
+        public static MobItem CreateMobFromProperty(WzImage source, MobInstance mobInstance, MobInfo mobInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        {
+            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                WzSubProperty mobStateProperty = (WzSubProperty)childProperty;
+                switch (mobStateProperty.Name)
+                {
+                    case "info": // info/speak/0 WzStringProperty
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            frames.AddRange(LoadFrames(mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps, mobInstance.Flip));
+                            break;
+                        }
+                }
+            }
+            return new MobItem(mobInstance, frames);
+        }
+
+        public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        {
+            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+
+            foreach (WzImageProperty childProperty in source.WzProperties)
+            {
+                WzSubProperty npcStateProperty = (WzSubProperty)childProperty;
+                switch (npcStateProperty.Name)
+                {
+                    case "info": // info/speak/0 WzStringProperty
+                        {
+                            break;
+                        }
+                    default:
+                        {
+                            frames.AddRange(LoadFrames(npcStateProperty, npcInstance.X, npcInstance.Y, device, ref usedProps, npcInstance.Flip));
+                            break;
+                        }
+                }
+            }
+            return new NpcItem(npcInstance, frames);
+        }
+        #endregion
+
+        #region UI
+
+        /// <summary>
+        /// Map item
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
+        public static MouseCursorItem CreateMouseCursorFromProperty(WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"];
+            WzSubProperty cursorPressedCanvas = (WzSubProperty)source?["1"]; // click
+
+            List<IDXObject> frames = LoadFrames(cursorCanvas, x, y, device, ref usedProps, flip);
+
+            BaseItem clickedState = CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            return new MouseCursorItem(frames, clickedState);
+        }
+        #endregion
 
         private static string DumpFhList(List<FootholdLine> fhs)
         {

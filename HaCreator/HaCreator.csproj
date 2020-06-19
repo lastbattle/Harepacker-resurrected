@@ -381,14 +381,19 @@
     <Compile Include="MapEditor\UndoRedo\UndoRedoAction.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
     <Compile Include="MapEditor\UserObjectsManager.cs" />
-    <Compile Include="MapSimulator\DX\BackgroundItem.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\BackgroundItem.cs" />
     <Compile Include="MapSimulator\DX\IDXObject.cs" />
     <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
-    <Compile Include="MapSimulator\DX\MapItem.cs" />
+    <Compile Include="MapSimulator\Objects\BaseItem.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\MobItem.cs" />
+    <Compile Include="MapSimulator\Objects\UIObject\MouseCursorItem.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\NpcItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
     <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
     <Compile Include="MapSimulator\MapRenderResolution.cs" />
     <Compile Include="GUI\TabItemContainer.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\PortalItem.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\ReactorItem.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>

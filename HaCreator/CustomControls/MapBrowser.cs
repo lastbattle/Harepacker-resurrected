@@ -87,7 +87,7 @@ namespace HaCreator.CustomControls
         }
 
         private string _previousSeachText = string.Empty;
-        private CancellationTokenSource _existingSearchTask = null;
+        private CancellationTokenSource _existingSearchTaskToken = null;
         /// <summary>
         /// On search box text changed
         /// </summary>
@@ -106,9 +106,9 @@ namespace HaCreator.CustomControls
 
 
             // Cancel existing task if any
-            if (_existingSearchTask != null && !_existingSearchTask.IsCancellationRequested)
+            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested)
             {
-                _existingSearchTask.Cancel();
+                _existingSearchTaskToken.Cancel();
             }
 
             // Clear 
@@ -125,17 +125,17 @@ namespace HaCreator.CustomControls
                 Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
 
                 // new task
-                _existingSearchTask = new CancellationTokenSource();
-                var cancellationToken = _existingSearchTask.Token;
+                _existingSearchTaskToken = new CancellationTokenSource();
+                var cancellationToken = _existingSearchTaskToken.Token;
 
                 Task t = Task.Run(() =>
                 {
-                    Thread.Sleep(1000); // average key typing speed
+                    Thread.Sleep(500); // average key typing speed
 
                     List<string> mapsFiltered = new List<string>();
                     foreach (string map in maps)
                     {
-                        if (_existingSearchTask.IsCancellationRequested)
+                        if (_existingSearchTaskToken.IsCancellationRequested)
                             return; // stop immediately
 
                         if (map.ToLower().Contains(tosearch))
@@ -146,7 +146,7 @@ namespace HaCreator.CustomControls
                     {
                         foreach (string map in mapsFiltered) 
                         { 
-                            if (_existingSearchTask.IsCancellationRequested)
+                            if (_existingSearchTaskToken.IsCancellationRequested)
                                 return; // stop immediately
 
                             mapNamesBox.Items.Add(map);
@@ -157,7 +157,7 @@ namespace HaCreator.CustomControls
                             mapNamesBox.SelectedIndex = 0; // set default selection to reduce clicks
                         }
                     }));
-                });
+                }, cancellationToken);
 
             }
         }

@@ -134,32 +134,29 @@ namespace HaCreator.GUI.EditorPanels
                         MenuItem menuItem_ = sender_ as MenuItem;
                         BackgroundInfo bgInfo_ = menuItem_.Tag as BackgroundInfo;
 
-                        // preview
-                        bgInfo_.WzImageProperty.WzProperties.ForEach(wzprop =>
+                        WzImageProperty spineAtlasProp = bgInfo_.WzImageProperty.WzProperties.FirstOrDefault(
+                            wzprop => wzprop is WzStringProperty && ((WzStringProperty)wzprop).IsSpineAtlasResources);
+
+                        if (spineAtlasProp != null)
+                        {
+                            WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
+                            Thread thread = new Thread(() =>
                             {
-                                if (wzprop is WzStringProperty && ((WzStringProperty)wzprop).IsSpineAtlasResources)
+                                try
                                 {
-                                    WzStringProperty stringObj = (WzStringProperty)wzprop;
+                                    WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
 
-                                    Thread thread = new Thread(() =>
-                                    {
-                                        try
-                                        {
-                                            WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
-
-                                            // Create xna window
-                                            SpineAnimationWindow Window = new SpineAnimationWindow(item);
-                                            Window.Run();
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                        }
-                                    });
-                                    thread.Start();
-                                    thread.Join();
-                                    return; // first
+                                    // Create xna window
+                                    SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                    Window.Run();
+                                }
+                                catch (Exception ex)
+                                {
                                 }
                             });
+                            thread.Start();
+                            thread.Join();
+                        }
                     });
                     cm.MenuItems.Add(menuItem);
 
