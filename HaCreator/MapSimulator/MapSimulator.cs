@@ -3,6 +3,8 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
+using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Objects.UIObject;
 using HaRepacker.Utils;
 using HaSharedLibrary;
 using MapleLib.WzLib;
@@ -41,11 +43,11 @@ namespace HaCreator.MapSimulator
         private SpriteBatch spriteBatch;
 
         // Objects, NPCs
-        public List<MapItem>[] mapObjects;
-        private List<MapItem> mapObjects_NPCs = new List<MapItem>();
-        private List<MapItem> mapObjects_Mobs = new List<MapItem>();
-        private List<MapItem> mapObjects_Reactors = new List<MapItem>();
-        private List<MapItem> mapObjects_Portal = new List<MapItem>(); // perhaps mapobjects should be in a single pool
+        public List<BaseItem>[] mapObjects;
+        private List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
+        private List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
 
         // Backgrounds
         private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -191,10 +193,10 @@ namespace HaCreator.MapSimulator
             // TODO: Add your initialization logic here
 
             // Create map layers
-            mapObjects = new List<MapItem>[WzConstants.MaxMapLayers];
+            mapObjects = new List<BaseItem>[WzConstants.MaxMapLayers];
             for (int i = 0; i < WzConstants.MaxMapLayers; i++)
             {
-                mapObjects[i] = new List<MapItem>();
+                mapObjects[i] = new List<BaseItem>();
             }
 
             //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
@@ -310,6 +312,8 @@ namespace HaCreator.MapSimulator
                     portal.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
                     portal.pt == PortalType.PORTALTYPE_SCRIPT ||
                     portal.pt == PortalType.PORTALTYPE_COLLISION ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_SCRIPT ||
+                    portal.pt == PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT || // springs in Mechanical grave 350040240
                     portal.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
                     continue;
 
@@ -323,8 +327,10 @@ namespace HaCreator.MapSimulator
             this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
             // Spine object
-            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice);
-            skeletonMeshRenderer.PremultipliedAlpha = false;
+            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+            {
+                PremultipliedAlpha = false
+            };
 
             // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
@@ -356,11 +362,20 @@ namespace HaCreator.MapSimulator
                 audio.Dispose();
             }
 
-            skeletonMeshRenderer.End();
-
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
-        }
+
+            skeletonMeshRenderer.End();
+
+            mapObjects_NPCs.Clear();
+            mapObjects_Mobs.Clear();
+            mapObjects_Reactors.Clear();
+            mapObjects_Portal.Clear();
+
+            backgrounds_front.Clear();
+            backgrounds_back.Clear();
+
+    }
 
         /// <summary>
         /// Key handling
@@ -508,9 +523,9 @@ namespace HaCreator.MapSimulator
             });
 
             // Map objects
-            foreach (List<MapItem> mapItem in mapObjects)
+            foreach (List<BaseItem> mapItem in mapObjects)
             {
-                foreach (MapItem item in mapItem)
+                foreach (BaseItem item in mapItem)
                 {
                     item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,

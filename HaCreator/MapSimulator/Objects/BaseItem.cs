@@ -5,12 +5,16 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects
 {
-    public class MapItem
+    /// <summary>
+    /// The Base class for image or animated objects
+    /// </summary>
+    public class BaseItem
     {
         private readonly List<IDXObject> frames;
         private int currFrame = 0;
@@ -25,7 +29,7 @@ namespace HaCreator.MapSimulator.Objects
         /// </summary>
         /// <param name="frames"></param>
         /// <param name="flip"></param>
-        public MapItem(List<IDXObject> frames, bool flip)
+        public BaseItem(List<IDXObject> frames, bool flip)
         {
             if (frames.Count == 1) // not animated if its just 1 frame
             {
@@ -46,7 +50,7 @@ namespace HaCreator.MapSimulator.Objects
         /// </summary>
         /// <param name="frame0"></param>
         /// <param name="flip"></param>
-        public MapItem(IDXObject frame0, bool flip)
+        public BaseItem(IDXObject frame0, bool flip)
         {
             this.frame0 = frame0;
             notAnimated = true;
@@ -89,32 +93,36 @@ namespace HaCreator.MapSimulator.Objects
             int shiftCenteredX = mapShiftX - centerX;
             int shiftCenteredY = mapShiftY - centerY;
 
+            IDXObject drawFrame;
             if (notAnimated)
-            {
-                if (frame0.X - shiftCenteredX + frame0.Width > 0 &&
-                    frame0.Y - shiftCenteredY + frame0.Height > 0 &&
-                    frame0.X - shiftCenteredX < width &&
-                    frame0.Y - shiftCenteredY < height)
-                {
-                    frame0.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                        shiftCenteredX, shiftCenteredY,
-                        flip);
-                }
-            }
+                drawFrame = frame0;
             else
+                drawFrame = GetCurrFrame(TickCount);
+
+            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, width, height))
             {
-                IDXObject frame = GetCurrFrame(TickCount);
-                if (frame.X - shiftCenteredX + frame.Width > 0 &&
-                    frame.Y - shiftCenteredY + frame.Height > 0 &&
-                    frame.X - shiftCenteredX < width &&
-                    frame.Y - shiftCenteredY < height)
-                {
-                    frame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX, shiftCenteredY,
                     flip);
-                }
             }
         }
 
+        /// <summary>
+        /// Checks if the animation frame's position is within the player's viewing box.
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="shiftCenteredX"></param>
+        /// <param name="shiftCenteredY"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height)
+        {
+            return (frame.X - shiftCenteredX + frame.Width > 0 &&
+                frame.Y - shiftCenteredY + frame.Height > 0 &&
+                frame.X - shiftCenteredX < width &&
+                frame.Y - shiftCenteredY < height);
+        }
     }
 }

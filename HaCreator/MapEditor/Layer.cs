@@ -28,7 +28,8 @@ namespace HaCreator.MapEditor
         public Layer(Board board)
         {
             this.board = board;
-            if (board.Layers.Count == 10) throw new NotSupportedException("Cannot add more than 10 layers (why would you need that much anyway?)");
+            if (board.Layers.Count == 10) 
+                throw new NotSupportedException("Cannot add more than 10 layers (why would you need that much anyway?)");
             num = board.Layers.Count;
             board.Layers.Add(this);
         }

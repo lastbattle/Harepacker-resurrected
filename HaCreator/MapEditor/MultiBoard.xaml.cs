@@ -233,23 +233,23 @@ namespace HaCreator.MapEditor
             return BoardItem.TextureFromBitmap(DxDevice, bmp);
         }
 
-        public Board CreateBoard(Microsoft.Xna.Framework.Point mapSize, Point centerPoint, int layers, System.Windows.Controls.ContextMenu menu)
+        public Board CreateBoard(Microsoft.Xna.Framework.Point mapSize, Point centerPoint, System.Windows.Controls.ContextMenu menu)
         {
             lock (this)
             {
                 Board newBoard = new Board(mapSize, centerPoint, this, menu, ApplicationSettings.theoreticalVisibleTypes, ApplicationSettings.theoreticalEditedTypes);
                 boards.Add(newBoard);
-                newBoard.CreateLayers(layers);
+                newBoard.CreateLayers();
                 return newBoard;
             }
         }
 
-        public Board CreateHiddenBoard(Point mapSize, Point centerPoint, int layers)
+        public Board CreateHiddenBoard(Point mapSize, Point centerPoint)
         {
             lock (this)
             {
                 Board newBoard = new Board(mapSize, centerPoint, this, null, ItemTypes.None, ItemTypes.None);
-                newBoard.CreateLayers(layers);
+                newBoard.CreateLayers();
                 return newBoard;
             }
         }

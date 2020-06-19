@@ -884,7 +884,7 @@ namespace HaCreator.Wz
             
             lock (multiBoard)
             {
-                CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, 8, Tabs, multiBoard);
+                CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, Tabs, multiBoard);
                 Board mapBoard = multiBoard.SelectedBoard;
                 mapBoard.Loading = true; // prevents TS Change callbacks
                 mapBoard.MapInfo = info;
@@ -939,11 +939,11 @@ namespace HaCreator.Wz
         /// <param name="layers"></param>
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
-        public void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, int layers, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
+        public void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
         {
             lock (multiBoard)
             {
-                Board newBoard = multiBoard.CreateBoard(size, center, layers, menu);
+                Board newBoard = multiBoard.CreateBoard(size, center, menu);
                 GenerateDefaultZms(newBoard);
 
                 System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem();
@@ -972,7 +972,7 @@ namespace HaCreator.Wz
 
         public void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
-            CreateMap("", "", -1,  "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), 8, Tabs, multiBoard);
+            CreateMap("", "", -1,  "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), Tabs, multiBoard);
             multiBoard.SelectedBoard.Loading = true; // Prevent TS Change callbacks while were loading
             lock (multiBoard)
             {

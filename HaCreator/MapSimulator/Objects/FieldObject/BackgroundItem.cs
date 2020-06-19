@@ -7,9 +7,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class BackgroundItem : MapItem
+    public class BackgroundItem : BaseItem
     {
         private int rx;
         private int ry;

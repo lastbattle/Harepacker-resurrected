@@ -9,23 +9,23 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class MobItem : MapItem
+    public class NpcItem : BaseItem
     {
-        private readonly MobInstance mobInstance;
+        private readonly NpcInstance npcInstance;
 
-        public MobItem(MobInstance mobInstance, List<IDXObject> frames)
-            : base(frames, mobInstance.Flip)
+        public NpcItem(NpcInstance npcInstance, List<IDXObject> frames)
+            : base(frames, npcInstance.Flip)
         {
-            this.mobInstance = mobInstance;
+            this.npcInstance = npcInstance;
         }
 
 
-        public MobItem(MobInstance mobInstance, IDXObject frame0)
-            : base(frame0, mobInstance.Flip)
+        public NpcItem(NpcInstance npcInstance, IDXObject frame0)
+            : base(frame0, npcInstance.Flip)
         {
-            this.mobInstance = mobInstance;
+            this.npcInstance = npcInstance;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,

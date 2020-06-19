@@ -9,9 +9,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class PortalItem : MapItem
+    public class PortalItem : BaseItem
     {
         private readonly PortalInstance portalInstance;
 

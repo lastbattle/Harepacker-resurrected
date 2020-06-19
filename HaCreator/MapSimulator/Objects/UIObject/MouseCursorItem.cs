@@ -9,20 +9,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaCreator.MapSimulator.Objects.UIObject
 {
     /// <summary>
     /// For cursor
     /// </summary>
-    public class MouseCursorItem : MapItem
+    public class MouseCursorItem : BaseItem
     {
         private MouseState previousMouseState;
         private int mouseCursorItemStates; // enum
 
-        private MapItem cursorItemPressedState; // default state of the cursor = this instance
+        private BaseItem cursorItemPressedState; // default state of the cursor = this instance
 
 
-        public MouseCursorItem(List<IDXObject> frames, MapItem cursorItemPressedState)
+        public MouseCursorItem(List<IDXObject> frames, BaseItem cursorItemPressedState)
             : base(frames, false)
         {
             previousMouseState = Mouse.GetState();

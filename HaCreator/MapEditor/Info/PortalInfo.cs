@@ -81,7 +81,7 @@ namespace HaCreator.MapEditor.Info
                     }
                 case PortalType.PORTALTYPE_SCRIPT_HIDDEN_UNG: // TODO
                 default:
-                    throw new Exception("unknown pt @ CreateInstance");
+                    throw new Exception("unknown pt @ CreateInstance, type: " + type);
             }
         }
 

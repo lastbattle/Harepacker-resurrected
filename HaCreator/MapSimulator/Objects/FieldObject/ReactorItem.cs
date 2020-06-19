@@ -9,9 +9,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class ReactorItem : MapItem
+    public class ReactorItem : BaseItem
     {
         private readonly ReactorInstance reactorInstance;
 

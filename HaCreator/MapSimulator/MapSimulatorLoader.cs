@@ -4,6 +4,8 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
+using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
@@ -21,7 +23,6 @@ namespace HaCreator.MapSimulator
 {
     public class MapSimulatorLoader
     {
-
         /// <summary>
         /// Create map simulator board
         /// </summary>
@@ -148,9 +149,9 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static MapItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BaseItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
-            MapItem mapItem = new MapItem(LoadFrames(source, x, y, device, ref usedProps, flip), flip);
+            BaseItem mapItem = new BaseItem(LoadFrames(source, x, y, device, ref usedProps, flip), flip);
             return mapItem;
         }
 
@@ -327,8 +328,6 @@ namespace HaCreator.MapSimulator
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
-            // TODO: Link mobs
-
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
                 WzSubProperty mobStateProperty = (WzSubProperty)childProperty;
@@ -351,8 +350,6 @@ namespace HaCreator.MapSimulator
         public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
-
-            // TODO: link NPC
 
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
@@ -395,7 +392,7 @@ namespace HaCreator.MapSimulator
 
             List<IDXObject> frames = LoadFrames(cursorCanvas, x, y, device, ref usedProps, flip);
 
-            MapItem clickedState = CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseItem clickedState = CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
             return new MouseCursorItem(frames, clickedState);
         }
         #endregion
