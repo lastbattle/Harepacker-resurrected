@@ -1,11 +1,13 @@
-﻿using HaCreator.MapEditor;
+﻿// uncomment line below to show debug values
+#define SIMULATOR_DEBUG_INFO
+
+
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
-using HaRepacker.Utils;
 using HaSharedLibrary;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -16,11 +18,8 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading.Tasks;
-
 
 namespace HaCreator.MapSimulator
 {
@@ -73,8 +72,8 @@ namespace HaCreator.MapSimulator
         private SkeletonMeshRenderer skeletonMeshRenderer;
 
         // Text
-        private SpriteFont font;
-
+        private SpriteFont font_navigationKeysHelper;
+        private SpriteFont font_DebugValues;
 
         /// <summary>
         /// Constructor
@@ -113,7 +112,7 @@ namespace HaCreator.MapSimulator
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
-                SynchronizeWithVerticalRetrace = false, // dont cap fps
+                SynchronizeWithVerticalRetrace = true, 
                 HardwareModeSwitch = true,
                 GraphicsProfile = GraphicsProfile.HiDef,
                 IsFullScreen = false,
@@ -206,7 +205,8 @@ namespace HaCreator.MapSimulator
             // 
             // to build your own font: /MonoGame Font Builder/game.mgcb
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
-            font = Content.Load<SpriteFont>("XnaDefaultFont");
+            font_navigationKeysHelper = Content.Load<SpriteFont>("XnaDefaultFont");
+            font_DebugValues = Content.Load<SpriteFont>("XnaFont_Debug");
 
             base.Initialize();
         }
@@ -591,7 +591,15 @@ namespace HaCreator.MapSimulator
 
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
-                spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+                spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+
+
+#if SIMULATOR_DEBUG_INFO
+            StringBuilder sb = new StringBuilder();
+            sb.Append("FPS: ").Append(frameRate);
+            spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 100, 10), Color.White);
+#endif
+
 
             // Cursor [this is in front of everything else]
             mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
