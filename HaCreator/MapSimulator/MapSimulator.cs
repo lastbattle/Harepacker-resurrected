@@ -44,14 +44,14 @@ namespace HaCreator.MapSimulator
 
         // Objects, NPCs
         public List<BaseItem>[] mapObjects;
-        private List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
-        private List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
-        private List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
-        private List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
+        private readonly List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
+        private readonly List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
+        private readonly List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
+        private readonly List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
 
         // Backgrounds
-        private List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
-        private List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
+        private readonly List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
+        private readonly List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
         private Rectangle vr;
@@ -67,7 +67,7 @@ namespace HaCreator.MapSimulator
 
         // Etc
         private Texture2D minimap;
-        private Board mapBoard;
+        private readonly Board mapBoard;
 
         // Spine
         private SkeletonMeshRenderer skeletonMeshRenderer;
@@ -219,9 +219,6 @@ namespace HaCreator.MapSimulator
         {
             WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
             WzDirectory UIWZFile = Program.WzManager["ui"];
-            WzDirectory NPCWZFile = Program.WzManager["npc"];
-
-            WzDirectory tileDir = (WzDirectory)MapWzFile["Tile"];
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -362,10 +359,11 @@ namespace HaCreator.MapSimulator
                 audio.Dispose();
             }
 
+            skeletonMeshRenderer.End();
+            
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
 
-            skeletonMeshRenderer.End();
 
             mapObjects_NPCs.Clear();
             mapObjects_Mobs.Clear();

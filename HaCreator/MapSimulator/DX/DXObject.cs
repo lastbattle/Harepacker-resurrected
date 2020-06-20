@@ -62,8 +62,6 @@ namespace HaCreator.MapSimulator.DX
             sprite.Draw(texture, new Rectangle(x, y, texture.Width, texture.Height), null, color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
 
-        public bool IsSpineDxObject { get { return false; } }
-
         public int Delay
         {
             get { return delay; }

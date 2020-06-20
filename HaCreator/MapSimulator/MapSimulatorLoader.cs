@@ -56,9 +56,9 @@ namespace HaCreator.MapSimulator
 
             source = WzInfoTools.GetRealProperty(source);
 
-            if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
+            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
             {
-                source = ((WzSubProperty)source).WzProperties[0];
+                source = property1.WzProperties[0];
             }
 
             if (source is WzCanvasProperty property) //one-frame
@@ -297,7 +297,18 @@ namespace HaCreator.MapSimulator
 
             WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt];
             if (portalTypeProperty == null)
+            {
                 portalTypeProperty = (WzSubProperty)gameParent["pv"];
+            } 
+            else
+            {
+                // Support for older versions of MapleStory where 'pv' is a subproperty for the image frame than a collection of subproperty of frames
+                if (portalTypeProperty["0"] is WzCanvasProperty)
+                {
+                    frames.AddRange(LoadFrames(portalTypeProperty, portalInstance.X, portalInstance.Y, device, ref usedProps, false));
+                    portalTypeProperty = null;
+                }
+            }
 
             if (portalTypeProperty != null)
             {
