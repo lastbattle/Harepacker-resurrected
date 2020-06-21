@@ -53,10 +53,11 @@ namespace HaCreator.MapSimulator
         private readonly List<BackgroundItem> backgrounds_back = new List<BackgroundItem>();
 
         // Boundary, borders
-        private Rectangle vr;
+        private Rectangle vr_fieldBoundary;
 
         // Minimap
-        private Texture2D pixel;
+        private Texture2D texture_miniMapPixel;
+        private Texture2D texturer_miniMap;
 
         // Cursor, mouse
         private MouseCursorItem mouseCursor;
@@ -65,7 +66,6 @@ namespace HaCreator.MapSimulator
         private WzMp3Streamer audio;
 
         // Etc
-        private Texture2D minimap;
         private readonly Board mapBoard;
 
         // Spine
@@ -76,14 +76,12 @@ namespace HaCreator.MapSimulator
         private SpriteFont font_DebugValues;
 
         /// <summary>
-        /// Constructor
+        /// MapSimulator Constructor
         /// </summary>
         /// <param name="mapBoard"></param>
         /// <param name="titleName"></param>
         public MapSimulator(Board mapBoard, string titleName)
         {
-            IsMouseVisible = true;
-
             this.mapBoard = mapBoard;
 
             this.mapRenderResolution = UserSettings.SimulateResolution;
@@ -96,19 +94,12 @@ namespace HaCreator.MapSimulator
             // set Form window height & width
             //this.Width = (int)(RenderWidth * dpi);
             //this.Height = (int)(RenderHeight * dpi);
-
-            // default center
-            int leftRightVRDifference = vr.Right - vr.Left;
-            int topDownVRDifference = vr.Bottom - vr.Top;
-
-            mapShiftX = ((leftRightVRDifference / 2) + vr.Left) - (RenderWidth / 2);
-            mapShiftY = ((topDownVRDifference / 2) + vr.Top) - (RenderHeight / 2);
-
+            
             //Window.IsBorderless = true;
             //Window.Position = new Point(0, 0);
             Window.Title = titleName;
             IsFixedTimeStep = false; // dont cap fps
-            IsMouseVisible = false;
+            IsMouseVisible = false; // draws our own custom cursor here.. 
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -127,6 +118,7 @@ namespace HaCreator.MapSimulator
 
         }
 
+        #region Loading and unloading
         private void InitialiseMapWidthHeight()
         {
             RenderObjectScaling = 1.0f;
@@ -211,7 +203,6 @@ namespace HaCreator.MapSimulator
             base.Initialize();
         }
 
-
         /// <summary>
         /// Load game assets
         /// </summary>
@@ -231,9 +222,9 @@ namespace HaCreator.MapSimulator
                 }
             }
             if (mapBoard.VRRectangle == null)
-                vr = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+                vr_fieldBoundary = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
             else
-                vr = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
+                vr_fieldBoundary = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
             // Background and objects
@@ -331,14 +322,18 @@ namespace HaCreator.MapSimulator
 
             // Minimap
             minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
-            this.minimap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
+            this.texturer_miniMap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
 
             //
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
-            pixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
+            texture_miniMapPixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
 
             spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            // default positioning for character
+            SetCameraMoveX(true, true, 0);
+            SetCameraMoveY(true, true, 0);
 
             // cleanup
             // clear used items
@@ -372,9 +367,10 @@ namespace HaCreator.MapSimulator
 
             backgrounds_front.Clear();
             backgrounds_back.Clear();
+        }
+        #endregion
 
-    }
-
+        #region Update and Drawing
         /// <summary>
         /// Key handling
         /// </summary>
@@ -415,82 +411,15 @@ namespace HaCreator.MapSimulator
             bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
             bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-            int offset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
+            int moveOffset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
 
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
             {
-                int leftRightVRDifference = (int)((vr.Right - vr.Left) * RenderObjectScaling);
-                if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
-                {
-                    /*
-                     * Orbis Tower <20th Floor>
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  |____________|
-                     *  
-                     * vr.Left = 87
-                     * vr.Right = 827
-                     * Difference = 740px
-                     * vr.Center = ((vr.Right - vr.Left) / 2) + vr.Left
-                     * 
-                     * Viewing Width = 1024 
-                     * Relative viewing center = vr.Center - (Viewing Width / 2)
-                     */
-                    mapShiftX = ((leftRightVRDifference / 2) + (int)(vr.Left * RenderObjectScaling)) - (RenderWidth / 2);
-                }
-                else
-                {
-                    // System.Diagnostics.Debug.WriteLine("[{4}] VR.Right {0}, Width {1}, Relative {2}. [Scaling {3}]", 
-                    //      vr.Right, RenderWidth, (int)(vr.Right - RenderWidth), (int)((vr.Right - (RenderWidth * RenderObjectScaling)) * RenderObjectScaling),
-                    //     mapShiftX + offset);
-
-                    if (bIsLeftKeyPressed)
-                        mapShiftX =
-                            Math.Max(
-                                (int)(vr.Left * RenderObjectScaling),
-                                mapShiftX - offset);
-
-                    else if (bIsRightKeyPressed)
-                        mapShiftX =
-                            Math.Min(
-                                 (int)((vr.Right - (RenderWidth / RenderObjectScaling))),
-                                mapShiftX + offset);
-                }
+                SetCameraMoveX(bIsLeftKeyPressed, bIsRightKeyPressed, moveOffset);
             }
-
-
             if (bIsUpKeyPressed || bIsDownKeyPressed)
             {
-                int topDownVRDifference = (int)((vr.Bottom - vr.Top) * RenderObjectScaling);
-                if (topDownVRDifference < RenderHeight)
-                {
-                    mapShiftY = ((topDownVRDifference / 2) + (int)(vr.Top * RenderObjectScaling)) - (RenderHeight / 2);
-                }
-                else
-                {
-                    /*System.Diagnostics.Debug.WriteLine("[{0}] VR.Bottom {1}, Height {2}, Relative {3}. [Scaling {4}]",
-                        (int)((vr.Bottom - (RenderHeight))),
-                        vr.Bottom, RenderHeight, (int)(vr.Bottom - RenderHeight),
-                        mapShiftX + offset);*/
-
-
-                    if (bIsUpKeyPressed)
-                        mapShiftY =
-                            Math.Max(
-                                (int)(vr.Top),
-                                mapShiftY - offset);
-
-                    else if (bIsDownKeyPressed)
-                        mapShiftY =
-                            Math.Min(
-                                (int)((vr.Bottom - (RenderHeight / RenderObjectScaling))),
-                                mapShiftY + offset);
-                }
+                SetCameraMoveY(bIsUpKeyPressed, bIsDownKeyPressed, moveOffset);
             }
 
             base.Update(gameTime);
@@ -580,9 +509,9 @@ namespace HaCreator.MapSimulator
             //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             // Minimap
-            if (minimap != null)
+            if (texturer_miniMap != null)
             {
-                spriteBatch.Draw(minimap, new Rectangle(minimapPos.X, minimapPos.Y, minimap.Width, minimap.Height), Color.White);
+                spriteBatch.Draw(texturer_miniMap, new Rectangle(minimapPos.X, minimapPos.Y, texturer_miniMap.Width, texturer_miniMap.Height), Color.White);
                 int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
                 int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
 
@@ -623,18 +552,18 @@ namespace HaCreator.MapSimulator
         private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
         {
             // Draw top line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
+            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
 
             // Draw left line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
+            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
 
             // Draw right line
-            sprite.Draw(pixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
+            sprite.Draw(texture_miniMapPixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
                                             rectangleToDraw.Y,
                                             thicknessOfBorder,
                                             rectangleToDraw.Height), borderColor);
             // Draw bottom line
-            sprite.Draw(pixel, new Rectangle(rectangleToDraw.X,
+            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X,
                                             rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
                                             rectangleToDraw.Width,
                                             thicknessOfBorder), borderColor);
@@ -645,17 +574,108 @@ namespace HaCreator.MapSimulator
         {
             int width = (int)Vector2.Distance(start, end);
             float rotation = (float)Math.Atan2((double)(end.Y - start.Y), (double)(end.X - start.X));
-            sprite.Draw(pixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
+            sprite.Draw(texture_miniMapPixel, new Rectangle((int)start.X, (int)start.Y, width, UserSettings.LineWidth), null, color, rotation, new Vector2(0f, 0f), SpriteEffects.None, 1f);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
         {
-            sprite.Draw(pixel, rectangle, color);
+            sprite.Draw(texture_miniMapPixel, rectangle, color);
+        }
+        #endregion
+
+        #region Boundaries
+        /// <summary>
+        /// Move the camera X viewing range by a specific offset, & centering if needed.
+        /// </summary>
+        /// <param name="bIsLeftKeyPressed"></param>
+        /// <param name="bIsRightKeyPressed"></param>
+        /// <param name="moveOffset"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetCameraMoveX(bool bIsLeftKeyPressed, bool bIsRightKeyPressed, int moveOffset)
+        {
+            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * RenderObjectScaling);
+            if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
+            {
+                /*
+                 * Orbis Tower <20th Floor>
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  |____________|
+                 *  
+                 * vr.Left = 87
+                 * vr.Right = 827
+                 * Difference = 740px
+                 * vr.Center = ((vr.Right - vr.Left) / 2) + vr.Left
+                 * 
+                 * Viewing Width = 1024 
+                 * Relative viewing center = vr.Center - (Viewing Width / 2)
+                 */
+                mapShiftX = ((leftRightVRDifference / 2) + (int)(vr_fieldBoundary.Left * RenderObjectScaling)) - (RenderWidth / 2);
+            }
+            else
+            {
+                // System.Diagnostics.Debug.WriteLine("[{4}] VR.Right {0}, Width {1}, Relative {2}. [Scaling {3}]", 
+                //      vr.Right, RenderWidth, (int)(vr.Right - RenderWidth), (int)((vr.Right - (RenderWidth * RenderObjectScaling)) * RenderObjectScaling),
+                //     mapShiftX + offset);
+
+                if (bIsLeftKeyPressed)
+                    mapShiftX =
+                        Math.Max(
+                            (int)(vr_fieldBoundary.Left * RenderObjectScaling),
+                            mapShiftX - moveOffset);
+
+                else if (bIsRightKeyPressed)
+                    mapShiftX =
+                        Math.Min(
+                             (int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))),
+                            mapShiftX + moveOffset);
+            }
         }
 
+        /// <summary>
+        /// Move the camera Y viewing range by a specific offset, & centering if needed.
+        /// </summary>
+        /// <param name="bIsUpKeyPressed"></param>
+        /// <param name="bIsDownKeyPressed"></param>
+        /// <param name="moveOffset"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void SetCameraMoveY(bool bIsUpKeyPressed, bool bIsDownKeyPressed, int moveOffset)
+        {
+            int topDownVRDifference = (int)((vr_fieldBoundary.Bottom - vr_fieldBoundary.Top) * RenderObjectScaling);
+            if (topDownVRDifference < RenderHeight)
+            {
+                mapShiftY = ((topDownVRDifference / 2) + (int)(vr_fieldBoundary.Top * RenderObjectScaling)) - (RenderHeight / 2);
+            }
+            else
+            {
+                /*System.Diagnostics.Debug.WriteLine("[{0}] VR.Bottom {1}, Height {2}, Relative {3}. [Scaling {4}]",
+                    (int)((vr.Bottom - (RenderHeight))),
+                    vr.Bottom, RenderHeight, (int)(vr.Bottom - RenderHeight),
+                    mapShiftX + offset);*/
 
 
+                if (bIsUpKeyPressed)
+                    mapShiftY =
+                        Math.Max(
+                            (int)(vr_fieldBoundary.Top),
+                            mapShiftY - moveOffset);
+
+                else if (bIsDownKeyPressed)
+                    mapShiftY =
+                        Math.Min(
+                            (int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))),
+                            mapShiftY + moveOffset);
+            }
+        }
+        #endregion
+
+        #region Spine specific
         public void Start(AnimationState state, int trackIndex)
         {
 #if !WINDOWS_STOREAPP
@@ -683,5 +703,6 @@ namespace HaCreator.MapSimulator
             Console.WriteLine(trackIndex + " " + state.GetCurrent(trackIndex) + ": event " + e);
 #endif
         }
+        #endregion
     }
 }

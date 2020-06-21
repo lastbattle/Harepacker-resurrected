@@ -394,6 +394,7 @@
     <Compile Include="GUI\TabItemContainer.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\PortalItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\ReactorItem.cs" />
+    <Compile Include="MapSimulator\TexturePool.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>

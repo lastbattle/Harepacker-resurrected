@@ -66,8 +66,19 @@ namespace HaCreator.MapSimulator
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, null);
                 if (!bLoadedSpine)
                 {
-                    if (source.MSTag == null)
+                    string canvasBitmapPath = property.FullPath;
+                    Texture2D textureFromCache = TexturePool.GetTexture(canvasBitmapPath);
+                    if (textureFromCache != null)
+                    {
+                        source.MSTag = textureFromCache;
+                    }
+                    else
+                    {
                         source.MSTag = BoardItem.TextureFromBitmap(device, property.GetLinkedWzCanvasBitmap());
+
+                        // add to cache
+                        TexturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                    }
                 }
                 usedProps.Add(source);
 
@@ -106,7 +117,21 @@ namespace HaCreator.MapSimulator
                     if (!bLoadedSpine)
                     {
                         if (frameProp.MSTag == null)
-                            frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                        {
+                            string canvasBitmapPath = frameProp.FullPath;
+                            Texture2D textureFromCache = TexturePool.GetTexture(canvasBitmapPath);
+                            if (textureFromCache != null)
+                            {
+                                frameProp.MSTag = textureFromCache;
+                            }
+                            else
+                            {
+                                frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+
+                                // add to cache
+                                TexturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
+                            }
+                        }
                     }
                     usedProps.Add(frameProp);
 
