@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator
         private MapRenderResolution mapRenderResolution;
 
         private GraphicsDeviceManager _DxDeviceManager;
+        private TexturePool texturePool = new TexturePool();
 
         private SpriteBatch spriteBatch;
 
@@ -235,21 +236,21 @@ namespace HaCreator.MapSimulator
                 WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
 
                 mapObjects[tileObj.LayerNumber].Add(
-                    MapSimulatorLoader.CreateMapItemFromProperty(tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    MapSimulatorLoader.CreateMapItemFromProperty(texturePool, tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_back.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
             foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
             {
                 WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
                 backgrounds_front.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
             }
 
             // Load reactors
@@ -259,7 +260,7 @@ namespace HaCreator.MapSimulator
 
                 //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
-                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(reactorInfo.LinkedWzImage, reactor, reactorInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactorInfo.LinkedWzImage, reactor, reactorInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_Reactors.Add(reactorItem);
             }
 
@@ -270,7 +271,7 @@ namespace HaCreator.MapSimulator
 
                 //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
 
-                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(npcInfo.LinkedWzImage, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npcInfo.LinkedWzImage, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_NPCs.Add(npcItem);
             }
             // Load Mobs
@@ -280,7 +281,7 @@ namespace HaCreator.MapSimulator
 
                 //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
 
-                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(mobInfo.LinkedWzImage, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mobInfo.LinkedWzImage, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_Mobs.Add(npcItem);
             }
 
@@ -305,14 +306,14 @@ namespace HaCreator.MapSimulator
                     portal.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
                     continue;
 
-                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 if (portalItem != null) 
                     mapObjects_Portal.Add(portalItem);
             }
 
             // Cursor
             WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
-            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
 
             // Spine object
             skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
@@ -367,6 +368,8 @@ namespace HaCreator.MapSimulator
 
             backgrounds_front.Clear();
             backgrounds_back.Clear();
+
+            texturePool.Dispose();
         }
         #endregion
 
