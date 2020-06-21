@@ -18,6 +18,8 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -39,6 +41,7 @@ namespace HaCreator.MapSimulator
 
         private GraphicsDeviceManager _DxDeviceManager;
         private TexturePool texturePool = new TexturePool();
+        private bool bSaveScreenshot = false, bSaveScreenshotComplete = true; // flag for saving a screenshot file
 
         private SpriteBatch spriteBatch;
 
@@ -402,6 +405,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            // Handle print screen
+            if (Keyboard.GetState().IsKeyDown(Keys.PrintScreen))
+            {
+                if (!bSaveScreenshot && bSaveScreenshotComplete)
+                {
+                    this.bSaveScreenshot = true; // flag for screenshot
+                    this.bSaveScreenshotComplete = false;
+                }
+            }
+
+
             // Handle mouse
             mouseCursor.UpdateCursorState();
 
@@ -415,7 +429,6 @@ namespace HaCreator.MapSimulator
             bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
             int moveOffset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
-
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
             {
                 SetCameraMoveX(bIsLeftKeyPressed, bIsRightKeyPressed, moveOffset);
@@ -433,6 +446,7 @@ namespace HaCreator.MapSimulator
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             int TickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
+
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
@@ -482,16 +496,16 @@ namespace HaCreator.MapSimulator
             }
 
             // Life (NPC + Mobs)
-            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs
+            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
             {
-                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
-            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
+            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
-                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
@@ -511,6 +525,7 @@ namespace HaCreator.MapSimulator
             //Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
             //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
+            // UI related here
             // Minimap
             if (texturer_miniMap != null)
             {
@@ -523,7 +538,7 @@ namespace HaCreator.MapSimulator
 
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
-                spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] for navigation.", new Vector2(20, 10), Color.White);
+                spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.", new Vector2(20, 10), Color.White);
 
 
 #if SIMULATOR_DEBUG_INFO
@@ -539,8 +554,51 @@ namespace HaCreator.MapSimulator
                 RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
 
             spriteBatch.End();
-           //skeletonMeshRenderer.End();
+            //skeletonMeshRenderer.End();
 
+
+            // Save screenshot if render is activated
+            if (bSaveScreenshot)
+            {
+                bSaveScreenshot = false;
+
+                //Pull the picture from the buffer 
+                int[] backBuffer = new int[RenderWidth * RenderHeight];
+                GraphicsDevice.GetBackBufferData(backBuffer);
+
+                //Copy to texture
+                using (Texture2D texture = new Texture2D(GraphicsDevice, RenderWidth, RenderHeight, false, SurfaceFormat.Color))
+                {
+                    texture.SetData(backBuffer);
+
+                    //Get a date for file name
+                    DateTime dateTimeNow = DateTime.Now;
+                    string fileName = String.Format("Maple_{0}{1}{2}_{3}{4}{5}.png",
+                            dateTimeNow.Day.ToString("D2"), dateTimeNow.Month.ToString("D2"), (dateTimeNow.Year - 2000).ToString("D2"),
+                             dateTimeNow.Hour.ToString("D2"), dateTimeNow.Minute.ToString("D2"), dateTimeNow.Second.ToString("D2")
+                            );
+                    
+                    using (MemoryStream stream_png = new MemoryStream()) // memorystream for png
+                    {
+                        texture.SaveAsPng(stream_png, RenderWidth, RenderHeight); // save to png stream
+
+                        using (MemoryStream stream_jpeg = new MemoryStream()) // memorystream for jpeg
+                        {
+                            var imageStream_png = System.Drawing.Image.FromStream(stream_png); // png Image
+                            imageStream_png.Save(stream_jpeg, ImageFormat.Jpeg); // save as jpeg  - TODO: Fix System.Runtime.InteropServices.ExternalException: 'A generic error occurred in GDI+.' sometimes.. no idea
+
+                            byte[] jpegOutStream = stream_jpeg.ToArray();
+
+                            // Save
+                            using (FileStream fs = File.Open(fileName, FileMode.OpenOrCreate))
+                            {
+                                fs.Write(jpegOutStream, 0, jpegOutStream.Length);
+                            }
+                        }
+                    }
+                }
+                bSaveScreenshotComplete = true;
+            }
             base.Draw(gameTime);
         }
 

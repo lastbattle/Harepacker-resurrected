@@ -247,6 +247,10 @@ namespace HaRepacker
             SortNodesRecursively(node);
         }
 
+        /// <summary>
+        /// Sort all nodes that is a parent of 
+        /// </summary>
+        /// <param name="parent"></param>
         private void SortNodesRecursively(WzNode parent)
         {
             if (Program.ConfigurationManager.UserSettings.Sort)
