@@ -50,24 +50,46 @@ namespace HaCreator.MapSimulator
         }
 
         #region Common
-        private static List<IDXObject> LoadFrames(WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        /// <summary>
+        /// Load frames from WzSubProperty or WzCanvasProperty
+        /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="spineAni">Spine animation path</param>
+        /// <returns></returns>
+        private static List<IDXObject> LoadFrames(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, string spineAni = null)
         {
             List<IDXObject> frames = new List<IDXObject>();
 
             source = WzInfoTools.GetRealProperty(source);
 
-            if (source is WzSubProperty && ((WzSubProperty)source).WzProperties.Count == 1)
+            if (source is WzSubProperty property1 && property1.WzProperties.Count == 1)
             {
-                source = ((WzSubProperty)source).WzProperties[0];
+                source = property1.WzProperties[0];
             }
 
             if (source is WzCanvasProperty property) //one-frame
             {
-                bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, null);
+                bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, spineAni);
                 if (!bLoadedSpine)
                 {
-                    if (source.MSTag == null)
+                    string canvasBitmapPath = property.FullPath;
+                    Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+                    if (textureFromCache != null)
+                    {
+                        source.MSTag = textureFromCache;
+                    }
+                    else
+                    {
                         source.MSTag = BoardItem.TextureFromBitmap(device, property.GetLinkedWzCanvasBitmap());
+
+                        // add to cache
+                        texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                    }
                 }
                 usedProps.Add(source);
 
@@ -102,11 +124,25 @@ namespace HaCreator.MapSimulator
                 {
                     int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
 
-                    bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, null);
+                    bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
                     if (!bLoadedSpine)
                     {
                         if (frameProp.MSTag == null)
-                            frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                        {
+                            string canvasBitmapPath = frameProp.FullPath;
+                            Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+                            if (textureFromCache != null)
+                            {
+                                frameProp.MSTag = textureFromCache;
+                            }
+                            else
+                            {
+                                frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+
+                                // add to cache
+                                texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
+                            }
+                        }
                     }
                     usedProps.Add(frameProp);
 
@@ -140,6 +176,7 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Map item
         /// </summary>
+        /// <param name="texturePool"></param>
         /// <param name="source"></param>
         /// <param name="x"></param>
         /// <param name="y"></param>
@@ -149,24 +186,25 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BaseItem CreateMapItemFromProperty(WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BaseItem CreateMapItemFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
-            BaseItem mapItem = new BaseItem(LoadFrames(source, x, y, device, ref usedProps, flip), flip);
+            BaseItem mapItem = new BaseItem(LoadFrames(texturePool, source, x, y, device, ref usedProps), flip);
             return mapItem;
         }
 
         /// <summary>
         /// Background
         /// </summary>
+        /// <param name="texturePool"></param>
         /// <param name="source"></param>
         /// <param name="bgInstance"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BackgroundItem CreateBackgroundFromProperty(WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BackgroundItem CreateBackgroundFromProperty(TexturePool texturePool, WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
-            List<IDXObject> frames = LoadFrames(source, bgInstance.BaseX, bgInstance.BaseY, device, ref usedProps, flip);
+            List<IDXObject> frames = LoadFrames(texturePool, source, bgInstance.BaseX, bgInstance.BaseY, device, ref usedProps, bgInstance.SpineAni);
             if (frames.Count == 1)
             {
                 return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames[0], flip, bgInstance.screenMode);
@@ -266,20 +304,21 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Create reactor item
         /// </summary>
+        /// <param name="texturePool"></param>
         /// <param name="linkedReactorImage"></param>
         /// <param name="reactorInstance"></param>
         /// <param name="reactorInfo"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static ReactorItem CreateReactorFromProperty(WzImage linkedReactorImage, ReactorInstance reactorInstance, ReactorInfo reactorInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, WzImage linkedReactorImage, ReactorInstance reactorInstance, ReactorInfo reactorInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>();
 
             WzImageProperty framesImage = (WzImageProperty) linkedReactorImage["0"]?["0"];
             if (framesImage != null)
             {
-                frames = LoadFrames(framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps, reactorInstance.Flip);
+                frames = LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps);
             }
             if (frames.Count == 0)
                 return null;
@@ -288,7 +327,17 @@ namespace HaCreator.MapSimulator
         #endregion
 
         #region Portal       
-        public static PortalItem CreatePortalFromProperty(WzSubProperty gameParent, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="gameParent"></param>
+        /// <param name="portalInstance"></param>
+        /// <param name="portalInfo"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <returns></returns>
+        public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
@@ -297,7 +346,18 @@ namespace HaCreator.MapSimulator
 
             WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt];
             if (portalTypeProperty == null)
+            {
                 portalTypeProperty = (WzSubProperty)gameParent["pv"];
+            } 
+            else
+            {
+                // Support for older versions of MapleStory where 'pv' is a subproperty for the image frame than a collection of subproperty of frames
+                if (portalTypeProperty["0"] is WzCanvasProperty)
+                {
+                    frames.AddRange(LoadFrames(texturePool, portalTypeProperty, portalInstance.X, portalInstance.Y, device, ref usedProps));
+                    portalTypeProperty = null;
+                }
+            }
 
             if (portalTypeProperty != null)
             {
@@ -313,7 +373,7 @@ namespace HaCreator.MapSimulator
 
                     if (framesPropertyParent != null)
                     {
-                        frames.AddRange(LoadFrames(framesPropertyParent, portalInstance.X, portalInstance.Y, device, ref usedProps, false));
+                        frames.AddRange(LoadFrames(texturePool, framesPropertyParent, portalInstance.X, portalInstance.Y, device, ref usedProps));
                     }
                 }
             }
@@ -324,7 +384,17 @@ namespace HaCreator.MapSimulator
         #endregion
 
         #region Life
-        public static MobItem CreateMobFromProperty(WzImage source, MobInstance mobInstance, MobInfo mobInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="source"></param>
+        /// <param name="mobInstance"></param>
+        /// <param name="mobInfo"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <returns></returns>
+        public static MobItem CreateMobFromProperty(TexturePool texturePool, WzImage source, MobInstance mobInstance, MobInfo mobInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
@@ -339,7 +409,7 @@ namespace HaCreator.MapSimulator
                         }
                     default:
                         {
-                            frames.AddRange(LoadFrames(mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps, mobInstance.Flip));
+                            frames.AddRange(LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps));
                             break;
                         }
                 }
@@ -347,7 +417,17 @@ namespace HaCreator.MapSimulator
             return new MobItem(mobInstance, frames);
         }
 
-        public static NpcItem CreateNpcFromProperty(WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        /// <summary>
+        /// NPC
+        /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="source"></param>
+        /// <param name="npcInstance"></param>
+        /// <param name="npcInfo"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <returns></returns>
+        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
@@ -362,7 +442,7 @@ namespace HaCreator.MapSimulator
                         }
                     default:
                         {
-                            frames.AddRange(LoadFrames(npcStateProperty, npcInstance.X, npcInstance.Y, device, ref usedProps, npcInstance.Flip));
+                            frames.AddRange(LoadFrames(texturePool, npcStateProperty, npcInstance.X, npcInstance.Y, device, ref usedProps));
                             break;
                         }
                 }
@@ -376,6 +456,7 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Map item
         /// </summary>
+        /// <param name="texturePool"></param>
         /// <param name="source"></param>
         /// <param name="x"></param>
         /// <param name="y"></param>
@@ -385,14 +466,14 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static MouseCursorItem CreateMouseCursorFromProperty(WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             WzSubProperty cursorCanvas = (WzSubProperty)source?["0"];
             WzSubProperty cursorPressedCanvas = (WzSubProperty)source?["1"]; // click
 
-            List<IDXObject> frames = LoadFrames(cursorCanvas, x, y, device, ref usedProps, flip);
+            List<IDXObject> frames = LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
 
-            BaseItem clickedState = CreateMapItemFromProperty(cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseItem clickedState = CreateMapItemFromProperty(texturePool, cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
             return new MouseCursorItem(frames, clickedState);
         }
         #endregion

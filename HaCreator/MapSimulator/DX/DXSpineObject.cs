@@ -91,8 +91,6 @@ namespace HaCreator.MapSimulator.DX
             skeletonMeshRenderer.End();
         }
 
-        public bool IsSpineDxObject { get { return true; } }
-
         public int Delay
         {
             get { return delay; }

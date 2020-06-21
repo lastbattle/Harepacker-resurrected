@@ -136,7 +136,11 @@ namespace HaRepacker
                 img.ParseImage(true);
 
                 WzNode node = new WzNode(img);
+
+                panel.DataTree.BeginUpdate();
                 panel.DataTree.Nodes.Add(node);
+                panel.DataTree.EndUpdate();
+
                 if (Program.ConfigurationManager.UserSettings.Sort)
                 {
                     SortNodesRecursively(node);
@@ -210,6 +214,7 @@ namespace HaRepacker
                 currentDispatcher.BeginInvoke((Action)(() =>
                 {
                     panel.DataTree.BeginUpdate();
+
                     panel.DataTree.Nodes.Add(node);
                     SortNodesRecursively(node);
 
@@ -219,6 +224,7 @@ namespace HaRepacker
             else
             {
                 panel.DataTree.BeginUpdate();
+
                 panel.DataTree.Nodes.Add(node);
                 SortNodesRecursively(node);
 
@@ -233,7 +239,10 @@ namespace HaRepacker
                 wzFiles.Add(f);
             }
             WzNode node = new WzNode(f);
+
+            panel.DataTree.BeginUpdate();
             panel.DataTree.Nodes.Add(node);
+            panel.DataTree.EndUpdate();
 
             SortNodesRecursively(node);
         }
@@ -244,7 +253,9 @@ namespace HaRepacker
             {
                 parent.TreeView.TreeViewNodeSorter = SORTER;
 
+                parent.TreeView.BeginUpdate();
                 parent.TreeView.Sort();
+                parent.TreeView.EndUpdate();
             }
         }
 

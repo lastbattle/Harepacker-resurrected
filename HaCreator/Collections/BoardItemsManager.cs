@@ -43,7 +43,7 @@ namespace HaCreator.Collections
         public BoardItemsCollection Items;
         public MapleLinesCollection Lines;
 
-        private Board board;
+        private readonly Board board;
 
         public BoardItemsManager(Board board)
         {
@@ -112,15 +112,15 @@ namespace HaCreator.Collections
                     if (sort) 
                         Sort();
                 }
-                else if (item is BackgroundInstance)
+                else if (item is BackgroundInstance instance)
                 {
-                    if (((BackgroundInstance)item).front)
+                    if (instance.front)
                     {
-                        FrontBackgrounds.Add((BackgroundInstance)item);
+                        FrontBackgrounds.Add(instance);
                     }
                     else
                     {
-                        BackBackgrounds.Add((BackgroundInstance)item);
+                        BackBackgrounds.Add(instance);
                     }
                     if (sort) 
                         Sort();

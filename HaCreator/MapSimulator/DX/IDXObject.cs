@@ -16,8 +16,6 @@ namespace HaCreator.MapSimulator.DX
         void DrawBackground(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime, 
             int x, int y, Color color, bool flip);
 
-        bool IsSpineDxObject { get; }
-
         int Delay { get; }
 
         int X { get; }
