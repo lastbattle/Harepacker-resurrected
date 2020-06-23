@@ -11,7 +11,10 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
+using Microsoft.Xna.Framework.Graphics;
+using System;
 using System.Drawing;
+using System.Linq;
 
 namespace HaCreator.MapEditor.Info
 {
@@ -21,6 +24,8 @@ namespace HaCreator.MapEditor.Info
         private string _no;
         private BackgroundInfoType _type;
         private readonly WzImageProperty imageProperty;
+
+        private WzSpineAnimationItem wzSpineAnimationItem; // only applicable if its a spine item, otherwise null.
 
         /// <summary>
         /// Constructor
@@ -32,23 +37,27 @@ namespace HaCreator.MapEditor.Info
         /// <param name="_type"></param>
         /// <param name="no"></param>
         /// <param name="parentObject"></param>
-        private BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject)
+        /// <param name="wzSpineAnimationItem"></param>
+        private BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject,
+            WzSpineAnimationItem wzSpineAnimationItem)
             : base(image, origin, parentObject)
         {
             this.imageProperty = imageProperty;
             this._bS = bS;
             this._type = _type;
             this._no = no;
+            this.wzSpineAnimationItem = wzSpineAnimationItem;
         }
 
         /// <summary>
         /// Get background by name
         /// </summary>
+        /// <param name="graphicsDevice">The graphics device that the backgroundInfo is to be rendered on (loading spine)</param>
         /// <param name="bS"></param>
         /// <param name="type">Select type</param>
         /// <param name="no"></param>
         /// <returns></returns>
-        public static BackgroundInfo Get(string bS, BackgroundInfoType type, string no)
+        public static BackgroundInfo Get(GraphicsDevice graphicsDevice, string bS, BackgroundInfoType type, string no)
         {
             if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
                 return null;
@@ -56,23 +65,36 @@ namespace HaCreator.MapEditor.Info
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
             WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"][no];
 
-            if (bgInfoProp.HCTag == null)
+            if (type == BackgroundInfoType.Spine)
             {
-                bgInfoProp.HCTag = Load(bgInfoProp, bS, type, no);
+                if (bgInfoProp.HCTagSpine == null)
+                {
+                    bgInfoProp.HCTagSpine = Load(graphicsDevice, bgInfoProp, bS, type, no);
+                }
+
+                return (BackgroundInfo)bgInfoProp.HCTagSpine;
             }
-            return (BackgroundInfo)bgInfoProp.HCTag;
+            else
+            {
+                if (bgInfoProp.HCTag == null)
+                {
+                    bgInfoProp.HCTag = Load(graphicsDevice, bgInfoProp, bS, type, no);
+                }
+                return (BackgroundInfo)bgInfoProp.HCTag;
+            }
         }
 
         /// <summary>
         /// Load background from WzImageProperty
         /// </summary>
+        /// <param name="graphicsDevice">The graphics device that the backgroundInfo is to be rendered on (loading spine)</param>
         /// <param name="parentObject"></param>
         /// <param name="spineParentObject"></param>
         /// <param name="bS"></param>
         /// <param name="type"></param>
         /// <param name="no"></param>
         /// <returns></returns>
-        private static BackgroundInfo Load(WzImageProperty parentObject, string bS, BackgroundInfoType type, string no)
+        private static BackgroundInfo Load(GraphicsDevice graphicsDevice, WzImageProperty parentObject, string bS, BackgroundInfoType type, string no)
         {
             WzCanvasProperty frame0;
             if (type == BackgroundInfoType.Animation)
@@ -85,22 +107,40 @@ namespace HaCreator.MapEditor.Info
                 WzCanvasProperty spineCanvas = (WzCanvasProperty)parentObject["0"];
                 if (spineCanvas != null)
                 {
+                    // Load spine
+                    WzSpineAnimationItem wzSpineAnimationItem = null;
+                    if (graphicsDevice != null) // graphicsdevice needed to work.. assuming that it is loaded by now before BackgroundPanel
+                    {
+                        WzImageProperty spineAtlasProp = ((WzSubProperty)parentObject).WzProperties.FirstOrDefault(
+                            wzprop => wzprop is WzStringProperty && ((WzStringProperty)wzprop).IsSpineAtlasResources);
+                        if (spineAtlasProp != null)
+                        {
+                            WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
+                            wzSpineAnimationItem = new WzSpineAnimationItem(stringObj);
+
+                            wzSpineAnimationItem.LoadResources(graphicsDevice);
+                        }
+                    }
+
+                    // Preview Image
                     Bitmap bitmap = spineCanvas.GetLinkedWzCanvasBitmap();
+
+                    // Origin
                     PointF origin__ = spineCanvas.GetCanvasOriginPosition();
 
-                    return new BackgroundInfo(parentObject, bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject);
+                    return new BackgroundInfo(parentObject, bitmap, WzInfoTools.PointFToSystemPoint(origin__), bS, type, no, parentObject, wzSpineAnimationItem);
                 }
                 else
                 {
                     PointF origin_ = new PointF();
-                    return new BackgroundInfo(parentObject, Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject);
+                    return new BackgroundInfo(parentObject, Properties.Resources.placeholder, WzInfoTools.PointFToSystemPoint(origin_), bS, type, no, parentObject, null);
                 }
             }
             else
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
 
             PointF origin = frame0.GetCanvasOriginPosition();
-            return new BackgroundInfo(frame0, frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject);
+            return new BackgroundInfo(frame0, frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject, null);
         }
 
         /// <summary>
@@ -140,6 +180,14 @@ namespace HaCreator.MapEditor.Info
         public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode, 
             string spineAni, bool spineRandomStart)
         {
+            if (spineAni == null) // if one isnt set already, via pre-existing object in map. It probably means its created via BackgroundPanel
+            { 
+                // attempt to get one
+                if (wzSpineAnimationItem != null && wzSpineAnimationItem.SkeletonData.Animations.Count > 0)
+                {
+                    spineAni = wzSpineAnimationItem.SkeletonData.Animations[0].Name; // actually we should allow the user to select, but nexon only places 1 animation for now
+                }
+            }
             return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode, 
                 spineAni, spineRandomStart);
         }

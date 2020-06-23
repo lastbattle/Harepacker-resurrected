@@ -735,16 +735,25 @@ namespace HaCreator.MapEditor
         {
             lock (multiBoard)
             {
+                bool deviceLoadedThisTime = false;
+
+                // load multiboard early before map
+                if (!multiBoard.DeviceReady)
+                {
+                    ribbon.SetEnabled(true);
+                    ribbon.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
+                    multiBoard.Start();
+                    backupMan.Start();
+
+                    deviceLoadedThisTime = true;
+                }
+
                 if (loader == null || loader.ShowDialog() == DialogResult.OK)
                 {
-                    if (!multiBoard.DeviceReady)
+                    if (deviceLoadedThisTime)
                     {
-                        ribbon.SetEnabled(true);
-                        ribbon.SetOptions(UserSettings.useMiniMap, UserSettings.emulateParallax, UserSettings.useSnapping, ApplicationSettings.randomTiles, ApplicationSettings.InfoMode);
                         if (FirstMapLoaded != null)
                             FirstMapLoaded.Invoke();
-                        multiBoard.Start();
-                        backupMan.Start();
                     }
                     multiBoard.SelectedBoard.SelectedPlatform = multiBoard.SelectedBoard.SelectedLayerIndex == -1 ? -1 : multiBoard.SelectedBoard.Layers[multiBoard.SelectedBoard.SelectedLayerIndex].zMList.ElementAt(0);
                     ribbon.SetLayers(multiBoard.SelectedBoard.Layers);

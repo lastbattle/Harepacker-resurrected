@@ -160,6 +160,7 @@
     </Compile>
     <Compile Include="Exceptions\DeserializationException.cs" />
     <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
+    <Compile Include="Exceptions\NoVRException.cs" />
     <Compile Include="GUI\HaEditor.xaml.cs">
       <DependentUpon>HaEditor.xaml</DependentUpon>
     </Compile>
