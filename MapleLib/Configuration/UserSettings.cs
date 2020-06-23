@@ -34,7 +34,7 @@ namespace MapleLib.Configuration
         public bool AutoAssociate = true;
 
         [JsonProperty(PropertyName = "Sort")]
-        public bool Sort = true;
+        public bool Sort = false;
 
         [JsonProperty(PropertyName = "SuppressWarnings")]
         public bool SuppressWarnings = false;

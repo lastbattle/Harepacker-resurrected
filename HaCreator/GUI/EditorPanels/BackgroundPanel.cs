@@ -87,7 +87,7 @@ namespace HaCreator.GUI.EditorPanels
 
             foreach (WzImageProperty prop in parentProp.WzProperties)
             {
-                BackgroundInfo bgInfo = BackgroundInfo.Get((string)bgSetListBox.SelectedItem, infoType, prop.Name);
+                BackgroundInfo bgInfo = BackgroundInfo.Get(hcsm.MultiBoard.GraphicsDevice, (string)bgSetListBox.SelectedItem, infoType, prop.Name);
                 if (bgInfo == null)
                     continue;
 

@@ -75,7 +75,7 @@
                             <ColumnDefinition Width="70" />
                             <ColumnDefinition Width="70" />
                             <ColumnDefinition Width="80" />
-                            <ColumnDefinition Width="100" />
+                            <ColumnDefinition Width="110" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
@@ -83,23 +83,29 @@
                             <RowDefinition Height="20" />
                             <RowDefinition Height="20" />
                         </Grid.RowDefinitions>
+                        
                         <CheckBox x:Name="tilesCheck" Content="Tiles" Grid.Column="0" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="objsCheck" Content="Objects" Grid.Column="0" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="npcsCheck" Content="NPCs" Grid.Column="0" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        
                         <CheckBox x:Name="mobsCheck" Content="Mobs" Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="reactCheck" Content="Reactors" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="portalCheck" Content="Portals" Grid.Column="1" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        
                         <CheckBox x:Name="fhCheck" Content="Footholds" Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="ropeCheck" Content="Ropes" Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="chairCheck" Content="Chairs" Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        
                         <CheckBox x:Name="tooltipCheck" Content="Tooltips" Grid.Column="3" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="bgCheck" Content="Backgrounds" Grid.Column="3" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="miscCheck" Content="Other" Grid.Column="3" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
+                        
                         <cc:CheckboxButton x:Name="allFullCheck" Content="All Objects" Grid.Column="4" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="True" Clicked="allFullCheck_Click" Focusable="False"/>
                         <cc:CheckboxButton x:Name="allHalfCheck" Content="All Objects" Grid.Column="4" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="{x:Null}" Clicked="allHalfCheck_Click" Focusable="False"/>
                         <cc:CheckboxButton x:Name="allClearCheck" Content="All Objects" Grid.Column="4" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="False" Clicked="allClearCheck_Click" Focusable="False"/>
                     </Grid>
                 </RibbonGroup>
+                
                 <RibbonGroup x:Name="Layers" Header="Layers">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -153,6 +159,7 @@
                     </Grid>
                 </RibbonGroup>
             </RibbonTab>
+            
             <RibbonTab x:Name="toolsTab" Header="Tools" KeyTip="T">
                 <RibbonGroup x:Name="Tools" Header="Tools">
                     <RibbonButton Label="Settings" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Command="ns:HaRibbon.Settings" Focusable="False"/>

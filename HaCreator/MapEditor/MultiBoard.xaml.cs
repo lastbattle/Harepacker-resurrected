@@ -144,13 +144,16 @@ namespace HaCreator.MapEditor
             this.SizeChanged += MultiBoard2_SizeChanged;
         }
 
+        /// <summary>
+        /// Starts the multi board along with associated graphics device
+        /// </summary>
         public void Start()
         {
             if (DeviceReady) 
                 return;
 
-            if (selectedBoard == null) 
-                throw new Exception("Cannot start without a selected board");
+            //if (selectedBoard == null) 
+            //    throw new Exception("Cannot start without a selected board");
             Visibility = Visibility.Visible;
 
             AdjustScrollBars();
@@ -358,7 +361,10 @@ namespace HaCreator.MapEditor
             get { return vScrollBar.Maximum; }
         }
 
-        public GraphicsDevice Device
+        /// <summary>
+        /// Gets the graphic device for rendering on the multiboard
+        /// </summary>
+        public GraphicsDevice GraphicsDevice
         {
             get { return DxDevice; }
         }
@@ -392,6 +398,8 @@ namespace HaCreator.MapEditor
         {
             get
             {
+                if (selectedBoard == null)
+                    return new Point(0, 0);
                 return selectedBoard.MapSize;
             }
         }

@@ -27,6 +27,7 @@ using System.Windows.Media;
 using HaSharedLibrary.Util;
 using HaCreator.GUI;
 using HaCreator.MapSimulator;
+using HaCreator.Exceptions;
 
 namespace HaCreator.Wz
 {
@@ -197,12 +198,17 @@ namespace HaCreator.Wz
 
         public void LoadLayers(WzImage mapImage, Board mapBoard)
         {
-            for (int layer = 0; layer <= 7; layer++)
+            for (int layer = 0; layer <= WzConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = (WzSubProperty)mapImage[layer.ToString()];
-                WzImageProperty tSprop = layerProp["info"]["tS"];
+                if (layerProp == null)
+                    continue; // most maps only have 7 layers.
+
+                WzImageProperty tSprop = layerProp["info"]?["tS"];
                 string tS = null;
-                if (tSprop != null) tS = InfoTool.GetString(tSprop);
+                if (tSprop != null) 
+                    tS = InfoTool.GetString(tSprop);
+
                 foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
                 {
                     int x = InfoTool.GetInt(obj["x"]);
@@ -600,7 +606,15 @@ namespace HaCreator.Wz
                 bool ani = InfoTool.GetBool(bgProp["ani"]);
                 string no = InfoTool.GetInt(bgProp["no"]).ToString();
 
-                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani ? BackgroundInfoType.Animation : BackgroundInfoType.Background, no);
+                BackgroundInfoType infoType ;
+                if (spineAni != null)
+                    infoType = BackgroundInfoType.Spine;
+                else if (ani)
+                    infoType = BackgroundInfoType.Animation;
+                else
+                    infoType = BackgroundInfoType.Background;
+
+                BackgroundInfo bgInfo = BackgroundInfo.Get(mapBoard.ParentControl.GraphicsDevice, bS, infoType, no);
                 if (bgInfo == null)
                     continue;
 
@@ -885,6 +899,7 @@ namespace HaCreator.Wz
             lock (multiBoard)
             {
                 CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, Tabs, multiBoard);
+                
                 Board mapBoard = multiBoard.SelectedBoard;
                 mapBoard.Loading = true; // prevents TS Change callbacks
                 mapBoard.MapInfo = info;
@@ -899,6 +914,8 @@ namespace HaCreator.Wz
                 {
                     mapBoard.VRRectangle = new VRRectangle(mapBoard, VR);
                 }
+                // ensure that the MultiBoard.GraphicDevice is loaded at this point before loading images
+
                 LoadLayers(mapImage, mapBoard);
                 LoadLife(mapImage, mapBoard);
                 LoadFootholds(mapImage, mapBoard);
@@ -981,9 +998,5 @@ namespace HaCreator.Wz
             }
             multiBoard.SelectedBoard.Loading = false;
         }
-    }
-
-    public class NoVRException : Exception
-    {
     }
 }

@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator
 
     /// <summary>
     /// Pool of shared textures
+    /// An instance of texture is created per Map Simulator render.
+    /// 
     /// TODO: A more efficient way of releasing resources when its not used for some time
     /// </summary>
     public class TexturePool : IDisposable

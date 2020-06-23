@@ -18,6 +18,8 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.UndoRedo;
 using HaCreator.MapSimulator;
 using System.Windows.Controls;
+using HaCreator.MapEditor.Info;
+using Spine;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -72,12 +74,37 @@ namespace HaCreator.GUI.InstanceEditor
                 comboBox_screenMode.SelectedIndex = 0;
 
             // Spine
-            if (item.SpineAni != null)
+            BackgroundInfo baseInfo = (BackgroundInfo) item.BaseInfo;
+            if (baseInfo.WzSpineAnimationItem == null)
+                groupBox_spine.Enabled = false; // disable editing
+            else
             {
-                checkBox_spineAni.Checked = true;
-                textBox_spineAni.Text = item.SpineAni;
+                groupBox_spine.Enabled = true; // editing
+
+                foreach (Animation ani in baseInfo.WzSpineAnimationItem.SkeletonData.Animations)
+                {
+                    ComboBoxItem comboBoxItem = new ComboBoxItem();
+                    comboBoxItem.Tag = ani;
+                    comboBoxItem.Content = ani.Name;
+
+                    comboBox_spineAnimation.Items.Add(comboBoxItem);
+                }
+                comboBox_spineAnimation.DisplayMember = "Content";
+
+                int i_animation = 0;
+                foreach (ComboBoxItem citem in comboBox_spineAnimation.Items)
+                {
+                    if (((Animation)citem.Tag).Name == item.SpineAni)
+                    {
+                        comboBox_spineAnimation.SelectedIndex = i_animation;
+                        break;
+                    }
+                    i_animation++;
+                }
+
+                // spineRandomStart checkbox
+                checkBox_spineRandomStart.Checked = item.SpineRandomStart;
             }
-            checkBox_spineRandomStart.Checked = item.SpineRandomStart;
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)
@@ -122,24 +149,23 @@ namespace HaCreator.GUI.InstanceEditor
                 item.screenMode = (int) ((MapRenderResolution)((ComboBoxItem)comboBox_screenMode.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
 
                 // Spine
-                item.SpineRandomStart = checkBox_spineRandomStart.Checked;
-                item.SpineAni = checkBox_spineAni.Checked == false ? null: textBox_spineAni.Text;
+                if (!groupBox_spine.Enabled)
+                {
+                    item.SpineRandomStart = false;
+                    item.SpineAni = null;
+                } else
+                {
+                    item.SpineRandomStart = checkBox_spineRandomStart.Checked;
+
+                    if (comboBox_spineAnimation.SelectedItem != null)
+                    {
+                        item.SpineAni = ((comboBox_spineAnimation.SelectedItem as ComboBoxItem).Tag as Animation).Name;
+                    }
+                    else
+                        item.SpineAni = null;
+                }
             }
             Close();
-        }
-
-        /// <summary>
-        /// CheckBox changed
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void checkbox_spineAni_CheckChanged(object sender, EventArgs e)
-        {
-            System.Windows.Forms.CheckBox checkbox = (System.Windows.Forms.CheckBox)sender;
-            if (checkbox == null)
-                return;
-
-            textBox_spineAni.ReadOnly = !checkbox.Checked;
         }
     }
 }

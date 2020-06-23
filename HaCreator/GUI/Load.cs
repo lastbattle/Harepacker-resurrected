@@ -202,6 +202,7 @@ namespace HaCreator.GUI
                 }
             }
             loader.CreateMapFromImage(mapid, mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
+
             DialogResult = DialogResult.OK;
             ww.EndWait();
             Close();
