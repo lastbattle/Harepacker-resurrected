@@ -26,6 +26,7 @@ using System.Text;
 namespace HaCreator.MapSimulator
 {
     /// <summary>
+    /// 
     /// http://rbwhitaker.wikidot.com/xna-tutorials
     /// </summary>
     public class MapSimulator : Microsoft.Xna.Framework.Game
@@ -40,7 +41,7 @@ namespace HaCreator.MapSimulator
         private MapRenderResolution mapRenderResolution;
 
         private GraphicsDeviceManager _DxDeviceManager;
-        private TexturePool texturePool = new TexturePool();
+        private readonly TexturePool texturePool = new TexturePool();
         private bool bSaveScreenshot = false, bSaveScreenshotComplete = true; // flag for saving a screenshot file
 
         private SpriteBatch spriteBatch;
@@ -259,32 +260,26 @@ namespace HaCreator.MapSimulator
             // Load reactors
             foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
             {
-                ReactorInfo reactorInfo = (ReactorInfo)reactor.BaseInfo;
-
                 //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
-                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactorInfo.LinkedWzImage, reactor, reactorInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_Reactors.Add(reactorItem);
             }
 
             // Load NPCs
             foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
             {
-                NpcInfo npcInfo = (NpcInfo)npc.BaseInfo;
-
                 //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
 
-                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npcInfo.LinkedWzImage, npc, npcInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_NPCs.Add(npcItem);
             }
             // Load Mobs
             foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
             {
-                MobInfo mobInfo = (MobInfo)mob.BaseInfo;
-
                 //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
 
-                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mobInfo.LinkedWzImage, mob, mobInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 mapObjects_Mobs.Add(npcItem);
             }
 
@@ -296,20 +291,7 @@ namespace HaCreator.MapSimulator
 
             foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
             {
-                PortalInfo portalInfo = (PortalInfo)portal.BaseInfo;
-
-                if (portal.pt == PortalType.PORTALTYPE_STARTPOINT ||
-                    portal.pt == PortalType.PORTALTYPE_INVISIBLE ||
-                    //portal.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
-                    portal.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
-                    portal.pt == PortalType.PORTALTYPE_SCRIPT ||
-                    portal.pt == PortalType.PORTALTYPE_COLLISION ||
-                    portal.pt == PortalType.PORTALTYPE_COLLISION_SCRIPT ||
-                    portal.pt == PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT || // springs in Mechanical grave 350040240
-                    portal.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
-                    continue;
-
-                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, portalInfo, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
                 if (portalItem != null) 
                     mapObjects_Portal.Add(portalItem);
             }
@@ -558,47 +540,9 @@ namespace HaCreator.MapSimulator
 
 
             // Save screenshot if render is activated
-            if (bSaveScreenshot)
-            {
-                bSaveScreenshot = false;
+            DoScreenshot();
 
-                //Pull the picture from the buffer 
-                int[] backBuffer = new int[RenderWidth * RenderHeight];
-                GraphicsDevice.GetBackBufferData(backBuffer);
 
-                //Copy to texture
-                using (Texture2D texture = new Texture2D(GraphicsDevice, RenderWidth, RenderHeight, false, SurfaceFormat.Color))
-                {
-                    texture.SetData(backBuffer);
-
-                    //Get a date for file name
-                    DateTime dateTimeNow = DateTime.Now;
-                    string fileName = String.Format("Maple_{0}{1}{2}_{3}{4}{5}.png",
-                            dateTimeNow.Day.ToString("D2"), dateTimeNow.Month.ToString("D2"), (dateTimeNow.Year - 2000).ToString("D2"),
-                             dateTimeNow.Hour.ToString("D2"), dateTimeNow.Minute.ToString("D2"), dateTimeNow.Second.ToString("D2")
-                            );
-                    
-                    using (MemoryStream stream_png = new MemoryStream()) // memorystream for png
-                    {
-                        texture.SaveAsPng(stream_png, RenderWidth, RenderHeight); // save to png stream
-
-                        using (MemoryStream stream_jpeg = new MemoryStream()) // memorystream for jpeg
-                        {
-                            var imageStream_png = System.Drawing.Image.FromStream(stream_png); // png Image
-                            imageStream_png.Save(stream_jpeg, ImageFormat.Jpeg); // save as jpeg  - TODO: Fix System.Runtime.InteropServices.ExternalException: 'A generic error occurred in GDI+.' sometimes.. no idea
-
-                            byte[] jpegOutStream = stream_jpeg.ToArray();
-
-                            // Save
-                            using (FileStream fs = File.Open(fileName, FileMode.OpenOrCreate))
-                            {
-                                fs.Write(jpegOutStream, 0, jpegOutStream.Length);
-                            }
-                        }
-                    }
-                }
-                bSaveScreenshotComplete = true;
-            }
             base.Draw(gameTime);
         }
 
@@ -643,6 +587,84 @@ namespace HaCreator.MapSimulator
         {
             sprite.Draw(texture_miniMapPixel, rectangle, color);
         }
+        #endregion
+
+        #region Screenshot
+        /// <summary>
+        /// Creates a snapshot of the current Graphics Device back buffer data 
+        /// and save as JPG in the local folder
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DoScreenshot()
+        {
+            if (bSaveScreenshot)
+            {
+                bSaveScreenshot = false;
+
+                //Pull the picture from the buffer 
+                int[] backBuffer = new int[RenderWidth * RenderHeight];
+                GraphicsDevice.GetBackBufferData(backBuffer);
+
+                //Copy to texture
+                using (Texture2D texture = new Texture2D(GraphicsDevice, RenderWidth, RenderHeight, false, SurfaceFormat.Color))
+                {
+                    texture.SetData(backBuffer);
+
+                    //Get a date for file name
+                    DateTime dateTimeNow = DateTime.Now;
+                    string fileName = String.Format("Maple_{0}{1}{2}_{3}{4}{5}.png",
+                            dateTimeNow.Day.ToString("D2"), dateTimeNow.Month.ToString("D2"), (dateTimeNow.Year - 2000).ToString("D2"),
+                             dateTimeNow.Hour.ToString("D2"), dateTimeNow.Minute.ToString("D2"), dateTimeNow.Second.ToString("D2")
+                            );
+
+                    using (MemoryStream stream_png = new MemoryStream()) // memorystream for png
+                    {
+                        texture.SaveAsPng(stream_png, RenderWidth, RenderHeight); // save to png stream
+
+                        System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(stream_png);
+                        ImageCodecInfo jpgEncoder = GetEncoder(ImageFormat.Jpeg);
+
+                        // Create an EncoderParameters object.
+                        // An EncoderParameters object has an array of EncoderParameter
+                        // objects. 
+                        EncoderParameters myEncoderParameters = new EncoderParameters(1);
+                        myEncoderParameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 100L); // max quality
+
+                        bitmap.Save(fileName, jpgEncoder, myEncoderParameters);
+
+                        /*using (MemoryStream stream_jpeg = new MemoryStream()) // memorystream for jpeg
+                        {
+                            var imageStream_png = System.Drawing.Image.FromStream(stream_png, true); // png Image
+                            imageStream_png.Save(stream_jpeg, ImageFormat.Jpeg); // save as jpeg  - TODO: Fix System.Runtime.InteropServices.ExternalException: 'A generic error occurred in GDI+.' sometimes.. no idea
+
+                            byte[] jpegOutStream = stream_jpeg.ToArray();
+
+                            // Save
+                            using (FileStream fs = File.Open(fileName, FileMode.OpenOrCreate))
+                            {
+                                fs.Write(jpegOutStream, 0, jpegOutStream.Length);
+                            }
+                        }*/
+                    }
+                }
+                bSaveScreenshotComplete = true;
+            }
+        }
+        private ImageCodecInfo GetEncoder(ImageFormat format)
+        {
+
+            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
+
+            foreach (ImageCodecInfo codec in codecs)
+            {
+                if (codec.FormatID == format.Guid)
+                {
+                    return codec;
+                }
+            }
+            return null;
+        }
+
         #endregion
 
         #region Boundaries

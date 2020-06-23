@@ -11,6 +11,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -305,14 +306,15 @@ namespace HaCreator.MapSimulator
         /// Create reactor item
         /// </summary>
         /// <param name="texturePool"></param>
-        /// <param name="linkedReactorImage"></param>
         /// <param name="reactorInstance"></param>
-        /// <param name="reactorInfo"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, WzImage linkedReactorImage, ReactorInstance reactorInstance, ReactorInfo reactorInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, ReactorInstance reactorInstance, GraphicsDevice device, ref List<WzObject> usedProps)
         {
+            ReactorInfo reactorInfo = (ReactorInfo)reactorInstance.BaseInfo;
+            WzImage linkedReactorImage = reactorInfo.LinkedWzImage;
+
             List<IDXObject> frames = new List<IDXObject>();
 
             WzImageProperty framesImage = (WzImageProperty) linkedReactorImage["0"]?["0"];
@@ -333,12 +335,24 @@ namespace HaCreator.MapSimulator
         /// <param name="texturePool"></param>
         /// <param name="gameParent"></param>
         /// <param name="portalInstance"></param>
-        /// <param name="portalInfo"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, PortalInfo portalInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, GraphicsDevice device, ref List<WzObject> usedProps)
         {
+            PortalInfo portalInfo = (PortalInfo)portalInstance.BaseInfo;
+
+            if (portalInstance.pt == PortalType.PORTALTYPE_STARTPOINT ||
+                portalInstance.pt == PortalType.PORTALTYPE_INVISIBLE ||
+                //portalInstance.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
+                portalInstance.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
+                portalInstance.pt == PortalType.PORTALTYPE_SCRIPT ||
+                portalInstance.pt == PortalType.PORTALTYPE_COLLISION ||
+                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_SCRIPT ||
+                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT || // springs in Mechanical grave 350040240
+                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
+                return null;
+
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
             //string portalType = portalInstance.pt;
@@ -388,15 +402,16 @@ namespace HaCreator.MapSimulator
         /// 
         /// </summary>
         /// <param name="texturePool"></param>
-        /// <param name="source"></param>
         /// <param name="mobInstance"></param>
-        /// <param name="mobInfo"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static MobItem CreateMobFromProperty(TexturePool texturePool, WzImage source, MobInstance mobInstance, MobInfo mobInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, GraphicsDevice device, ref List<WzObject> usedProps)
         {
-            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+            MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
+            WzImage source = mobInfo.LinkedWzImage;
+
+            List <IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
@@ -421,14 +436,15 @@ namespace HaCreator.MapSimulator
         /// NPC
         /// </summary>
         /// <param name="texturePool"></param>
-        /// <param name="source"></param>
         /// <param name="npcInstance"></param>
-        /// <param name="npcInfo"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, WzImage source, NpcInstance npcInstance, NpcInfo npcInfo, GraphicsDevice device, ref List<WzObject> usedProps)
+        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, GraphicsDevice device, ref List<WzObject> usedProps)
         {
+            NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
+            WzImage source = npcInfo.LinkedWzImage;
+
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
             foreach (WzImageProperty childProperty in source.WzProperties)
