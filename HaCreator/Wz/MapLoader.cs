@@ -197,12 +197,17 @@ namespace HaCreator.Wz
 
         public void LoadLayers(WzImage mapImage, Board mapBoard)
         {
-            for (int layer = 0; layer <= 7; layer++)
+            for (int layer = 0; layer <= WzConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = (WzSubProperty)mapImage[layer.ToString()];
-                WzImageProperty tSprop = layerProp["info"]["tS"];
+                if (layerProp == null)
+                    continue; // most maps only have 7 layers.
+
+                WzImageProperty tSprop = layerProp["info"]?["tS"];
                 string tS = null;
-                if (tSprop != null) tS = InfoTool.GetString(tSprop);
+                if (tSprop != null) 
+                    tS = InfoTool.GetString(tSprop);
+
                 foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
                 {
                     int x = InfoTool.GetInt(obj["x"]);
@@ -600,7 +605,15 @@ namespace HaCreator.Wz
                 bool ani = InfoTool.GetBool(bgProp["ani"]);
                 string no = InfoTool.GetInt(bgProp["no"]).ToString();
 
-                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, ani ? BackgroundInfoType.Animation : BackgroundInfoType.Background, no);
+                BackgroundInfoType infoType ;
+                if (spineAni != null)
+                    infoType = BackgroundInfoType.Spine;
+                else if (ani)
+                    infoType = BackgroundInfoType.Animation;
+                else
+                    infoType = BackgroundInfoType.Background;
+
+                BackgroundInfo bgInfo = BackgroundInfo.Get(bS, infoType, no);
                 if (bgInfo == null)
                     continue;
 

@@ -86,9 +86,10 @@ namespace HaCreator.MapEditor.Instance
         {
             if (sprite == null || baseInfo.GetTexture(sprite)==null)
                 return;
-            XNA.Rectangle destinationRectangle;
-            destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
+
+            XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
             sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 1);
+            
             base.Draw(sprite, color, xShift, yShift);
         }
 
@@ -245,6 +246,7 @@ namespace HaCreator.MapEditor.Instance
                     newX = ReverseBackgroundPosX(value);
                 else 
                     newX = value;
+
                 base.Move(newX, base.Y);
             }
         }
@@ -262,7 +264,9 @@ namespace HaCreator.MapEditor.Instance
                 int newY;
                 if (UserSettings.emulateParallax)
                     newY = ReverseBackgroundPosY(value);
-                else newY = value;
+                else 
+                    newY = value;
+
                 base.Move(base.X, newY);
             }
         }
