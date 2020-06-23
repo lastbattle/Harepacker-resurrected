@@ -56,9 +56,9 @@
             this.comboBox_screenMode = new System.Windows.Forms.ComboBox();
             this.label10 = new System.Windows.Forms.Label();
             this.checkBox_spineRandomStart = new System.Windows.Forms.CheckBox();
+            this.groupBox_spine = new System.Windows.Forms.GroupBox();
+            this.comboBox_spineAnimation = new System.Windows.Forms.ComboBox();
             this.label11 = new System.Windows.Forms.Label();
-            this.checkBox_spineAni = new System.Windows.Forms.CheckBox();
-            this.textBox_spineAni = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.xInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.yInput)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.zInput)).BeginInit();
@@ -67,6 +67,7 @@
             ((System.ComponentModel.ISupportInitialize)(this.rxBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.cyBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.cxBox)).BeginInit();
+            this.groupBox_spine.SuspendLayout();
             this.SuspendLayout();
             // 
             // pathLabel
@@ -372,48 +373,48 @@
             // checkBox_spineRandomStart
             // 
             this.checkBox_spineRandomStart.AutoSize = true;
-            this.checkBox_spineRandomStart.Location = new System.Drawing.Point(15, 280);
+            this.checkBox_spineRandomStart.Location = new System.Drawing.Point(7, 21);
             this.checkBox_spineRandomStart.Name = "checkBox_spineRandomStart";
             this.checkBox_spineRandomStart.Size = new System.Drawing.Size(96, 17);
             this.checkBox_spineRandomStart.TabIndex = 27;
             this.checkBox_spineRandomStart.Text = "Random Start";
             // 
+            // groupBox_spine
+            // 
+            this.groupBox_spine.Controls.Add(this.label11);
+            this.groupBox_spine.Controls.Add(this.comboBox_spineAnimation);
+            this.groupBox_spine.Controls.Add(this.checkBox_spineRandomStart);
+            this.groupBox_spine.Location = new System.Drawing.Point(10, 255);
+            this.groupBox_spine.Name = "groupBox_spine";
+            this.groupBox_spine.Size = new System.Drawing.Size(228, 79);
+            this.groupBox_spine.TabIndex = 31;
+            this.groupBox_spine.TabStop = false;
+            this.groupBox_spine.Text = "Spine";
+            // 
+            // comboBox_spineAnimation
+            // 
+            this.comboBox_spineAnimation.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboBox_spineAnimation.FormattingEnabled = true;
+            this.comboBox_spineAnimation.Location = new System.Drawing.Point(75, 42);
+            this.comboBox_spineAnimation.Name = "comboBox_spineAnimation";
+            this.comboBox_spineAnimation.Size = new System.Drawing.Size(147, 21);
+            this.comboBox_spineAnimation.TabIndex = 31;
+            // 
             // label11
             // 
             this.label11.AutoSize = true;
-            this.label11.Location = new System.Drawing.Point(12, 264);
+            this.label11.Location = new System.Drawing.Point(6, 45);
             this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(82, 13);
-            this.label11.TabIndex = 28;
-            this.label11.Text = "Spine runtime:";
-            // 
-            // checkBox_spineAni
-            // 
-            this.checkBox_spineAni.AutoSize = true;
-            this.checkBox_spineAni.Location = new System.Drawing.Point(15, 303);
-            this.checkBox_spineAni.Name = "checkBox_spineAni";
-            this.checkBox_spineAni.Size = new System.Drawing.Size(79, 17);
-            this.checkBox_spineAni.TabIndex = 29;
-            this.checkBox_spineAni.Text = "Animation";
-            this.checkBox_spineAni.CheckedChanged += new System.EventHandler(this.checkbox_spineAni_CheckChanged);
-            // 
-            // textBox_spineAni
-            // 
-            this.textBox_spineAni.Location = new System.Drawing.Point(128, 298);
-            this.textBox_spineAni.Name = "textBox_spineAni";
-            this.textBox_spineAni.ReadOnly = true;
-            this.textBox_spineAni.Size = new System.Drawing.Size(112, 22);
-            this.textBox_spineAni.TabIndex = 30;
+            this.label11.Size = new System.Drawing.Size(63, 13);
+            this.label11.TabIndex = 32;
+            this.label11.Text = "Animation:";
             // 
             // BackgroundInstanceEditor
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(246, 372);
-            this.Controls.Add(this.textBox_spineAni);
-            this.Controls.Add(this.checkBox_spineAni);
-            this.Controls.Add(this.label11);
-            this.Controls.Add(this.checkBox_spineRandomStart);
+            this.Controls.Add(this.groupBox_spine);
             this.Controls.Add(this.label10);
             this.Controls.Add(this.front);
             this.Controls.Add(this.comboBox_screenMode);
@@ -458,6 +459,8 @@
             ((System.ComponentModel.ISupportInitialize)(this.rxBox)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.cyBox)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.cxBox)).EndInit();
+            this.groupBox_spine.ResumeLayout(false);
+            this.groupBox_spine.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -493,8 +496,8 @@
         private System.Windows.Forms.ComboBox comboBox_screenMode;
         private System.Windows.Forms.Label label10;
         private System.Windows.Forms.CheckBox checkBox_spineRandomStart;
+        private System.Windows.Forms.GroupBox groupBox_spine;
+        private System.Windows.Forms.ComboBox comboBox_spineAnimation;
         private System.Windows.Forms.Label label11;
-        private System.Windows.Forms.CheckBox checkBox_spineAni;
-        private System.Windows.Forms.TextBox textBox_spineAni;
     }
 }

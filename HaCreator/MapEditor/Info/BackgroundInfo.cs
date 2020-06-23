@@ -223,6 +223,15 @@ namespace HaCreator.MapEditor.Info
             get { return imageProperty; }
             private set {  }
         }
+
+        /// <summary>
+        /// Spine skeleton details 
+        /// </summary>
+        public WzSpineAnimationItem WzSpineAnimationItem
+        {
+            get { return wzSpineAnimationItem; }
+            set { this.wzSpineAnimationItem = value; }
+        }
         #endregion
     }
 }
