@@ -17,6 +17,12 @@ namespace HaCreator.MapSimulator.Objects.UIObject
     public class MouseCursorItem : BaseItem
     {
         private MouseState previousMouseState;
+        public MouseState MouseState
+        {
+            get { return this.previousMouseState; }
+            private set { }
+        }
+
         private int mouseCursorItemStates; // enum
 
         private BaseItem cursorItemPressedState; // default state of the cursor = this instance

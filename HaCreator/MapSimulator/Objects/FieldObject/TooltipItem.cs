@@ -14,6 +14,11 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
     public class TooltipItem : BaseItem
     {
         private readonly ToolTipInstance tooltipInstance;
+        public ToolTipInstance TooltipInstance
+        {
+            get { return this.tooltipInstance;  }
+            private set { }
+        }
 
         public TooltipItem(ToolTipInstance tooltipInstance, List<IDXObject> frames)
             : base(frames, false)
@@ -33,14 +38,6 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
             int TickCount)
         {
-            // 113652
-
-            // Tooltip text color
-            // R 17
-            // G 54
-            // B 82
-            // A 255
-
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX - centerX, mapShiftY - centerY, 0, 0,
                 renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,

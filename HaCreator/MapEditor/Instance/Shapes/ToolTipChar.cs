@@ -16,6 +16,9 @@ using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.Instance.Shapes
 {
+    /// <summary>
+    /// The boundary, that shows the tooltip when the player gets close to it.
+    /// </summary>
     public class ToolTipChar : MapleRectangle, ISerializable
     {
         private ToolTipInstance boundTooltip;

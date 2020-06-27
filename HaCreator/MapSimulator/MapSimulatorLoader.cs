@@ -469,7 +469,7 @@ namespace HaCreator.MapSimulator
 
         #region UI
         /// <summary>
-        /// 
+        /// Tooltip
         /// </summary>
         /// <param name="tooltip"></param>
         /// <param name="device"></param>
@@ -483,16 +483,15 @@ namespace HaCreator.MapSimulator
             string renderText = string.Format("{0}{1}{2}", title, Environment.NewLine, desc);
 
             // create
-            //const string TOOLTIP_FONT = "Tahoma";
-            const string TOOLTIP_FONT = " Arial";
-            const float TOOL_TIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
+            const string TOOLTIP_FONT = "Arial";
+            const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
-            System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(213, 0, 0, 0); // post V patch (dark black theme used)
+            System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(180, 0, 0, 0); // post V patch (dark black theme used)
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
             const int WIDTH_PADDING = 10;
             const int HEIGHT_PADDING = 6;
 
-            using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOL_TIP_FONTSIZE))
+            using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOLTIP_FONTSIZE))
             {
                 System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
                 System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);

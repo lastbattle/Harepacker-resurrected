@@ -29,9 +29,18 @@ namespace HaCreator.MapEditor.Instance.Shapes
         private MapleLine cd;
         private MapleLine da;
 
+        private XNA.Rectangle rect;
+        public XNA.Rectangle Rectangle
+        {
+            get { return this.rect; }
+            private set { }
+        }
+
         public MapleRectangle(Board board, XNA.Rectangle rect)
             : base(board, 0, 0, 0) // BoardItem position doesn't do anything in rectangles
         {
+            this.rect = rect;
+
             lock (board.ParentControl)
             {
                 // Make dots
