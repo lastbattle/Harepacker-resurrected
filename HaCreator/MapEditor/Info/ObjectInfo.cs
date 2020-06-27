@@ -44,19 +44,21 @@ namespace HaCreator.MapEditor.Info
 
         public static ObjectInfo Get(string oS, string l0, string l1, string l2)
         {
-            try
-            {
-                WzImageProperty objInfoProp = Program.InfoManager.ObjectSets[oS]?[l0]?[l1]?[l2];
-                if (objInfoProp == null)
-                    return null;
-                if (objInfoProp.HCTag == null)
-                    objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
-                return (ObjectInfo)objInfoProp.HCTag;
-            }
-            catch (KeyNotFoundException e)
-            {
+            WzImageProperty objInfoProp = Program.InfoManager.ObjectSets[oS]?[l0]?[l1]?[l2];
+            if (objInfoProp == null)
                 return null;
+            if (objInfoProp.HCTag == null)
+            {
+                try
+                {
+                    objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
+                }
+                catch (KeyNotFoundException e)
+                {
+                    return null;
+                }
             }
+            return (ObjectInfo)objInfoProp.HCTag;
         }
 
         private static List<XNA.Point> ParsePropToOffsetList(WzImageProperty prop)

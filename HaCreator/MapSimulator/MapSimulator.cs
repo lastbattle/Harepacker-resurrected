@@ -2,9 +2,12 @@
 #define SIMULATOR_DEBUG_INFO
 
 
+using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
@@ -20,6 +23,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -52,6 +56,7 @@ namespace HaCreator.MapSimulator
         private readonly List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
         private readonly List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
         private readonly List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
+        private readonly List<BaseItem> mapObjects_tooltips = new List<BaseItem>();
 
         // Backgrounds
         private readonly List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -296,6 +301,14 @@ namespace HaCreator.MapSimulator
                     mapObjects_Portal.Add(portalItem);
             }
 
+            // Load tooltips
+            foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
+            {
+                TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(tooltip, _DxDeviceManager.GraphicsDevice);
+                
+                mapObjects_tooltips.Add(item);
+            }
+
             // Cursor
             WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
             this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
@@ -508,6 +521,16 @@ namespace HaCreator.MapSimulator
             //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             // UI related here
+            // Tooltips
+            
+            foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
+            {
+                tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
+
             // Minimap
             if (texturer_miniMap != null)
             {

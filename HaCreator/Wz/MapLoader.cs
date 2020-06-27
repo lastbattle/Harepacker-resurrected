@@ -557,8 +557,12 @@ namespace HaCreator.Wz
                 WzSubProperty tooltipString = (WzSubProperty)tooltipStrings[num];
                 WzSubProperty tooltipProp = (WzSubProperty)tooltipsParent[num];
                 WzSubProperty tooltipChar = (WzSubProperty)tooltipsParent[num + "char"];
-                if (tooltipString == null && tooltipProp == null) break;
-                if (tooltipString == null ^ tooltipProp == null) continue;
+
+                if (tooltipString == null && tooltipProp == null) 
+                    break;
+                if (tooltipString == null ^ tooltipProp == null) 
+                    continue;
+
                 string title = InfoTool.GetOptionalString(tooltipString["Title"]);
                 string desc = InfoTool.GetOptionalString(tooltipString["Desc"]);
                 int x1 = InfoTool.GetInt(tooltipProp["x1"]);
@@ -575,6 +579,7 @@ namespace HaCreator.Wz
                     y1 = InfoTool.GetInt(tooltipChar["y1"]);
                     y2 = InfoTool.GetInt(tooltipChar["y2"]);
                     tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
+
                     ToolTipChar ttc = new ToolTipChar(mapBoard, tooltipPos, tt);
                     mapBoard.BoardItems.CharacterToolTips.Add(ttc);
                 }

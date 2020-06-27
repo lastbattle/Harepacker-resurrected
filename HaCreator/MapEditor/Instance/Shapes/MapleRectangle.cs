@@ -125,11 +125,17 @@ namespace HaCreator.MapEditor.Instance.Shapes
             if (Selected)
                 lineColor = dotColor;
             int x, y;
-            if (a.X < b.X) x = a.X + xShift;
-            else x = b.X + xShift;
-            if (b.Y < c.Y) y = b.Y + yShift;
-            else y = c.Y + yShift;
-            Board.ParentControl.FillRectangle(sprite, new XNA.Rectangle(x, y, Math.Abs(b.X - a.X), Math.Abs(c.Y - a.Y)), Color);
+            if (a.X < b.X) 
+                x = a.X + xShift;
+            else 
+                x = b.X + xShift;
+
+            if (b.Y < c.Y) 
+                y = b.Y + yShift;
+            else 
+                y = c.Y + yShift;
+
+            Board.ParentControl.FillRectangle(sprite, new XNA.Rectangle(x, y, Width, Height), Color);
             ab.Draw(sprite, lineColor, xShift, yShift);
             bc.Draw(sprite, lineColor, xShift, yShift);
             cd.Draw(sprite, lineColor, xShift, yShift);
