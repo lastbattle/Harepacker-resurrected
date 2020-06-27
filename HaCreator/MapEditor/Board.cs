@@ -239,11 +239,6 @@ namespace HaCreator.MapEditor
             GC.WaitForPendingFinalizers();
         }
 
-        public void CopyItemsTo(List<BoardItem> items, Board dstBoard, Point offset)
-        {
-
-        }
-
         #region Properties
         public int UniqueID
         {

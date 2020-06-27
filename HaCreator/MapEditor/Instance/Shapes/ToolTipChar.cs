@@ -16,6 +16,9 @@ using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.Instance.Shapes
 {
+    /// <summary>
+    /// The boundary, that shows the tooltip when the player gets close to it.
+    /// </summary>
     public class ToolTipChar : MapleRectangle, ISerializable
     {
         private ToolTipInstance boundTooltip;
@@ -58,7 +61,9 @@ namespace HaCreator.MapEditor.Instance.Shapes
         public override void Draw(SpriteBatch sprite, XNA.Color dotColor, int xShift, int yShift)
         {
             base.Draw(sprite, dotColor, xShift, yShift);
-            if (boundTooltip != null) Board.ParentControl.DrawLine(sprite, new XNA.Vector2(X + Width / 2 + xShift, Y + Height / 2 + yShift), new XNA.Vector2(boundTooltip.X + boundTooltip.Width / 2 + xShift, boundTooltip.Y + boundTooltip.Height / 2 + yShift), UserSettings.ToolTipBindingLine);
+
+            if (boundTooltip != null) 
+                Board.ParentControl.DrawLine(sprite, new XNA.Vector2(X + Width / 2 + xShift, Y + Height / 2 + yShift), new XNA.Vector2(boundTooltip.X + boundTooltip.Width / 2 + xShift, boundTooltip.Y + boundTooltip.Height / 2 + yShift), UserSettings.ToolTipBindingLine);
         }
 
         public override void OnItemPlaced(List<UndoRedoAction> undoPipe)

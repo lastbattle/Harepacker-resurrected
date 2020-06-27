@@ -1,4 +1,4 @@
-﻿using HaCreator.MapEditor.Instance;
+﻿using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -11,21 +11,26 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class ReactorItem : BaseItem
+    public class TooltipItem : BaseItem
     {
-        private readonly ReactorInstance reactorInstance;
-
-        public ReactorItem(ReactorInstance reactorInstance, List<IDXObject> frames)
-            : base(frames, reactorInstance.Flip)
+        private readonly ToolTipInstance tooltipInstance;
+        public ToolTipInstance TooltipInstance
         {
-            this.reactorInstance = reactorInstance;
+            get { return this.tooltipInstance;  }
+            private set { }
+        }
+
+        public TooltipItem(ToolTipInstance tooltipInstance, List<IDXObject> frames)
+            : base(frames, false)
+        {
+            this.tooltipInstance = tooltipInstance;
         }
 
 
-        public ReactorItem(ReactorInstance reactorInstance, IDXObject frame0)
-            : base(frame0, reactorInstance.Flip)
+        public TooltipItem(ToolTipInstance npcInstance, IDXObject frame0)
+            : base(frame0, false)
         {
-            this.reactorInstance = reactorInstance;
+            this.tooltipInstance = npcInstance;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -34,7 +39,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
-                mapShiftX, mapShiftY, centerX, centerY,
+                mapShiftX - centerX, mapShiftY - centerY, 0, 0,
                 renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                 TickCount);
         }
