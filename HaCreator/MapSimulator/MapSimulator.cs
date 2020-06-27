@@ -529,21 +529,24 @@ namespace HaCreator.MapSimulator
             // Tooltips
             foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
             {
-                Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
-                if (tooltipRect != null) // if this is null, show it at all times
+                if (tooltip.TooltipInstance.CharacterToolTip != null)
                 {
-                    Rectangle rect = new Rectangle(
-                        tooltipRect.X - ((mapShiftX) - mapBoard.CenterPoint.X),
-                        tooltipRect.Y - ((mapShiftY) - mapBoard.CenterPoint.Y),
-                        tooltipRect.Width, tooltipRect.Height);
+                    Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
+                    if (tooltipRect != null) // if this is null, show it at all times
+                    {
+                        Rectangle rect = new Rectangle(
+                            tooltipRect.X - ((mapShiftX) - mapBoard.CenterPoint.X),
+                            tooltipRect.Y - ((mapShiftY) - mapBoard.CenterPoint.Y),
+                            tooltipRect.Width, tooltipRect.Height);
 
 #if SIMULATOR_DEBUG_INFO_EXTRAS
                     DrawBorder(spriteBatch, rect, 1, Color.White); // test
                     spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
-#endif 
+#endif
 
-                    if (!rect.Contains(mouseState.X, mouseState.Y))
-                        continue;
+                        if (!rect.Contains(mouseState.X, mouseState.Y))
+                            continue;
+                    }
                 }
 
                 tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
