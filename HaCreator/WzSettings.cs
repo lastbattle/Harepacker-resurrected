@@ -65,7 +65,7 @@ namespace HaCreator
         public static int zShift = 1;
         public static int HiddenLifeR = 127;
         public static string FontName = "Arial";
-        public static int FontSize = 15;
+        public static int FontSize = 13;
         public static System.Drawing.FontStyle FontStyle = System.Drawing.FontStyle.Regular;
         public static int dotDescriptionBoxSize = 100;
         public static int ImageViewerHeight = 100;
