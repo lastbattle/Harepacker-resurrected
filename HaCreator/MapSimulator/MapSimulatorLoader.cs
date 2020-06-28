@@ -480,16 +480,16 @@ namespace HaCreator.MapSimulator
         public static TooltipItem CreateTooltipFromProperty(TexturePool texturePool, WzSubProperty farmFrameParent, ToolTipInstance tooltip, GraphicsDevice device)
         {
             // Wz frames
-            System.Drawing.Bitmap c = ((WzCanvasProperty)farmFrameParent["c"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap cover = ((WzCanvasProperty)farmFrameParent["cover"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap e = ((WzCanvasProperty)farmFrameParent["e"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap n = ((WzCanvasProperty)farmFrameParent["n"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap s = ((WzCanvasProperty)farmFrameParent["s"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap w = ((WzCanvasProperty)farmFrameParent["w"]).GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap ne = ((WzCanvasProperty)farmFrameParent["ne"]).GetLinkedWzCanvasBitmap(); // top right
-            System.Drawing.Bitmap nw = ((WzCanvasProperty)farmFrameParent["nw"]).GetLinkedWzCanvasBitmap(); // top left
-            System.Drawing.Bitmap se = ((WzCanvasProperty)farmFrameParent["se"]).GetLinkedWzCanvasBitmap(); // bottom right
-            System.Drawing.Bitmap sw = ((WzCanvasProperty)farmFrameParent["sw"]).GetLinkedWzCanvasBitmap(); // bottom left
+            System.Drawing.Bitmap c = ((WzCanvasProperty)farmFrameParent?["c"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap cover = ((WzCanvasProperty)farmFrameParent?["cover"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap e = ((WzCanvasProperty)farmFrameParent?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap n = ((WzCanvasProperty)farmFrameParent?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap s = ((WzCanvasProperty)farmFrameParent?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap w = ((WzCanvasProperty)farmFrameParent?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap ne = ((WzCanvasProperty)farmFrameParent?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
+            System.Drawing.Bitmap nw = ((WzCanvasProperty)farmFrameParent?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
+            System.Drawing.Bitmap se = ((WzCanvasProperty)farmFrameParent?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
+            System.Drawing.Bitmap sw = ((WzCanvasProperty)farmFrameParent?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
 
 
             // tooltip property
