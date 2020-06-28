@@ -195,8 +195,8 @@ namespace HaCreator.MapSimulator
             // TODO: Add your initialization logic here
 
             // Create map layers
-            mapObjects = new List<BaseItem>[WzConstants.MaxMapLayers];
-            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
+            mapObjects = new List<BaseItem>[MapConstants.MaxMapLayers];
+            for (int i = 0; i < MapConstants.MaxMapLayers; i++)
             {
                 mapObjects[i] = new List<BaseItem>();
             }

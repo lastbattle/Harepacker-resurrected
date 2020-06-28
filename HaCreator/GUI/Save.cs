@@ -70,7 +70,7 @@ namespace HaCreator.GUI
                 statusLabel.Text = "Must enter a number";
                 saveButton.Enabled = false;
             }
-            else if (id < WzConstants.MinMap || id > WzConstants.MaxMap)
+            else if (id < MapConstants.MinMap || id > MapConstants.MaxMap)
             {
                 statusLabel.Text = "Out of range";
                 saveButton.Enabled = false;

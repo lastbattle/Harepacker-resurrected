@@ -45,7 +45,7 @@ namespace HaCreator.MapEditor.Info
             {
                 case PortalType.PORTALTYPE_STARTPOINT:
                     {
-                        return new PortalInstance(this, board, x, y, "sp", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                        return new PortalInstance(this, board, x, y, "sp", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
                     }
                 case PortalType.PORTALTYPE_INVISIBLE:
                 case PortalType.PORTALTYPE_VISIBLE:
@@ -53,31 +53,31 @@ namespace HaCreator.MapEditor.Info
                 case PortalType.PORTALTYPE_CHANGABLE:
                 case PortalType.PORTALTYPE_CHANGABLE_INVISIBLE:
                     {
-                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
                     }
                 case PortalType.PORTALTYPE_TOWNPORTAL_POINT:
                     {
-                        return new PortalInstance(this, board, x, y, "tp", type, "", WzConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                        return new PortalInstance(this, board, x, y, "tp", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
                     }
                 case PortalType.PORTALTYPE_SCRIPT:
                 case PortalType.PORTALTYPE_SCRIPT_INVISIBLE:
                 case PortalType.PORTALTYPE_COLLISION_SCRIPT:
                     {
-                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, null, null, null);
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, null, null, null);
                     }
                 case PortalType.PORTALTYPE_HIDDEN:
                     {
-                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, null, null, null, null, null, null, "", null, null);
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, null, null, null, null, null, null, "", null, null);
                     }
                 case PortalType.PORTALTYPE_SCRIPT_HIDDEN:
                     {
-                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
                     }
                 case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
                 case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
                 case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
                     {
-                        return new PortalInstance(this, board, x, y, "portal", type, "", WzConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
                     }
                 case PortalType.PORTALTYPE_SCRIPT_HIDDEN_UNG: // TODO
                 default:

@@ -485,16 +485,21 @@ namespace HaCreator.MapSimulator
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
             WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
 
+            WzSubProperty useFrame;
+            if (MapConstants.IsZerosTemple(mapBoard.MapInfo.id))
+                useFrame = maxMapMirrorProperty;
+            else useFrame = maxMapProperty;
+
             // Wz frames
-            System.Drawing.Bitmap c = ((WzCanvasProperty)maxMapProperty?["c"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap e = ((WzCanvasProperty)maxMapProperty?["e"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap n = ((WzCanvasProperty)maxMapProperty?["n"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap s = ((WzCanvasProperty)maxMapProperty?["s"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap w = ((WzCanvasProperty)maxMapProperty?["w"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap ne = ((WzCanvasProperty)maxMapProperty?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
-            System.Drawing.Bitmap nw = ((WzCanvasProperty)maxMapProperty?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
-            System.Drawing.Bitmap se = ((WzCanvasProperty)maxMapProperty?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
-            System.Drawing.Bitmap sw = ((WzCanvasProperty)maxMapProperty?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
+            System.Drawing.Bitmap c = ((WzCanvasProperty)useFrame?["c"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap e = ((WzCanvasProperty)useFrame?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap n = ((WzCanvasProperty)useFrame?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap s = ((WzCanvasProperty)useFrame?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap w = ((WzCanvasProperty)useFrame?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap ne = ((WzCanvasProperty)useFrame?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
+            System.Drawing.Bitmap nw = ((WzCanvasProperty)useFrame?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
+            System.Drawing.Bitmap se = ((WzCanvasProperty)useFrame?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
+            System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrame?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
 
             // Constants
             const string TOOLTIP_FONT = "Arial";

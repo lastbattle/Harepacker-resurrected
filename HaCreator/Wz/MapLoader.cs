@@ -198,7 +198,7 @@ namespace HaCreator.Wz
 
         public void LoadLayers(WzImage mapImage, Board mapBoard)
         {
-            for (int layer = 0; layer <= WzConstants.MaxMapLayers; layer++)
+            for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = (WzSubProperty)mapImage[layer.ToString()];
                 if (layerProp == null)
