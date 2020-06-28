@@ -584,7 +584,6 @@ namespace HaCreator.MapEditor
             System.Windows.Controls.TabItem tab = (System.Windows.Controls.TabItem) tabs.SelectedItem;
             if (selectedBoard == null || tab == null)
                 return;
-
             MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header);
 
             multiBoard.DeviceReady = true;

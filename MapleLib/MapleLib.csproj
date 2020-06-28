@@ -208,6 +208,7 @@
     <Compile Include="WzLib\WzSerializer.cs" />
     <Compile Include="WzLib\WzStructure\Data\BackgroundType.cs" />
     <Compile Include="WzLib\WzStructure\Data\Data.cs" />
+    <Compile Include="WzLib\WzStructure\Data\MapConstants.cs" />
     <Compile Include="WzLib\WzStructure\Data\FieldType.cs" />
     <Compile Include="WzLib\WzStructure\Data\ItemTypes.cs" />
     <Compile Include="WzLib\WzStructure\Data\MapType.cs" />

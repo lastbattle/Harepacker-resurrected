@@ -470,6 +470,93 @@ namespace HaCreator.MapSimulator
 
         #region UI
         /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="minimapFrameProperty">UI.wz/UIWindow2.img/MiniMap</param>
+        /// <param name="mapBoard"></param>
+        /// <param name="device"></param>
+        /// <param name="MapName">The map name. i.e The Hill North</param>
+        /// <param name="StreetName">The street name. i.e Hidden street</param>
+        /// <returns></returns>
+        public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName)
+        {
+            WzSubProperty maxMapProperty = (WzSubProperty) minimapFrameProperty["MaxMap"];
+            WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
+            WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
+            WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
+
+            WzSubProperty useFrame;
+            if (mapBoard.MapInfo.zeroSideOnly || MapConstants.IsZerosTemple(mapBoard.MapInfo.id)) // zero's temple
+                useFrame = maxMapMirrorProperty;
+            else useFrame = maxMapProperty;
+
+            // Wz frames
+            System.Drawing.Bitmap c = ((WzCanvasProperty)useFrame?["c"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap e = ((WzCanvasProperty)useFrame?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap n = ((WzCanvasProperty)useFrame?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap s = ((WzCanvasProperty)useFrame?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap w = ((WzCanvasProperty)useFrame?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap ne = ((WzCanvasProperty)useFrame?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
+            System.Drawing.Bitmap nw = ((WzCanvasProperty)useFrame?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
+            System.Drawing.Bitmap se = ((WzCanvasProperty)useFrame?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
+            System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrame?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
+
+            // Constants
+            const string TOOLTIP_FONT = "Arial";
+            const float TOOLTIP_FONTSIZE = 10f;
+            System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
+            System.Drawing.Color color_foreGround = System.Drawing.Color.White;
+
+            // Dots pixel 
+            System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_DotPixel))
+            {
+                graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
+                graphics.Flush();
+            }
+            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, BoardItem.TextureFromBitmap(device, bmp_DotPixel), 0);
+            BaseItem item_pixelDot = new BaseItem(dxObj_miniMapPixel, false);
+
+            // Map background image
+            System.Drawing.Bitmap miniMapImage = mapBoard.MiniMap; // the original minimap image without UI frame overlay
+            int effective_width = miniMapImage.Width + e.Width + w.Width;
+            int effective_height = miniMapImage.Height + n.Height + s.Height;
+
+            using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOLTIP_FONTSIZE))
+            {
+                System.Drawing.Bitmap miniMapUIImage = new System.Drawing.Bitmap(effective_width, effective_height);
+
+                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(miniMapUIImage))
+                {
+                    // Frames and background
+                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, effective_width, effective_height);
+
+                    graphics.DrawString(
+                        string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName), 
+                        font, new System.Drawing.SolidBrush(color_foreGround), 50, 20);
+
+                    // Map mark
+                    if (Program.InfoManager.MapMarks.ContainsKey(mapBoard.MapInfo.mapMark))
+                    {
+                        System.Drawing.Bitmap mapMark = Program.InfoManager.MapMarks[mapBoard.MapInfo.mapMark];
+                        graphics.DrawImage(mapMark.ToImage(), 7, 17);
+                    }
+
+                    // Map image
+                    graphics.DrawImage(miniMapImage, 10, n.Height);
+
+                    graphics.Flush();
+                }
+                Texture2D texturer_miniMap = BoardItem.TextureFromBitmap(device, miniMapUIImage);
+
+                IDXObject dxObj = new DXObject(0, 0, texturer_miniMap, 0);
+                MinimapItem item = new MinimapItem(dxObj, item_pixelDot);
+
+                return item;
+            }
+        }
+
+        /// <summary>
         /// Tooltip
         /// </summary>
         /// <param name="texturePool"></param>
@@ -498,7 +585,7 @@ namespace HaCreator.MapSimulator
 
             string renderText = string.Format("{0}{1}{2}", title, Environment.NewLine, desc);
 
-            // create
+            // Constants
             const string TOOLTIP_FONT = "Arial";
             const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
@@ -507,6 +594,7 @@ namespace HaCreator.MapSimulator
             const int WIDTH_PADDING = 10;
             const int HEIGHT_PADDING = 6;
 
+            // Create
             using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOLTIP_FONTSIZE))
             {
                 System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string

@@ -388,6 +388,7 @@
     <Compile Include="MapSimulator\Objects\BaseItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\MobItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\TooltipItem.cs" />
+    <Compile Include="MapSimulator\Objects\UIObject\MinimapItem.cs" />
     <Compile Include="MapSimulator\Objects\UIObject\MouseCursorItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\NpcItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
