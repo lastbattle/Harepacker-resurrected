@@ -28,6 +28,16 @@ namespace HaRepacker.Converter
             }
         }
 
+        /// <summary>
+        /// System.Drawing.Bitmap to System.Drawing.Image
+        /// </summary>
+        /// <param name="bitmap"></param>
+        /// <returns></returns>
+        public static System.Drawing.Image ToImage(this System.Drawing.Bitmap bitmap)
+        {
+            return (System.Drawing.Image)bitmap;
+        }
+
         public static BitmapSource ToWpfBitmap(this System.Drawing.Bitmap bitmap)
         {
             using (MemoryStream stream = new MemoryStream())

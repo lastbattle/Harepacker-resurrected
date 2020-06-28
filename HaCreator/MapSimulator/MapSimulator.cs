@@ -303,9 +303,10 @@ namespace HaCreator.MapSimulator
             }
 
             // Load tooltips
+            WzSubProperty farmFrameParent = (WzSubProperty)UIWZFile["UIToolTip.img"]?["Item"]?["FarmFrame"];
             foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
             {
-                TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(tooltip, _DxDeviceManager.GraphicsDevice);
+                TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
 
                 mapObjects_tooltips.Add(item);
             }

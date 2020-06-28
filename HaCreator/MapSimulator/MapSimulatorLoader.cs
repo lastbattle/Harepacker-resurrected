@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
+using HaRepacker.Converter;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -471,11 +472,26 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Tooltip
         /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="farmFrameParent"></param>
         /// <param name="tooltip"></param>
         /// <param name="device"></param>
         /// <returns></returns>
-        public static TooltipItem CreateTooltipFromProperty(ToolTipInstance tooltip, GraphicsDevice device)
+        public static TooltipItem CreateTooltipFromProperty(TexturePool texturePool, WzSubProperty farmFrameParent, ToolTipInstance tooltip, GraphicsDevice device)
         {
+            // Wz frames
+            System.Drawing.Bitmap c = ((WzCanvasProperty)farmFrameParent["c"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap cover = ((WzCanvasProperty)farmFrameParent["cover"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap e = ((WzCanvasProperty)farmFrameParent["e"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap n = ((WzCanvasProperty)farmFrameParent["n"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap s = ((WzCanvasProperty)farmFrameParent["s"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap w = ((WzCanvasProperty)farmFrameParent["w"]).GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap ne = ((WzCanvasProperty)farmFrameParent["ne"]).GetLinkedWzCanvasBitmap(); // top right
+            System.Drawing.Bitmap nw = ((WzCanvasProperty)farmFrameParent["nw"]).GetLinkedWzCanvasBitmap(); // top left
+            System.Drawing.Bitmap se = ((WzCanvasProperty)farmFrameParent["se"]).GetLinkedWzCanvasBitmap(); // bottom right
+            System.Drawing.Bitmap sw = ((WzCanvasProperty)farmFrameParent["sw"]).GetLinkedWzCanvasBitmap(); // bottom left
+
+
             // tooltip property
             string title = tooltip.Title;
             string desc = tooltip.Desc;
@@ -486,7 +502,7 @@ namespace HaCreator.MapSimulator
             const string TOOLTIP_FONT = "Arial";
             const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
-            System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(180, 0, 0, 0); // post V patch (dark black theme used)
+            System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(255,17, 17, 17); // post V patch (dark black theme used), use color picker on paint via image extracted from WZ if you need to get it
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
             const int WIDTH_PADDING = 10;
             const int HEIGHT_PADDING = 6;
@@ -502,7 +518,10 @@ namespace HaCreator.MapSimulator
                 System.Drawing.Bitmap bmp_tooltip = new System.Drawing.Bitmap(effective_width, effective_height);
                 using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_tooltip))
                 {
-                    graphics.FillRectangle(new System.Drawing.SolidBrush(color_bgFill), 0, 0, bmp_tooltip.Width, bmp_tooltip.Height);
+                    // Frames and background
+                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, effective_width, effective_height);
+
+                    // Text
                     graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), WIDTH_PADDING / 2, HEIGHT_PADDING / 2);
                     graphics.Flush();
                 }

@@ -79,8 +79,8 @@
                  Height="150"
                  HorizontalAlignment="Center"
                  VerticalAlignment="Top"
-                 Margin="2"
-                 Source="Images/ColorSwatchSquare1.png"/>
+                 Margin="2"/>
+          
           <Canvas x:Name="canvasImage"
                 Width="150"
                 Height="150"
