@@ -486,7 +486,7 @@ namespace HaCreator.MapSimulator
             WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
 
             WzSubProperty useFrame;
-            if (MapConstants.IsZerosTemple(mapBoard.MapInfo.id))
+            if (mapBoard.MapInfo.zeroSideOnly || MapConstants.IsZerosTemple(mapBoard.MapInfo.id)) // zero's temple
                 useFrame = maxMapMirrorProperty;
             else useFrame = maxMapProperty;
 

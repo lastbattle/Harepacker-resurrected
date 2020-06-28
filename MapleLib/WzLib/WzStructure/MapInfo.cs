@@ -257,7 +257,9 @@ namespace MapleLib.WzLib.WzStructure
                     case "consumeItemCoolTime":
                         consumeItemCoolTime = InfoTool.GetBool(prop);
                         break;
-
+                    case "zeroSideOnly":
+                        zeroSideOnly = InfoTool.GetBool(prop);
+                        break;
                     case "AmbientBGM":
                     case "AmbientBGMv":
                     case "areaCtrl":
@@ -384,7 +386,6 @@ namespace MapleLib.WzLib.WzStructure
                     case "rewardContentName":
                     case "specialDeadAction":
                     case "FriendsStoryBossDelay":
-                    case "zeroSideOnly":
                     case "soulFieldType":
                     case "cameraMoveY":
                     case "subType":
@@ -527,6 +528,7 @@ namespace MapleLib.WzLib.WzStructure
             info["allMoveCheck"] = InfoTool.SetOptionalBool(allMoveCheck);
             info["VRLimit"] = InfoTool.SetOptionalBool(VRLimit);
             info["consumeItemCoolTime"] = InfoTool.SetOptionalBool(consumeItemCoolTime);
+            info["zeroSideOnly"] = InfoTool.SetOptionalBool(zeroSideOnly);
             foreach (WzImageProperty prop in additionalProps)
             {
                 info.AddProperty(prop);
@@ -605,6 +607,7 @@ namespace MapleLib.WzLib.WzStructure
         public MapleBool allMoveCheck = null; //another JQ hack protection
         public MapleBool VRLimit = null; //use vr's as limits?
         public MapleBool consumeItemCoolTime = null; //cool time of consume item
+        public MapleBool zeroSideOnly = null; // true if its zero's temple map
 
         //Special
         public List<WzImageProperty> additionalProps = new List<WzImageProperty>();
