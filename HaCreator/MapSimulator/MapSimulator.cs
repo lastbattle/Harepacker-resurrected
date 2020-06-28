@@ -1,7 +1,7 @@
 ﻿// uncomment line below to show debug values
 #define SIMULATOR_DEBUG_INFO
 
-//#define SIMULATOR_DEBUG_INFO_EXTRAS // only for development
+// #define SIMULATOR_DEBUG_INFO_EXTRAS // only for development
 
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator
 
         private SpriteBatch spriteBatch;
 
+
         // Objects, NPCs
         public List<BaseItem>[] mapObjects;
         private readonly List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
@@ -67,8 +68,7 @@ namespace HaCreator.MapSimulator
         private Rectangle vr_fieldBoundary;
 
         // Minimap
-        private Texture2D texture_miniMapPixel;
-        private Texture2D texturer_miniMap;
+        private MinimapItem miniMap;
 
         // Cursor, mouse
         private MouseCursorItem mouseCursor;
@@ -322,14 +322,10 @@ namespace HaCreator.MapSimulator
             };
 
             // Minimap
-            minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
-            this.texturer_miniMap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
+            WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+            miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
 
             //
-            System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
-            bmp.SetPixel(0, 0, System.Drawing.Color.White);
-            texture_miniMapPixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
-
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
             // default positioning for character
@@ -433,6 +429,12 @@ namespace HaCreator.MapSimulator
             if (bIsUpKeyPressed || bIsDownKeyPressed)
             {
                 SetCameraMoveY(bIsUpKeyPressed, bIsDownKeyPressed, moveOffset);
+            }
+
+            // Minimap M
+            if (Keyboard.GetState().IsKeyDown(Keys.M))
+            {
+
             }
 
             base.Update(gameTime);
@@ -557,15 +559,10 @@ namespace HaCreator.MapSimulator
             }
 
             // Minimap
-            if (texturer_miniMap != null)
-            {
-                spriteBatch.Draw(texturer_miniMap, new Rectangle(minimapPos.X, minimapPos.Y, texturer_miniMap.Width, texturer_miniMap.Height), Color.White);
-                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
-                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
-
-                FillRectangle(spriteBatch, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
-            }
-
+            miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.", new Vector2(20, 10), Color.White);
@@ -603,7 +600,7 @@ namespace HaCreator.MapSimulator
         /// <param name="rectangleToDraw"></param>
         /// <param name="thicknessOfBorder"></param>
         /// <param name="borderColor"></param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+       /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
         {
             // Draw top line
@@ -636,7 +633,7 @@ namespace HaCreator.MapSimulator
         private void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
         {
             sprite.Draw(texture_miniMapPixel, rectangle, color);
-        }
+        }*/
         #endregion
 
         #region Screenshot

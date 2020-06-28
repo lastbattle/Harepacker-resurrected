@@ -24,6 +24,16 @@ namespace HaCreator.MapSimulator.Objects
         protected readonly bool notAnimated;
         private readonly IDXObject frame0;
 
+        private Point _Position;
+        /// <summary>
+        /// The additional position of the image (used primarily for UI overlay) 
+        /// </summary>
+        public Point Position
+        {
+            get { return this._Position; }
+            set { this._Position = value; }
+        }
+
         /// <summary>
         /// Creates an instance of MapItem
         /// </summary>
@@ -43,6 +53,7 @@ namespace HaCreator.MapSimulator.Objects
                 notAnimated = false;
                 this.flip = flip;
             }
+            this._Position = new Point(0, 0);
         }
 
         /// <summary>
@@ -55,6 +66,8 @@ namespace HaCreator.MapSimulator.Objects
             this.frame0 = frame0;
             notAnimated = true;
             this.flip = flip;
+
+            this._Position = new Point(0, 0);
         }
 
         protected IDXObject GetCurrFrame(int TickCount)
@@ -102,7 +115,7 @@ namespace HaCreator.MapSimulator.Objects
             if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, width, height))
             {
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                    shiftCenteredX, shiftCenteredY,
+                    shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
                     flip);
             }
         }

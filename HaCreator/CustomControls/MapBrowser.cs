@@ -24,7 +24,7 @@ namespace HaCreator.CustomControls
     public partial class MapBrowser : UserControl
     {
         private bool load = false;
-        private List<string> maps = new List<string>();
+        private readonly List<string> maps = new List<string>();
 
         public MapBrowser()
         {
@@ -61,25 +61,29 @@ namespace HaCreator.CustomControls
 
         public void InitializeMaps(bool special)
         {
-            WzObject mapLogin1 = Program.WzManager["ui"]["MapLogin1.img"];
-            WzObject mapLogin2 = Program.WzManager["ui"]["MapLogin2.img"];
-            WzObject mapLogin3 = Program.WzManager["ui"]["MapLogin3.img"]; // pretty rare, happened a few times in ascension patch
-
-            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
+            // Logins
+            List<string> mapLogins = new List<string>();
+            for (int i = 0; i < 20; i++)
             {
-                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
+                string imageName = "MapLogin" + (i == 0 ? "" : i.ToString()) + ".img";
+                WzObject mapLogin = Program.WzManager["ui"][imageName];
+                if (mapLogin == null)
+                    break;
+                mapLogins.Add(imageName);
             }
+
+            // Maps
+            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
+                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
+
             maps.Sort();
+
             if (special)
             {
                 maps.Insert(0, "CashShopPreview");
-                maps.Insert(0, "MapLogin");
-                if (mapLogin1 != null)
-                    maps.Insert(0, "MapLogin1");
-                if (mapLogin2 != null)
-                    maps.Insert(0, "MapLogin2");
-                if (mapLogin3 != null)
-                    maps.Insert(0, "MapLogin3");
+
+                foreach (string mapLogin in mapLogins)
+                    maps.Insert(0, mapLogin.Replace(".img", ""));
             }
 
             object[] mapsObjs = maps.Cast<object>().ToArray();
@@ -99,9 +103,8 @@ namespace HaCreator.CustomControls
             string tosearch = searchBox.Text.ToLower();
 
             if (_previousSeachText == tosearch)
-            {
                 return;
-            }
+
             _previousSeachText = tosearch; // set
 
 
