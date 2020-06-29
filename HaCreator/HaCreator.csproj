@@ -698,6 +698,10 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\EmptyKeys.UIEngine\EmptyKeys.UserInterface.MonoGame\EmptyKeys.UserInterface.MonoGame.Standard.csproj">
+      <Project>{30797d0b-0635-4b60-a591-45bbb9de7928}</Project>
+      <Name>EmptyKeys.UserInterface.MonoGame.Standard</Name>
+    </ProjectReference>
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
