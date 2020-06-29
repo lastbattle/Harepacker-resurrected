@@ -492,21 +492,6 @@ namespace HaCreator.GUI
             infomodeBtn.IsChecked = infomode;
         }
 
-        public void SetMousePos(int virtualX, int virtualY, int physicalX, int physicalY)
-        {
-            this.virtualPos.Text = "X: " + virtualX.ToString() + "\nY: " + virtualY.ToString();
-            this.physicalPos.Text = "X: " + physicalX.ToString() + "\nY: " + physicalY.ToString();
-        }
-
-        /// <summary>
-        /// Set selected items description on the ribbon
-        /// </summary>
-        /// <param name="desc"></param>
-        public void SetItemDesc(string desc)
-        {
-            itemDesc.Text = desc;
-        }
-
         public void SetHasMinimap(bool hasMinimap)
         {
             this.hasMinimap = hasMinimap;
