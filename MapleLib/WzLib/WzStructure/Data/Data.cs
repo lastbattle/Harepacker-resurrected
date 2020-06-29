@@ -50,12 +50,4 @@ namespace MapleLib.WzLib.WzStructure.Data
             "H+V Copies, Vertical Moving"
         };
     }
-
-    public static class WzConstants
-    {
-        public const int MinMap = 0;
-        public const int MaxMap = 999999999;
-
-        public const int MaxMapLayers = 8;
-    }
 }

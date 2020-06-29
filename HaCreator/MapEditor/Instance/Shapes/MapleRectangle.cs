@@ -29,9 +29,18 @@ namespace HaCreator.MapEditor.Instance.Shapes
         private MapleLine cd;
         private MapleLine da;
 
+        private XNA.Rectangle rect;
+        public XNA.Rectangle Rectangle
+        {
+            get { return this.rect; }
+            private set { }
+        }
+
         public MapleRectangle(Board board, XNA.Rectangle rect)
             : base(board, 0, 0, 0) // BoardItem position doesn't do anything in rectangles
         {
+            this.rect = rect;
+
             lock (board.ParentControl)
             {
                 // Make dots
@@ -125,11 +134,17 @@ namespace HaCreator.MapEditor.Instance.Shapes
             if (Selected)
                 lineColor = dotColor;
             int x, y;
-            if (a.X < b.X) x = a.X + xShift;
-            else x = b.X + xShift;
-            if (b.Y < c.Y) y = b.Y + yShift;
-            else y = c.Y + yShift;
-            Board.ParentControl.FillRectangle(sprite, new XNA.Rectangle(x, y, Math.Abs(b.X - a.X), Math.Abs(c.Y - a.Y)), Color);
+            if (a.X < b.X) 
+                x = a.X + xShift;
+            else 
+                x = b.X + xShift;
+
+            if (b.Y < c.Y) 
+                y = b.Y + yShift;
+            else 
+                y = c.Y + yShift;
+
+            Board.ParentControl.FillRectangle(sprite, new XNA.Rectangle(x, y, Width, Height), Color);
             ab.Draw(sprite, lineColor, xShift, yShift);
             bc.Draw(sprite, lineColor, xShift, yShift);
             cd.Draw(sprite, lineColor, xShift, yShift);

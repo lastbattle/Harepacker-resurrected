@@ -44,14 +44,21 @@ namespace HaCreator.MapEditor.Info
 
         public static ObjectInfo Get(string oS, string l0, string l1, string l2)
         {
-            try
-            {
-            WzImageProperty objInfoProp = Program.InfoManager.ObjectSets[oS][l0][l1][l2];
+            WzImageProperty objInfoProp = Program.InfoManager.ObjectSets[oS]?[l0]?[l1]?[l2];
+            if (objInfoProp == null)
+                return null;
             if (objInfoProp.HCTag == null)
-                objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
-            return (ObjectInfo)objInfoProp.HCTag;
+            {
+                try
+                {
+                    objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
+                }
+                catch (KeyNotFoundException e)
+                {
+                    return null;
+                }
             }
-            catch (KeyNotFoundException e) { return null; }
+            return (ObjectInfo)objInfoProp.HCTag;
         }
 
         private static List<XNA.Point> ParsePropToOffsetList(WzImageProperty prop)
@@ -81,7 +88,8 @@ namespace HaCreator.MapEditor.Info
                     {
                         result.Add(ParsePropToOffsetList(offsetSet));
                     }
-                }catch(InvalidCastException exc) {  }
+                }
+                catch (InvalidCastException exc) { }
             }
             else
             {
@@ -94,12 +102,12 @@ namespace HaCreator.MapEditor.Info
         {
             WzCanvasProperty frame1 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject["0"]);
             ObjectInfo result = new ObjectInfo(
-                frame1.GetLinkedWzCanvasBitmap(), 
-                WzInfoTools.PointFToSystemPoint(frame1.GetCanvasOriginPosition()), 
-                oS, 
-                l0, 
-                l1, 
-                l2, 
+                frame1.GetLinkedWzCanvasBitmap(),
+                WzInfoTools.PointFToSystemPoint(frame1.GetCanvasOriginPosition()),
+                oS,
+                l0,
+                l1,
+                l2,
                 parentObject);
             WzImageProperty chairs = parentObject["seat"];
             WzImageProperty ropes = frame1["rope"];

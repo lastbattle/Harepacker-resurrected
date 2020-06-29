@@ -218,7 +218,7 @@ namespace HaCreator.MapEditor
 
         public void CreateLayers()
         {
-            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
+            for (int i = 0; i < MapConstants.MaxMapLayers; i++)
             {
                 new Layer(this);
             }
@@ -237,11 +237,6 @@ namespace HaCreator.MapEditor
             parent.OnBoardRemoved(this);
             GC.Collect();
             GC.WaitForPendingFinalizers();
-        }
-
-        public void CopyItemsTo(List<BoardItem> items, Board dstBoard, Point offset)
-        {
-
         }
 
         #region Properties

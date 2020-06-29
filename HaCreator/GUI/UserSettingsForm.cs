@@ -139,7 +139,9 @@ namespace HaCreator.GUI
             UserSettings.MiscSelectedFill = SystemToXNAColor(miscSelectedColorPicker.Color);
             UserSettings.OriginColor = SystemToXNAColor(originColorPicker.Color);
             UserSettings.MinimapBoundColor = SystemToXNAColor(minimapColorPicker.Color);
-            
+
+            UserSettings.FontName = fontName.Text;
+            UserSettings.FontSize = (int) fontSize.Value;
             UserSettings.HiddenLifeR = (int)rInput.Value;
             UserSettings.Mobrx0Offset = (int)mobrx0Box.Value;
             UserSettings.Mobrx1Offset = (int)mobrx1Box.Value;

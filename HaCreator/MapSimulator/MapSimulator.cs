@@ -1,10 +1,14 @@
 ﻿// uncomment line below to show debug values
 #define SIMULATOR_DEBUG_INFO
 
+// #define SIMULATOR_DEBUG_INFO_EXTRAS // only for development
 
+using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
@@ -20,6 +24,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -46,12 +51,14 @@ namespace HaCreator.MapSimulator
 
         private SpriteBatch spriteBatch;
 
+
         // Objects, NPCs
         public List<BaseItem>[] mapObjects;
         private readonly List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
         private readonly List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
         private readonly List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
         private readonly List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
+        private readonly List<BaseItem> mapObjects_tooltips = new List<BaseItem>();
 
         // Backgrounds
         private readonly List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -61,8 +68,7 @@ namespace HaCreator.MapSimulator
         private Rectangle vr_fieldBoundary;
 
         // Minimap
-        private Texture2D texture_miniMapPixel;
-        private Texture2D texturer_miniMap;
+        private MinimapItem miniMap;
 
         // Cursor, mouse
         private MouseCursorItem mouseCursor;
@@ -99,7 +105,7 @@ namespace HaCreator.MapSimulator
             // set Form window height & width
             //this.Width = (int)(RenderWidth * dpi);
             //this.Height = (int)(RenderHeight * dpi);
-            
+
             //Window.IsBorderless = true;
             //Window.Position = new Point(0, 0);
             Window.Title = titleName;
@@ -108,7 +114,7 @@ namespace HaCreator.MapSimulator
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
-                SynchronizeWithVerticalRetrace = true, 
+                SynchronizeWithVerticalRetrace = true,
                 HardwareModeSwitch = true,
                 GraphicsProfile = GraphicsProfile.HiDef,
                 IsFullScreen = false,
@@ -189,8 +195,8 @@ namespace HaCreator.MapSimulator
             // TODO: Add your initialization logic here
 
             // Create map layers
-            mapObjects = new List<BaseItem>[WzConstants.MaxMapLayers];
-            for (int i = 0; i < WzConstants.MaxMapLayers; i++)
+            mapObjects = new List<BaseItem>[MapConstants.MaxMapLayers];
+            for (int i = 0; i < MapConstants.MaxMapLayers; i++)
             {
                 mapObjects[i] = new List<BaseItem>();
             }
@@ -284,16 +290,25 @@ namespace HaCreator.MapSimulator
             }
 
             // Load portals
-            WzSubProperty portalParent = (WzSubProperty) MapWzFile["MapHelper.img"]["portal"];
+            WzSubProperty portalParent = (WzSubProperty)MapWzFile["MapHelper.img"]["portal"];
 
-            WzSubProperty gameParent = (WzSubProperty) portalParent["game"];
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
             //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
 
             foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
             {
                 PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                if (portalItem != null) 
+                if (portalItem != null)
                     mapObjects_Portal.Add(portalItem);
+            }
+
+            // Load tooltips
+            WzSubProperty farmFrameParent = (WzSubProperty)UIWZFile["UIToolTip.img"]?["Item"]?["FarmFrame"];
+            foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
+            {
+                TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
+
+                mapObjects_tooltips.Add(item);
             }
 
             // Cursor
@@ -307,14 +322,10 @@ namespace HaCreator.MapSimulator
             };
 
             // Minimap
-            minimapPos = new Point((int)Math.Round((mapBoard.MinimapPosition.X + mapBoard.CenterPoint.X) / (double)mapBoard.mag), (int)Math.Round((mapBoard.MinimapPosition.Y + mapBoard.CenterPoint.Y) / (double)mapBoard.mag));
-            this.texturer_miniMap = BoardItem.TextureFromBitmap(GraphicsDevice, mapBoard.MiniMap);
+            WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+            miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
 
             //
-            System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
-            bmp.SetPixel(0, 0, System.Drawing.Color.White);
-            texture_miniMapPixel = BoardItem.TextureFromBitmap(GraphicsDevice, bmp);
-
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
             // default positioning for character
@@ -341,7 +352,7 @@ namespace HaCreator.MapSimulator
             }
 
             skeletonMeshRenderer.End();
-            
+
             _DxDeviceManager.EndDraw();
             _DxDeviceManager.Dispose();
 
@@ -360,7 +371,7 @@ namespace HaCreator.MapSimulator
 
         #region Update and Drawing
         /// <summary>
-        /// Key handling
+        /// Key, and frame update handling
         /// </summary>
         /// <param name="gameTime"></param>
         protected override void Update(GameTime gameTime)
@@ -410,7 +421,7 @@ namespace HaCreator.MapSimulator
             bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
             bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
 
-            int moveOffset = bIsShiftPressed ? (int) (3000f / frameRate) : (int) (1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
+            int moveOffset = bIsShiftPressed ? (int)(3000f / frameRate) : (int)(1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
             {
                 SetCameraMoveX(bIsLeftKeyPressed, bIsRightKeyPressed, moveOffset);
@@ -418,6 +429,12 @@ namespace HaCreator.MapSimulator
             if (bIsUpKeyPressed || bIsDownKeyPressed)
             {
                 SetCameraMoveY(bIsUpKeyPressed, bIsDownKeyPressed, moveOffset);
+            }
+
+            // Minimap M
+            if (Keyboard.GetState().IsKeyDown(Keys.M))
+            {
+
             }
 
             base.Update(gameTime);
@@ -429,13 +446,17 @@ namespace HaCreator.MapSimulator
             int TickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
+            MouseState mouseState = mouseCursor.MouseState;
+            int mouseXRelativeToMap = mouseState.X - mapShiftX;
+            int mouseYRelativeToMap = mouseState.Y - mapShiftY;
+            //System.Diagnostics.Debug.WriteLine("Mouse relative to map: X {0}, Y {1}", mouseXRelativeToMap, mouseYRelativeToMap);
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
             spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
-                //SpriteSortMode.Deferred,
+                                          //SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RenderObjectScaling));
             //skeletonMeshRenderer.Begin();
 
@@ -507,17 +528,41 @@ namespace HaCreator.MapSimulator
             //Rectangle titleSafeRectangle = GraphicsDevice.Viewport.TitleSafeArea;
             //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
-            // UI related here
-            // Minimap
-            if (texturer_miniMap != null)
+            //////////////////// UI related here ////////////////////
+            // Tooltips
+            foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
             {
-                spriteBatch.Draw(texturer_miniMap, new Rectangle(minimapPos.X, minimapPos.Y, texturer_miniMap.Width, texturer_miniMap.Height), Color.White);
-                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
-                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
+                if (tooltip.TooltipInstance.CharacterToolTip != null)
+                {
+                    Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
+                    if (tooltipRect != null) // if this is null, show it at all times
+                    {
+                        Rectangle rect = new Rectangle(
+                            tooltipRect.X - ((mapShiftX) - mapBoard.CenterPoint.X),
+                            tooltipRect.Y - ((mapShiftY) - mapBoard.CenterPoint.Y),
+                            tooltipRect.Width, tooltipRect.Height);
 
-                FillRectangle(spriteBatch, new Rectangle(minimapPosX - 4, minimapPosY - 4, 4, 4), Color.Yellow);
+#if SIMULATOR_DEBUG_INFO_EXTRAS
+                    DrawBorder(spriteBatch, rect, 1, Color.White); // test
+                    spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+#endif
+
+                        if (!rect.Contains(mouseState.X, mouseState.Y))
+                            continue;
+                    }
+                }
+
+                tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
             }
 
+            // Minimap
+            miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.", new Vector2(20, 10), Color.White);
@@ -525,8 +570,10 @@ namespace HaCreator.MapSimulator
 
 #if SIMULATOR_DEBUG_INFO
             StringBuilder sb = new StringBuilder();
-            sb.Append("FPS: ").Append(frameRate);
-            spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 100, 10), Color.White);
+            sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
+            sb.Append("Mouse : X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap).Append(Environment.NewLine);
+            sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
+            spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 170, 10), Color.White);
 #endif
 
 
@@ -553,7 +600,7 @@ namespace HaCreator.MapSimulator
         /// <param name="rectangleToDraw"></param>
         /// <param name="thicknessOfBorder"></param>
         /// <param name="borderColor"></param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+       /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
         {
             // Draw top line
@@ -586,7 +633,7 @@ namespace HaCreator.MapSimulator
         private void FillRectangle(SpriteBatch sprite, Rectangle rectangle, Color color)
         {
             sprite.Draw(texture_miniMapPixel, rectangle, color);
-        }
+        }*/
         #endregion
 
         #region Screenshot

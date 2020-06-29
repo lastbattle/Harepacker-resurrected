@@ -62,7 +62,7 @@ namespace HaCreator.MapEditor
             generalCategory.Add(editInstance);
 
             // Portal
-            if (target is PortalInstance && ((PortalInstance)target).tm != WzConstants.MaxMap)
+            if (target is PortalInstance && ((PortalInstance)target).tm != MapConstants.MaxMap)
             {
                 ToolStripMenuItem loadTargetMap = new ToolStripMenuItem("Load target map in a new tab");
                 loadTargetMap.Click += LoadPortalTargetMap_Click;
@@ -143,7 +143,7 @@ namespace HaCreator.MapEditor
         {
             PortalInstance portal = (PortalInstance)target;
 
-            if (portal.tm != WzConstants.MaxMap)
+            if (portal.tm != MapConstants.MaxMap)
             {
                 multiboard.HaCreatorStateManager.LoadMap(portal.tm);
             }

@@ -387,6 +387,8 @@
     <Compile Include="MapSimulator\DX\DXSpineObject.cs" />
     <Compile Include="MapSimulator\Objects\BaseItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\MobItem.cs" />
+    <Compile Include="MapSimulator\Objects\FieldObject\TooltipItem.cs" />
+    <Compile Include="MapSimulator\Objects\UIObject\MinimapItem.cs" />
     <Compile Include="MapSimulator\Objects\UIObject\MouseCursorItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\NpcItem.cs" />
     <Compile Include="MapSimulator\MapSimulator.cs" />
@@ -396,6 +398,7 @@
     <Compile Include="MapSimulator\Objects\FieldObject\PortalItem.cs" />
     <Compile Include="MapSimulator\Objects\FieldObject\ReactorItem.cs" />
     <Compile Include="MapSimulator\TexturePool.cs" />
+    <Compile Include="MapSimulator\UIFrameHelper.cs" />
     <Compile Include="ThirdParty\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>

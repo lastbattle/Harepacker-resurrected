@@ -34,7 +34,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
-                mapShiftX - centerX, mapShiftY - centerY, 0, 0,
+                mapShiftX, mapShiftY, centerX, centerY,
                 renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                 TickCount);
         }

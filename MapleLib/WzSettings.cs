@@ -215,24 +215,27 @@ namespace MapleLib.WzLib
                 }
         }
 
-        public void Load()
+        /// <summary>
+        /// Load UserSettings and ApplicationSettings
+        /// </summary>
+        public void LoadSettings()
         {
             if (File.Exists(wzPath))
             {
-                WzFile wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC);
-                try
+                using (WzFile wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC))
                 {
-                    string parseErrorMessage = string.Empty;
-                    bool success = wzFile.ParseWzFile(out parseErrorMessage);
+                    try
+                    {
+                        string parseErrorMessage = string.Empty;
+                        bool success = wzFile.ParseWzFile(out parseErrorMessage);
 
-                    ExtractSettingsImage((WzImage)wzFile["UserSettings.img"], userSettingsType);
-                    ExtractSettingsImage((WzImage)wzFile["ApplicationSettings.img"], appSettingsType);
-                    wzFile.Dispose();
-                }
-                catch
-                {
-                    wzFile.Dispose();
-                    throw;
+                        ExtractSettingsImage((WzImage)wzFile["UserSettings.img"], userSettingsType);
+                        ExtractSettingsImage((WzImage)wzFile["ApplicationSettings.img"], appSettingsType);
+                    }
+                    catch
+                    {
+                        throw;
+                    }
                 }
             }
         }
