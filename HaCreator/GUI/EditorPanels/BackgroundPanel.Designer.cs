@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class BackgroundPanel
     {
@@ -35,7 +37,7 @@
             this.aniBg = new System.Windows.Forms.RadioButton();
             this.radioButton_spine = new System.Windows.Forms.RadioButton();
             this.bgBack = new System.Windows.Forms.RadioButton();
-            this.bgImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.bgImageContainer = new ThumbnailFlowLayoutPanel();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).BeginInit();
             this.splitContainer6.Panel1.SuspendLayout();
             this.splitContainer6.Panel2.SuspendLayout();
@@ -175,7 +177,7 @@
         private System.Windows.Forms.ListBox bgSetListBox;
         private System.Windows.Forms.RadioButton bgBack;
         private System.Windows.Forms.RadioButton aniBg;
-        private ThirdParty.ThumbnailFlowLayoutPanel bgImageContainer;
+        private ThumbnailFlowLayoutPanel bgImageContainer;
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.RadioButton radioButton_spine;
     }

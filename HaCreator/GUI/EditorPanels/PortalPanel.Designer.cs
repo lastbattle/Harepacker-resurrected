@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class PortalPanel
     {
@@ -28,7 +30,7 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.portalImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.portalImageContainer = new ThumbnailFlowLayoutPanel();
             this.SuspendLayout();
             // 
             // portalImageContainer
@@ -57,6 +59,6 @@
 
         #endregion
 
-        private ThirdParty.ThumbnailFlowLayoutPanel portalImageContainer;
+        private ThumbnailFlowLayoutPanel portalImageContainer;
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace HaCreator
+﻿namespace HaCreator.CustomControls
 {
     partial class DirectXHolder
     {

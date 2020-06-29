@@ -18,11 +18,11 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using System.Collections;
-using HaCreator.ThirdParty;
 using HaCreator.GUI;
 using MapleLib.WzLib.WzStructure;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.UndoRedo;
+using HaCreator.CustomControls;
 
 namespace HaCreator.GUI.EditorPanels
 {

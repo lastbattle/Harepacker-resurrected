@@ -8,7 +8,7 @@ using System.Drawing;
 using System.Data;
 
 
-namespace HaCreator.ThirdParty
+namespace HaCreator.CustomControls
 {
     //Show the CheckedListBox icon in the Toolbox for our component
     [ToolboxBitmap(typeof(CheckedListBox))]

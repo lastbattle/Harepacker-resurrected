@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.GUI;
+﻿using HaCreator.CustomControls;
+using HaSharedLibrary.GUI;
 
 namespace HaCreator.GUI
 {
@@ -145,7 +146,7 @@ namespace HaCreator.GUI
             this.timedMobEnable = new System.Windows.Forms.CheckBox();
             this.tabPage4 = new System.Windows.Forms.TabPage();
             this.fieldLimitPanel1 = new HaSharedLibrary.GUI.FieldLimitPanel();
-            this.optionsList = new HaCreator.ThirdParty.BetterCheckedListBox();
+            this.optionsList = new BetterCheckedListBox();
             this.label123 = new System.Windows.Forms.Label();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
@@ -1628,7 +1629,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.NumericUpDown forcedRet;
         private System.Windows.Forms.Label label9;
-        private ThirdParty.BetterCheckedListBox optionsList;
+        private HaCreator.CustomControls.BetterCheckedListBox optionsList;
         private System.Windows.Forms.Label label10;
         private System.Windows.Forms.Label label11;
         private System.Windows.Forms.Label label13;

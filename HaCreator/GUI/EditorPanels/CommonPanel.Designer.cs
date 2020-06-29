@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class CommonPanel
     {
@@ -28,7 +30,7 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.miscItemsContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.miscItemsContainer = new ThumbnailFlowLayoutPanel();
             this.SuspendLayout();
             // 
             // miscItemsContainer
@@ -56,6 +58,6 @@
 
         #endregion
 
-        private ThirdParty.ThumbnailFlowLayoutPanel miscItemsContainer;
+        private ThumbnailFlowLayoutPanel miscItemsContainer;
     }
 }
