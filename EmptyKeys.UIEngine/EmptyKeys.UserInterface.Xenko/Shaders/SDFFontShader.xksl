@@ -1,0 +1,15 @@
+﻿class SDFFontShader : SpriteBase, SignedDistanceFieldFont
+{    
+    [Color]
+    stage float4 TintColor = float4(1,1,1,1);
+
+    [Color]
+    stage float4 BorderColor = float4(0,0,0,1);
+    
+    stage float BorderThickness = 0.0f;
+    
+    stage override float4 Shading()
+    {
+        return FontColor(base.Shading(), TintColor, BorderColor, BorderThickness);
+    }
+};

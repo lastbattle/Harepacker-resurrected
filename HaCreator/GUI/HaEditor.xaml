@@ -19,6 +19,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="20"/>
         </Grid.RowDefinitions>
 
         <Grid.ColumnDefinitions>
@@ -42,7 +43,6 @@
             </TabControl>
             <mapEditor:MultiBoard x:Name="multiBoard" Grid.Row="1"/>
         </Grid>
-
 
 
         <!-- Side panel-->
@@ -94,6 +94,37 @@
                 </Expander>
             </StackPanel>
         </ScrollViewer>
+
+        <StatusBar x:Name="statusBar" Grid.Row="2" Grid.ColumnSpan="2">
+            <StatusBarItem HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="5*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <TextBlock Text="Physical Cursor: X = " />
+                        <TextBlock x:Name="textblock_CursorX" Text="0" />
+                        <TextBlock Text=", Y = " />
+                        <TextBlock x:Name="textblock_CursorY" Text="0" />
+
+                        <TextBlock Text="|" Margin="20,0,20,0"/>
+                        <TextBlock Text="Cursor: X = " />
+                        <TextBlock x:Name="textblock_RCursorX" Text="0" />
+                        <TextBlock Text=", Y = " />
+                        <TextBlock x:Name="textblock_RCursorY" Text="0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,0">
+                        <TextBlock Text="|" Margin="20,0,20,0"/>
+                        <TextBlock Text="Selected item: " />
+                        <TextBlock x:Name="textblock_selectedItem" Text="" />
+                    </StackPanel>
+                </Grid>
+               
+            </StatusBarItem>
+        </StatusBar>
     </Grid>
 
 </Window>

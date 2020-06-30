@@ -32,7 +32,7 @@ using System.Text;
 using System.Windows.Forms;
 using System.Drawing.Drawing2D;
 
-namespace HaCreator.ThirdParty
+namespace HaCreator.CustomControls
 {
     public partial class ImageViewer : UserControl
     {

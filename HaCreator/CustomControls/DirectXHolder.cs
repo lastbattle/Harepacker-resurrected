@@ -13,7 +13,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 
-namespace HaCreator
+namespace HaCreator.CustomControls
 {
     public partial class DirectXHolder : UserControl
     {

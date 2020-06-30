@@ -1,21 +1,21 @@
 ### HaSuite / Harepacker resurrected
-A collection of tools for MapleStory, i.e file/level editor for MapleStory .wz game files.
+A collection of tools for MapleStory. A .wz file and level (or you call that field/ maps) editor.
 
-A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite), continuing from where it's being left off.
+>> A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite)
 For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/
 
+----
 ![N|Solid](https://i.imgur.com/sdq8wNo.png)
 
-![N|Solid](https://i.imgur.com/gm8jdFi.png)
+![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
 
-![N|Solid](https://i.imgur.com/EBAGnpn.png)
+![Rainbow Street Amherst](https://i.imgur.com/A1U0Hhg.jpg)
 
 ![N|Solid](https://imgur.com/download/SrS8Lw8/) 
 
 
-------------------------------
+----
 # BUILD
-
 ### To build HaSuite, you need 
  - at least [Microsoft Visual Studio 2019](https://visualstudio.microsoft.com/vs/)
  - [Git](https://git-scm.com/downloads) or [Github, bundled](https://desktop.github.com/) for cloning, and downloading of related sub-module components in the repository.
@@ -33,13 +33,18 @@ git submodule init
 git submodule update
 ``` 
 
-------------------------------
+----
 
 ### Development
 
-Want to contribute? Great! Fork it, create pull request! 
-This is purely community driven and at my time, please dont expect me to fix things for you immediately.
+Want to support the development? Buy me a coffee <3
+**Bitcoin**: [3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx](https://blockstream.info/address/3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx)
 
+How about contributing instead? Great! Fork it, create pull request! Its all free! 
+> p.s. This is purely community driven & at my free time, please don't expect me to fix things for you immediately.
+
+##### Third party libraries
+- [EmptyKeys_UIEngines](https://github.com/EmptyKeys/UI_Engines)
 
 ##### Credits
  - [@haha01haha](https://github.com/hadeutscher)

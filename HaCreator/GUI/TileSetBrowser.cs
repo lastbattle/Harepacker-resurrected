@@ -15,7 +15,7 @@ using System.Windows.Forms;
 using System.Collections;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using HaCreator.ThirdParty;
+using HaCreator.CustomControls;
 
 namespace HaCreator.GUI
 {

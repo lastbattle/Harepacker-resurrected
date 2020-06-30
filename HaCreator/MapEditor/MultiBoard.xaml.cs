@@ -58,7 +58,7 @@ namespace HaCreator.MapEditor
         private Scheduler scheduler;
 
         // UI
-        private List<Board> boards = new List<Board>();
+        private readonly List<Board> boards = new List<Board>();
         private Board selectedBoard = null;
         private HaCreatorStateManager _HaCreatorStateManager = null;
         public HaCreatorStateManager HaCreatorStateManager

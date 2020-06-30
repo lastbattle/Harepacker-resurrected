@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup Label="Globals">
+    <SccProjectName>SAK</SccProjectName>
+    <SccProvider>SAK</SccProvider>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>EmptyKeys.UserInterface.MonoGame</PackageId>
+    <Description>MonoGame Library for Empty Keys UI</Description>
+    <Product>EmptyKeys.UserInterface.MonoGame</Product>
+    <Copyright>Copyright © 2018 Empty Keys, Filip Dušek</Copyright>
+    <Company>Empty Keys</Company>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
+    <Version>3.1.0</Version>
+    <Authors>Empty Keys, Filip Dušek</Authors>
+    <AssemblyName>EmptyKeys.UserInterface.MonoGame</AssemblyName>
+    <RootNamespace>EmptyKeys.UserInterface.MonoGame</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="UserInterface\**" />
+    <EmbeddedResource Remove="UserInterface\**" />
+    <None Remove="UserInterface\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Shaders\DirectionalBlurShader.fx" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Shaders\DirectionalBlurShader.fx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmptyKeys.UserInterface.Core\EmptyKeys.UserInterface.Core.Standard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="MonoGame.Framework">
+      <HintPath>C:\Program Files (x86)\MonoGame\v3.0\Assemblies\Windows\MonoGame.Framework.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

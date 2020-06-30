@@ -399,16 +399,16 @@
     <Compile Include="MapSimulator\Objects\FieldObject\ReactorItem.cs" />
     <Compile Include="MapSimulator\TexturePool.cs" />
     <Compile Include="MapSimulator\UIFrameHelper.cs" />
-    <Compile Include="ThirdParty\ColorDialog.xaml.cs">
+    <Compile Include="CustomControls\ColorDialog.xaml.cs">
       <DependentUpon>ColorDialog.xaml</DependentUpon>
     </Compile>
-    <Compile Include="ThirdParty\ColorPicker.xaml.cs">
+    <Compile Include="CustomControls\ColorPicker.xaml.cs">
       <DependentUpon>ColorPicker.xaml</DependentUpon>
     </Compile>
-    <Compile Include="ThirdParty\ImageViewer.cs">
+    <Compile Include="CustomControls\ImageViewer.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="ThirdParty\ImageViewer.Designer.cs">
+    <Compile Include="CustomControls\ImageViewer.Designer.cs">
       <DependentUpon>ImageViewer.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\About.cs">
@@ -420,7 +420,7 @@
     <Compile Include="CustomControls\AlphaColorPicker.cs">
       <SubType>UserControl</SubType>
     </Compile>
-    <Compile Include="ThirdParty\BetterCheckedListBox.cs">
+    <Compile Include="CustomControls\BetterCheckedListBox.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.cs">
@@ -502,7 +502,7 @@
     <Compile Include="GUI\Initialization.designer.cs">
       <DependentUpon>Initialization.cs</DependentUpon>
     </Compile>
-    <Compile Include="ThirdParty\ThumbnailFlowLayoutPanel.cs">
+    <Compile Include="CustomControls\ThumbnailFlowLayoutPanel.cs">
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="GUI\Load.cs">
@@ -687,17 +687,21 @@
       <DependentUpon>TileSetBrowser.cs</DependentUpon>
     </Compile>
     <Compile Include="WzSettings.cs" />
-    <EmbeddedResource Include="ThirdParty\BetterCheckedListBox.resx">
+    <EmbeddedResource Include="CustomControls\BetterCheckedListBox.resx">
       <DependentUpon>BetterCheckedListBox.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="ThirdParty\ImageViewer.resx">
+    <EmbeddedResource Include="CustomControls\ImageViewer.resx">
       <DependentUpon>ImageViewer.cs</DependentUpon>
     </EmbeddedResource>
-    <EmbeddedResource Include="ThirdParty\ThumbnailFlowLayoutPanel.resx">
+    <EmbeddedResource Include="CustomControls\ThumbnailFlowLayoutPanel.resx">
       <DependentUpon>ThumbnailFlowLayoutPanel.cs</DependentUpon>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\EmptyKeys.UIEngine\EmptyKeys.UserInterface.MonoGame\EmptyKeys.UserInterface.MonoGame.Standard.csproj">
+      <Project>{30797d0b-0635-4b60-a591-45bbb9de7928}</Project>
+      <Name>EmptyKeys.UserInterface.MonoGame.Standard</Name>
+    </ProjectReference>
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
@@ -779,11 +783,11 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="ThirdParty\ColorDialog.xaml">
+    <Page Include="CustomControls\ColorDialog.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
-    <Page Include="ThirdParty\ColorPicker.xaml">
+    <Page Include="CustomControls\ColorPicker.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
@@ -832,6 +836,7 @@
     <Content Include="HaLogo\HaLogo64.png" />
     <None Include="Resources\placeholder.bmp" />
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -27,7 +27,7 @@ using System;
 using System.Windows.Forms;
 using System.Drawing;
 
-namespace HaCreator.ThirdParty
+namespace HaCreator.CustomControls
 {
     public class ThumbnailFlowLayoutPanel : FlowLayoutPanel
     {

@@ -73,7 +73,7 @@ namespace HaCreator.GUI
         {
             // helper classes
             handler = new InputHandler(multiBoard);
-            hcsm = new HaCreatorStateManager(multiBoard, ribbon, tabControl1, handler);
+            hcsm = new HaCreatorStateManager(multiBoard, ribbon, tabControl1, handler, textblock_CursorX, textblock_CursorY, textblock_RCursorX, textblock_RCursorY, textblock_selectedItem);
             hcsm.CloseRequested += hcsm_CloseRequested;
             hcsm.FirstMapLoaded += hcsm_FirstMapLoaded;
 

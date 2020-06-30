@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class ObjPanel
     {
@@ -34,7 +36,7 @@
             this.objL0ListBox = new System.Windows.Forms.ListBox();
             this.splitContainer5 = new System.Windows.Forms.SplitContainer();
             this.objL1ListBox = new System.Windows.Forms.ListBox();
-            this.objImagesContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.objImagesContainer = new ThumbnailFlowLayoutPanel();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer3)).BeginInit();
             this.splitContainer3.Panel1.SuspendLayout();
             this.splitContainer3.Panel2.SuspendLayout();
@@ -177,6 +179,6 @@
         private System.Windows.Forms.ListBox objL0ListBox;
         private System.Windows.Forms.SplitContainer splitContainer5;
         private System.Windows.Forms.ListBox objL1ListBox;
-        private ThirdParty.ThumbnailFlowLayoutPanel objImagesContainer;
+        private ThumbnailFlowLayoutPanel objImagesContainer;
     }
 }

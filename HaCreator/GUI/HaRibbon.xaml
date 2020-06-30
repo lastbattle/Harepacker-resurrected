@@ -8,7 +8,8 @@
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              >
     <Grid>
-        <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Focusable="False">
+        <Ribbon x:Name="ribbon" Loaded="Ribbon_Loaded" Focusable="False" Background="White" 
+                BorderBrush="#FFC6CCD3">
             <Ribbon.CommandBindings>
                 <CommandBinding Command="ns:HaRibbon.New" CanExecute="AlwaysExecute" Executed="New_Executed" />
                 <CommandBinding Command="ns:HaRibbon.Open" CanExecute="AlwaysExecute" Executed="Open_Executed" />
@@ -41,12 +42,12 @@
 
             <Ribbon.ApplicationMenu>
                 <RibbonApplicationMenu KeyTip="M" Focusable="False">
-                    <RibbonApplicationMenuItem x:Name="newBtn" Header="New..." Command="ns:HaRibbon.New" ImageSource="pack://application:,,,/HaCreator;component/Images/new_icon.png" KeyTip="N" Focusable="False"/>
-                    <RibbonApplicationMenuItem x:Name="openBtn" Header="Open..." Command="ns:HaRibbon.Open" ImageSource="pack://application:,,,/HaCreator;component/Images/Folder.png" KeyTip="O" Focusable="False"/>
-                    <RibbonApplicationMenuItem x:Name="exportBtn" Header="Save..." Command="ns:HaRibbon.Export" ImageSource="pack://application:,,,/HaCreator;component/Images/Save.png" KeyTip="S" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="newBtn" Header="New" Command="ns:HaRibbon.New" ImageSource="pack://application:,,,/HaCreator;component/Images/new_icon.png" KeyTip="N" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="openBtn" Header="Open map" Command="ns:HaRibbon.Open" ImageSource="pack://application:,,,/HaCreator;component/Images/Folder.png" KeyTip="O" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="exportBtn" Header="Save map" Command="ns:HaRibbon.Export" ImageSource="pack://application:,,,/HaCreator;component/Images/Save.png" KeyTip="S" Focusable="False"/>
                     <RibbonSeparator/>
-                    <RibbonApplicationMenuItem x:Name="saveBtn" Header="Save to WZ..." Command="ns:HaRibbon.Save" ImageSource="pack://application:,,,/HaCreator;component/Images/export-icon.png" Focusable="False"/>
-                    <RibbonApplicationMenuItem x:Name="repackBtn" Header="Repack WZ Files..." Command="ns:HaRibbon.Repack" ImageSource="pack://application:,,,/HaCreator;component/Images/wz.ico" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="saveBtn" Header="Save to WZ" Command="ns:HaRibbon.Save" ImageSource="pack://application:,,,/HaCreator;component/Images/export-icon.png" Focusable="False"/>
+                    <RibbonApplicationMenuItem x:Name="repackBtn" Header="Repack WZ Files" Command="ns:HaRibbon.Repack" ImageSource="pack://application:,,,/HaCreator;component/Images/wz.ico" Focusable="False"/>
                     <RibbonSeparator/>
                     <RibbonApplicationMenuItem x:Name="hrBtn" Header="Open HaRepacker" Command="ns:HaRibbon.HaRepacker" ImageSource="pack://application:,,,/HaCreator;component/Images/HaLogo32.png" Focusable="False"
                                                IsEnabled="False"/>
@@ -83,29 +84,29 @@
                             <RowDefinition Height="20" />
                             <RowDefinition Height="20" />
                         </Grid.RowDefinitions>
-                        
+
                         <CheckBox x:Name="tilesCheck" Content="Tiles" Grid.Column="0" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="objsCheck" Content="Objects" Grid.Column="0" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="npcsCheck" Content="NPCs" Grid.Column="0" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
-                        
+
                         <CheckBox x:Name="mobsCheck" Content="Mobs" Grid.Column="1" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="reactCheck" Content="Reactors" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="portalCheck" Content="Portals" Grid.Column="1" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
-                        
+
                         <CheckBox x:Name="fhCheck" Content="Footholds" Grid.Column="2" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="ropeCheck" Content="Ropes" Grid.Column="2" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="chairCheck" Content="Chairs" Grid.Column="2" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
-                        
+
                         <CheckBox x:Name="tooltipCheck" Content="Tooltips" Grid.Column="3" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="bgCheck" Content="Backgrounds" Grid.Column="3" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
                         <CheckBox x:Name="miscCheck" Content="Other" Grid.Column="3" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" Command="ns:HaRibbon.ViewBoxes" Focusable="False"/>
-                        
+
                         <cc:CheckboxButton x:Name="allFullCheck" Content="All Objects" Grid.Column="4" Grid.Row="0" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="True" Clicked="allFullCheck_Click" Focusable="False"/>
                         <cc:CheckboxButton x:Name="allHalfCheck" Content="All Objects" Grid.Column="4" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="{x:Null}" Clicked="allHalfCheck_Click" Focusable="False"/>
                         <cc:CheckboxButton x:Name="allClearCheck" Content="All Objects" Grid.Column="4" Grid.Row="2" HorizontalAlignment="Left" VerticalAlignment="Center" IsThreeState="True" IsChecked="False" Clicked="allClearCheck_Click" Focusable="False"/>
                     </Grid>
                 </RibbonGroup>
-                
+
                 <RibbonGroup x:Name="Layers" Header="Layers">
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -159,7 +160,7 @@
                     </Grid>
                 </RibbonGroup>
             </RibbonTab>
-            
+
             <RibbonTab x:Name="toolsTab" Header="Tools" KeyTip="T">
                 <RibbonGroup x:Name="Tools" Header="Tools">
                     <RibbonButton Label="Settings" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Command="ns:HaRibbon.Settings" Focusable="False"/>
@@ -193,26 +194,5 @@
                 </RibbonGroup>
             </RibbonTab>-->
         </Ribbon>
-
-        <StackPanel Orientation="Horizontal" 
-                    HorizontalAlignment="Right" VerticalAlignment="Center">
-            <StackPanel Orientation="Vertical" Margin="0,0,30,0">
-                <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Mouse Virtual:" Margin="0,0,20,0"/>
-                <TextBlock x:Name="virtualPos" Text="0"/>
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Mouse Physical:" Margin="0,0,20,0"/>
-                <TextBlock x:Name="physicalPos" Text="0"/>
-                </StackPanel>
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
-                <TextBlock Text="Item:" Margin="0,0,20,0"/>
-                <TextBlock x:Name="itemDesc" Text="0"
-                           MaxWidth="120" TextWrapping="WrapWithOverflow"/>
-            </StackPanel>
-        </StackPanel>
     </Grid>
 </UserControl>

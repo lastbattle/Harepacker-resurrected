@@ -1,4 +1,4 @@
-namespace HaCreator.ThirdParty
+namespace HaCreator.CustomControls
 {
     partial class ImageViewer
     {

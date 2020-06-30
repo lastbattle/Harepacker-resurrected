@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup Label="Globals">
+    <SccProjectName>SAK</SccProjectName>
+    <SccProvider>SAK</SccProvider>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>EmptyKeys.UserInterface.Core</PackageId>
+    <Description>Core library for Empty Keys UI</Description>
+    <Product>EmptyKeys.UserInterface.Core</Product>
+    <Copyright>Copyright © 2018 Empty Keys, Filip Dušek</Copyright>
+    <Company>Empty Keys, Filip Dušek</Company>
+    <AssemblyVersion>3.1.0.0</AssemblyVersion>
+    <Version>3.1.0</Version>
+    <Authors>Empty Keys, Filip Dušek</Authors>
+    <AssemblyName>EmptyKeys.UserInterface.Core</AssemblyName>
+    <RootNamespace>EmptyKeys.UserInterface.Core</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <OutputPath>..\..\!Release\EmptyKeysUI\Common\AnyCPU</OutputPath>
+    <DocumentationFile>..\..\!Release\EmptyKeysUI\Common\AnyCPU\netstandard2.0\EmptyKeys.UserInterface.Core.xml</DocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Properties\" />
+  </ItemGroup>
+
+</Project>

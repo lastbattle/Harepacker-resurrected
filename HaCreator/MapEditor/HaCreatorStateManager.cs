@@ -30,19 +30,26 @@ using HaCreator.Exceptions;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 
+using SystemWinCtl = System.Windows.Controls;
+
 namespace HaCreator.MapEditor
 {
     public class HaCreatorStateManager
     {
-        private MultiBoard multiBoard;
-        private HaRibbon ribbon;
-        private System.Windows.Controls.TabControl tabs;
-        private InputHandler input;
+        private readonly MultiBoard multiBoard;
+        private readonly HaRibbon ribbon;
+        private readonly System.Windows.Controls.TabControl tabs;
+
+        // StatusBar (bottom)
+        private System.Windows.Controls.TextBlock textblock_CursorX, textblock_CursorY, textblock_RCursorX, textblock_RCursorY, textblock_selectedItem;
+
+        private readonly InputHandler input;
         private TilePanel tilePanel;
         private ObjPanel objPanel;
-        public BackupManager backupMan;
+        public readonly BackupManager backupMan;
 
-        public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input)
+        public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input,
+            SystemWinCtl.TextBlock textblock_CursorX, SystemWinCtl.TextBlock textblock_CursorY, SystemWinCtl.TextBlock textblock_RCursorX, SystemWinCtl.TextBlock textblock_RCursorY, SystemWinCtl.TextBlock textblock_selectedItem)
         {
             this.multiBoard = multiBoard;
             multiBoard.HaCreatorStateManager = this;
@@ -50,6 +57,14 @@ namespace HaCreator.MapEditor
             this.ribbon = ribbon;
             this.tabs = tabs;
             this.input = input;
+
+            // Status bar
+            this.textblock_CursorX = textblock_CursorX;
+            this.textblock_CursorY = textblock_CursorY;
+            this.textblock_RCursorX = textblock_RCursorX;
+            this.textblock_RCursorY = textblock_RCursorY;
+            this.textblock_selectedItem = textblock_selectedItem;
+
             this.backupMan = new BackupManager(multiBoard, input, this, tabs);
 
             this.ribbon.NewClicked += ribbon_NewClicked;
@@ -162,20 +177,35 @@ namespace HaCreator.MapEditor
             objPanel.OnL1Changed(UserObjectsManager.l1);
         }
 
+        /// <summary>
+        /// Mouse move event
+        /// </summary>
+        /// <param name="selectedBoard"></param>
+        /// <param name="oldPos"></param>
+        /// <param name="newPos"></param>
+        /// <param name="currPhysicalPos"></param>
         void multiBoard_MouseMoved(Board selectedBoard, Microsoft.Xna.Framework.Point oldPos, Microsoft.Xna.Framework.Point newPos, Microsoft.Xna.Framework.Point currPhysicalPos)
         {
-            ribbon.SetMousePos(newPos.X, newPos.Y, currPhysicalPos.X, currPhysicalPos.Y);
+            textblock_CursorX.Text = currPhysicalPos.X.ToString();
+            textblock_CursorY.Text = currPhysicalPos.Y.ToString();
+
+            textblock_RCursorX.Text = newPos.X.ToString();
+            textblock_RCursorY.Text = newPos.Y.ToString();
         }
 
+        /// <summary>
+        /// Selected item event
+        /// </summary>
+        /// <param name="selectedItem"></param>
         void multiBoard_SelectedItemChanged(BoardItem selectedItem)
         {
             if (selectedItem != null)
             {
-                ribbon.SetItemDesc(CreateItemDescription(selectedItem));
+                textblock_selectedItem.Text = (CreateItemDescription(selectedItem).Replace(Environment.NewLine, " - "));
             }
             else
             {
-                ribbon.SetItemDesc("");
+                textblock_selectedItem.Text = string.Empty;
             }
         }
 

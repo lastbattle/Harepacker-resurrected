@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI
 {
     partial class TileSetBrowser
     {
@@ -28,7 +30,7 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.koolkLVContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.koolkLVContainer = new ThumbnailFlowLayoutPanel();
             this.SuspendLayout();
             // 
             // koolkLVContainer
@@ -61,6 +63,6 @@
 
         #endregion
 
-        private ThirdParty.ThumbnailFlowLayoutPanel koolkLVContainer;
+        private ThumbnailFlowLayoutPanel koolkLVContainer;
     }
 }
