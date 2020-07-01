@@ -569,11 +569,14 @@ namespace HaCreator.MapSimulator
 
 
 #if SIMULATOR_DEBUG_INFO
-            StringBuilder sb = new StringBuilder();
-            sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
-            sb.Append("Mouse : X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap).Append(Environment.NewLine);
-            sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
-            spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 170, 10), Color.White);
+            if (!bSaveScreenshot)
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
+                sb.Append("Mouse : X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap).Append(Environment.NewLine);
+                sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
+                spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 170, 10), Color.White);
+            }
 #endif
 
 
