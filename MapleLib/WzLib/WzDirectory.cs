@@ -184,6 +184,9 @@ namespace MapleLib.WzLib
             //reader.BaseStream.Position = reader.BaseStream.Position - 20;
 
             int entryCount = reader.ReadCompressedInt();
+            if (entryCount > 100000) // probably nothing > 100k folders for now.
+                throw new Exception("Invalid wz version used for decryption, try parsing other version numbers.");
+
             for (int i = 0; i < entryCount; i++)
             {
                 byte type = reader.ReadByte();

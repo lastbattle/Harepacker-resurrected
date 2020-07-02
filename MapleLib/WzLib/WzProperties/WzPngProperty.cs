@@ -670,6 +670,7 @@ namespace MapleLib.WzLib.WzProperties
                     curPos += 4;
                 }
             compressedBytes = Compress(buf);
+
             if (listWzUsed)
             {
                 using (MemoryStream memStream = new MemoryStream())

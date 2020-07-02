@@ -222,11 +222,10 @@ namespace MapleLib.WzLib
                 for (int j = 0; j < MAX_PATCH_VERSION; j++)
                 {
                     this.mapleStoryPatchVersion = (short)j;
-                    this.versionHash = GetVersionHash(version, mapleStoryPatchVersion);
-                    if (this.versionHash == 0)
-                    {
+                    this.versionHash = CheckAndGetVersionHash(version, mapleStoryPatchVersion);
+                    if (this.versionHash == 0) // ugly hack, but that's the only way if the version number isnt known (nexon stores this in the .exe)
                         continue;
-                    }
+
                     reader.Hash = this.versionHash;
                     long position = reader.BaseStream.Position; // save position to rollback to, if should parsing fail from here
                     WzDirectory testDirectory;
@@ -292,7 +291,7 @@ namespace MapleLib.WzLib
             }
             else
             {
-                this.versionHash = GetVersionHash(version, mapleStoryPatchVersion);
+                this.versionHash = CheckAndGetVersionHash(version, mapleStoryPatchVersion);
                 reader.Hash = this.versionHash;
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
@@ -303,9 +302,15 @@ namespace MapleLib.WzLib
             return true;
         }
 
-        private static uint GetVersionHash(int EncryptedVersionNumber, int realver)
+        /// <summary>
+        /// Check and gets the version hash.
+        /// </summary>
+        /// <param name="wzVersionHeader">The version header from .wz file.</param>
+        /// <param name="maplestoryPatchVersion"></param>
+        /// <returns></returns>
+        private static uint CheckAndGetVersionHash(int wzVersionHeader, int maplestoryPatchVersion)
         {
-            int VersionNumber = realver;
+            int VersionNumber = maplestoryPatchVersion;
             int VersionHash = 0;
             string VersionNumberStr = VersionNumber.ToString();
 
@@ -321,11 +326,10 @@ namespace MapleLib.WzLib
             int d = VersionHash & 0xFF;
             int DecryptedVersionNumber = (0xff ^ a ^ b ^ c ^ d);
 
-            if (EncryptedVersionNumber == DecryptedVersionNumber)
-            {
-                return Convert.ToUInt32(VersionHash);
-            }
-            return 0;
+            if (wzVersionHeader == DecryptedVersionNumber)
+                return (uint) VersionHash;
+
+            return 0; // invalid
         }
 
         private void CreateVersionHash()
