@@ -1,8 +1,6 @@
 ﻿// uncomment line below to show debug values
 #define SIMULATOR_DEBUG_INFO
 
-// #define SIMULATOR_DEBUG_INFO_EXTRAS // only for development
-
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
@@ -85,6 +83,10 @@ namespace HaCreator.MapSimulator
         // Text
         private SpriteFont font_navigationKeysHelper;
         private SpriteFont font_DebugValues;
+
+        // Debug
+        private Texture2D texture_debugBoundaryRect;
+        private bool bShowDebugMode = false;
 
         /// <summary>
         /// MapSimulator Constructor
@@ -332,6 +334,11 @@ namespace HaCreator.MapSimulator
             SetCameraMoveX(true, true, 0);
             SetCameraMoveY(true, true, 0);
 
+            // Debug items
+            System.Drawing.Bitmap bitmap_debug = new System.Drawing.Bitmap(1, 1);
+            bitmap_debug.SetPixel(0, 0, System.Drawing.Color.White);
+            texture_debugBoundaryRect = BoardItem.TextureFromBitmap(_DxDeviceManager.GraphicsDevice, bitmap_debug);
+
             // cleanup
             // clear used items
             foreach (WzObject obj in usedProps)
@@ -370,6 +377,8 @@ namespace HaCreator.MapSimulator
         #endregion
 
         #region Update and Drawing
+
+        private KeyboardState oldKeyboardState = Keyboard.GetState(); 
         /// <summary>
         /// Key, and frame update handling
         /// </summary>
@@ -379,6 +388,8 @@ namespace HaCreator.MapSimulator
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             int TickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
+            KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
+
 
             // Allows the game to exit
 #if !WINDOWS_STOREAPP
@@ -390,7 +401,7 @@ namespace HaCreator.MapSimulator
             }
 #endif
             // Handle full screen
-            bool bIsAltEnterPressed = Keyboard.GetState().IsKeyDown(Keys.LeftAlt) && Keyboard.GetState().IsKeyDown(Keys.Enter);
+            bool bIsAltEnterPressed = newKeyboardState.IsKeyDown(Keys.LeftAlt) && newKeyboardState.IsKeyDown(Keys.Enter);
             if (bIsAltEnterPressed)
             {
                 _DxDeviceManager.IsFullScreen = !_DxDeviceManager.IsFullScreen;
@@ -399,7 +410,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Handle print screen
-            if (Keyboard.GetState().IsKeyDown(Keys.PrintScreen))
+            if (newKeyboardState.IsKeyDown(Keys.PrintScreen))
             {
                 if (!bSaveScreenshot && bSaveScreenshotComplete)
                 {
@@ -414,12 +425,12 @@ namespace HaCreator.MapSimulator
 
 
             // Navigate around the rendered object
-            bool bIsShiftPressed = Keyboard.GetState().IsKeyDown(Keys.LeftShift) || Keyboard.GetState().IsKeyDown(Keys.RightShift);
+            bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
 
-            bool bIsUpKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Up);
-            bool bIsDownKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Down);
-            bool bIsLeftKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Left);
-            bool bIsRightKeyPressed = Keyboard.GetState().IsKeyDown(Keys.Right);
+            bool bIsUpKeyPressed = newKeyboardState.IsKeyDown(Keys.Up);
+            bool bIsDownKeyPressed = newKeyboardState.IsKeyDown(Keys.Down);
+            bool bIsLeftKeyPressed = newKeyboardState.IsKeyDown(Keys.Left);
+            bool bIsRightKeyPressed = newKeyboardState.IsKeyDown(Keys.Right);
 
             int moveOffset = bIsShiftPressed ? (int)(3000f / frameRate) : (int)(1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
             if (bIsLeftKeyPressed || bIsRightKeyPressed)
@@ -432,11 +443,18 @@ namespace HaCreator.MapSimulator
             }
 
             // Minimap M
-            if (Keyboard.GetState().IsKeyDown(Keys.M))
+            if (newKeyboardState.IsKeyDown(Keys.M))
             {
 
             }
 
+            // Debug keys
+            if (newKeyboardState.IsKeyUp(Keys.F5) && oldKeyboardState.IsKeyDown(Keys.F5))
+            {
+                this.bShowDebugMode = !this.bShowDebugMode;
+            }
+
+            oldKeyboardState = Keyboard.GetState();  // set the new state as the old state for next time
             base.Update(gameTime);
         }
 
@@ -542,13 +560,11 @@ namespace HaCreator.MapSimulator
                             tooltipRect.Y - ((mapShiftY) - mapBoard.CenterPoint.Y),
                             tooltipRect.Width, tooltipRect.Height);
 
-#if SIMULATOR_DEBUG_INFO_EXTRAS
-                    if (!bSaveScreenshot)
-                    {
-                        DrawBorder(spriteBatch, rect, 1, Color.White); // test
-                        spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
-                    }
-#endif
+                        if (bShowDebugMode)
+                        {
+                            DrawBorder(spriteBatch, rect, 1, Color.White); // test
+                            spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                        }
 
                         if (!rect.Contains(mouseState.X, mouseState.Y))
                             continue;
@@ -568,7 +584,9 @@ namespace HaCreator.MapSimulator
                     TickCount);
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
-                spriteBatch.DrawString(font_navigationKeysHelper, "Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.", new Vector2(20, 10), Color.White);
+                spriteBatch.DrawString(font_navigationKeysHelper, 
+                    string.Format("Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.{0}[F5] for debug mode", Environment.NewLine), 
+                    new Vector2(20, 10), Color.White);
 
 
 #if SIMULATOR_DEBUG_INFO
@@ -606,28 +624,28 @@ namespace HaCreator.MapSimulator
         /// <param name="rectangleToDraw"></param>
         /// <param name="thicknessOfBorder"></param>
         /// <param name="borderColor"></param>
-       /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
+       [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
         {
             // Draw top line
-            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
+            sprite.Draw(texture_debugBoundaryRect, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
 
             // Draw left line
-            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
+            sprite.Draw(texture_debugBoundaryRect, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, thicknessOfBorder, rectangleToDraw.Height), borderColor);
 
             // Draw right line
-            sprite.Draw(texture_miniMapPixel, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
+            sprite.Draw(texture_debugBoundaryRect, new Rectangle((rectangleToDraw.X + rectangleToDraw.Width - thicknessOfBorder),
                                             rectangleToDraw.Y,
                                             thicknessOfBorder,
                                             rectangleToDraw.Height), borderColor);
             // Draw bottom line
-            sprite.Draw(texture_miniMapPixel, new Rectangle(rectangleToDraw.X,
+            sprite.Draw(texture_debugBoundaryRect, new Rectangle(rectangleToDraw.X,
                                             rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
                                             rectangleToDraw.Width,
                                             thicknessOfBorder), borderColor);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawLine(SpriteBatch sprite, Vector2 start, Vector2 end, Color color)
         {
             int width = (int)Vector2.Distance(start, end);
