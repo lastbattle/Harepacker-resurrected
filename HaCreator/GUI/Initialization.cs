@@ -257,7 +257,6 @@ namespace HaCreator.GUI
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
             {
-                MapLoader loader = new MapLoader();
                 string mapcat = "Map" + mapid.Substring(0, 1);
 
                 WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
@@ -271,9 +270,9 @@ namespace HaCreator.GUI
                     mapImage.UnparseImage();
                     continue;
                 }
-                loader.VerifyMapPropsKnown(mapImage, true);
+                MapLoader.VerifyMapPropsKnown(mapImage, true);
                 MapInfo info = new MapInfo(mapImage, null, null, null);
-                loader.LoadMisc(mapImage, b);
+                MapLoader.LoadMisc(mapImage, b);
                 if (ErrorLogger.ErrorsPresent())
                 {
                     ErrorLogger.SaveToFile("debug_errors.txt");

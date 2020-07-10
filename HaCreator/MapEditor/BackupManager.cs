@@ -167,7 +167,7 @@ namespace HaCreator.MapEditor
                 {
                     if (Path.GetExtension(file.Key) != ".ham")
                         continue;
-                    new MapLoader().CreateMapFromHam(multiBoard, tabs, file.Value, hcsm.MakeRightClickHandler());
+                    MapLoader.CreateMapFromHam(multiBoard, tabs, file.Value, hcsm.MakeRightClickHandler());
                 }
             }
             ClearBackups();

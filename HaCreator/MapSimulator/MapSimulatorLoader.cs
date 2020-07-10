@@ -244,6 +244,14 @@ namespace HaCreator.MapSimulator
                 {
                     spineAtlas = spineSource[spineAtlasPath + ".atlas"];
                 }
+            } else // simply check if 'spine' WzStringProperty exist, fix for Adele town
+            {
+                string spineAtlasPath = ((WzStringProperty)source["spine"])?.GetString();
+                if (spineAtlasPath != null)
+                {
+                    spineAtlas = source[spineAtlasPath + ".atlas"];
+                    bIsObjectLayer = true;
+                }
             }
 
             if (spineAtlas != null)

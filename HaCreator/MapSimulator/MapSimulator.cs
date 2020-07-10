@@ -543,8 +543,11 @@ namespace HaCreator.MapSimulator
                             tooltipRect.Width, tooltipRect.Height);
 
 #if SIMULATOR_DEBUG_INFO_EXTRAS
-                    DrawBorder(spriteBatch, rect, 1, Color.White); // test
-                    spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                    if (!bSaveScreenshot)
+                    {
+                        DrawBorder(spriteBatch, rect, 1, Color.White); // test
+                        spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                    }
 #endif
 
                         if (!rect.Contains(mouseState.X, mouseState.Y))

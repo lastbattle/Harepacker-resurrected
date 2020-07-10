@@ -35,10 +35,9 @@ namespace HaCreator.GUI
 
         private void newButton_Click(object sender, EventArgs e)
         {
-            MapLoader loader = new MapLoader();
             int w = int.Parse(newWidth.Text);
             int h = int.Parse(newHeight.Text);
-            loader.CreateMap("", "<Untitled>", -1, "", loader.CreateStandardMapMenu(rightClickHandler), new XNA.Point(w, h), new XNA.Point(w / 2, h / 2), Tabs, multiBoard);
+            MapLoader.CreateMap("", "<Untitled>", -1, "", MapLoader.CreateStandardMapMenu(rightClickHandler), new XNA.Point(w, h), new XNA.Point(w / 2, h / 2), Tabs, multiBoard);
             DialogResult = DialogResult.OK;
             Close();
         }

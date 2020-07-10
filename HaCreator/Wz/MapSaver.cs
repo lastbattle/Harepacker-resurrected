@@ -153,7 +153,7 @@ namespace HaCreator.Wz
 
         public void SaveLayers()
         {
-            for (int layer = 0; layer <= 7; layer++)
+            for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = new WzSubProperty();
                 WzSubProperty infoProp = new WzSubProperty();
@@ -453,9 +453,9 @@ namespace HaCreator.Wz
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 
                 if (bgInst.SpineAni != null) // dont put anything if null
-                    bgProp["spineAni"] = InfoTool.SetString(bgInst.SpineAni);
+                    bgProp["spineAni"] = InfoTool.SetOptionalString(bgInst.SpineAni); // dont put anything if null
                 if (bgInst.SpineRandomStart) // dont put anything if false
-                    bgProp["spineRandomStart"] = InfoTool.SetBool(bgInst.SpineRandomStart);
+                    bgProp["spineRandomStart"] = InfoTool.SetOptionalBool(bgInst.SpineRandomStart);  // dont put anything if false
 
                 bgProp["f"] = InfoTool.SetOptionalBool(bgInst.Flip);
                 bgProp["bS"] = InfoTool.SetString(bgInfo.bS);
