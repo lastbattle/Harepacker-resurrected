@@ -362,7 +362,7 @@ namespace MapleLib.WzLib
             else
                 WzIv = WzTool.GetIvByMapleVersion(savingToPreferredWzVer); // custom selected
 
-            bool bIsWzIvSimilar = true; // checks if its saving to the same IV.
+            bool bIsWzIvSimilar = true; // check if its saving to the same IV.
             for (int i = 0; i < WzIv.Length; i++)
             {
                 if (WzIv[i] != wzDir.WzIv[i]) 
@@ -382,7 +382,7 @@ namespace MapleLib.WzLib
 
             using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
             {
-                wzWriter.Hash = (uint)versionHash;
+                wzWriter.Hash = versionHash;
                 Header.FSize = totalLen - Header.FStart;
                 for (int i = 0; i < 4; i++)
                 {

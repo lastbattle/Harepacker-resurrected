@@ -165,7 +165,7 @@ namespace MapleLib.WzLib.WzProperties
         {
             writer.WriteStringValue("Canvas", 0x73, 0x1B);
             writer.Write((byte)0);
-            if (properties.Count > 0)
+            if (properties.Count > 0) // subproperty in the canvas
             {
                 writer.Write((byte)1);
                 WzImageProperty.WritePropertyList(writer, properties);
@@ -174,15 +174,18 @@ namespace MapleLib.WzLib.WzProperties
             {
                 writer.Write((byte)0);
             }
+
+            // Image info
             writer.WriteCompressedInt(PngProperty.Width);
             writer.WriteCompressedInt(PngProperty.Height);
             writer.WriteCompressedInt(PngProperty.format);
             writer.Write((byte)PngProperty.format2);
             writer.Write((Int32)0);
 
+            // Write image
             byte[] bytes = PngProperty.GetCompressedBytes(false);
             writer.Write(bytes.Length + 1);
-            writer.Write((byte)0);
+            writer.Write((byte)0); // header? see WzImageProperty.ParseExtendedProp "0x00"
             writer.Write(bytes);
         }
 
@@ -295,9 +298,9 @@ namespace MapleLib.WzLib.WzProperties
 
                     WzImage wzImageParent = (WzImage)currentWzObj;
                     WzImageProperty foundProperty = wzImageParent.GetFromPath(_inlink);
-                    if (foundProperty != null && foundProperty is WzImageProperty)
+                    if (foundProperty != null && foundProperty is WzImageProperty property)
                     {
-                        return ((WzImageProperty)foundProperty).GetBitmap();
+                        return property.GetBitmap();
                     }
                 }
             }
@@ -311,9 +314,9 @@ namespace MapleLib.WzLib.WzProperties
 
                     WzFile wzFileParent = ((WzDirectory)currentWzObj).wzFile;
                     WzObject foundProperty = wzFileParent.GetObjectFromPath(_outlink);
-                    if (foundProperty != null && foundProperty is WzImageProperty)
+                    if (foundProperty != null && foundProperty is WzImageProperty property)
                     {
-                        return ((WzImageProperty)foundProperty).GetBitmap();
+                        return property.GetBitmap();
                     }
                 }
             }
@@ -387,7 +390,7 @@ namespace MapleLib.WzLib.WzProperties
 
         public override Bitmap GetBitmap()
         {
-            return imageProp.GetPNG(false);
+            return imageProp.GetImage(false);
         }
         #endregion
     }

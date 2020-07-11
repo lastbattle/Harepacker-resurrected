@@ -412,7 +412,7 @@ namespace MapleLib.WzLib
         /// <param name="forceReadFromData">Read from data regardless of base data that's changed or not.</param>
 		public void SaveImage(WzBinaryWriter writer, bool forceReadFromData = false)
         {
-            if (bIsImageChanged || forceReadFromData)
+            if (bIsImageChanged || forceReadFromData) // if its not being force-read and written, it saves with the previous WZ encryption IV.
             {
                 if (reader != null && !parsed)
                 {
@@ -421,9 +421,11 @@ namespace MapleLib.WzLib
                 }
 
                 WzSubProperty imgProp = new WzSubProperty();
+
                 long startPos = writer.BaseStream.Position;
                 imgProp.AddPropertiesForWzImageDumping(WzProperties);
                 imgProp.WriteValue(writer);
+
                 writer.StringCache.Clear();
 
                 size = (int)(writer.BaseStream.Position - startPos);

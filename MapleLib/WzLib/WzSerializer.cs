@@ -120,7 +120,7 @@ namespace MapleLib.WzLib.Serialization
                 if (ExportBase64Data)
                 {
                     MemoryStream stream = new MemoryStream();
-                    property3.PngProperty.GetPNG(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                    property3.PngProperty.GetImage(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
                     byte[] pngbytes = stream.ToArray();
                     stream.Close();
                     tw.Write(string.Concat(new object[] { depth, "<canvas name=\"", XmlUtil.SanitizeText(property3.Name), "\" width=\"", property3.PngProperty.Width, "\" height=\"", property3.PngProperty.Height, "\" basedata=\"", Convert.ToBase64String(pngbytes), "\">" }) + lineBreak);
@@ -478,7 +478,7 @@ namespace MapleLib.WzLib.Serialization
             }
             else if (currObj is WzCanvasProperty)
             {
-                Bitmap bmp = ((WzCanvasProperty)currObj).PngProperty.GetPNG(false);
+                Bitmap bmp = ((WzCanvasProperty)currObj).PngProperty.GetImage(false);
 
                 string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".png";
 
@@ -781,7 +781,7 @@ namespace MapleLib.WzLib.Serialization
                     if (!element.HasAttribute("basedata")) throw new NoBase64DataException("no base64 data in canvas element with name " + canvas.Name);
                     canvas.PngProperty = new WzPngProperty();
                     MemoryStream pngstream = new MemoryStream(Convert.FromBase64String(element.GetAttribute("basedata")));
-                    canvas.PngProperty.SetPNG((Bitmap)Image.FromStream(pngstream, true, true));
+                    canvas.PngProperty.SetImage((Bitmap)Image.FromStream(pngstream, true, true));
                     foreach (XmlElement subelement in element)
                         canvas.AddProperty(ParsePropertyFromXMLElement(subelement));
                     return canvas;

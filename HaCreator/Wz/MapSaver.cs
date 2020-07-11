@@ -138,9 +138,11 @@ namespace HaCreator.Wz
             if (board.MiniMap != null && board.MinimapRectangle != null)
             {
                 WzSubProperty miniMap = new WzSubProperty();
-                WzCanvasProperty canvas = new WzCanvasProperty();
-                canvas.PngProperty = new WzPngProperty();
-                canvas.PngProperty.SetPNG(board.MiniMap);
+                WzCanvasProperty canvas = new WzCanvasProperty
+                {
+                    PngProperty = new WzPngProperty()
+                };
+                canvas.PngProperty.SetImage(board.MiniMap);
                 miniMap["canvas"] = canvas;
                 miniMap["width"] = InfoTool.SetInt(board.MinimapRectangle.Width);
                 miniMap["height"] = InfoTool.SetInt(board.MinimapRectangle.Height);
@@ -172,10 +174,10 @@ namespace HaCreator.Wz
                 int objIndex = 0;
                 foreach (LayeredItem item in l.Items)
                 {
-                    if (item is ObjectInstance)
+                    if (item is ObjectInstance instance)
                     {
                         WzSubProperty obj = new WzSubProperty();
-                        ObjectInstance objInst = (ObjectInstance)item;
+                        ObjectInstance objInst = instance;
                         ObjectInfo objInfo = (ObjectInfo)objInst.BaseInfo;
 
                         obj["x"] = InfoTool.SetInt(objInst.UnflippedX);
@@ -210,9 +212,9 @@ namespace HaCreator.Wz
                         objParent[objIndex.ToString()] = obj;
                         objIndex++;
                     }
-                    else if (item is TileInstance)
+                    else if (item is TileInstance instance1)
                     {
-                        tiles.Add((TileInstance)item);
+                        tiles.Add(instance1);
                     }
                     else
                     {

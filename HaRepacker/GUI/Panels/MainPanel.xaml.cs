@@ -297,7 +297,7 @@ namespace HaRepacker.GUI.Panels
             {
                 WzCanvasProperty canvas = new WzCanvasProperty(bitmaps.Count == 1 ? name : (name + i));
                 WzPngProperty pngProperty = new WzPngProperty();
-                pngProperty.SetPNG(bmp);
+                pngProperty.SetImage(bmp);
                 canvas.PngProperty = pngProperty;
 
                 WzNode newInsertedNode = wzNode.AddObject(canvas, UndoRedoMan);
@@ -1016,7 +1016,7 @@ namespace HaRepacker.GUI.Panels
                     childInlinkNode.Delete(); // Delete '_inlink' node
                 }
 
-                selectedWzCanvas.PngProperty.SetPNG(bmp);
+                selectedWzCanvas.PngProperty.SetImage(bmp);
 
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;

@@ -369,9 +369,6 @@ namespace MapleLib.WzLib
                     offsetSize += WzTool.GetCompressedIntLength(img.Checksum);
                     offsetSize += 4;
 
-                    //if (img.bIsImageChanged)
-                    //    imgWriter.Close();
-
                     // otherwise Item.wz (300MB) probably uses > 4GB
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
