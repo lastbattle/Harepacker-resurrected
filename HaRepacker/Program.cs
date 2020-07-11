@@ -20,10 +20,6 @@ namespace HaRepacker
 {
     public static class Program
     {
-        public const string Version = "4.2.4";
-        public const int Version_ = 424;
-
-
         public static WzFileManager WzMan = new WzFileManager();
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;

@@ -95,7 +95,7 @@ namespace MapleLib.WzLib
                             fieldInfo.SetValue(null, InfoTool.GetString(settingProp));
                             break;
                         case "System.Drawing.Bitmap":
-                            fieldInfo.SetValue(null, ((WzCanvasProperty)settingProp).PngProperty.GetPNG(false));
+                            fieldInfo.SetValue(null, ((WzCanvasProperty)settingProp).PngProperty.GetImage(false));
                             break;
                         default:
                             throw new Exception("unrecognized setting type");

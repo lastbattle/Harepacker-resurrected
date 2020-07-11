@@ -31,13 +31,9 @@ using HaCreator.Exceptions;
 
 namespace HaCreator.Wz
 {
-    public class MapLoader
+    public static class MapLoader
     {
-        public MapLoader()
-        {
-        }
-
-        public List<string> VerifyMapPropsKnown(WzImage mapImage, bool userless)
+        public static List<string> VerifyMapPropsKnown(WzImage mapImage, bool userless)
         {
             List<string> copyPropNames = new List<string>();
             foreach (WzImageProperty prop in mapImage.WzProperties)
@@ -141,7 +137,7 @@ namespace HaCreator.Wz
             return copyPropNames;
         }
 
-        public MapType GetMapType(WzImage mapImage)
+        public static MapType GetMapType(WzImage mapImage)
         {
             switch (mapImage.Name)
             {
@@ -196,7 +192,7 @@ namespace HaCreator.Wz
             return true;
         }
 
-        public void LoadLayers(WzImage mapImage, Board mapBoard)
+        public static void LoadLayers(WzImage mapImage, Board mapBoard)
         {
             for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
@@ -264,7 +260,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadLife(WzImage mapImage, Board mapBoard)
+        public static void LoadLife(WzImage mapImage, Board mapBoard)
         {
             WzImageProperty lifeParent = mapImage["life"];
             if (lifeParent == null) return;
@@ -304,7 +300,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadReactors(WzImage mapImage, Board mapBoard)
+        public static void LoadReactors(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty reactorParent = (WzSubProperty)mapImage["reactor"];
             if (reactorParent == null) return;
@@ -320,7 +316,7 @@ namespace HaCreator.Wz
             }
         }
 
-        private void LoadChairs(WzImage mapImage, Board mapBoard)
+        private static void LoadChairs(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty chairParent = (WzSubProperty)mapImage["seat"];
             if (chairParent != null)
@@ -364,7 +360,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadRopes(WzImage mapImage, Board mapBoard)
+        public static void LoadRopes(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty ropeParent = (WzSubProperty)mapImage["ladderRope"];
             foreach (WzSubProperty rope in ropeParent.WzProperties)
@@ -379,7 +375,7 @@ namespace HaCreator.Wz
             }
         }
 
-        private bool IsAnchorPrevOfFoothold(FootholdAnchor a, FootholdLine x)
+        private static bool IsAnchorPrevOfFoothold(FootholdAnchor a, FootholdLine x)
         {
             int prevnum = x.prev;
             int nextnum = x.next;
@@ -399,7 +395,7 @@ namespace HaCreator.Wz
             throw new Exception("Could not match anchor to foothold");
         }
 
-        public void LoadFootholds(WzImage mapImage, Board mapBoard)
+        public static void LoadFootholds(WzImage mapImage, Board mapBoard)
         {
             List<FootholdAnchor> anchors = new List<FootholdAnchor>();
             WzSubProperty footholdParent = (WzSubProperty)mapImage["foothold"];
@@ -506,7 +502,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadPortals(WzImage mapImage, Board mapBoard)
+        public static void LoadPortals(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty portalParent = (WzSubProperty)mapImage["portal"];
             foreach (WzSubProperty portal in portalParent.WzProperties)
@@ -531,7 +527,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadToolTips(WzImage mapImage, Board mapBoard)
+        public static void LoadToolTips(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty tooltipsParent = (WzSubProperty)mapImage["ToolTip"];
             if (tooltipsParent == null)
@@ -586,7 +582,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadBackgrounds(WzImage mapImage, Board mapBoard)
+        public static void LoadBackgrounds(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty bgParent = (WzSubProperty)mapImage["back"];
             WzSubProperty bgProp;
@@ -629,7 +625,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void LoadMisc(WzImage mapImage, Board mapBoard)
+        public static void LoadMisc(WzImage mapImage, Board mapBoard)
         {
             // All of the following properties are extremely esoteric features that only appear in a handful of maps. 
             // They are implemented here for the sake of completeness, and being able to repack their maps without corruption.
@@ -751,7 +747,7 @@ namespace HaCreator.Wz
             // Some misc items are not implemented here; these are copied byte-to-byte from the original. See VerifyMapPropsKnown for details.
         }
 
-        public System.Windows.Controls.ContextMenu CreateStandardMapMenu(System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static System.Windows.Controls.ContextMenu CreateStandardMapMenu(System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             System.Windows.Controls.ContextMenu menu = new System.Windows.Controls.ContextMenu();
             
@@ -865,7 +861,7 @@ namespace HaCreator.Wz
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
         /// <param name="rightClickHandler"></param>
-        public void CreateMapFromImage(int mapId, WzImage mapImage, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static void CreateMapFromImage(int mapId, WzImage mapImage, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             if (!mapImage.Parsed) 
                 mapImage.ParseImage();
@@ -961,7 +957,7 @@ namespace HaCreator.Wz
         /// <param name="layers"></param>
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
-        public void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
+        public static void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
         {
             lock (multiBoard)
             {
@@ -992,7 +988,7 @@ namespace HaCreator.Wz
             }
         }
 
-        public void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             CreateMap("", "", -1,  "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), Tabs, multiBoard);
             multiBoard.SelectedBoard.Loading = true; // Prevent TS Change callbacks while were loading

@@ -34,6 +34,7 @@ namespace HaRepacker.GUI
             textBox.Text = text.Replace("\n", "\r\n");
         }
 
+
         private void ListEditor_FormClosing(object sender, FormClosingEventArgs e)
         {
             e.Cancel = !Warning.Warn("Are you sure you want to close this file?");

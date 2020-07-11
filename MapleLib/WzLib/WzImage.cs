@@ -36,7 +36,8 @@ namespace MapleLib.WzLib
         #region Fields
         internal bool parsed = false;
         internal string name;
-        internal int size, checksum;
+        internal int size;
+        private int checksum;
         internal uint offset = 0;
         internal WzBinaryReader reader;
         internal List<WzImageProperty> properties = new List<WzImageProperty>();
@@ -44,7 +45,7 @@ namespace MapleLib.WzLib
         internal int blockStart = 0;
         internal long tempFileStart = 0;
         internal long tempFileEnd = 0;
-        internal bool changed = false;
+        internal bool bIsImageChanged = false;
         private bool parseEverything = false;
 
         /// <summary>
@@ -79,6 +80,14 @@ namespace MapleLib.WzLib
             this.name = name;
             this.reader = reader;
             this.blockStart = (int)reader.BaseStream.Position;
+            this.checksum = 0;
+        }
+        internal WzImage(string name, WzBinaryReader reader, int checksum)
+        {
+            this.name = name;
+            this.reader = reader;
+            this.blockStart = (int)reader.BaseStream.Position;
+            this.checksum = checksum;
         }
 
         public override void Dispose()
@@ -122,7 +131,7 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Was the image changed
         /// </summary>
-        public bool Changed { get { return changed; } set { changed = value; } }
+        public bool Changed { get { return bIsImageChanged; } set { bIsImageChanged = value; } }
         /// <summary>
         /// The size in the wz file of the image
         /// </summary>
@@ -130,7 +139,10 @@ namespace MapleLib.WzLib
         /// <summary>
         /// The checksum of the image
         /// </summary>
-        public int Checksum { get { return checksum; } set { checksum = value; } }
+        public int Checksum { 
+            get { return this.checksum; }
+            private set {  } 
+        }
         /// <summary>
         /// The offset of the image
         /// </summary>
@@ -168,8 +180,10 @@ namespace MapleLib.WzLib
         public WzImage DeepClone()
         {
             if (reader != null && !parsed) ParseImage();
-            WzImage clone = new WzImage(name);
-            clone.changed = true;
+            WzImage clone = new WzImage(name)
+            {
+                bIsImageChanged = true
+            };
             foreach (WzImageProperty prop in properties)
                 clone.AddProperty(prop.DeepClone());
             return clone;
@@ -282,6 +296,19 @@ namespace MapleLib.WzLib
 
         #region Parsing Methods
         /// <summary>
+        /// Calculates and set the image header checksum
+        /// </summary>
+        /// <param name="memStream"></param>
+        internal void CalculateAndSetImageChecksum(byte[] bytes)
+        {
+            this.checksum = 0;
+            foreach (byte b in bytes)
+            {
+                this.checksum += b;
+            }
+        }
+
+        /// <summary>
 		/// Parses the image from the wz filetod
 		/// </summary>
 		/// <param name="wzReader">The BinaryReader that is currently reading the wz file</param>
@@ -313,10 +340,10 @@ namespace MapleLib.WzLib
                             if (IsLuaWzImage) 
                             {
                                 WzLuaProperty lua = WzImageProperty.ParseLuaProperty(offset, reader, this, this);
-
-                                List<WzImageProperty> luaImage = new List<WzImageProperty>();
-                                luaImage.Add(lua);
-
+                                List<WzImageProperty> luaImage = new List<WzImageProperty>
+                                {
+                                    lua
+                                };
                                 properties.AddRange(luaImage);
                                 parsed = true; // test
                                 return true;
@@ -385,7 +412,7 @@ namespace MapleLib.WzLib
         /// <param name="forceReadFromData">Read from data regardless of base data that's changed or not.</param>
 		public void SaveImage(WzBinaryWriter writer, bool forceReadFromData = false)
         {
-            if (changed || forceReadFromData)
+            if (bIsImageChanged || forceReadFromData) // if its not being force-read and written, it saves with the previous WZ encryption IV.
             {
                 if (reader != null && !parsed)
                 {
@@ -394,10 +421,13 @@ namespace MapleLib.WzLib
                 }
 
                 WzSubProperty imgProp = new WzSubProperty();
+
                 long startPos = writer.BaseStream.Position;
                 imgProp.AddPropertiesForWzImageDumping(WzProperties);
                 imgProp.WriteValue(writer);
+
                 writer.StringCache.Clear();
+
                 size = (int)(writer.BaseStream.Position - startPos);
             }
             else

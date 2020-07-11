@@ -140,36 +140,6 @@
 
                 <VisualState x:Name="BlackTheme">
                     <Storyboard>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="button_animateSelectedCanvas">
-                            <EasingColorKeyFrame KeyTime="0" Value="Black"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="changeImageButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="Black"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="changeSoundButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="Black"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="saveSoundButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="Black"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="saveImageButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="Black"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="saveImageButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="saveSoundButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="changeSoundButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="changeImageButton">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button_animateSelectedCanvas">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="grid_FindPanel">
                             <EasingColorKeyFrame KeyTime="0" Value="Black"/>
                         </ColorAnimationUsingKeyFrames>
@@ -211,7 +181,7 @@
                                 </DiscreteObjectKeyFrame.Value>
                             </DiscreteObjectKeyFrame>
                         </ObjectAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button">
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="button_MoreOption">
                             <EasingColorKeyFrame KeyTime="0" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
                         <!--      <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(Panel.Background).(SolidColorBrush.Color)" Storyboard.TargetName="statusBar">

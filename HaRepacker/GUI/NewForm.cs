@@ -24,6 +24,24 @@ namespace HaRepacker.GUI
             Load += NewForm_Load;
         }
 
+        /// <summary>
+        /// Process command key on the form
+        /// </summary>
+        /// <param name="msg"></param>
+        /// <param name="keyData"></param>
+        /// <returns></returns>
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // ...
+            if (keyData == (Keys.Escape))
+            {
+                Close(); // exit window
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+
         private void NewForm_Load(object sender, EventArgs e)
         {
             bIsLoading = true;

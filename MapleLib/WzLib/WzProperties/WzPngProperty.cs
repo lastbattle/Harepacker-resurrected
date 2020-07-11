@@ -32,7 +32,7 @@ namespace MapleLib.WzLib.WzProperties
     {
         #region Fields
         internal int width, height, format, format2;
-        internal byte[] compressedBytes;
+        internal byte[] compressedImageBytes;
         internal Bitmap png;
         internal WzObject parent;
         //internal WzImage imgParent;
@@ -45,18 +45,18 @@ namespace MapleLib.WzLib.WzProperties
         #region Inherited Members
         public override void SetValue(object value)
         {
-            if (value is Bitmap) SetPNG((Bitmap)value);
-            else compressedBytes = (byte[])value;
+            if (value is Bitmap) SetImage((Bitmap)value);
+            else compressedImageBytes = (byte[])value;
         }
 
         public override WzImageProperty DeepClone()
         {
             WzPngProperty clone = new WzPngProperty();
-            clone.SetPNG(GetPNG(false));
+            clone.SetImage(GetImage(false));
             return clone;
         }
 
-        public override object WzValue { get { return GetPNG(false); } }
+        public override object WzValue { get { return GetImage(false); } }
         /// <summary>
         /// The parent of the object
         /// </summary>
@@ -82,7 +82,7 @@ namespace MapleLib.WzLib.WzProperties
         /// </summary>
         public override void Dispose()
         {
-            compressedBytes = null;
+            compressedImageBytes = null;
             if (png != null)
             {
                 png.Dispose();
@@ -112,7 +112,7 @@ namespace MapleLib.WzLib.WzProperties
             set { 
                 if (value != listWzUsed) { 
                     listWzUsed = value; 
-                    CompressPng(GetPNG(false)); 
+                    CompressPng(GetImage(false)); 
                 }
             } 
         }
@@ -132,6 +132,12 @@ namespace MapleLib.WzLib.WzProperties
         /// Creates a blank WzPngProperty
         /// </summary>
         public WzPngProperty() { }
+
+        /// <summary>
+        /// Creates a blank WzPngProperty 
+        /// </summary>
+        /// <param name="reader"></param>
+        /// <param name="parseNow"></param>
         internal WzPngProperty(WzBinaryReader reader, bool parseNow)
         {
             // Read compressed bytes
@@ -148,65 +154,63 @@ namespace MapleLib.WzLib.WzProperties
             {
                 if (parseNow)
                 {
-                    compressedBytes = wzReader.ReadBytes(len);
+                    if (wzReader == null) // when saving the WZ file to a new encryption
+                    {
+                        compressedImageBytes = reader.ReadBytes(len);
+                    }
+                    else // when opening the Wz property
+                    {
+                        compressedImageBytes = wzReader.ReadBytes(len);
+                    }
                     ParsePng();
                 }
                 else 
                     reader.BaseStream.Position += len;
             }
-            wzReader = reader;
+            this.wzReader = reader;
         }
         #endregion
 
         #region Parsing Methods
         public byte[] GetCompressedBytes(bool saveInMemory)
         {
-            if (compressedBytes == null)
+            if (compressedImageBytes == null)
             {
-                long pos = wzReader.BaseStream.Position;
-                wzReader.BaseStream.Position = offs;
-                int len = wzReader.ReadInt32() - 1;
-                wzReader.BaseStream.Position += 1;
+                long pos = this.wzReader.BaseStream.Position;
+                this.wzReader.BaseStream.Position = offs;
+                int len = this.wzReader.ReadInt32() - 1;
+                if (len <= 0) // possibility an image written with the wrong wzIv 
+                    throw new Exception("The length of the image is negative. WzPngProperty.");
+
+                this.wzReader.BaseStream.Position += 1;
+
                 if (len > 0)
-                    compressedBytes = wzReader.ReadBytes(len);
-                wzReader.BaseStream.Position = pos;
+                    compressedImageBytes = this.wzReader.ReadBytes(len);
+                this.wzReader.BaseStream.Position = pos;
 
                 if (!saveInMemory)
                 {
                     //were removing the referance to compressedBytes, so a backup for the ret value is needed
-                    byte[] returnBytes = compressedBytes;
-                    compressedBytes = null;
+                    byte[] returnBytes = compressedImageBytes;
+                    compressedImageBytes = null;
                     return returnBytes;
                 }
             }
-            return compressedBytes;
+            return compressedImageBytes;
         }
 
-        public void SetPNG(Bitmap png)
+        public void SetImage(Bitmap png)
         {
             this.png = png;
             CompressPng(png);
         }
 
-        public Bitmap GetPNG(bool saveInMemory)
+        public Bitmap GetImage(bool saveInMemory)
         {
             if (png == null)
             {
-                long pos = wzReader.BaseStream.Position;
-                wzReader.BaseStream.Position = offs;
-                int len = wzReader.ReadInt32() - 1;
-                wzReader.BaseStream.Position += 1;
-                if (len > 0)
-                    compressedBytes = wzReader.ReadBytes(len);
+                compressedImageBytes = GetCompressedBytes(saveInMemory);
                 ParsePng();
-                wzReader.BaseStream.Position = pos;
-                if (!saveInMemory)
-                {
-                    Bitmap pngImage = png;
-                    png = null;
-                    compressedBytes = null;
-                    return pngImage;
-                }
             }
             return png;
         }
@@ -250,7 +254,7 @@ namespace MapleLib.WzLib.WzProperties
         {
             try
             {
-                using (BinaryReader reader = new BinaryReader(new MemoryStream(compressedBytes)))
+                using (BinaryReader reader = new BinaryReader(new MemoryStream(compressedImageBytes)))
                 {
                     DeflateStream zlib;
                     Bitmap bmp = null;
@@ -266,7 +270,7 @@ namespace MapleLib.WzLib.WzProperties
                         reader.BaseStream.Position -= 2;
                         MemoryStream dataStream = new MemoryStream();
                         int blocksize = 0;
-                        int endOfPng = compressedBytes.Length;
+                        int endOfPng = compressedImageBytes.Length;
 
                         while (reader.BaseStream.Position < endOfPng)
                         {
@@ -669,7 +673,8 @@ namespace MapleLib.WzLib.WzProperties
                     buf[curPos + 3] = curPixel.A;
                     curPos += 4;
                 }
-            compressedBytes = Compress(buf);
+            compressedImageBytes = Compress(buf);
+
             if (listWzUsed)
             {
                 using (MemoryStream memStream = new MemoryStream())
@@ -679,12 +684,12 @@ namespace MapleLib.WzLib.WzProperties
                         writer.Write(2);
                         for (int i = 0; i < 2; i++)
                         {
-                            writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i]));
+                            writer.Write((byte)(compressedImageBytes[i] ^ writer.WzKey[i]));
                         }
-                        writer.Write(compressedBytes.Length - 2);
-                        for (int i = 2; i < compressedBytes.Length; i++)
-                            writer.Write((byte)(compressedBytes[i] ^ writer.WzKey[i - 2]));
-                        compressedBytes = memStream.GetBuffer();
+                        writer.Write(compressedImageBytes.Length - 2);
+                        for (int i = 2; i < compressedImageBytes.Length; i++)
+                            writer.Write((byte)(compressedImageBytes[i] ^ writer.WzKey[i - 2]));
+                        compressedImageBytes = memStream.GetBuffer();
                     }
                 }
             }
@@ -695,7 +700,7 @@ namespace MapleLib.WzLib.WzProperties
 
         public override Bitmap GetBitmap()
         {
-            return GetPNG(false);
+            return GetImage(false);
         }
         #endregion
     }

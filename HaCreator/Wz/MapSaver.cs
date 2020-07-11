@@ -138,9 +138,11 @@ namespace HaCreator.Wz
             if (board.MiniMap != null && board.MinimapRectangle != null)
             {
                 WzSubProperty miniMap = new WzSubProperty();
-                WzCanvasProperty canvas = new WzCanvasProperty();
-                canvas.PngProperty = new WzPngProperty();
-                canvas.PngProperty.SetPNG(board.MiniMap);
+                WzCanvasProperty canvas = new WzCanvasProperty
+                {
+                    PngProperty = new WzPngProperty()
+                };
+                canvas.PngProperty.SetImage(board.MiniMap);
                 miniMap["canvas"] = canvas;
                 miniMap["width"] = InfoTool.SetInt(board.MinimapRectangle.Width);
                 miniMap["height"] = InfoTool.SetInt(board.MinimapRectangle.Height);
@@ -153,7 +155,7 @@ namespace HaCreator.Wz
 
         public void SaveLayers()
         {
-            for (int layer = 0; layer <= 7; layer++)
+            for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = new WzSubProperty();
                 WzSubProperty infoProp = new WzSubProperty();
@@ -172,10 +174,10 @@ namespace HaCreator.Wz
                 int objIndex = 0;
                 foreach (LayeredItem item in l.Items)
                 {
-                    if (item is ObjectInstance)
+                    if (item is ObjectInstance instance)
                     {
                         WzSubProperty obj = new WzSubProperty();
-                        ObjectInstance objInst = (ObjectInstance)item;
+                        ObjectInstance objInst = instance;
                         ObjectInfo objInfo = (ObjectInfo)objInst.BaseInfo;
 
                         obj["x"] = InfoTool.SetInt(objInst.UnflippedX);
@@ -210,9 +212,9 @@ namespace HaCreator.Wz
                         objParent[objIndex.ToString()] = obj;
                         objIndex++;
                     }
-                    else if (item is TileInstance)
+                    else if (item is TileInstance instance1)
                     {
-                        tiles.Add((TileInstance)item);
+                        tiles.Add(instance1);
                     }
                     else
                     {
@@ -453,9 +455,9 @@ namespace HaCreator.Wz
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 
                 if (bgInst.SpineAni != null) // dont put anything if null
-                    bgProp["spineAni"] = InfoTool.SetString(bgInst.SpineAni);
+                    bgProp["spineAni"] = InfoTool.SetOptionalString(bgInst.SpineAni); // dont put anything if null
                 if (bgInst.SpineRandomStart) // dont put anything if false
-                    bgProp["spineRandomStart"] = InfoTool.SetBool(bgInst.SpineRandomStart);
+                    bgProp["spineRandomStart"] = InfoTool.SetOptionalBool(bgInst.SpineRandomStart);  // dont put anything if false
 
                 bgProp["f"] = InfoTool.SetOptionalBool(bgInst.Flip);
                 bgProp["bS"] = InfoTool.SetString(bgInfo.bS);

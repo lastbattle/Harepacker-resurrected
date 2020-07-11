@@ -142,7 +142,6 @@ namespace HaCreator.GUI
             ww.Show();
             Application.DoEvents();
 
-            MapLoader loader = new MapLoader();
             WzImage mapImage = null;
             int mapid = -1;
             string mapName = null, streetName = "", categoryName = "";
@@ -151,7 +150,7 @@ namespace HaCreator.GUI
 
             if (HAMSelect.Checked)
             {
-                loader.CreateMapFromHam(multiBoard, Tabs, File.ReadAllText(HAMBox.Text), rightClickHandler);
+                MapLoader.CreateMapFromHam(multiBoard, Tabs, File.ReadAllText(HAMBox.Text), rightClickHandler);
                 DialogResult = DialogResult.OK;
                 ww.EndWait();
                 Close();
@@ -201,7 +200,7 @@ namespace HaCreator.GUI
                     categoryName = WzInfoTools.GetMapCategoryName(strMapProp);
                 }
             }
-            loader.CreateMapFromImage(mapid, mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
+            MapLoader.CreateMapFromImage(mapid, mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
 
             DialogResult = DialogResult.OK;
             ww.EndWait();

@@ -36,6 +36,24 @@ namespace HaRepacker.GUI
             themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
         }
 
+
+        /// <summary>
+        /// Process command key on the form
+        /// </summary>
+        /// <param name="msg"></param>
+        /// <param name="keyData"></param>
+        /// <returns></returns>
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            // ...
+            if (keyData == (Keys.Escape))
+            {
+                Close(); // exit window
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
+
         private void cancelButton_Click(object sender, EventArgs e)
         {
             Close();

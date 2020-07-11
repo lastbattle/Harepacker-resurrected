@@ -84,7 +84,7 @@ namespace HaRepacker
                     Warning.Error(string.Format(Properties.Resources.AnimError, i.ToString()));
                     return;
                 }
-                Bitmap bmp = subprop.PngProperty.GetPNG(false);
+                Bitmap bmp = subprop.PngProperty.GetImage(false);
                 System.Drawing.PointF origin = subprop.GetCanvasOriginPosition();
                 bmpList.Add(OptimizeBitmapTransparent(bmp, new WzVectorProperty("", origin.X, origin.Y), biggestPng, SmallestEmptySpace, MaximumPngMappingEndingPts));
 

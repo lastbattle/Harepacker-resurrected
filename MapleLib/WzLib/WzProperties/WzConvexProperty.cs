@@ -136,9 +136,10 @@ namespace MapleLib.WzLib.WzProperties
             foreach (WzImageProperty prop in properties) if (prop is WzExtended) extendedProps.Add((WzExtended)prop);
 			writer.WriteStringValue("Shape2D#Convex2D", 0x73, 0x1B);
             writer.WriteCompressedInt(extendedProps.Count);
-            for (int i = 0; i < extendedProps.Count; i++)
+
+			foreach (WzImageProperty imgProperty in properties) 
 			{
-                properties[i].WriteValue(writer);
+				imgProperty.WriteValue(writer);
 			}
 		}
 		public override void ExportXml(StreamWriter writer, int level)
