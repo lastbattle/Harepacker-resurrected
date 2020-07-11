@@ -59,11 +59,15 @@ namespace HaCreator.CustomControls
         public delegate void MapSelectChangedDelegate();
         public event MapSelectChangedDelegate SelectionChanged;
 
+        /// <summary>
+        /// Initialise
+        /// </summary>
+        /// <param name="special">True to include cash shop and login.</param>
         public void InitializeMaps(bool special)
         {
             // Logins
             List<string> mapLogins = new List<string>();
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 20; i++) // Not exceeding 20 logins yet.
             {
                 string imageName = "MapLogin" + (i == 0 ? "" : i.ToString()) + ".img";
                 WzObject mapLogin = Program.WzManager["ui"][imageName];
@@ -74,8 +78,9 @@ namespace HaCreator.CustomControls
 
             // Maps
             foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
+            {
                 maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
-
+            }
             maps.Sort();
 
             if (special)
@@ -165,6 +170,11 @@ namespace HaCreator.CustomControls
             }
         }
 
+        /// <summary>
+        /// On map selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void mapNamesBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             string selectedName = (string)mapNamesBox.SelectedItem;

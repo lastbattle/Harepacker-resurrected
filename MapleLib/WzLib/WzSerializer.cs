@@ -337,7 +337,7 @@ namespace MapleLib.WzLib.Serialization
 
     public class WzImgDeserializer : ProgressingWzSerializer
     {
-        private bool freeResources;
+        private readonly bool freeResources;
 
         public WzImgDeserializer(bool freeResources)
             : base()
@@ -350,10 +350,12 @@ namespace MapleLib.WzLib.Serialization
             byte[] iv = WzTool.GetIvByMapleVersion(version);
             MemoryStream stream = new MemoryStream(bytes);
             WzBinaryReader wzReader = new WzBinaryReader(stream, iv);
-            WzImage img = new WzImage(name, wzReader);
-            img.BlockSize = bytes.Length;
-            img.Checksum = 0;
-            foreach (byte b in bytes) img.Checksum += b;
+            WzImage img = new WzImage(name, wzReader)
+            {
+                BlockSize = bytes.Length
+            };
+            img.CalculateAndSetImageChecksum(bytes);
+
             img.Offset = 0;
             if (freeResources)
             {
@@ -379,14 +381,16 @@ namespace MapleLib.WzLib.Serialization
             FileStream stream = File.OpenRead(inPath);
             WzBinaryReader wzReader = new WzBinaryReader(stream, iv);
 
-            WzImage img = new WzImage(name, wzReader);
-            img.BlockSize = (int)stream.Length;
-            img.Checksum = 0;
+            WzImage img = new WzImage(name, wzReader)
+            {
+                BlockSize = (int)stream.Length
+            };
             byte[] bytes = new byte[stream.Length];
             stream.Read(bytes, 0, (int)stream.Length);
             stream.Position = 0;
-            foreach (byte b in bytes) img.Checksum += b;
+            img.CalculateAndSetImageChecksum(bytes);
             img.Offset = 0;
+
             if (freeResources)
             {
                 img.ParseEverything = true;

@@ -99,13 +99,13 @@ namespace MapleLib.WzLib
 
                 writer.Write((ushort)0);
                 writer.WriteCompressedInt(properties.Count);
-                for (int i = 0; i < properties.Count; i++)
+                foreach (WzImageProperty imgProperty in properties)
                 {
-                    writer.WriteStringValue(properties[i].Name, 0x00, 0x01);
-                    if (properties[i] is WzExtended)
-                        WriteExtendedValue(writer, (WzExtended)properties[i]);
+                    writer.WriteStringValue(imgProperty.Name, 0x00, 0x01);
+                    if (imgProperty is WzExtended)
+                        WriteExtendedValue(writer, (WzExtended)imgProperty);
                     else
-                        properties[i].WriteValue(writer);
+                        imgProperty.WriteValue(writer);
                 }
             }
         }

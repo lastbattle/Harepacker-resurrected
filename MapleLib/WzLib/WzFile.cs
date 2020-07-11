@@ -206,11 +206,13 @@ namespace MapleLib.WzLib
             }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
-            this.Header = new WzHeader();
-            this.Header.Ident = reader.ReadString(4);
-            this.Header.FSize = reader.ReadUInt64();
-            this.Header.FStart = reader.ReadUInt32();
-            this.Header.Copyright = reader.ReadNullTerminatedString();
+            this.Header = new WzHeader
+            {
+                Ident = reader.ReadString(4),
+                FSize = reader.ReadUInt64(),
+                FStart = reader.ReadUInt32(),
+                Copyright = reader.ReadNullTerminatedString()
+            };
             reader.ReadBytes((int)(Header.FStart - reader.BaseStream.Position));
             reader.Header = this.Header;
             this.version = reader.ReadInt16();
@@ -332,6 +334,9 @@ namespace MapleLib.WzLib
             return 0; // invalid
         }
 
+        /// <summary>
+        /// Version hash
+        /// </summary>
         private void CreateVersionHash()
         {
             versionHash = 0;
@@ -356,14 +361,21 @@ namespace MapleLib.WzLib
                 WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion); // get from local WzFile
             else
                 WzIv = WzTool.GetIvByMapleVersion(savingToPreferredWzVer); // custom selected
+
+            bool bIsWzIvSimilar = true; // checks if its saving to the same IV.
+            for (int i = 0; i < WzIv.Length; i++)
+            {
+                if (WzIv[i] != wzDir.WzIv[i]) 
+                    bIsWzIvSimilar = false;
+            }
             wzDir.WzIv = WzIv;
 
             CreateVersionHash();
-            wzDir.SetHash(versionHash);
+            wzDir.SetVersionHash(versionHash);
 
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
             File.Create(tempFile).Close();
-            wzDir.GenerateDataFile(tempFile, WzIv);
+            wzDir.GenerateDataFile(tempFile, bIsWzIvSimilar ? null : WzIv);
 
             WzTool.StringCache.Clear();
             uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
@@ -398,7 +410,6 @@ namespace MapleLib.WzLib
 
                 wzWriter.StringCache.Clear();
             }
-
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
