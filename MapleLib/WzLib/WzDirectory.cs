@@ -381,11 +381,11 @@ namespace MapleLib.WzLib
                 size += nameLen;
                 size += dir.GenerateDataFile(fileName, useIv);
                 size += WzTool.GetCompressedIntLength(dir.size);
-                size += WzTool.GetCompressedIntLength(dir.checksum);
+                size += WzTool.GetCompressedIntLength(dir.Checksum);
                 size += 4;
                 offsetSize += nameLen;
                 offsetSize += WzTool.GetCompressedIntLength(dir.size);
-                offsetSize += WzTool.GetCompressedIntLength(dir.checksum);
+                offsetSize += WzTool.GetCompressedIntLength(dir.Checksum);
                 offsetSize += 4;
             }
             return size;

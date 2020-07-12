@@ -27,7 +27,7 @@ namespace HaCreator.GUI
         private System.Windows.Controls.TabControl Tabs;
         private System.Windows.RoutedEventHandler[] rightClickHandler;
 
-        private string defaultMapNameFilter;
+        private readonly string defaultMapNameFilter;
 
         /// <summary>
         /// 
@@ -78,7 +78,7 @@ namespace HaCreator.GUI
             }
         }
 
-        private void selectionChanged(object sender, EventArgs e)
+        private void SelectionChanged(object sender, EventArgs e)
         {
             if (HAMSelect.Checked)
             {
@@ -109,7 +109,7 @@ namespace HaCreator.GUI
             }
         }
 
-        private void browseXML_Click(object sender, EventArgs e)
+        private void BrowseXML_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog();
             dialog.Title = "Select XML to load...";
@@ -122,7 +122,7 @@ namespace HaCreator.GUI
             loadButton.Enabled = true;
         }
 
-        private void browseHAM_Click(object sender, EventArgs e)
+        private void BrowseHAM_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog();
             dialog.Title = "Select Map to load...";
@@ -135,7 +135,7 @@ namespace HaCreator.GUI
             loadButton.Enabled = true;
         }
 
-        private void loadButton_Click(object sender, EventArgs e)
+        private void LoadButton_Click(object sender, EventArgs e)
         {
             //Hide();
             WaitWindow ww = new WaitWindow("Loading...");
@@ -207,7 +207,7 @@ namespace HaCreator.GUI
             Close();
         }
 
-        private void mapBrowser_SelectionChanged()
+        private void MapBrowser_SelectionChanged()
         {
             loadButton.Enabled = mapBrowser.LoadAvailable;
         }
@@ -220,7 +220,7 @@ namespace HaCreator.GUI
             }
             else if (e.KeyCode == Keys.Enter)
             {
-                loadButton_Click(null, null);
+                LoadButton_Click(null, null);
             }
         }
 

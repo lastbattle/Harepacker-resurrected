@@ -41,7 +41,11 @@ namespace HaCreator.MapEditor
         private readonly System.Windows.Controls.TabControl tabs;
 
         // StatusBar (bottom)
-        private System.Windows.Controls.TextBlock textblock_CursorX, textblock_CursorY, textblock_RCursorX, textblock_RCursorY, textblock_selectedItem;
+        private readonly SystemWinCtl.TextBlock textblock_CursorX;
+        private readonly SystemWinCtl.TextBlock textblock_CursorY;
+        private readonly SystemWinCtl.TextBlock textblock_RCursorX;
+        private readonly SystemWinCtl.TextBlock textblock_RCursorY;
+        private readonly SystemWinCtl.TextBlock textblock_selectedItem;
 
         private readonly InputHandler input;
         private TilePanel tilePanel;
@@ -68,7 +72,7 @@ namespace HaCreator.MapEditor
             this.backupMan = new BackupManager(multiBoard, input, this, tabs);
 
             this.ribbon.NewClicked += ribbon_NewClicked;
-            this.ribbon.OpenClicked += ribbon_OpenClicked;
+            this.ribbon.OpenClicked += Ribbon_OpenClicked;
             this.ribbon.SaveClicked += ribbon_SaveClicked;
             this.ribbon.RepackClicked += ribbon_RepackClicked;
             this.ribbon.AboutClicked += ribbon_AboutClicked;
@@ -103,7 +107,7 @@ namespace HaCreator.MapEditor
             this.multiBoard.MouseMoved += multiBoard_MouseMoved;
             this.multiBoard.ImageDropped += multiBoard_ImageDropped;
             this.multiBoard.ExportRequested += ribbon_ExportClicked;
-            this.multiBoard.LoadRequested += ribbon_OpenClicked;
+            this.multiBoard.LoadRequested += Ribbon_OpenClicked;
             this.multiBoard.CloseTabRequested += multiBoard_CloseTabRequested;
             this.multiBoard.SwitchTabRequested += multiBoard_SwitchTabRequested;
             this.multiBoard.BackupCheck += multiBoard_BackupCheck;
@@ -740,9 +744,15 @@ namespace HaCreator.MapEditor
             LoadMap(new New(multiBoard, tabs, MakeRightClickHandler()));
         }
 
-        void ribbon_OpenClicked()
+        void Ribbon_OpenClicked()
         {
-            LoadMap(new Load(multiBoard, tabs, MakeRightClickHandler()));
+            string mapNameFilter = null;
+            Board currentSelectedBoard = multiBoard.SelectedBoard;
+            if (currentSelectedBoard != null)
+            {
+                mapNameFilter = ( currentSelectedBoard.MapInfo.id / 10000).ToString(); // shows near-by maps relative to the current map opened in the Board
+            }
+            LoadMap(new Load(multiBoard, tabs, MakeRightClickHandler(), mapNameFilter));
         }
 
         /// <summary>
