@@ -253,7 +253,7 @@ namespace MapleLib.WzLib
         }
 
         /// <summary>
-        /// Adds a property to the image
+        /// Adds a property to the WzImage
         /// </summary>
         /// <param name="prop">Property to add</param>
         public void AddProperty(WzImageProperty prop)
@@ -262,6 +262,10 @@ namespace MapleLib.WzLib
             if (reader != null && !parsed) ParseImage();
             properties.Add(prop);
         }
+        /// <summary>
+        /// Add a list of properties to the WzImage
+        /// </summary>
+        /// <param name="props"></param>
         public void AddProperties(List<WzImageProperty> props)
         {
             foreach (WzImageProperty prop in props)

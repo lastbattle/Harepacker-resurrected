@@ -22,8 +22,12 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <OutputPath>..\..\!Release\EmptyKeysUI\Common\AnyCPU</OutputPath>
-    <DocumentationFile>..\..\!Release\EmptyKeysUI\Common\AnyCPU\netstandard2.0\EmptyKeys.UserInterface.Core.xml</DocumentationFile>
+    <OutputPath>..\Compiled\Release\</OutputPath>
+    <DocumentationFile>..\Compiled\Release\EmptyKeysUI\Common\AnyCPU\netstandard2.0\EmptyKeys.UserInterface.Core.xml</DocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <OutputPath>..\Compiled\Debug\</OutputPath>
   </PropertyGroup>
 
   <ItemGroup>

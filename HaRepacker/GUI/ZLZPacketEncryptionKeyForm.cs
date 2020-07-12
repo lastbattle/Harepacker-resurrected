@@ -95,7 +95,7 @@ namespace HaRepacker.GUI
         private void ShowKey(IntPtr module)
         {
             const int KeyPos = 0x14020;
-            const int KeyGen = 0x1340;
+            //const int KeyGen = 0x1340;
 
             // OdinMS format
             StringBuilder sb = new StringBuilder();

@@ -52,7 +52,7 @@ namespace HaSharedLibrary
                     wavePlayer.Init(waveFileStream);
                 }
             }
-            catch (System.Exception e)
+            catch (Exception)
             {
                 playbackSuccessfully = false;
                 //InvalidDataException

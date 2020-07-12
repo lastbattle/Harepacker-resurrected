@@ -50,7 +50,7 @@ namespace HaCreator.GUI
             this.loadButton.Size = new System.Drawing.Size(747, 30);
             this.loadButton.TabIndex = 9;
             this.loadButton.Text = "Load";
-            this.loadButton.Click += new System.EventHandler(this.loadButton_Click);
+            this.loadButton.Click += new System.EventHandler(this.LoadButton_Click);
             // 
             // WZSelect
             // 
@@ -63,7 +63,7 @@ namespace HaCreator.GUI
             this.WZSelect.TabStop = true;
             this.WZSelect.Text = "WZ";
             this.WZSelect.UseVisualStyleBackColor = true;
-            this.WZSelect.CheckedChanged += new System.EventHandler(this.selectionChanged);
+            this.WZSelect.CheckedChanged += new System.EventHandler(this.SelectionChanged);
             // 
             // XMLSelect
             // 
@@ -74,7 +74,7 @@ namespace HaCreator.GUI
             this.XMLSelect.TabIndex = 3;
             this.XMLSelect.Text = "XML";
             this.XMLSelect.UseVisualStyleBackColor = true;
-            this.XMLSelect.CheckedChanged += new System.EventHandler(this.selectionChanged);
+            this.XMLSelect.CheckedChanged += new System.EventHandler(this.SelectionChanged);
             // 
             // XMLBox
             // 
@@ -83,7 +83,7 @@ namespace HaCreator.GUI
             this.XMLBox.Name = "XMLBox";
             this.XMLBox.Size = new System.Drawing.Size(692, 22);
             this.XMLBox.TabIndex = 4;
-            this.XMLBox.Click += new System.EventHandler(this.browseXML_Click);
+            this.XMLBox.Click += new System.EventHandler(this.BrowseXML_Click);
             this.XMLBox.TextChanged += new System.EventHandler(this.XMLBox_TextChanged);
             // 
             // HAMBox
@@ -93,7 +93,7 @@ namespace HaCreator.GUI
             this.HAMBox.Name = "HAMBox";
             this.HAMBox.Size = new System.Drawing.Size(692, 22);
             this.HAMBox.TabIndex = 1;
-            this.HAMBox.Click += new System.EventHandler(this.browseHAM_Click);
+            this.HAMBox.Click += new System.EventHandler(this.BrowseHAM_Click);
             this.HAMBox.TextChanged += new System.EventHandler(this.HAMBox_TextChanged);
             // 
             // HAMSelect
@@ -114,7 +114,7 @@ namespace HaCreator.GUI
             this.mapBrowser.Name = "mapBrowser";
             this.mapBrowser.Size = new System.Drawing.Size(746, 465);
             this.mapBrowser.TabIndex = 8;
-            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowser_SelectionChanged);
+            this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.MapBrowser_SelectionChanged);
             // 
             // searchBox
             // 

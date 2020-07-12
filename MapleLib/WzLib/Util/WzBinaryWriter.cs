@@ -70,7 +70,7 @@ namespace MapleLib.WzLib.Util
 
 		public void WriteWzObjectValue(string s, byte type)
 		{
-			string storeName = type + "_" + s;
+			string storeName = string.Format("{0}_{1}", type, s);
 			if (s.Length > 4 && StringCache.ContainsKey(storeName))
 			{
 				Write((byte)2);

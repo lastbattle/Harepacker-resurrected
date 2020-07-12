@@ -313,10 +313,10 @@ namespace MapleLib.WzLib
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="fileName"></param>
         /// <param name="useIv">The IV to use while generating the data file. If null, it'll use the WzDirectory default</param>
+        /// <param name="prevOpenedStream">The previously opened file stream</param>
         /// <returns></returns>
-		internal int GenerateDataFile(string fileName, byte[] useIv)
+		internal int GenerateDataFile(byte[] useIv, FileStream prevOpenedStream)
         {
             bool useCustomIv = useIv != null; // whole shit gonna be re-written if its a custom IV specified
 
@@ -330,63 +330,67 @@ namespace MapleLib.WzLib
             size = WzTool.GetCompressedIntLength(entryCount);
             offsetSize = WzTool.GetCompressedIntLength(entryCount);
 
-            using (FileStream fileWrite = new FileStream(fileName, FileMode.Append, FileAccess.Write))
+            foreach (WzImage img in images)
             {
-                foreach (WzImage img in images)
+                if (useCustomIv || img.bIsImageChanged)
                 {
-                    if (useCustomIv || img.bIsImageChanged)
+                    using (MemoryStream memStream = new MemoryStream())
                     {
-                        using (MemoryStream memStream = new MemoryStream())
+                        using (WzBinaryWriter imgWriter = new WzBinaryWriter(memStream, useCustomIv ? useIv : this.WzIv))
                         {
-                            using (WzBinaryWriter imgWriter = new WzBinaryWriter(memStream, useCustomIv ? useIv : this.WzIv))
-                            {
-                                img.SaveImage(imgWriter, useCustomIv);
+                            img.SaveImage(imgWriter, useCustomIv);
 
-                                img.CalculateAndSetImageChecksum(memStream.ToArray()); // checksum
+                            img.CalculateAndSetImageChecksum(memStream.ToArray()); // checksum
 
-                                img.tempFileStart = fileWrite.Position;
-                                fileWrite.Write(memStream.ToArray(), 0, (int)memStream.Length);
-                                img.tempFileEnd = fileWrite.Position;
-                            }
+                            img.tempFileStart = prevOpenedStream.Position;
+                            prevOpenedStream.Write(memStream.ToArray(), 0, (int)memStream.Length);
+                            img.tempFileEnd = prevOpenedStream.Position;
                         }
                     }
-                    else
-                    {
-                        img.tempFileStart = img.offset;
-                        img.tempFileEnd = img.offset + img.size;
-                    }
-                    img.UnparseImage();
+                }
+                else
+                {
+                    img.tempFileStart = img.offset;
+                    img.tempFileEnd = img.offset + img.size;
+                }
+                img.UnparseImage();
 
-                    int nameLen = WzTool.GetWzObjectValueLength(img.name, 4);
-                    size += nameLen;
-                    int imgLen = img.size;
-                    size += WzTool.GetCompressedIntLength(imgLen);
-                    size += imgLen;
-                    size += WzTool.GetCompressedIntLength(img.Checksum);
-                    size += 4;
-                    offsetSize += nameLen;
-                    offsetSize += WzTool.GetCompressedIntLength(imgLen);
-                    offsetSize += WzTool.GetCompressedIntLength(img.Checksum);
-                    offsetSize += 4;
+                int nameLen = WzTool.GetWzObjectValueLength(img.name, 4);
+                size += nameLen;
+                int imgLen = img.size;
+                size += WzTool.GetCompressedIntLength(imgLen);
+                size += imgLen;
+                size += WzTool.GetCompressedIntLength(img.Checksum);
+                size += 4;
+                offsetSize += nameLen;
+                offsetSize += WzTool.GetCompressedIntLength(imgLen);
+                offsetSize += WzTool.GetCompressedIntLength(img.Checksum);
+                offsetSize += 4;
 
-                    // otherwise Item.wz (300MB) probably uses > 4GB
-                    GC.Collect();
+                // otherwise Item.wz (300MB) probably uses > 4GB
+                if (useCustomIv) // when using custom IV, or changing IVs, all images have to be re-read and re-written..
+                {
+                    GC.Collect(); // GC slows down writing of maps in HaCreator
                     GC.WaitForPendingFinalizers();
                 }
+
+                //Debug.WriteLine("Writing image :" + img.FullPath);
             }
 
             foreach (WzDirectory dir in subDirs)
             {
                 int nameLen = WzTool.GetWzObjectValueLength(dir.name, 3);
                 size += nameLen;
-                size += dir.GenerateDataFile(fileName, useIv);
+                size += dir.GenerateDataFile(useIv, prevOpenedStream);
                 size += WzTool.GetCompressedIntLength(dir.size);
-                size += WzTool.GetCompressedIntLength(dir.checksum);
+                size += WzTool.GetCompressedIntLength(dir.Checksum);
                 size += 4;
                 offsetSize += nameLen;
                 offsetSize += WzTool.GetCompressedIntLength(dir.size);
-                offsetSize += WzTool.GetCompressedIntLength(dir.checksum);
+                offsetSize += WzTool.GetCompressedIntLength(dir.Checksum);
                 offsetSize += 4;
+
+                //Debug.WriteLine("Writing dir :" + dir.FullPath);
             }
             return size;
         }

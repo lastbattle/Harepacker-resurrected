@@ -26,9 +26,9 @@ using System.Runtime.Serialization;
 
 namespace MapleLib.WzLib.WzProperties
 {
-    public enum WzSoundPropertyType
+    public enum WzBinaryPropertyType
     {
-        Binary,
+        Raw, // could be anything.. 
         MP3,
         WAV,
     }
@@ -166,14 +166,6 @@ namespace MapleLib.WzLib.WzProperties
                 reader.BaseStream.Position += soundDataLen;
         }
 
-        /*public WzSoundProperty(string name)
-        {
-            this.name = name;
-            this.len_ms = 0;
-            this.header = null;
-            this.mp3bytes = null;
-        }*/
-
         /// <summary>
         /// Creates a WzSoundProperty with the specified name and data from another WzSoundProperty Object
         /// </summary>
@@ -246,7 +238,7 @@ namespace MapleLib.WzLib.WzProperties
             this.mp3bytes = File.ReadAllBytes(file);
         }
 
-        public static bool memcmp(byte[] a, byte[] b, int n)
+        public static bool Memcmp(byte[] a, byte[] b, int n)
         {
             for (int i = 0; i < n; i++)
             {

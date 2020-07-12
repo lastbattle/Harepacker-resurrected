@@ -142,17 +142,11 @@ namespace HaCreator.GUI.EditorPanels
                             WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;
                             Thread thread = new Thread(() =>
                             {
-                                try
-                                {
-                                    WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
-
-                                    // Create xna window
-                                    SpineAnimationWindow Window = new SpineAnimationWindow(item);
-                                    Window.Run();
-                                }
-                                catch (Exception ex)
-                                {
-                                }
+                                WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
+                                
+                                // Create xna window
+                                SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                Window.Run();
                             });
                             thread.Start();
                             thread.Join();

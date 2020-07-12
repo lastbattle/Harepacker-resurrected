@@ -218,7 +218,7 @@ namespace HaCreator.MapEditor
 
         public void CreateLayers()
         {
-            for (int i = 0; i < MapConstants.MaxMapLayers; i++)
+            for (int i = 0; i <= MapConstants.MaxMapLayers; i++)
             {
                 new Layer(this);
             }

@@ -108,7 +108,11 @@ namespace HaCreator.GUI.EditorPanels
                         item.MaxHeight = UserSettings.ImageViewerHeight;
                         item.MaxWidth = UserSettings.ImageViewerWidth;
                     }
-                }catch(InvalidCastException ex) { return; }
+                }
+                catch(InvalidCastException) 
+                { 
+                    return; 
+                }
             }
         }
 

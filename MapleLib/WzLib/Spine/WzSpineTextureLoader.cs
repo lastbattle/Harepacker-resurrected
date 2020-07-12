@@ -60,22 +60,22 @@ namespace MapleLib.WzLib.Spine
             WzCanvasProperty canvasProperty = null;
 
             WzImageProperty imageChild = (WzImageProperty)ParentNode[path];
-            if (imageChild is WzUOLProperty)
+            if (imageChild is WzUOLProperty uolProperty)
             {
-                WzObject uolLink = ((WzUOLProperty)imageChild).LinkValue;
+                WzObject uolLink = uolProperty.LinkValue;
 
-                if (uolLink is WzCanvasProperty)
+                if (uolLink is WzCanvasProperty uolPropertyLink)
                 {
-                    canvasProperty = (WzCanvasProperty)uolLink;
+                    canvasProperty = uolPropertyLink;
                 }
                 else
                 {
                     // other unimplemented prop?
                 }
             }
-            else if (imageChild is WzCanvasProperty)
+            else if (imageChild is WzCanvasProperty property)
             {
-                canvasProperty = (WzCanvasProperty)imageChild;
+                canvasProperty = property;
             }
 
             if (canvasProperty != null)

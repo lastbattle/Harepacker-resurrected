@@ -42,8 +42,10 @@ namespace HaCreator.MapSimulator
             {
                 mapSimulator = new MapSimulator(mapBoard, titleName);
                 mapSimulator.Run();
-            });
-            thread.Priority = ThreadPriority.Highest;
+            })
+            {
+                Priority = ThreadPriority.Highest
+            };
 
             thread.Start();
             thread.Join();
@@ -119,55 +121,64 @@ namespace HaCreator.MapSimulator
             }
             else if (source is WzSubProperty) // animated
             {
-                WzCanvasProperty frameProp;
+                WzImageProperty _frameProp;
                 int i = 0;
 
-                while ((frameProp = (WzCanvasProperty)WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
+                while ((_frameProp = WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null)
                 {
-                    int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
-
-                    bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
-                    if (!bLoadedSpine)
+                    if (_frameProp is WzSubProperty) // issue with 867119250
                     {
-                        if (frameProp.MSTag == null)
-                        {
-                            string canvasBitmapPath = frameProp.FullPath;
-                            Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
-                            if (textureFromCache != null)
-                            {
-                                frameProp.MSTag = textureFromCache;
-                            }
-                            else
-                            {
-                                frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
-
-                                // add to cache
-                                texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
-                            }
-                        }
-                    }
-                    usedProps.Add(frameProp);
-
-                    if (frameProp.MSTagSpine != null)
-                    {
-                        WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-
-                        frames.Add(new DXSpineObject(spineObject, x, y, origin, delay));
-                    }
-                    else if (frameProp.MSTag != null)
-                    {
-                        Texture2D texture = (Texture2D)frameProp.MSTag;
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-
-                        frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
+                       frames.AddRange( LoadFrames(texturePool, _frameProp, x, y, device, ref usedProps, null));
                     }
                     else
                     {
-                        Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
-                        System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+                        WzCanvasProperty frameProp = (WzCanvasProperty)_frameProp;
 
-                        frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
+                        int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
+
+                        bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
+                        if (!bLoadedSpine)
+                        {
+                            if (frameProp.MSTag == null)
+                            {
+                                string canvasBitmapPath = frameProp.FullPath;
+                                Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+                                if (textureFromCache != null)
+                                {
+                                    frameProp.MSTag = textureFromCache;
+                                }
+                                else
+                                {
+                                    frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+
+                                    // add to cache
+                                    texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
+                                }
+                            }
+                        }
+                        usedProps.Add(frameProp);
+
+                        if (frameProp.MSTagSpine != null)
+                        {
+                            WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
+                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+
+                            frames.Add(new DXSpineObject(spineObject, x, y, origin, delay));
+                        }
+                        else if (frameProp.MSTag != null)
+                        {
+                            Texture2D texture = (Texture2D)frameProp.MSTag;
+                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+
+                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
+                        }
+                        else
+                        {
+                            Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
+
+                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
+                        }
                     }
                 }
             }
@@ -256,54 +267,47 @@ namespace HaCreator.MapSimulator
 
             if (spineAtlas != null)
             {
-                if (spineAtlas is WzStringProperty)
+                if (spineAtlas is WzStringProperty stringObj)
                 {
-                    WzStringProperty stringObj = (WzStringProperty)spineAtlas;
                     if (!stringObj.IsSpineAtlasResources)
                         return false;
 
-                    try
+                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
+
+                    spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
+                    spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
+                    //spineObject.skeleton.R =153;
+                    //spineObject.skeleton.G = 255;
+                    //spineObject.skeleton.B = 0;
+                    //spineObject.skeleton.A = 1f;
+
+                    // Skin
+                    foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
                     {
-                        WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
-
-                        spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
-                        spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
-                        //spineObject.skeleton.R =153;
-                        //spineObject.skeleton.G = 255;
-                        //spineObject.skeleton.B = 0;
-                        //spineObject.skeleton.A = 1f;
-
-                        // Skin
-                        foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
-                        {
-                            spineObject.skeleton.SetSkin(skin); // just set the first skin
-                            break;
-                        }
-
-                        // Define mixing between animations.
-                        spineObject.stateData = new AnimationStateData(spineObject.skeleton.Data);
-                        spineObject.state = new AnimationState(spineObject.stateData);
-                        if (!bIsObjectLayer)
-                            spineObject.state.TimeScale = 0.1f;
-
-                        if (spineAniPath != null)
-                        {
-                            spineObject.state.SetAnimation(0, spineAniPath, true);
-                        }
-                        else
-                        {
-                            int i = 0;
-                            foreach (Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations)
-                            {
-                                spineObject.state.SetAnimation(i++, animation.Name, true);
-                            }
-                        }
-                        prop.MSTagSpine = spineObject;
-                        return true;
+                        spineObject.skeleton.SetSkin(skin); // just set the first skin
+                        break;
                     }
-                    catch (Exception e)
+
+                    // Define mixing between animations.
+                    spineObject.stateData = new AnimationStateData(spineObject.skeleton.Data);
+                    spineObject.state = new AnimationState(spineObject.stateData);
+                    if (!bIsObjectLayer)
+                        spineObject.state.TimeScale = 0.1f;
+
+                    if (spineAniPath != null)
                     {
+                        spineObject.state.SetAnimation(0, spineAniPath, true);
                     }
+                    else
+                    {
+                        int i = 0;
+                        foreach (Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations)
+                        {
+                            spineObject.state.SetAnimation(i++, animation.Name, true);
+                        }
+                    }
+                    prop.MSTagSpine = spineObject;
+                    return true;
                 }
             }
             return false;
@@ -424,18 +428,20 @@ namespace HaCreator.MapSimulator
 
             foreach (WzImageProperty childProperty in source.WzProperties)
             {
-                WzSubProperty mobStateProperty = (WzSubProperty)childProperty;
-                switch (mobStateProperty.Name)
+                if (childProperty is WzSubProperty mobStateProperty) // issue with 867119250, Eluna map mobs
                 {
-                    case "info": // info/speak/0 WzStringProperty
-                        {
-                            break;
-                        }
-                    default:
-                        {
-                            frames.AddRange(LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps));
-                            break;
-                        }
+                    switch (mobStateProperty.Name)
+                    {
+                        case "info": // info/speak/0 WzStringProperty
+                            {
+                                break;
+                            }
+                        default:
+                            {
+                                frames.AddRange(LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps));
+                                break;
+                            }
+                    }
                 }
             }
             return new MobItem(mobInstance, frames);

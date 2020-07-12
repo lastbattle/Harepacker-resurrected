@@ -53,7 +53,7 @@ namespace HaCreator.MapEditor.Info
                 {
                     objInfoProp.HCTag = ObjectInfo.Load((WzSubProperty)objInfoProp, oS, l0, l1, l2);
                 }
-                catch (KeyNotFoundException e)
+                catch (KeyNotFoundException)
                 {
                     return null;
                 }
@@ -89,7 +89,7 @@ namespace HaCreator.MapEditor.Info
                         result.Add(ParsePropToOffsetList(offsetSet));
                     }
                 }
-                catch (InvalidCastException exc) { }
+                catch (InvalidCastException) { }
             }
             else
             {
