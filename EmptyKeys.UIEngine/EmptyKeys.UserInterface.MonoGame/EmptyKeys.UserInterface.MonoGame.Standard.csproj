@@ -21,6 +21,14 @@
     <RootNamespace>EmptyKeys.UserInterface.MonoGame</RootNamespace>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <OutputPath>..\Compiled\Debug\</OutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <OutputPath>..\Compiled\Release\</OutputPath>
+  </PropertyGroup>
+
   <ItemGroup>
     <Compile Remove="UserInterface\**" />
     <EmbeddedResource Remove="UserInterface\**" />
