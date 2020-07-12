@@ -69,8 +69,8 @@ namespace MapleLib.WzLib.Spine
             }
 
             bool pma;
-            if (wzSpineAtlasPropertyNode.parent is WzImageProperty)
-                pma = ((WzImageProperty)wzSpineAtlasPropertyNode.parent)["PMA"].ReadValue(0) > 0;
+            if (wzSpineAtlasPropertyNode.parent is WzImageProperty imgProperty)
+                pma = imgProperty["PMA"].ReadValue(0) > 0;
             else
                 pma = ((WzImage)wzSpineAtlasPropertyNode.parent)["PMA"].ReadValue(0) > 0;
 

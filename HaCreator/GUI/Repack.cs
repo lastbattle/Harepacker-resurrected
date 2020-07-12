@@ -22,7 +22,7 @@ namespace HaCreator.GUI
 {
     public partial class Repack : Form
     {
-        List<WzFile> toRepack = new List<WzFile>();
+        private readonly List<WzFile> toRepack = new List<WzFile>();
 
         public Repack()
         {
@@ -103,7 +103,7 @@ namespace HaCreator.GUI
         /// <param name="bSaveFileInHaCreatorDirectory"></param>
         private void FinishSuccess(bool bSaveFileInHaCreatorDirectory)
         {
-            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "press OK to restart." : "Please replace the files in HaCreator\\Output."));
+            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "Please replace the files under the MapleStory directory." : "Please replace the files in HaCreator\\Output."));
 
             if (!bSaveFileInHaCreatorDirectory)
             {
@@ -247,14 +247,7 @@ namespace HaCreator.GUI
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder
                     {
-                        string buPath = Path.Combine(orgBackupDir, Path.GetFileName(orgFile));
-                        // Try to backup to /Originals/ First, if there is already a file there, we are not original, so just backup to /Backup/
-                        if (File.Exists(buPath))
-                        {
-                            buPath = Path.Combine(backupDir, Path.GetFileName(orgFile));
-                        }
-                        File.Move(orgFile, buPath);
-                        File.Move(tmpFile, orgFile);
+                        File.Move(tmpFile, orgFile + "_NewCreated.wz");
                     }
                 }
                 catch (Exception e)

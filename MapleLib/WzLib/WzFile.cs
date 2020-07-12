@@ -375,7 +375,10 @@ namespace MapleLib.WzLib
 
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
             File.Create(tempFile).Close();
-            wzDir.GenerateDataFile(tempFile, bIsWzIvSimilar ? null : WzIv);
+            using (FileStream fs = new FileStream(tempFile, FileMode.Append, FileAccess.Write)) 
+            {
+                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, fs);
+            }
 
             WzTool.StringCache.Clear();
             uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));

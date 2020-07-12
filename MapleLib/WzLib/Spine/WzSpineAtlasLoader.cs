@@ -102,11 +102,10 @@ namespace MapleLib.WzLib.Spine
                     // try read binary based 
                     foreach (WzImageProperty property in childProperties)
                     {
-                        if (property is WzBinaryProperty)
+                        // should be called binaryproperty actually
+                        if (property is WzBinaryProperty soundProp)
                         {
-                            WzBinaryProperty soundProp = (WzBinaryProperty)property; // should be called binaryproperty actually
-
-                            using (MemoryStream ms = new MemoryStream(soundProp.GetBytes(false))) 
+                            using (MemoryStream ms = new MemoryStream(soundProp.GetBytes(false)))
                             {
                                 SkeletonBinary skeletonBinary = new SkeletonBinary(atlas);
                                 data = skeletonBinary.ReadSkeletonData(ms);
