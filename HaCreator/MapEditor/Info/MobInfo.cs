@@ -89,7 +89,6 @@ namespace HaCreator.MapEditor.Info
             if (Image == null) 
                 ParseImage();
 
-            bool bIsBoss = false; // set default to false as boss
             return new MobInstance(this, board, x, y, UserSettings.Mobrx0Offset, UserSettings.Mobrx1Offset, 20, null, UserSettings.defaultMobTime, flip, false, null, null);
         }
 

@@ -36,7 +36,11 @@ namespace HaCreator.GUI.InstanceEditor
                 try
                 {
                     portals.Add(Tables.PortalTypeNames[Program.InfoManager.PortalTypeById[i]]);
-                }catch(KeyNotFoundException e) { continue; }
+                }
+                catch(KeyNotFoundException) 
+                { 
+                    continue; 
+                }
             }
             
             ptComboBox.Items.AddRange(portals.ToArray());

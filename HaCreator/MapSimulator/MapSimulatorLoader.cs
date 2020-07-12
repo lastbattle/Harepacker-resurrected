@@ -42,8 +42,10 @@ namespace HaCreator.MapSimulator
             {
                 mapSimulator = new MapSimulator(mapBoard, titleName);
                 mapSimulator.Run();
-            });
-            thread.Priority = ThreadPriority.Highest;
+            })
+            {
+                Priority = ThreadPriority.Highest
+            };
 
             thread.Start();
             thread.Join();
@@ -265,54 +267,47 @@ namespace HaCreator.MapSimulator
 
             if (spineAtlas != null)
             {
-                if (spineAtlas is WzStringProperty)
+                if (spineAtlas is WzStringProperty stringObj)
                 {
-                    WzStringProperty stringObj = (WzStringProperty)spineAtlas;
                     if (!stringObj.IsSpineAtlasResources)
                         return false;
 
-                    try
+                    WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
+
+                    spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
+                    spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
+                    //spineObject.skeleton.R =153;
+                    //spineObject.skeleton.G = 255;
+                    //spineObject.skeleton.B = 0;
+                    //spineObject.skeleton.A = 1f;
+
+                    // Skin
+                    foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
                     {
-                        WzSpineObject spineObject = new WzSpineObject(new WzSpineAnimationItem(stringObj));
-
-                        spineObject.spineAnimationItem.LoadResources(device); //  load spine resources (this must happen after window is loaded)
-                        spineObject.skeleton = new Skeleton(spineObject.spineAnimationItem.SkeletonData);
-                        //spineObject.skeleton.R =153;
-                        //spineObject.skeleton.G = 255;
-                        //spineObject.skeleton.B = 0;
-                        //spineObject.skeleton.A = 1f;
-
-                        // Skin
-                        foreach (Skin skin in spineObject.spineAnimationItem.SkeletonData.Skins)
-                        {
-                            spineObject.skeleton.SetSkin(skin); // just set the first skin
-                            break;
-                        }
-
-                        // Define mixing between animations.
-                        spineObject.stateData = new AnimationStateData(spineObject.skeleton.Data);
-                        spineObject.state = new AnimationState(spineObject.stateData);
-                        if (!bIsObjectLayer)
-                            spineObject.state.TimeScale = 0.1f;
-
-                        if (spineAniPath != null)
-                        {
-                            spineObject.state.SetAnimation(0, spineAniPath, true);
-                        }
-                        else
-                        {
-                            int i = 0;
-                            foreach (Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations)
-                            {
-                                spineObject.state.SetAnimation(i++, animation.Name, true);
-                            }
-                        }
-                        prop.MSTagSpine = spineObject;
-                        return true;
+                        spineObject.skeleton.SetSkin(skin); // just set the first skin
+                        break;
                     }
-                    catch (Exception e)
+
+                    // Define mixing between animations.
+                    spineObject.stateData = new AnimationStateData(spineObject.skeleton.Data);
+                    spineObject.state = new AnimationState(spineObject.stateData);
+                    if (!bIsObjectLayer)
+                        spineObject.state.TimeScale = 0.1f;
+
+                    if (spineAniPath != null)
                     {
+                        spineObject.state.SetAnimation(0, spineAniPath, true);
                     }
+                    else
+                    {
+                        int i = 0;
+                        foreach (Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations)
+                        {
+                            spineObject.state.SetAnimation(i++, animation.Name, true);
+                        }
+                    }
+                    prop.MSTagSpine = spineObject;
+                    return true;
                 }
             }
             return false;

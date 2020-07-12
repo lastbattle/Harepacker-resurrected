@@ -86,7 +86,7 @@ namespace MapleLib.Configuration
                     _appSettings = JsonConvert.DeserializeObject<ApplicationSettings>(applicationFileContent);
 
                     return true;
-                } catch (Exception exp)
+                } catch (Exception)
                 {
                     // delete all
                     try
