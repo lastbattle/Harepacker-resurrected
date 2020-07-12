@@ -71,48 +71,48 @@ namespace HaCreator.MapEditor
 
             this.backupMan = new BackupManager(multiBoard, input, this, tabs);
 
-            this.ribbon.NewClicked += ribbon_NewClicked;
+            this.ribbon.NewClicked += Ribbon_NewClicked;
             this.ribbon.OpenClicked += Ribbon_OpenClicked;
-            this.ribbon.SaveClicked += ribbon_SaveClicked;
-            this.ribbon.RepackClicked += ribbon_RepackClicked;
-            this.ribbon.AboutClicked += ribbon_AboutClicked;
-            this.ribbon.HelpClicked += ribbon_HelpClicked;
-            this.ribbon.SettingsClicked += ribbon_SettingsClicked;
-            this.ribbon.ExitClicked += ribbon_ExitClicked;
-            this.ribbon.ViewToggled += ribbon_ViewToggled;
-            this.ribbon.ShowMinimapToggled += ribbon_ShowMinimapToggled;
-            this.ribbon.ParallaxToggled += ribbon_ParallaxToggled;
+            this.ribbon.SaveClicked += Ribbon_SaveClicked;
+            this.ribbon.RepackClicked += Ribbon_RepackClicked;
+            this.ribbon.AboutClicked += Ribbon_AboutClicked;
+            this.ribbon.HelpClicked += Ribbon_HelpClicked;
+            this.ribbon.SettingsClicked += Ribbon_SettingsClicked;
+            this.ribbon.ExitClicked += Ribbon_ExitClicked;
+            this.ribbon.ViewToggled += Ribbon_ViewToggled;
+            this.ribbon.ShowMinimapToggled += Ribbon_ShowMinimapToggled;
+            this.ribbon.ParallaxToggled += Ribbon_ParallaxToggled;
             this.ribbon.LayerViewChanged += ribbon_LayerViewChanged;
-            this.ribbon.MapSimulationClicked += ribbon_MapSimulationClicked;
-            this.ribbon.RegenerateMinimapClicked += ribbon_RegenerateMinimapClicked;
-            this.ribbon.SnappingToggled += ribbon_SnappingToggled;
-            this.ribbon.RandomTilesToggled += ribbon_RandomTilesToggled;
-            this.ribbon.InfoModeToggled += ribbon_InfoModeToggled;
-            this.ribbon.HaRepackerClicked += ribbon_HaRepackerClicked;
-            this.ribbon.FinalizeClicked += ribbon_FinalizeClicked;
+            this.ribbon.MapSimulationClicked += Ribbon_MapSimulationClicked;
+            this.ribbon.RegenerateMinimapClicked += Ribbon_RegenerateMinimapClicked;
+            this.ribbon.SnappingToggled += Ribbon_SnappingToggled;
+            this.ribbon.RandomTilesToggled += Ribbon_RandomTilesToggled;
+            this.ribbon.InfoModeToggled += Ribbon_InfoModeToggled;
+            this.ribbon.HaRepackerClicked += Ribbon_HaRepackerClicked;
+            this.ribbon.FinalizeClicked += Ribbon_FinalizeClicked;
             this.ribbon.NewPlatformClicked += ribbon_NewPlatformClicked;
-            this.ribbon.UserObjsClicked += ribbon_UserObjsClicked;
-            this.ribbon.ExportClicked += ribbon_ExportClicked;
+            this.ribbon.UserObjsClicked += Ribbon_UserObjsClicked;
+            this.ribbon.ExportClicked += Ribbon_ExportClicked;
             this.ribbon.RibbonKeyDown += multiBoard.DxContainer_KeyDown;
 
             this.tabs.SelectionChanged += Tabs_SelectionChanged;
 
-            this.multiBoard.OnBringToFrontClicked += multiBoard_OnBringToFrontClicked;
-            this.multiBoard.OnEditBaseClicked += multiBoard_OnEditBaseClicked;
-            this.multiBoard.OnEditInstanceClicked += multiBoard_OnEditInstanceClicked;
-            this.multiBoard.OnLayerTSChanged += multiBoard_OnLayerTSChanged;
-            this.multiBoard.OnSendToBackClicked += multiBoard_OnSendToBackClicked;
-            this.multiBoard.ReturnToSelectionState += multiBoard_ReturnToSelectionState;
-            this.multiBoard.SelectedItemChanged += multiBoard_SelectedItemChanged;
-            this.multiBoard.MouseMoved += multiBoard_MouseMoved;
-            this.multiBoard.ImageDropped += multiBoard_ImageDropped;
-            this.multiBoard.ExportRequested += ribbon_ExportClicked;
+            this.multiBoard.OnBringToFrontClicked += MultiBoard_OnBringToFrontClicked;
+            this.multiBoard.OnEditBaseClicked += MultiBoard_OnEditBaseClicked;
+            this.multiBoard.OnEditInstanceClicked += MultiBoard_OnEditInstanceClicked;
+            this.multiBoard.OnLayerTSChanged += MultiBoard_OnLayerTSChanged;
+            this.multiBoard.OnSendToBackClicked += MultiBoard_OnSendToBackClicked;
+            this.multiBoard.ReturnToSelectionState += MultiBoard_ReturnToSelectionState;
+            this.multiBoard.SelectedItemChanged += MultiBoard_SelectedItemChanged;
+            this.multiBoard.MouseMoved += MultiBoard_MouseMoved;
+            this.multiBoard.ImageDropped += MultiBoard_ImageDropped;
+            this.multiBoard.ExportRequested += Ribbon_ExportClicked;
             this.multiBoard.LoadRequested += Ribbon_OpenClicked;
-            this.multiBoard.CloseTabRequested += multiBoard_CloseTabRequested;
-            this.multiBoard.SwitchTabRequested += multiBoard_SwitchTabRequested;
-            this.multiBoard.BackupCheck += multiBoard_BackupCheck;
-            this.multiBoard.BoardRemoved += multiBoard_BoardRemoved;
-            this.multiBoard.MinimapStateChanged += multiBoard_MinimapStateChanged;
+            this.multiBoard.CloseTabRequested += MultiBoard_CloseTabRequested;
+            this.multiBoard.SwitchTabRequested += MultiBoard_SwitchTabRequested;
+            this.multiBoard.BackupCheck += MultiBoard_BackupCheck;
+            this.multiBoard.BoardRemoved += MultiBoard_BoardRemoved;
+            this.multiBoard.MinimapStateChanged += MultiBoard_MinimapStateChanged;
 
             multiBoard.Visibility = System.Windows.Visibility.Collapsed;
             ribbon.SetEnabled(false);
@@ -124,29 +124,29 @@ namespace HaCreator.MapEditor
             return r < 0 ? r + m : r;
         }
 
-        void multiBoard_SwitchTabRequested(object sender, bool reverse)
+        void MultiBoard_SwitchTabRequested(object sender, bool reverse)
         {
             tabs.SelectedItem = tabs.Items[PositiveMod(tabs.Items.IndexOf(tabs.SelectedItem) + (reverse ? -1 : 1), tabs.Items.Count)];
         }
 
-        void multiBoard_CloseTabRequested()
+        void MultiBoard_CloseTabRequested()
         {
             tabs.Items.Remove(tabs.SelectedItem);
         }
 
         #region MultiBoard Events
-        void multiBoard_MinimapStateChanged(object sender, bool hasMm)
+        void MultiBoard_MinimapStateChanged(object sender, bool hasMm)
         {
             ribbon.SetHasMinimap(hasMm);
         }
 
-        void multiBoard_BoardRemoved(object sender, EventArgs e)
+        void MultiBoard_BoardRemoved(object sender, EventArgs e)
         {
             Board board = (Board)sender;
             backupMan.DeleteBackup(board.UniqueID);
         }
 
-        void multiBoard_BackupCheck()
+        void MultiBoard_BackupCheck()
         {
             try
             {
@@ -158,7 +158,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void multiBoard_ImageDropped(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Microsoft.Xna.Framework.Point pos)
+        void MultiBoard_ImageDropped(Board selectedBoard, System.Drawing.Bitmap bmp, string name, Microsoft.Xna.Framework.Point pos)
         {
             WaitWindow ww = new WaitWindow("Processing \"" + name + "\"...");
             ww.Show();
@@ -188,7 +188,7 @@ namespace HaCreator.MapEditor
         /// <param name="oldPos"></param>
         /// <param name="newPos"></param>
         /// <param name="currPhysicalPos"></param>
-        void multiBoard_MouseMoved(Board selectedBoard, Microsoft.Xna.Framework.Point oldPos, Microsoft.Xna.Framework.Point newPos, Microsoft.Xna.Framework.Point currPhysicalPos)
+        void MultiBoard_MouseMoved(Board selectedBoard, Microsoft.Xna.Framework.Point oldPos, Microsoft.Xna.Framework.Point newPos, Microsoft.Xna.Framework.Point currPhysicalPos)
         {
             textblock_CursorX.Text = currPhysicalPos.X.ToString();
             textblock_CursorY.Text = currPhysicalPos.Y.ToString();
@@ -201,7 +201,7 @@ namespace HaCreator.MapEditor
         /// Selected item event
         /// </summary>
         /// <param name="selectedItem"></param>
-        void multiBoard_SelectedItemChanged(BoardItem selectedItem)
+        void MultiBoard_SelectedItemChanged(BoardItem selectedItem)
         {
             if (selectedItem != null)
             {
@@ -213,7 +213,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void multiBoard_ReturnToSelectionState()
+        void MultiBoard_ReturnToSelectionState()
         {
             // No need to lock because SelectionMode() and ExitEditMode() are both thread-safe
             if (multiBoard.SelectedBoard == null)
@@ -224,7 +224,7 @@ namespace HaCreator.MapEditor
             multiBoard.Focus();
         }
 
-        void multiBoard_OnSendToBackClicked(BoardItem boardRefItem)
+        void MultiBoard_OnSendToBackClicked(BoardItem boardRefItem)
         {
             lock (multiBoard)
             {
@@ -241,12 +241,12 @@ namespace HaCreator.MapEditor
             multiBoard.Focus();
         }
 
-        void multiBoard_OnLayerTSChanged(Layer layer)
+        void MultiBoard_OnLayerTSChanged(Layer layer)
         {
             ribbon.SetLayer(layer);
         }
 
-        void multiBoard_OnEditInstanceClicked(BoardItem item)
+        void MultiBoard_OnEditInstanceClicked(BoardItem item)
         {
             InputHandler.ClearBoundItems(multiBoard.SelectedBoard);
             try
@@ -275,29 +275,29 @@ namespace HaCreator.MapEditor
                         new GeneralInstanceEditor(item).ShowDialog();
                     }
                 }
-                else if (item is RopeAnchor)
+                else if (item is RopeAnchor ropeItem)
                 {
-                    new RopeInstanceEditor((RopeAnchor)item).ShowDialog();
+                    new RopeInstanceEditor(ropeItem).ShowDialog();
                 }
-                else if (item is LifeInstance)
+                else if (item is LifeInstance lifeItem)
                 {
-                    new LifeInstanceEditor((LifeInstance)item).ShowDialog();
+                    new LifeInstanceEditor(lifeItem).ShowDialog();
                 }
-                else if (item is ReactorInstance)
+                else if (item is ReactorInstance reactorItem)
                 {
-                    new ReactorInstanceEditor((ReactorInstance)item).ShowDialog();
+                    new ReactorInstanceEditor(reactorItem).ShowDialog();
                 }
-                else if (item is BackgroundInstance)
+                else if (item is BackgroundInstance backgroundItem)
                 {
-                    new BackgroundInstanceEditor((BackgroundInstance)item).ShowDialog();
+                    new BackgroundInstanceEditor(backgroundItem).ShowDialog();
                 }
-                else if (item is PortalInstance)
+                else if (item is PortalInstance portal)
                 {
-                    new PortalInstanceEditor((PortalInstance)item).ShowDialog();
+                    new PortalInstanceEditor(portal).ShowDialog();
                 }
-                else if (item is ToolTipInstance)
+                else if (item is ToolTipInstance tooltipItem)
                 {
-                    new TooltipInstanceEditor((ToolTipInstance)item).ShowDialog();
+                    new TooltipInstanceEditor(tooltipItem).ShowDialog();
                 }
             }
             catch (Exception e)
@@ -306,12 +306,12 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void multiBoard_OnEditBaseClicked(BoardItem item)
+        void MultiBoard_OnEditBaseClicked(BoardItem item)
         {
             //TODO
         }
 
-        void multiBoard_OnBringToFrontClicked(BoardItem boardRefItem)
+        void MultiBoard_OnBringToFrontClicked(BoardItem boardRefItem)
         {
             lock (multiBoard)
             {
@@ -348,7 +348,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void mapEditInfo(object sender, EventArgs e)
+        private void MapEditInfo(object sender, EventArgs e)
         {
             System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
             if (item == null)
@@ -370,7 +370,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void mapAddVR(object sender, EventArgs e)
+        private void MapAddVR(object sender, EventArgs e)
         {
             System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
             if (item == null)
@@ -401,7 +401,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void mapAddMinimap(object sender, EventArgs e)
+        private void MapAddMinimap(object sender, EventArgs e)
         {
             System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
             if (item == null)
@@ -433,7 +433,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void closeMapTab(object sender, EventArgs e)
+        private void CloseMapTab(object sender, EventArgs e)
         {
             if (tabs.Items.Count <= 1) // at least 1 tabs for now
             {
@@ -462,7 +462,7 @@ namespace HaCreator.MapEditor
         {
             lock (multiBoard)
             {
-                multiBoard_ReturnToSelectionState();
+                MultiBoard_ReturnToSelectionState();
 
                 if (tabs.SelectedItem != null)
                 {
@@ -488,7 +488,7 @@ namespace HaCreator.MapEditor
         #region Ribbon Handlers
         private string lastSaveLoc = null;
 
-        public void ribbon_ExportClicked()
+        public void Ribbon_ExportClicked()
         {
             SaveFileDialog ofd = new SaveFileDialog() { Title = "Select export location", Filter = "HaCreator Map File (*.ham)|*.ham" };
             if (lastSaveLoc != null)
@@ -507,7 +507,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_UserObjsClicked()
+        void Ribbon_UserObjsClicked()
         {
             lock (multiBoard)
             {
@@ -516,7 +516,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_FinalizeClicked()
+        void Ribbon_FinalizeClicked()
         {
             if (MessageBox.Show("This will finalize all footholds, removing their Tile bindings and clearing the Undo/Redo list in the process.\r\nContinue?", "Warning", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
             {
@@ -527,7 +527,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_HaRepackerClicked()
+        void Ribbon_HaRepackerClicked()
         {
             WaitWindow ww = new WaitWindow("Opening HaRepacker...");
             ww.Show();
@@ -581,24 +581,24 @@ namespace HaCreator.MapEditor
                                             getTypes(visibleTypes, editedTypes, ItemTypes.Misc));
         }
 
-        void ribbon_RandomTilesToggled(bool pressed)
+        void Ribbon_RandomTilesToggled(bool pressed)
         {
             ApplicationSettings.randomTiles = pressed;
             if (tilePanel != null)
                 tilePanel.LoadTileSetList();
         }
 
-        void ribbon_SnappingToggled(bool pressed)
+        void Ribbon_SnappingToggled(bool pressed)
         {
             UserSettings.useSnapping = pressed;
         }
 
-        void ribbon_InfoModeToggled(bool pressed)
+        void Ribbon_InfoModeToggled(bool pressed)
         {
             ApplicationSettings.InfoMode = pressed;
         }
 
-        void ribbon_RegenerateMinimapClicked()
+        void Ribbon_RegenerateMinimapClicked()
         {
             if (multiBoard.SelectedBoard.RegenerateMinimap())
                 MessageBox.Show("Minimap regenerated successfully", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -609,7 +609,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_MapSimulationClicked()
+        void Ribbon_MapSimulationClicked()
         {
             multiBoard.DeviceReady = false;
 
@@ -623,17 +623,17 @@ namespace HaCreator.MapEditor
             multiBoard.DeviceReady = true;
         }
 
-        void ribbon_ParallaxToggled(bool pressed)
+        void Ribbon_ParallaxToggled(bool pressed)
         {
             UserSettings.emulateParallax = pressed;
         }
 
-        void ribbon_ShowMinimapToggled(bool pressed)
+        void Ribbon_ShowMinimapToggled(bool pressed)
         {
             UserSettings.useMiniMap = pressed;
         }
 
-        void setTypes(ref ItemTypes newVisibleTypes, ref ItemTypes newEditedTypes, bool? x, ItemTypes type)
+        void SetTypes(ref ItemTypes newVisibleTypes, ref ItemTypes newEditedTypes, bool? x, ItemTypes type)
         {
             if (x.HasValue)
             {
@@ -649,24 +649,24 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_ViewToggled(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)
+        void Ribbon_ViewToggled(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)
         {
             lock (multiBoard)
             {
                 ItemTypes newVisibleTypes = 0;
                 ItemTypes newEditedTypes = 0;
-                setTypes(ref newVisibleTypes, ref newEditedTypes, tiles, ItemTypes.Tiles);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, objs, ItemTypes.Objects);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, npcs, ItemTypes.NPCs);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, mobs, ItemTypes.Mobs);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, reactors, ItemTypes.Reactors);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, portals, ItemTypes.Portals);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, footholds, ItemTypes.Footholds);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, ropes, ItemTypes.Ropes);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, chairs, ItemTypes.Chairs);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, tooltips, ItemTypes.ToolTips);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, backgrounds, ItemTypes.Backgrounds);
-                setTypes(ref newVisibleTypes, ref newEditedTypes, misc, ItemTypes.Misc);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, tiles, ItemTypes.Tiles);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, objs, ItemTypes.Objects);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, npcs, ItemTypes.NPCs);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, mobs, ItemTypes.Mobs);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, reactors, ItemTypes.Reactors);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, portals, ItemTypes.Portals);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, footholds, ItemTypes.Footholds);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, ropes, ItemTypes.Ropes);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, chairs, ItemTypes.Chairs);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, tooltips, ItemTypes.ToolTips);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, backgrounds, ItemTypes.Backgrounds);
+                SetTypes(ref newVisibleTypes, ref newEditedTypes, misc, ItemTypes.Misc);
                 ApplicationSettings.theoreticalVisibleTypes = newVisibleTypes;
                 ApplicationSettings.theoreticalEditedTypes = newEditedTypes;
                 if (multiBoard.SelectedBoard != null)
@@ -678,7 +678,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_ExitClicked()
+        void Ribbon_ExitClicked()
         {
             if (CloseRequested != null)
             {
@@ -686,7 +686,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_SettingsClicked()
+        void Ribbon_SettingsClicked()
         {
             lock (multiBoard)
             {
@@ -694,7 +694,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_HelpClicked()
+        void Ribbon_HelpClicked()
         {
             string helpPath = Path.Combine(Application.StartupPath, "Help.htm");
             if (File.Exists(helpPath))
@@ -703,12 +703,12 @@ namespace HaCreator.MapEditor
                 MessageBox.Show("Help could not be shown because the help file (HRHelp.htm) was not found");
         }
 
-        void ribbon_AboutClicked()
+        void Ribbon_AboutClicked()
         {
             new About().ShowDialog();
         }
 
-        void ribbon_RepackClicked()
+        void Ribbon_RepackClicked()
         {
             lock (multiBoard)
             {
@@ -721,7 +721,7 @@ namespace HaCreator.MapEditor
             }
         }
 
-        void ribbon_SaveClicked()
+        void Ribbon_SaveClicked()
         {
             lock (multiBoard)
             {
@@ -732,14 +732,14 @@ namespace HaCreator.MapEditor
         public System.Windows.RoutedEventHandler[] MakeRightClickHandler()
         {
             return new System.Windows.RoutedEventHandler[] { 
-                new System.Windows.RoutedEventHandler(mapEditInfo), 
-                new System.Windows.RoutedEventHandler(mapAddVR), 
-                new System.Windows.RoutedEventHandler(mapAddMinimap),
-                 new System.Windows.RoutedEventHandler(closeMapTab)
+                new System.Windows.RoutedEventHandler(MapEditInfo), 
+                new System.Windows.RoutedEventHandler(MapAddVR), 
+                new System.Windows.RoutedEventHandler(MapAddMinimap),
+                 new System.Windows.RoutedEventHandler(CloseMapTab)
             };
         }
 
-        void ribbon_NewClicked()
+        void Ribbon_NewClicked()
         {
             LoadMap(new New(multiBoard, tabs, MakeRightClickHandler()));
         }
