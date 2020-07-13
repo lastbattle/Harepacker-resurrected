@@ -31,6 +31,7 @@ using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Text;
 using HaCreator.MapSimulator;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -233,7 +234,7 @@ namespace HaCreator.MapEditor
             System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(1, 1);
             bmp.SetPixel(0, 0, System.Drawing.Color.White);
 
-            return BoardItem.TextureFromBitmap(DxDevice, bmp);
+            return bmp.ToTexture2D(DxDevice);
         }
 
         public Board CreateBoard(Microsoft.Xna.Framework.Point mapSize, Point centerPoint, System.Windows.Controls.ContextMenu menu)

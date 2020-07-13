@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.DX;
+﻿using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -13,11 +13,11 @@ namespace HaCreator.MapSimulator.Objects.UIObject
     /// <summary>
     /// Mini map window item
     /// </summary>
-    public class MinimapItem : BaseItem
+    public class MinimapItem : BaseDXDrawableItem
     {
-        private readonly BaseItem item_pixelDot;
+        private readonly BaseDXDrawableItem item_pixelDot;
 
-        public MinimapItem(IDXObject frames, BaseItem item_pixelDot)
+        public MinimapItem(IDXObject frames, BaseDXDrawableItem item_pixelDot)
             : base(frames, false)
         {
             this.item_pixelDot = item_pixelDot;
@@ -27,7 +27,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int RenderWidth, int RenderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int RenderWidth, int RenderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             // control minimap render UI position via

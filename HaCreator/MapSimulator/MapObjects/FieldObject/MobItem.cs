@@ -1,5 +1,5 @@
 ﻿using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.DX;
+using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -11,26 +11,26 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class ReactorItem : BaseItem
+    public class MobItem : BaseDXDrawableItem
     {
-        private readonly ReactorInstance reactorInstance;
+        private readonly MobInstance mobInstance;
 
-        public ReactorItem(ReactorInstance reactorInstance, List<IDXObject> frames)
-            : base(frames, reactorInstance.Flip)
+        public MobItem(MobInstance mobInstance, List<IDXObject> frames)
+            : base(frames, mobInstance.Flip)
         {
-            this.reactorInstance = reactorInstance;
+            this.mobInstance = mobInstance;
         }
 
 
-        public ReactorItem(ReactorInstance reactorInstance, IDXObject frame0)
-            : base(frame0, reactorInstance.Flip)
+        public MobItem(MobInstance mobInstance, IDXObject frame0)
+            : base(frame0, mobInstance.Flip)
         {
-            this.reactorInstance = reactorInstance;
+            this.mobInstance = mobInstance;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,

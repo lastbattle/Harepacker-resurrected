@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.DX;
+﻿using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -9,20 +9,34 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.Objects
+namespace HaSharedLibrary.Render.DX
 {
     /// <summary>
     /// The Base class for image or animated objects
     /// </summary>
-    public class BaseItem
+    public class BaseDXDrawableItem
     {
+        // multiple frame
         private readonly List<IDXObject> frames;
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
 
+        // 1 frame
         protected bool flip;
         protected readonly bool notAnimated;
         private readonly IDXObject frame0;
+
+
+        /// <summary>
+        /// The last frame drawn
+        /// </summary>
+        private IDXObject _LastFrameDrawn = null;
+        public IDXObject LastFrameDrawn
+        {
+            get { return this._LastFrameDrawn; }
+            private set { }
+        }
+
 
         private Point _Position;
         /// <summary>
@@ -35,11 +49,11 @@ namespace HaCreator.MapSimulator.Objects
         }
 
         /// <summary>
-        /// Creates an instance of MapItem
+        /// Creates an instance 
         /// </summary>
         /// <param name="frames"></param>
         /// <param name="flip"></param>
-        public BaseItem(List<IDXObject> frames, bool flip)
+        public BaseDXDrawableItem(List<IDXObject> frames, bool flip)
         {
             if (frames.Count == 1) // not animated if its just 1 frame
             {
@@ -61,7 +75,7 @@ namespace HaCreator.MapSimulator.Objects
         /// </summary>
         /// <param name="frame0"></param>
         /// <param name="flip"></param>
-        public BaseItem(IDXObject frame0, bool flip)
+        public BaseDXDrawableItem(IDXObject frame0, bool flip)
         {
             this.frame0 = frame0;
             notAnimated = true;
@@ -100,7 +114,7 @@ namespace HaCreator.MapSimulator.Objects
         /// <param name="TickCount">Ticks since system startup</param>
         public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int width, int height, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int width, int height, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             int shiftCenteredX = mapShiftX - centerX;
@@ -118,6 +132,7 @@ namespace HaCreator.MapSimulator.Objects
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
                     flip);
             }
+            this._LastFrameDrawn = drawFrame; // set the last frame drawn
         }
 
         /// <summary>

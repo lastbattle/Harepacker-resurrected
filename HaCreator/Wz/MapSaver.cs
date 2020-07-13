@@ -20,6 +20,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Collections;
 using HaCreator.MapSimulator;
+using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.Wz
 {
@@ -451,7 +452,7 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
-                if (bgInst.screenMode != (int) MapRenderResolution.Res_All) // 0
+                if (bgInst.screenMode != (int) RenderResolution.Res_All) // 0
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 
                 if (bgInst.SpineAni != null) // dont put anything if null

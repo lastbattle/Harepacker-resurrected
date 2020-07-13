@@ -435,7 +435,6 @@ namespace HaRepacker.GUI
                         MainPanel.StartAnimateSelectedCanvas();
                         break;
                     case Keys.P:
-                        MainPanel.StopCanvasAnimation();
                         break;
 
                     // Switch between tabs

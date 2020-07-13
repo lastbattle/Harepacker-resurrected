@@ -1,5 +1,5 @@
 ﻿using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.DX;
+using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class PortalItem : BaseItem
+    public class PortalItem : BaseDXDrawableItem
     {
         private readonly PortalInstance portalInstance;
 
@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,

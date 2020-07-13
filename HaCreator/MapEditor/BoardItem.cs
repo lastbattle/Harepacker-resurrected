@@ -97,21 +97,6 @@ namespace HaCreator.MapEditor
             }
         }
 
-        public static Texture2D TextureFromBitmap(GraphicsDevice device, System.Drawing.Bitmap bitmap)
-        {
-            if (bitmap == null)
-            {
-                return null; //todo handle this in a useful way
-            }
-
-            using (System.IO.MemoryStream s = new System.IO.MemoryStream())
-            {
-                bitmap.Save(s, System.Drawing.Imaging.ImageFormat.Png);
-                s.Seek(0, System.IO.SeekOrigin.Begin);
-                return Texture2D.FromStream(device, s);
-            }
-        }
-
         public virtual void BindItem(BoardItem item, XNA.Point distance)
         {
             lock (Board.ParentControl)

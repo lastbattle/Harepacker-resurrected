@@ -6,6 +6,7 @@
 
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator;
+using HaSharedLibrary.Render.DX;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -33,7 +34,7 @@ namespace HaCreator.GUI
             autoBackupBox.Checked = UserSettings.BackupEnabled;
 
             // Resolutions
-            foreach (MapRenderResolution val in Enum.GetValues(typeof(MapRenderResolution)))
+            foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
             {
                 ComboBoxItem comboBoxItem = new ComboBoxItem();
                 comboBoxItem.Tag = val;
@@ -46,7 +47,7 @@ namespace HaCreator.GUI
             int i = 0;
             foreach (ComboBoxItem item in comboBox_resolution.Items)
             {
-                if ((MapRenderResolution)item.Tag == UserSettings.SimulateResolution)
+                if ((RenderResolution)item.Tag == UserSettings.SimulateResolution)
                 {
                     comboBox_resolution.SelectedIndex = i;
                     break;
@@ -114,7 +115,7 @@ namespace HaCreator.GUI
             UserSettings.DotWidth = (int)dotwBox.Value;
             MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
             UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.SimulateResolution = ((MapRenderResolution) ((ComboBoxItem) comboBox_resolution.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+            UserSettings.SimulateResolution = ((RenderResolution) ((ComboBoxItem) comboBox_resolution.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
             UserSettings.ClipText = clipBox.Checked;
             UserSettings.FixFootholdMispositions = fixFh.Checked;
             UserSettings.InverseUpDown = invertUpDownBox.Checked;

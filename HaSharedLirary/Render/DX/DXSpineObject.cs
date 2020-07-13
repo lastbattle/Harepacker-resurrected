@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator.DX
+namespace HaSharedLibrary.Render.DX
 {
     public class DXSpineObject : IDXObject
     {

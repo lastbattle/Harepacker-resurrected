@@ -125,10 +125,10 @@ namespace MapleLib.WzLib
                 if (value != null)
                 {
                     value.Name = name;
-                    if (value is WzDirectory)
-                        AddDirectory((WzDirectory)value);
-                    else if (value is WzImage)
-                        AddImage((WzImage)value);
+                    if (value is WzDirectory directory)
+                        AddDirectory(directory);
+                    else if (value is WzImage image)
+                        AddImage(image);
                     else
                         throw new ArgumentException("Value must be a Directory or Image");
                 }

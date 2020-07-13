@@ -28,6 +28,7 @@ using HaSharedLibrary.Util;
 using HaCreator.GUI;
 using HaCreator.MapSimulator;
 using HaCreator.Exceptions;
+using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.Wz
 {
@@ -598,7 +599,7 @@ namespace HaCreator.Wz
                 int a = InfoTool.GetInt(bgProp["a"]);
                 BackgroundType type = (BackgroundType)InfoTool.GetInt(bgProp["type"]);
                 bool front = InfoTool.GetBool(bgProp["front"]);
-                int screenMode = InfoTool.GetInt(bgProp["screenMode"], (int) MapRenderResolution.Res_All);
+                int screenMode = InfoTool.GetInt(bgProp["screenMode"], (int) RenderResolution.Res_All);
                 string spineAni = InfoTool.GetString(bgProp["spineAni"]);
                 bool spineRandomStart = InfoTool.GetBool(bgProp["spineRandomStart"]);
                 bool? flip_t = InfoTool.GetOptionalBool(bgProp["f"]);

@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -48,9 +49,9 @@ namespace HaCreator.MapEditor.Info
             if (texture == null)
             {
                 if (image != null && image.Width == 1 && image.Height == 1)
-                    texture = BoardItem.TextureFromBitmap(sprite.GraphicsDevice, global::HaCreator.Properties.Resources.placeholder);
+                    texture = global::HaCreator.Properties.Resources.placeholder.ToTexture2D(sprite.GraphicsDevice);
                 else
-                    texture = BoardItem.TextureFromBitmap(sprite.GraphicsDevice, image);
+                    texture = image.ToTexture2D(sprite.GraphicsDevice);
             }
             return texture;
         }

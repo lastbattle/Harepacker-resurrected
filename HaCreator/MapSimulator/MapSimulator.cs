@@ -6,11 +6,12 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaSharedLibrary;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
@@ -41,7 +42,7 @@ namespace HaCreator.MapSimulator
         private int RenderWidth;
         private int RenderHeight;
         private float RenderObjectScaling = 1.0f;
-        private MapRenderResolution mapRenderResolution;
+        private RenderResolution mapRenderResolution;
 
         private GraphicsDeviceManager _DxDeviceManager;
         private readonly TexturePool texturePool = new TexturePool();
@@ -51,12 +52,12 @@ namespace HaCreator.MapSimulator
 
 
         // Objects, NPCs
-        public List<BaseItem>[] mapObjects;
-        private readonly List<BaseItem> mapObjects_NPCs = new List<BaseItem>();
-        private readonly List<BaseItem> mapObjects_Mobs = new List<BaseItem>();
-        private readonly List<BaseItem> mapObjects_Reactors = new List<BaseItem>();
-        private readonly List<BaseItem> mapObjects_Portal = new List<BaseItem>(); // perhaps mapobjects should be in a single pool
-        private readonly List<BaseItem> mapObjects_tooltips = new List<BaseItem>();
+        public List<BaseDXDrawableItem>[] mapObjects;
+        private readonly List<BaseDXDrawableItem> mapObjects_NPCs = new List<BaseDXDrawableItem>();
+        private readonly List<BaseDXDrawableItem> mapObjects_Mobs = new List<BaseDXDrawableItem>();
+        private readonly List<BaseDXDrawableItem> mapObjects_Reactors = new List<BaseDXDrawableItem>();
+        private readonly List<BaseDXDrawableItem> mapObjects_Portal = new List<BaseDXDrawableItem>(); // perhaps mapobjects should be in a single pool
+        private readonly List<BaseDXDrawableItem> mapObjects_tooltips = new List<BaseDXDrawableItem>();
 
         // Backgrounds
         private readonly List<BackgroundItem> backgrounds_front = new List<BackgroundItem>();
@@ -137,54 +138,54 @@ namespace HaCreator.MapSimulator
             RenderObjectScaling = 1.0f;
             switch (this.mapRenderResolution)
             {
-                case MapRenderResolution.Res_1024x768:  // 1024x768
+                case RenderResolution.Res_1024x768:  // 1024x768
                     RenderHeight = 768;
                     RenderWidth = 1024;
                     break;
-                case MapRenderResolution.Res_1280x720: // 1280x720
+                case RenderResolution.Res_1280x720: // 1280x720
                     RenderHeight = 720;
                     RenderWidth = 1280;
                     break;
-                case MapRenderResolution.Res_1366x768:  // 1366x768
+                case RenderResolution.Res_1366x768:  // 1366x768
                     RenderHeight = 768;
                     RenderWidth = 1366;
                     break;
 
 
-                case MapRenderResolution.Res_1920x1080: // 1920x1080
+                case RenderResolution.Res_1920x1080: // 1920x1080
                     RenderHeight = 1080;
                     RenderWidth = 1920;
                     break;
-                case MapRenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
+                case RenderResolution.Res_1920x1080_120PercScaled: // 1920x1080
                     RenderHeight = 1080;
                     RenderWidth = 1920;
                     RenderObjectScaling = 1.2f;
                     break;
-                case MapRenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
+                case RenderResolution.Res_1920x1080_150PercScaled: // 1920x1080
                     RenderHeight = 1080;
                     RenderWidth = 1920;
                     RenderObjectScaling = 1.5f;
-                    this.mapRenderResolution |= MapRenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
+                    this.mapRenderResolution |= RenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
                     break;
 
 
-                case MapRenderResolution.Res_1920x1200: // 1920x1200
+                case RenderResolution.Res_1920x1200: // 1920x1200
                     RenderHeight = 1200;
                     RenderWidth = 1920;
                     break;
-                case MapRenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
+                case RenderResolution.Res_1920x1200_120PercScaled: // 1920x1200
                     RenderHeight = 1200;
                     RenderWidth = 1920;
                     RenderObjectScaling = 1.2f;
                     break;
-                case MapRenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
+                case RenderResolution.Res_1920x1200_150PercScaled: // 1920x1200
                     RenderHeight = 1200;
                     RenderWidth = 1920;
                     RenderObjectScaling = 1.5f;
                     break;
 
-                case MapRenderResolution.Res_All:
-                case MapRenderResolution.Res_800x600: // 800x600
+                case RenderResolution.Res_All:
+                case RenderResolution.Res_800x600: // 800x600
                 default:
                     RenderHeight = 600;
                     RenderWidth = 800;
@@ -197,10 +198,10 @@ namespace HaCreator.MapSimulator
             // TODO: Add your initialization logic here
 
             // Create map layers
-            mapObjects = new List<BaseItem>[MapConstants.MaxMapLayers];
+            mapObjects = new List<BaseDXDrawableItem>[MapConstants.MaxMapLayers];
             for (int i = 0; i < MapConstants.MaxMapLayers; i++)
             {
-                mapObjects[i] = new List<BaseItem>();
+                mapObjects[i] = new List<BaseDXDrawableItem>();
             }
 
             //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
@@ -337,7 +338,7 @@ namespace HaCreator.MapSimulator
             // Debug items
             System.Drawing.Bitmap bitmap_debug = new System.Drawing.Bitmap(1, 1);
             bitmap_debug.SetPixel(0, 0, System.Drawing.Color.White);
-            texture_debugBoundaryRect = BoardItem.TextureFromBitmap(_DxDeviceManager.GraphicsDevice, bitmap_debug);
+            texture_debugBoundaryRect = bitmap_debug.ToTexture2D(_DxDeviceManager.GraphicsDevice);
 
             // cleanup
             // clear used items
@@ -488,9 +489,9 @@ namespace HaCreator.MapSimulator
             });
 
             // Map objects
-            foreach (List<BaseItem> mapItem in mapObjects)
+            foreach (List<BaseDXDrawableItem> mapItem in mapObjects)
             {
-                foreach (BaseItem item in mapItem)
+                foreach (BaseDXDrawableItem item in mapItem)
                 {
                     item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
