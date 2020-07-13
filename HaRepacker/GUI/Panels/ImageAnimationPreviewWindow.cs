@@ -40,8 +40,8 @@ namespace HaRepacker.GUI.Panels
 		private SpriteFont font;
 
 		// 
-		public int mapShiftX = 0;
-		public int mapShiftY = 0;
+		public int mapShiftX = -600;
+		public int mapShiftY = -400;
 
 		/// <summary>
 		/// Constructor
@@ -137,7 +137,7 @@ namespace HaRepacker.GUI.Panels
 
 					// Add to the list of images to render
 					System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
-					DXObject dxObject = new DXObject((int) origin.X, (int)origin.Y, image.ToTexture2D(graphicsDeviceMgr.GraphicsDevice), (int) delay);
+					DXObject dxObject = new DXObject((int) -origin.X, (int) -origin.Y, image.ToTexture2D(graphicsDeviceMgr.GraphicsDevice), (int) delay);
 
 					animationFrames.Add(dxObject);
 				}
