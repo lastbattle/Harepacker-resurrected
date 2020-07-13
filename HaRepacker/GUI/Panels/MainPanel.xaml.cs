@@ -1,7 +1,9 @@
 ﻿using HaRepacker.Comparer;
 using HaRepacker.Converter;
 using HaRepacker.GUI.Input;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.GUI;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -156,7 +158,6 @@ namespace HaRepacker.GUI.Panels
                 case System.Windows.Forms.Keys.Escape:
                     e.Handled = true;
                     e.SuppressKeyPress = true;
-                    StopCanvasAnimation();
                     break;
 
                 case System.Windows.Forms.Keys.Delete:
@@ -587,168 +588,37 @@ namespace HaRepacker.GUI.Panels
         #endregion
 
         #region Animate
-
-        private DispatcherTimer timerImgSequence;
-        private int i_animateCanvasNode = 0;
-        private bool bCanvasAnimationActive = false;
-        private List<CanvasAnimationFrame> animate_PreLoadImages = new List<CanvasAnimationFrame>(); // list of pre-loaded images for animation [Image name, delay, origin, image]
         /// <summary>
         /// Animate the list of selected canvases
         /// </summary>
         public void StartAnimateSelectedCanvas()
         {
-            if (timerImgSequence != null)
+            if (DataTree.SelectedNodes.Count == 0)
             {
-                timerImgSequence.Stop();
-                timerImgSequence = null;
+                MessageBox.Show("Please select at least one or more canvas node.");
+                return;
             }
-            timerImgSequence = new DispatcherTimer();
-            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, 10);
-            timerImgSequence.Tick += TimerImgSequence_Tick;
 
-            if (bCanvasAnimationActive) // currently animating
+            List<WzNode> selectedNodes = new List<WzNode>();
+            foreach (WzNode node in DataTree.SelectedNodes)
             {
-                StopCanvasAnimation();
+                selectedNodes.Add(node);
             }
-            else if (DataTree.SelectedNodes.Count >= 1)
+
+            Thread thread = new Thread(() =>
             {
-                List<CanvasAnimationFrame> load_animate_PreLoadImages = new List<CanvasAnimationFrame>();
-
-                // Check all selected nodes, make sure they're all images.
-                // and add to a list
-                bool loadSuccessfully = true;
-                string loadErrorMsg = null;
-
-                foreach (WzNode selNode in DataTree.SelectedNodes)
+                try
                 {
-                    WzObject obj = (WzObject)selNode.Tag;
-
-                    WzCanvasProperty canvasProperty;
-
-                    bool isUOLProperty = obj is WzUOLProperty;
-                    if (obj is WzCanvasProperty || isUOLProperty)
-                    {
-                        // Get image property
-                        System.Drawing.Bitmap image;
-                        if (!isUOLProperty)
-                        {
-                            canvasProperty = ((WzCanvasProperty)obj);
-                            image = canvasProperty.GetLinkedWzCanvasBitmap();
-                        }
-                        else
-                        {
-                            WzObject linkVal = ((WzUOLProperty)obj).LinkValue;
-                            if (linkVal is WzCanvasProperty)
-                            {
-                                canvasProperty = ((WzCanvasProperty)linkVal);
-                                image = canvasProperty.GetLinkedWzCanvasBitmap();
-                            }
-                            else
-                            { // one of the WzUOLProperty link data isnt a canvas
-                                loadSuccessfully = false;
-                                loadErrorMsg = "Error loading WzUOLProperty ID: " + obj.Name;
-                                break;
-                            }
-                        }
-
-                        // Get delay property
-                        int? delay = canvasProperty[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt();
-                        if (delay == null)
-                            delay = 0;
-
-                        // Add to the list of images to render
-                        load_animate_PreLoadImages.Add(new CanvasAnimationFrame()
-                        {
-                            Name = obj.Name,
-                            Delay = (int)delay,
-                            origin = canvasProperty.GetCanvasOriginPosition(),
-                            head = canvasProperty.GetCanvasHeadPosition(),
-                            lt = canvasProperty.GetCanvasLtPosition(),
-                            Image = BitmapToImageSource.ToWpfBitmap(image)
-                        });
-                    }
-                    else
-                    {
-                        loadSuccessfully = false;
-                        loadErrorMsg = "One of the selected nodes is not a WzCanvasProperty type";
-                        break;
-                    }
+                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(selectedNodes);
+                    previewWnd.Run();
                 }
-
-                if (!loadSuccessfully)
+                catch (Exception ex)
                 {
-                    MessageBox.Show(loadErrorMsg, "Animate", MessageBoxButton.OK);
+                    MessageBox.Show("Error previewing animation. " + ex.ToString());
                 }
-                else
-                {
-                    if (animate_PreLoadImages.Count > 0) // clear existing images
-                        animate_PreLoadImages.Clear();
-
-                    // Sort by image name
-                    IOrderedEnumerable<CanvasAnimationFrame> sorted = load_animate_PreLoadImages.OrderBy(x => x, new SemiNumericComparer());
-                    animate_PreLoadImages.Clear(); // clear existing
-                    animate_PreLoadImages.AddRange(sorted);
-
-                    // Start animation
-                    bCanvasAnimationActive = true; // flag
-
-                    timerImgSequence.Start();
-                    menuItem_Animate.Header = "Stop (F5)";
-                }
-            }
-            else
-            {
-                MessageBox.Show("Select two or more nodes WzCanvasProperty", "Selection", MessageBoxButton.OK);
-            }
-        }
-
-        /// <summary>
-        /// Animate canvas timer
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void TimerImgSequence_Tick(object sender, EventArgs e)
-        {
-            timerImgSequence.Stop();
-
-            if (i_animateCanvasNode >= animate_PreLoadImages.Count) // last animate node, reset to 0 next
-            {
-                i_animateCanvasNode = 0;
-            }
-
-            CanvasAnimationFrame currentSelectedFrame = animate_PreLoadImages[i_animateCanvasNode];
-            i_animateCanvasNode++; // increment 1
-
-            SetImageRenderView(null, currentSelectedFrame);
-
-            // Set tooltip text
-            if (i_animateCanvasNode == animate_PreLoadImages.Count)
-                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms. Repeating animation.";
-            else
-                statusBarItemLabel_Others.Text = "# " + currentSelectedFrame.Name + ", Delay: " + currentSelectedFrame.Delay + " ms.";
-
-            timerImgSequence.Interval = new TimeSpan(0, 0, 0, 0, currentSelectedFrame.Delay);
-            timerImgSequence.Start();
-        }
-
-        /// <summary>
-        /// Stop animating canvases
-        /// </summary>
-        public void StopCanvasAnimation()
-        {
-            i_animateCanvasNode = 0;
-
-            if (timerImgSequence != null)
-            {
-                timerImgSequence.Stop();
-                timerImgSequence = null;
-            }
-            menuItem_Animate.Header = "Animate (F5)";
-
-            // clear memory
-            animate_PreLoadImages.Clear();
-
-            bCanvasAnimationActive = false; // flag
+            });
+            thread.Start();
+           // thread.Join();
         }
 
         private class CanvasAnimationFrame
@@ -757,49 +627,6 @@ namespace HaRepacker.GUI.Panels
             public int Delay;
             public PointF origin, head, lt;
             public ImageSource Image;
-        }
-
-        /// <summary>
-        /// Comparer for string names. in ascending order
-        /// Compares by Numeric when possible, so it does not sort by name.
-        /// </summary>
-        private class SemiNumericComparer : IComparer<CanvasAnimationFrame>
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public int Compare(CanvasAnimationFrame s1, CanvasAnimationFrame s2)
-            {
-                string s1Text = s1.Name;
-                string s2Text = s2.Name;
-
-                bool isS1Numeric = IsNumeric(s1Text);
-                bool isS2Numeric = IsNumeric(s2Text);
-
-                if (isS1Numeric && isS2Numeric)
-                {
-                    int s1val = Convert.ToInt32(s1Text);
-                    int s2val = Convert.ToInt32(s2Text);
-
-                    if (s1val > s2val)
-                        return 1;
-                    else if (s1val < s2val)
-                        return -1;
-                    else if (s1val == s2val)
-                        return 0;
-                }
-                else if (isS1Numeric && !isS2Numeric)
-                    return -1;
-                else if (!isS1Numeric && isS2Numeric)
-                    return 1;
-
-                return string.Compare(s1Text, s2Text, true);
-            }
-
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static bool IsNumeric(string value)
-            {
-                int parseInt = 0;
-                return Int32.TryParse(value, out parseInt);
-            }
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)

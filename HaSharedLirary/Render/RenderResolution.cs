@@ -10,9 +10,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.MapSimulator
+namespace HaSharedLibrary.Render.DX
 {
-    public enum MapRenderResolution :int
+    public enum RenderResolution :int
     {
         Res_All = 0,
 

@@ -18,6 +18,7 @@ using HaCreator.MapEditor.UndoRedo;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance.Shapes;
 using System.Threading;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.MapEditor
 {
@@ -200,7 +201,8 @@ namespace HaCreator.MapEditor
                 parent.FillRectangle(sprite, minimapArea, Color.Gray);
                 // Render minimap
                 if (miniMapTexture == null) 
-                    miniMapTexture = BoardItem.TextureFromBitmap(parent.GraphicsDevice, miniMap);
+                    miniMapTexture = miniMap.ToTexture2D(parent.GraphicsDevice);
+
                 sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
                 // Render current location on minimap
                 parent.DrawRectangle(sprite, new Rectangle(hScroll / _mag, vScroll / _mag, parent.CurrentDXWindowSize.Width / _mag, (int)parent.CurrentDXWindowSize.Height / _mag), Color.Blue);

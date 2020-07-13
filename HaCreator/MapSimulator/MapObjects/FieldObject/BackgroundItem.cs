@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.DX;
+﻿using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class BackgroundItem : BaseItem
+    public class BackgroundItem : BaseDXDrawableItem
     {
         private int rx;
         private int ry;
@@ -180,7 +180,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY, 
-            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             if (((int) mapRenderResolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this

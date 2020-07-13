@@ -1,5 +1,5 @@
 ﻿using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.DX;
+using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects.FieldObject
 {
-    public class TooltipItem : BaseItem
+    public class TooltipItem : BaseDXDrawableItem
     {
         private readonly ToolTipInstance tooltipInstance;
         public ToolTipInstance TooltipInstance
@@ -35,7 +35,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,

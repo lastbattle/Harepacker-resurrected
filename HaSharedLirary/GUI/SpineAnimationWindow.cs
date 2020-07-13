@@ -36,7 +36,7 @@ namespace HaSharedLibrary.GUI
 
 		private SkeletonMeshRenderer skeletonRenderer;
 
-		private WzSpineObject wzSpineObject;
+		private readonly WzSpineObject wzSpineObject;
 
 		// Text
 		private SpriteBatch spriteBatch;
@@ -59,7 +59,7 @@ namespace HaSharedLibrary.GUI
 
 			graphicsDeviceMgr = new GraphicsDeviceManager(this)
 			{
-				SynchronizeWithVerticalRetrace = false, // dont cap fps
+				SynchronizeWithVerticalRetrace = true, // max fps with the monitor
 				HardwareModeSwitch = true,
 				GraphicsProfile = GraphicsProfile.HiDef,
 				IsFullScreen = false,

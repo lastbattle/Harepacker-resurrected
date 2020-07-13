@@ -20,6 +20,7 @@ using HaCreator.MapSimulator;
 using System.Windows.Controls;
 using HaCreator.MapEditor.Info;
 using Spine;
+using HaSharedLibrary.Render.DX;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -50,7 +51,7 @@ namespace HaCreator.GUI.InstanceEditor
             cyBox.Value = item.cy;
 
             // Resolutions
-            foreach (MapRenderResolution val in Enum.GetValues(typeof(MapRenderResolution)))
+            foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
             {
                 ComboBoxItem comboBoxItem = new ComboBoxItem();
                 comboBoxItem.Tag = val;
@@ -63,7 +64,7 @@ namespace HaCreator.GUI.InstanceEditor
             int i = 0;
             foreach (ComboBoxItem citem in comboBox_screenMode.Items)
             {
-                if ((int) ((MapRenderResolution)citem.Tag) == item.screenMode)
+                if ((int) ((RenderResolution)citem.Tag) == item.screenMode)
                 {
                     comboBox_screenMode.SelectedIndex = i;
                     break;
@@ -146,7 +147,7 @@ namespace HaCreator.GUI.InstanceEditor
                 item.ry = (int)ryBox.Value;
                 item.cx = (int)cxBox.Value;
                 item.cy = (int)cyBox.Value;
-                item.screenMode = (int) ((MapRenderResolution)((ComboBoxItem)comboBox_screenMode.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+                item.screenMode = (int) ((RenderResolution)((ComboBoxItem)comboBox_screenMode.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
 
                 // Spine
                 if (!groupBox_spine.Enabled)

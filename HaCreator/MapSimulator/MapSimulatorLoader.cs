@@ -2,12 +2,13 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.DX;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
 using HaRepacker.Converter;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -89,7 +90,7 @@ namespace HaCreator.MapSimulator
                     }
                     else
                     {
-                        source.MSTag = BoardItem.TextureFromBitmap(device, property.GetLinkedWzCanvasBitmap());
+                        source.MSTag = property.GetLinkedWzCanvasBitmap().ToTexture2D(device);
 
                         // add to cache
                         texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
@@ -113,7 +114,7 @@ namespace HaCreator.MapSimulator
                 }
                 else // fallback
                 {
-                    Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                    Texture2D texture = Properties.Resources.placeholder.ToTexture2D(device);
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
                     frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
@@ -149,7 +150,7 @@ namespace HaCreator.MapSimulator
                                 }
                                 else
                                 {
-                                    frameProp.MSTag = BoardItem.TextureFromBitmap(device, frameProp.GetLinkedWzCanvasBitmap());
+                                    frameProp.MSTag = frameProp.GetLinkedWzCanvasBitmap().ToTexture2D(device);
 
                                     // add to cache
                                     texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
@@ -174,7 +175,7 @@ namespace HaCreator.MapSimulator
                         }
                         else
                         {
-                            Texture2D texture = BoardItem.TextureFromBitmap(device, Properties.Resources.placeholder);
+                            Texture2D texture = Properties.Resources.placeholder.ToTexture2D(device);
                             System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
                             frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
@@ -199,9 +200,9 @@ namespace HaCreator.MapSimulator
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BaseItem CreateMapItemFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        public static BaseDXDrawableItem CreateMapItemFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
-            BaseItem mapItem = new BaseItem(LoadFrames(texturePool, source, x, y, device, ref usedProps), flip);
+            BaseDXDrawableItem mapItem = new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, ref usedProps), flip);
             return mapItem;
         }
 
@@ -528,8 +529,8 @@ namespace HaCreator.MapSimulator
                 graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
                 graphics.Flush();
             }
-            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, BoardItem.TextureFromBitmap(device, bmp_DotPixel), 0);
-            BaseItem item_pixelDot = new BaseItem(dxObj_miniMapPixel, false);
+            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2D(device), 0);
+            BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(dxObj_miniMapPixel, false);
 
             // Map background image
             System.Drawing.Bitmap miniMapImage = mapBoard.MiniMap; // the original minimap image without UI frame overlay
@@ -561,7 +562,7 @@ namespace HaCreator.MapSimulator
 
                     graphics.Flush();
                 }
-                Texture2D texturer_miniMap = BoardItem.TextureFromBitmap(device, miniMapUIImage);
+                Texture2D texturer_miniMap = miniMapUIImage.ToTexture2D(device);
 
                 IDXObject dxObj = new DXObject(0, 0, texturer_miniMap, 0);
                 MinimapItem item = new MinimapItem(dxObj, item_pixelDot);
@@ -627,7 +628,7 @@ namespace HaCreator.MapSimulator
                     graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), WIDTH_PADDING / 2, HEIGHT_PADDING / 2);
                     graphics.Flush();
                 }
-                IDXObject dxObj = new DXObject(tooltip.X, tooltip.Y, BoardItem.TextureFromBitmap(device, bmp_tooltip), 0);
+                IDXObject dxObj = new DXObject(tooltip.X, tooltip.Y, bmp_tooltip.ToTexture2D(device), 0);
                 TooltipItem item = new TooltipItem(tooltip, dxObj);
                 
                 return item;
@@ -655,7 +656,7 @@ namespace HaCreator.MapSimulator
 
             List<IDXObject> frames = LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
 
-            BaseItem clickedState = CreateMapItemFromProperty(texturePool, cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseDXDrawableItem clickedState = CreateMapItemFromProperty(texturePool, cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
             return new MouseCursorItem(frames, clickedState);
         }
         #endregion

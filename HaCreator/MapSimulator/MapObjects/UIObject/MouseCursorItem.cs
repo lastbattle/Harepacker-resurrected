@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.DX;
+﻿using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -14,7 +14,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
     /// <summary>
     /// For cursor
     /// </summary>
-    public class MouseCursorItem : BaseItem
+    public class MouseCursorItem : BaseDXDrawableItem
     {
         private MouseState previousMouseState;
         public MouseState MouseState
@@ -25,10 +25,10 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         private int mouseCursorItemStates; // enum
 
-        private BaseItem cursorItemPressedState; // default state of the cursor = this instance
+        private BaseDXDrawableItem cursorItemPressedState; // default state of the cursor = this instance
 
 
-        public MouseCursorItem(List<IDXObject> frames, BaseItem cursorItemPressedState)
+        public MouseCursorItem(List<IDXObject> frames, BaseDXDrawableItem cursorItemPressedState)
             : base(frames, false)
         {
             previousMouseState = Mouse.GetState();
@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         /// <param name="TickCount"></param>
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            int renderWidth, int renderHeight, float RenderObjectScaling, MapRenderResolution mapRenderResolution,
+            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             Point MousePos = Mouse.GetState().Position; // relative to the window already

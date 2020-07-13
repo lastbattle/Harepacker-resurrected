@@ -4,29 +4,19 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
+
 using System.Text;
-using MapleLib;
-using MapleLib.WzLib;
-using MapleLib.WzLib.Util;
-using MapleLib.WzLib.WzProperties;
-using System.IO;
-using System.Reflection;
 using XNA = Microsoft.Xna.Framework;
-using HaCreator.MapEditor;
 using MapleLib.WzLib.WzStructure.Data;
-using MapleLib.WzLib.WzStructure;
 using System.Drawing;
-using HaCreator.MapSimulator;
+using HaSharedLibrary.Render.DX;
 
 namespace HaCreator
 {
     public static class UserSettings
     {
         public static bool ShowErrorsMessage = true;
-        public static MapRenderResolution SimulateResolution = MapRenderResolution.Res_1024x768; // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
+        public static RenderResolution SimulateResolution = RenderResolution.Res_1024x768; // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
         public static bool ClipText = false;
         public static Color TabColor = Color.LightSteelBlue;
         public static int LineWidth = 1;

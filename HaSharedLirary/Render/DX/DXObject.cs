@@ -9,8 +9,9 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System.Runtime.CompilerServices;
+using System.Windows;
 
-namespace HaCreator.MapSimulator.DX
+namespace HaSharedLibrary.Render.DX
 {
     public class DXObject : IDXObject
     {
@@ -42,7 +43,9 @@ namespace HaCreator.MapSimulator.DX
         public void DrawObject(Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, bool flip)
         {
-            spriteBatch.Draw(texture, new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), null, Color.White, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+            spriteBatch.Draw(texture, 
+                new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), 
+                null, Color.White, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
 
         /// <summary>
@@ -59,7 +62,9 @@ namespace HaCreator.MapSimulator.DX
         public void DrawBackground(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
             int x, int y, Color color, bool flip)
         {
-            sprite.Draw(texture, new Rectangle(x, y, texture.Width, texture.Height), null, color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+            sprite.Draw(texture, new 
+                Rectangle(x, y, texture.Width, texture.Height), 
+                null, color, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
 
         public int Delay

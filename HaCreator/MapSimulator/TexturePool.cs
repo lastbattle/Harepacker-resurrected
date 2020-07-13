@@ -16,7 +16,7 @@ namespace HaCreator.MapSimulator
     /// </summary>
     public class TexturePool : IDisposable
     {
-        private Dictionary<string, Texture2D> TEXTURE_POOL = new Dictionary<string, Texture2D>();
+        private readonly Dictionary<string, Texture2D> TEXTURE_POOL = new Dictionary<string, Texture2D>();
 
         /// <summary>
         /// Get the previously loaded texture from the pool

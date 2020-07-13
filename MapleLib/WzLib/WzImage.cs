@@ -406,6 +406,7 @@ namespace MapleLib.WzLib
         public void UnparseImage()
         {
             parsed = false;
+            this.properties.Clear();
             this.properties = new List<WzImageProperty>();
         }
 
