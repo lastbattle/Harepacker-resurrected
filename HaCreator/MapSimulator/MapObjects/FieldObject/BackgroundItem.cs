@@ -11,15 +11,15 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
 {
     public class BackgroundItem : BaseDXDrawableItem
     {
-        private int rx;
-        private int ry;
-        private int cx;
-        private int cy;
+        private readonly int rx;
+        private readonly int ry;
+        private readonly int cx;
+        private readonly int cy;
         private BackgroundType type;
-        private int a;
+        private readonly int a;
         private Color color;
-        private bool front;
-        private int screenMode;
+        private readonly bool front;
+        private readonly int screenMode;
 
         private double bgMoveShiftX = 0;
         private double bgMoveShiftY = 0;

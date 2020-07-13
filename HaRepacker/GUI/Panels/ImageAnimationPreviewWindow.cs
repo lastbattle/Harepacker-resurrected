@@ -278,9 +278,9 @@ namespace HaRepacker.GUI.Panels
 			if (dxDrawableItem.LastFrameDrawn != null)
 			{
 				IDXObject lastFrameDrawn = dxDrawableItem.LastFrameDrawn;
-				string imageRenderInfoText = string.Format("[Origin: x = {0}, y = {1}]{5}[Dimension: W = {2}, H = {3}]{6}[Delay: {4}]",
-					lastFrameDrawn.X, lastFrameDrawn.Y, lastFrameDrawn.Width, lastFrameDrawn.Height, lastFrameDrawn.Delay,
-					Environment.NewLine, Environment.NewLine);
+				string imageRenderInfoText = string.Format("[Origin: x = {0}, y = {1}]{6}[Dimension: W = {2}, H = {3}]{7}[Delay: {4}]{8}[Scale: {5}x]",
+					lastFrameDrawn.X, lastFrameDrawn.Y, lastFrameDrawn.Width, lastFrameDrawn.Height, lastFrameDrawn.Delay, Math.Round(renderAnimationScaling, 2),
+					Environment.NewLine, Environment.NewLine, Environment.NewLine);
 
 				spriteBatch.DrawString(font_DebugValues, imageRenderInfoText, new Vector2((RENDER_WIDTH /2) - 100, RENDER_HEIGHT - 100), Color.White);
 			}
