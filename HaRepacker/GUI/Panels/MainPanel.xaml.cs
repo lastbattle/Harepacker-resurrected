@@ -531,17 +531,13 @@ namespace HaRepacker.GUI.Panels
         /// <summary>
         /// Rename an individual node
         /// </summary>
-        public void PromptRenameSelectedTreeNode()
+        public void PromptRenameWzTreeNode(WzNode node)
         {
-            if (DataTree.SelectedNodes.Count != 1)
-            {
+            if (node == null)
                 return;
-            }
 
             string newName = "";
-            System.Windows.Forms.TreeNode currentSelectedNode = DataTree.SelectedNodes[0] as System.Windows.Forms.TreeNode;
-            WzNode wzNode = (WzNode)currentSelectedNode;
-
+            WzNode wzNode = node;
             if (RenameInputBox.Show(Properties.Resources.MainConfirmRename, wzNode.Text, out newName))
             {
                 wzNode.ChangeName(newName);

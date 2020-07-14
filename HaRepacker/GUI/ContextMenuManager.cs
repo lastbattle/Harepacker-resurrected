@@ -87,7 +87,9 @@ namespace HaRepacker
             Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
-                    haRepackerMainPanel.PromptRenameSelectedTreeNode();
+                    WzNode currentNode = currNode;
+
+                    haRepackerMainPanel.PromptRenameWzTreeNode(currentNode);
                 }));
             Remove = new ToolStripMenuItem("Remove", Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
@@ -130,7 +132,6 @@ namespace HaRepacker
                 {
                     foreach (WzNode node in GetNodes(sender))
                     {
-
                         node.ExpandAll();
                     }
                 }));
