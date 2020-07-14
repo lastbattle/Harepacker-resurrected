@@ -506,4 +506,7 @@ Click "Yes" to download the new version.</value>
   <data name="RelativeTime_YearsAgo" xml:space="preserve">
     <value>{0} years(s) ago</value>
   </data>
+  <data name="sort" type="System.Resources.ResXFileRef, System.Windows.Forms">
+    <value>..\Resources\sort.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
 </root>

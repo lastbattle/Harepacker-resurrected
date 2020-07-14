@@ -120,7 +120,7 @@ namespace HaRepacker.GUI
 
         public void Interop_AddLoadedWzFileToManager(WzFile f)
         {
-            Program.WzMan.InsertWzFileUnsafe(f, MainPanel);
+            Program.WzFileManager.InsertWzFileUnsafe(f, MainPanel);
         }
 
         #region Theme colors
@@ -302,12 +302,12 @@ namespace HaRepacker.GUI
             {
                 WzFile loadedWzFile;
                 if (detectMapleVersion)
-                    loadedWzFile = Program.WzMan.LoadWzFile(path);
+                    loadedWzFile = Program.WzFileManager.LoadWzFile(path);
                 else
-                    loadedWzFile = Program.WzMan.LoadWzFile(path, (WzMapleVersion) GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex));
+                    loadedWzFile = Program.WzFileManager.LoadWzFile(path, (WzMapleVersion) GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex));
 
                 if (loadedWzFile != null)
-                    Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
+                    Program.WzFileManager.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
             }
             catch
             {
@@ -738,7 +738,7 @@ namespace HaRepacker.GUI
 
                     if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
                     {
-                        WzImage img = Program.WzMan.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
+                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
                         if (img == null)
                         {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
@@ -791,7 +791,7 @@ namespace HaRepacker.GUI
                     List<WzFile> loadedWzFiles = new List<WzFile>();
                     ParallelLoopResult loop = Parallel.ForEach(wzfilePathsToLoad, filePath =>
                     {
-                        WzFile f = Program.WzMan.LoadWzFile(filePath, MapleVersionEncryptionSelected);
+                        WzFile f = Program.WzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
                         if (f == null)
                         {
                             // error should be thrown 
@@ -811,7 +811,7 @@ namespace HaRepacker.GUI
 
                     foreach (WzFile wzFile in loadedWzFiles) // add later, once everything is loaded to memory
                     {
-                        Program.WzMan.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
+                        Program.WzFileManager.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
                     }
                 }); // load complete
 
@@ -823,13 +823,13 @@ namespace HaRepacker.GUI
         private void unloadAllToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (Warning.Warn(HaRepacker.Properties.Resources.MainUnloadAll))
-                Program.WzMan.UnloadAll();
+                Program.WzFileManager.UnloadAll();
         }
 
         private void reloadAllToolStripMenuItem_Click(object sender, EventArgs e)
         {
             if (Warning.Warn(HaRepacker.Properties.Resources.MainReloadAll))
-                Program.WzMan.ReloadAll(MainPanel);
+                Program.WzFileManager.ReloadAll(MainPanel);
         }
 
         /// <summary>

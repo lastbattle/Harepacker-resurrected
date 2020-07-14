@@ -34,9 +34,6 @@ namespace HaRepacker
         };
         #endregion
 
-
-        private static TreeViewNodeSorter SORTER = new TreeViewNodeSorter();
-
         private List<WzFile> wzFiles = new List<WzFile>();
 
         public WzFileManager()
@@ -116,7 +113,7 @@ namespace HaRepacker
 
             WzFile loadedWzFile = LoadWzFile(path, encVersion, (short)-1);
             if (loadedWzFile != null)
-                Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel, currentDispatcher);
+                Program.WzFileManager.AddLoadedWzFileToMainPanel(loadedWzFile, panel, currentDispatcher);
         }
 
         /// <summary>
@@ -251,11 +248,12 @@ namespace HaRepacker
         /// Sort all nodes that is a parent of 
         /// </summary>
         /// <param name="parent"></param>
-        private void SortNodesRecursively(WzNode parent)
+        /// <param name="sortFromTheParentNode">Sorts only items in the parent node</param>
+        public void SortNodesRecursively(WzNode parent, bool sortFromTheParentNode = false)
         {
-            if (Program.ConfigurationManager.UserSettings.Sort)
+            if (Program.ConfigurationManager.UserSettings.Sort || sortFromTheParentNode)
             {
-                parent.TreeView.TreeViewNodeSorter = SORTER;
+                parent.TreeView.TreeViewNodeSorter = new TreeViewNodeSorter(sortFromTheParentNode ? parent : null);
 
                 parent.TreeView.BeginUpdate();
                 parent.TreeView.Sort();
