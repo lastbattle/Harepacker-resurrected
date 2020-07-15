@@ -24,5 +24,10 @@ namespace HaSharedLibrary.Render.DX
 
         int Width { get; }
         int Height { get; }
+
+        /// <summary>
+        /// Tag - For storing anything
+        /// </summary>
+        object Tag { get; set; }
     }
 }

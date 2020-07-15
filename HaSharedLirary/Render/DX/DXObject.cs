@@ -21,6 +21,8 @@ namespace HaSharedLibrary.Render.DX
 
         private readonly int delay;
 
+        private object _Tag;
+
         public DXObject(int x, int y, Texture2D texture, int delay = 0)
         {
             this._x = x;
@@ -77,5 +79,7 @@ namespace HaSharedLibrary.Render.DX
 
         public int Width { get { return texture.Width; } }
         public int Height { get { return texture.Height; } }
+
+        public object Tag { get { return _Tag; } set { this._Tag = value; } }
     }
 }
