@@ -5,7 +5,9 @@ A collection of tools for MapleStory. A .wz file and level (or you call that fie
 For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/
 
 ----
-![N|Solid](https://i.imgur.com/sdq8wNo.png)
+![N|Harepacker](https://i.imgur.com/sdq8wNo.png)
+
+![N|Image animation preview](https://i.imgur.com/kGXyVjO.png)
 
 ![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
 
