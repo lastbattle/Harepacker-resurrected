@@ -15,6 +15,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -644,6 +645,24 @@ namespace HaCreator.MapEditor
                     MouseDoubleClick(selectedBoard, GetObjectUnderPoint(realPosition), realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)));
                 }
             }
+        }
+
+        /// <summary>
+        /// Mouse wheel
+        /// Wheelup = positive, Wheeldown = negative
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DxContainer_MouseWheel(object sender, System.Windows.Forms.MouseEventArgs e)
+        {
+            int rotationDelta = e.Delta;
+           //System.Diagnostics.Debug.Write("Rotation: " + rotationDelta);
+
+            // wheel up = positive, wheel down = negative
+            hScrollBar.Value += rotationDelta;
+
+            // Update display
+            hScrollBar_Scroll(null, null);
         }
 
         /// <summary>
