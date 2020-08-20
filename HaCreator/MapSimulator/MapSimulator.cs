@@ -326,6 +326,11 @@ namespace HaCreator.MapSimulator
 
             // Minimap
             WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+
+            if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+            {
+                minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+            }
             miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
 
             //

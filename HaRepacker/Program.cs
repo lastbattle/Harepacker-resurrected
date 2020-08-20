@@ -20,7 +20,7 @@ namespace HaRepacker
 {
     public static class Program
     {
-        public static WzFileManager WzMan = new WzFileManager();
+        public static WzFileManager WzFileManager = new WzFileManager();
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 
@@ -167,7 +167,7 @@ namespace HaRepacker
             }
             if (disposeFiles)
             {
-                WzMan.Terminate();
+                WzFileManager.Terminate();
             }
             _ConfigurationManager.Save();
         }

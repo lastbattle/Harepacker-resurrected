@@ -192,6 +192,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AnimationBuilder.cs" />
+    <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
     <Compile Include="GUI\ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
@@ -765,6 +766,7 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Resources\sort.png" />
     <None Include="Resources\Pause_.png" />
     <None Include="Resources\Play.png" />
     <None Include="Resources\207px-Circle-undo.svg.png" />

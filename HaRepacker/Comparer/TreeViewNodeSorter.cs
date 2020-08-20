@@ -7,11 +7,33 @@ namespace HaRepacker.Comparer
 {
     public class TreeViewNodeSorter : IComparer
     {
+        private TreeNode startNode;
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="startNode">The starting node to sort from. If this is null, everything will be sorted.</param>
+        public TreeViewNodeSorter(TreeNode startNode)
+        {
+            this.startNode = startNode;
+        }
+
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int Compare(object s1_, object s2_)
         {
-            string s1Text = (s1_ as TreeNode).Text;
-            string s2Text = (s2_ as TreeNode).Text;
+            TreeNode t1 = (s1_ as TreeNode);
+            TreeNode t2 = (s2_ as TreeNode);
+
+            if (startNode != null) {
+                if (t1.Parent != startNode)
+                {
+                    return -1;
+                }
+            }
+
+            string s1Text = t1.Text;
+            string s2Text = t2.Text;
 
             bool isS1Numeric = IsNumeric(s1Text);
             bool isS2Numeric = IsNumeric(s2Text);

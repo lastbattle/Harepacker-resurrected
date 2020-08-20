@@ -36,6 +36,7 @@ namespace HaRepacker
         private ToolStripMenuItem Reload;
         private ToolStripMenuItem CollapseAllChildNode;
         private ToolStripMenuItem ExpandAllChildNode;
+        private ToolStripMenuItem SortAllChildNode;
 
         private ToolStripMenuItem AddPropsSubMenu;
         private ToolStripMenuItem AddDirsSubMenu;
@@ -86,7 +87,9 @@ namespace HaRepacker
             Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
-                    haRepackerMainPanel.PromptRenameSelectedTreeNode();
+                    WzNode currentNode = currNode;
+
+                    haRepackerMainPanel.PromptRenameWzTreeNode(currentNode);
                 }));
             Remove = new ToolStripMenuItem("Remove", Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
@@ -102,7 +105,7 @@ namespace HaRepacker
 
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        Program.WzMan.UnloadWzFile((WzFile)node.Tag);
+                        Program.WzFileManager.UnloadWzFile((WzFile)node.Tag);
                     }
                 }));
             Reload = new ToolStripMenuItem("Reload", Properties.Resources.arrow_refresh, new EventHandler(
@@ -113,7 +116,7 @@ namespace HaRepacker
 
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        Program.WzMan.ReloadWzFile((WzFile)node.Tag, parentPanel);
+                        Program.WzFileManager.ReloadWzFile((WzFile)node.Tag, parentPanel);
                     }
                 }));
             CollapseAllChildNode = new ToolStripMenuItem("Collapse All", Properties.Resources.collapse, new EventHandler(
@@ -129,8 +132,15 @@ namespace HaRepacker
                 {
                     foreach (WzNode node in GetNodes(sender))
                     {
-
                         node.ExpandAll();
+                    }
+                }));
+            SortAllChildNode = new ToolStripMenuItem("Sort child nodes", Properties.Resources.sort, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    foreach (WzNode node in GetNodes(sender))
+                    {
+                        Program.WzFileManager.SortNodesRecursively(node, true);
                     }
                 }));
 
@@ -375,7 +385,7 @@ namespace HaRepacker
 
             toolStripmenuItems.Add(ExpandAllChildNode);
             toolStripmenuItems.Add(CollapseAllChildNode);
-
+            toolStripmenuItems.Add(SortAllChildNode);
 
             // Add
             foreach (ToolStripItem toolStripItem in toolStripmenuItems)

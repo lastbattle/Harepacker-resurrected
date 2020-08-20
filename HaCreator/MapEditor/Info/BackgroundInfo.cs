@@ -112,7 +112,7 @@ namespace HaCreator.MapEditor.Info
                     if (graphicsDevice != null) // graphicsdevice needed to work.. assuming that it is loaded by now before BackgroundPanel
                     {
                         WzImageProperty spineAtlasProp = ((WzSubProperty)parentObject).WzProperties.FirstOrDefault(
-                            wzprop => wzprop is WzStringProperty && ((WzStringProperty)wzprop).IsSpineAtlasResources);
+                            wzprop => wzprop is WzStringProperty property && property.IsSpineAtlasResources);
                         if (spineAtlasProp != null)
                         {
                             WzStringProperty stringObj = (WzStringProperty)spineAtlasProp;

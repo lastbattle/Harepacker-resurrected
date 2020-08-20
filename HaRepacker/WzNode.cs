@@ -113,7 +113,7 @@ namespace HaRepacker
             else return false;
         }
 
-        private bool addObjInternal(WzObject obj)
+        private bool AddObjInternal(WzObject obj)
         {
             WzObject TaggedObject = (WzObject)Tag;
             if (TaggedObject is WzFile file) 
@@ -163,7 +163,7 @@ namespace HaRepacker
             {
                 TryParseImage(reparseImage);
                 this.Nodes.Add(node);
-                addObjInternal((WzObject)node.Tag);
+                AddObjInternal((WzObject)node.Tag);
                 return true;
             }
             else
@@ -199,13 +199,14 @@ namespace HaRepacker
             if (CanNodeBeInserted(this, obj.Name))
             {
                 TryParseImage();
-                if (addObjInternal(obj))
+                if (AddObjInternal(obj))
                 {
                     WzNode node = new WzNode(obj, true);
                     Nodes.Add(node);
-                    if (node.Tag is WzImageProperty)
+
+                    if (node.Tag is WzImageProperty property)
                     {
-                        ((WzImageProperty)node.Tag).ParentImage.Changed = true;
+                        property.ParentImage.Changed = true;
                     }
                     undoRedoMan.AddUndoBatch(new System.Collections.Generic.List<UndoRedoAction> { UndoRedoManager.ObjectAdded(this, node) });
                     node.EnsureVisible();
@@ -247,7 +248,7 @@ namespace HaRepacker
                 ((WzImageProperty)Tag).ParentImage.Changed = true;
 
             isWzObjectAddedManually = true;
-            ForeColor = NewObjectForeColor; ;
+            ForeColor = NewObjectForeColor;
         }
 
         public WzNode TopLevelNode

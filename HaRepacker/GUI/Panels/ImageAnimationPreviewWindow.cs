@@ -53,6 +53,7 @@ namespace HaRepacker.GUI.Panels
 
 			IsMouseVisible = true;
 
+			//Window.AllowUserResizing = true;
 			//Window.IsBorderless = true;
 			//Window.Position = new Point(0, 0);
 			Window.Title = "Animation preview";
@@ -137,7 +138,10 @@ namespace HaRepacker.GUI.Panels
 
 					// Add to the list of images to render
 					System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
-					DXObject dxObject = new DXObject((int) -origin.X, (int) -origin.Y, image.ToTexture2D(graphicsDeviceMgr.GraphicsDevice), (int) delay);
+					DXObject dxObject = new DXObject((int)-origin.X, (int)-origin.Y, image.ToTexture2D(graphicsDeviceMgr.GraphicsDevice), (int)delay)
+					{
+						Tag = obj.FullPath
+					};
 
 					animationFrames.Add(dxObject);
 				}
@@ -278,9 +282,10 @@ namespace HaRepacker.GUI.Panels
 			if (dxDrawableItem.LastFrameDrawn != null)
 			{
 				IDXObject lastFrameDrawn = dxDrawableItem.LastFrameDrawn;
-				string imageRenderInfoText = string.Format("[Origin: x = {0}, y = {1}]{6}[Dimension: W = {2}, H = {3}]{7}[Delay: {4}]{8}[Scale: {5}x]",
+				string imageRenderInfoText = string.Format("[Path: {0}]{7}[Origin: x = {1}, y = {2}]{8}[Dimension: W = {3}, H = {4}]{9}[Delay: {5}]{10}[Scale: {6}x]",
+					dxDrawableItem.LastFrameDrawn.Tag as string,
 					lastFrameDrawn.X, lastFrameDrawn.Y, lastFrameDrawn.Width, lastFrameDrawn.Height, lastFrameDrawn.Delay, Math.Round(renderAnimationScaling, 2),
-					Environment.NewLine, Environment.NewLine, Environment.NewLine);
+					Environment.NewLine, Environment.NewLine, Environment.NewLine, Environment.NewLine);
 
 				spriteBatch.DrawString(font_DebugValues, imageRenderInfoText, new Vector2((RENDER_WIDTH /2) - 100, RENDER_HEIGHT - 100), Color.White);
 			}

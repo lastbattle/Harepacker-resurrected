@@ -171,9 +171,9 @@ namespace HaRepacker.GUI
                     }
 
                     // Reload the new file
-                    WzFile loadedWzFile = Program.WzMan.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
+                    WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
                     if (loadedWzFile != null)
-                        Program.WzMan.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
+                        Program.WzFileManager.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
                 }
                 else
                 {
@@ -210,7 +210,7 @@ namespace HaRepacker.GUI
                     }
 
                     // Reload the new file
-                    WzImage img = Program.WzMan.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected, panel);
+                    WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected, panel);
                     if (img == null || error_noAdminPriviledge)
                     {
                         MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);

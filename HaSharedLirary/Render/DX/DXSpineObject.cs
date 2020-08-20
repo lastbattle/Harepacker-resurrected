@@ -20,6 +20,8 @@ namespace HaSharedLibrary.Render.DX
 
         private readonly int delay;
 
+        private object _Tag;
+
         public DXSpineObject(WzSpineObject spineObject, int x, int y, System.Drawing.PointF _origin, int delay = 0)
         {
             this.spineObject = spineObject;
@@ -101,5 +103,6 @@ namespace HaSharedLibrary.Render.DX
 
         public int Width { get { return (int)spineObject.skeleton.Data.Width; } }
         public int Height { get { return (int)spineObject.skeleton.Data.Height; } }
+        public object Tag { get { return _Tag; } set { this._Tag = value; } }
     }
 }

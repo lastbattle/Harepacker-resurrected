@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator
 {
     public class MapSimulatorLoader
     {
+        private const string GLOBAL_FONT = "Arial";
+
         /// <summary>
         /// Create map simulator board
         /// </summary>
@@ -495,7 +497,7 @@ namespace HaCreator.MapSimulator
         /// <returns></returns>
         public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName)
         {
-            WzSubProperty maxMapProperty = (WzSubProperty) minimapFrameProperty["MaxMap"];
+            WzSubProperty maxMapProperty = (WzSubProperty)minimapFrameProperty["MaxMap"];
             WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
             WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
@@ -517,29 +519,29 @@ namespace HaCreator.MapSimulator
             System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrame?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
 
             // Constants
-            const string TOOLTIP_FONT = "Arial";
             const float TOOLTIP_FONTSIZE = 10f;
             System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
 
-            // Dots pixel 
-            System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
-            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_DotPixel))
-            {
-                graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
-                graphics.Flush();
-            }
-            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2D(device), 0);
-            BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(dxObj_miniMapPixel, false);
+            string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
+
 
             // Map background image
             System.Drawing.Bitmap miniMapImage = mapBoard.MiniMap; // the original minimap image without UI frame overlay
             int effective_width = miniMapImage.Width + e.Width + w.Width;
             int effective_height = miniMapImage.Height + n.Height + s.Height;
 
-            using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOLTIP_FONTSIZE))
+            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE))
             {
+                // Get the width of the 'streetName' or 'mapName'
+                System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
+                System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);
+
+                effective_width = Math.Max((int)tooltipSize.Width + nw.Width, effective_width); // set new width
+
                 System.Drawing.Bitmap miniMapUIImage = new System.Drawing.Bitmap(effective_width, effective_height);
+
+                int mapDrawPositionX = (effective_width / 2) - nw.Width;  // map is on the center. The position relative to the UI
 
                 using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(miniMapUIImage))
                 {
@@ -547,7 +549,7 @@ namespace HaCreator.MapSimulator
                     UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, effective_width, effective_height);
 
                     graphics.DrawString(
-                        string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName), 
+                        renderText,
                         font, new System.Drawing.SolidBrush(color_foreGround), 50, 20);
 
                     // Map mark
@@ -558,10 +560,29 @@ namespace HaCreator.MapSimulator
                     }
 
                     // Map image
-                    graphics.DrawImage(miniMapImage, 10, n.Height);
+                    graphics.DrawImage(miniMapImage,
+                        mapDrawPositionX, // map is on the center
+                        n.Height);
 
                     graphics.Flush();
                 }
+
+                // Dots pixel 
+                System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
+                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_DotPixel))
+                {
+                    graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
+                    graphics.Flush();
+                }
+                IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2D(device), 0);
+                BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(dxObj_miniMapPixel, false)
+                {
+                    Position = new Point(
+                    mapDrawPositionX, // map is on the center
+                    0)
+                };
+
+                // Map
                 Texture2D texturer_miniMap = miniMapUIImage.ToTexture2D(device);
 
                 IDXObject dxObj = new DXObject(0, 0, texturer_miniMap, 0);
@@ -601,7 +622,6 @@ namespace HaCreator.MapSimulator
             string renderText = string.Format("{0}{1}{2}", title, Environment.NewLine, desc);
 
             // Constants
-            const string TOOLTIP_FONT = "Arial";
             const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
             System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(255,17, 17, 17); // post V patch (dark black theme used), use color picker on paint via image extracted from WZ if you need to get it
@@ -610,7 +630,7 @@ namespace HaCreator.MapSimulator
             const int HEIGHT_PADDING = 6;
 
             // Create
-            using (System.Drawing.Font font = new System.Drawing.Font(TOOLTIP_FONT, TOOLTIP_FONTSIZE))
+            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE))
             {
                 System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
                 System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);

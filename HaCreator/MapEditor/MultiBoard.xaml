@@ -21,6 +21,7 @@
                                      MouseDown="DxContainer_MouseDown"
                                      MouseMove="DxContainer_MouseMove"
                                      MouseUp="DxContainer_MouseUp"
+                                          MouseWheel="DxContainer_MouseWheel"
                                      />
         </WindowsFormsHost>
 
