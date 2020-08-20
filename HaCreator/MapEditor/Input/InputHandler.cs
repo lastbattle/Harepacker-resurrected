@@ -187,40 +187,91 @@ namespace HaCreator.MapEditor.Input
                 if (key == Keys.ControlKey || key == Keys.ShiftKey || key == Keys.Menu /*ALT key*/)
                     return;
                 bool clearRedo = true;
+
+                const int navigationSHVScrollSpeed = 16;
+
                 switch (key)
                 {
                     case Keys.Left:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.X--;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(1, 0)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.X--;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(1, 0)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddHScrollbarValue(-navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Right:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.X++;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(-1, 0)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.X++;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(-1, 0)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddHScrollbarValue(navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Up:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.Y--;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, 1)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.Y--;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, 1)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddVScrollbarValue(-navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Down:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.Y++;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, -1)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.Y++;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, -1)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddVScrollbarValue(navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
+
+                    case Keys.PageUp:
+                        {
+                            selectedBoard.ParentControl.AddVScrollbarValue(-999);
+                            break;
+                        }
+                    case Keys.PageDown:
+                        {
+                            selectedBoard.ParentControl.AddVScrollbarValue(999);
+                            break;
+                        }
+
                     case Keys.Delete:
                         switch (selectedBoard.Mouse.State)
                         {
