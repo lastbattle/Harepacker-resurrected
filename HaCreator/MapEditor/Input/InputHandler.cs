@@ -69,7 +69,7 @@ namespace HaCreator.MapEditor.Input
             parentBoard.LeftMouseUp += new MultiBoard.LeftMouseUpDelegate(parentBoard_LeftMouseUp);
             parentBoard.RightMouseClick += new MultiBoard.RightMouseClickDelegate(parentBoard_RightMouseClick);
             parentBoard.MouseDoubleClick += new MultiBoard.MouseDoubleClickDelegate(parentBoard_MouseDoubleClick);
-            parentBoard.ShortcutKeyPressed += new MultiBoard.ShortcutKeyPressedDelegate(parentBoard_ShortcutKeyPressed);
+            parentBoard.ShortcutKeyPressed += new MultiBoard.ShortcutKeyPressedDelegate(ParentBoard_ShortcutKeyPressed);
             parentBoard.MouseMoved += new MultiBoard.MouseMovedDelegate(parentBoard_MouseMoved);
         }
 
@@ -176,7 +176,15 @@ namespace HaCreator.MapEditor.Input
                 return UndoRedoManager.ItemMoved(item, new XNA.Point(item.X + posChange.X, item.Y + posChange.Y), new XNA.Point(item.X, item.Y));
         }
 
-        private void parentBoard_ShortcutKeyPressed(Board selectedBoard, bool ctrl, bool shift, bool alt, Keys key)
+        /// <summary>
+        /// Keyboard navigation on the MultiBoard
+        /// </summary>
+        /// <param name="selectedBoard"></param>
+        /// <param name="ctrl"></param>
+        /// <param name="shift"></param>
+        /// <param name="alt"></param>
+        /// <param name="key"></param>
+        private void ParentBoard_ShortcutKeyPressed(Board selectedBoard, bool ctrl, bool shift, bool alt, Keys key)
         {
             lock (parentBoard)
             {
@@ -325,10 +333,10 @@ namespace HaCreator.MapEditor.Input
                         {
                             foreach (BoardItem item in selectedBoard.SelectedItems)
                             {
-                                if (item is IFlippable)
+                                if (item is IFlippable flippable)
                                 {
-                                    ((IFlippable)item).Flip = !((IFlippable)item).Flip;
-                                    actions.Add(UndoRedoManager.ItemFlipped((IFlippable)item));
+                                    flippable.Flip = !flippable.Flip;
+                                    actions.Add(UndoRedoManager.ItemFlipped(flippable));
                                 }
                             }
                         }

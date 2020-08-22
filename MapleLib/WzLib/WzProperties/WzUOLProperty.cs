@@ -153,10 +153,10 @@ namespace MapleLib.WzLib.WzProperties
 						{
                             if (linkVal is WzImageProperty)
                                 linkVal = ((WzImageProperty)linkVal)[path];
-                            else if (linkVal is WzImage)
-                                linkVal = ((WzImage)linkVal)[path];
-                            else if (linkVal is WzDirectory)
-                                linkVal = ((WzDirectory)linkVal)[path];
+                            else if (linkVal is WzImage image)
+                                linkVal = image[path];
+                            else if (linkVal is WzDirectory directory)
+                                linkVal = directory[path];
                             else
                             {
                                 MapleLib.Helpers.ErrorLogger.Log(MapleLib.Helpers.ErrorLevel.Critical, "UOL got nexon'd at property: " + this.FullPath);
