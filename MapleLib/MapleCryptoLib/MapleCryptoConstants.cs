@@ -19,7 +19,7 @@ namespace MapleLib.MapleCryptoLib
 	/// <summary>
 	/// Contains all the constant values used for various functions
 	/// </summary>
-	public class CryptoConstants
+	public class MapleCryptoConstants
 	{
 
 		/// <summary>

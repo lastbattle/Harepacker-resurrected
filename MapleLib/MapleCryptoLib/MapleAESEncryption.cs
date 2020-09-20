@@ -24,7 +24,7 @@ namespace MapleLib.MapleCryptoLib
 	/// <summary>
 	/// Class to handle the AES Encryption routines
 	/// </summary>
-	public class AESEncryption
+	public class MapleAESEncryption
 	{
 
 		/// <summary>
@@ -36,7 +36,7 @@ namespace MapleLib.MapleCryptoLib
 		/// <returns>Crypted data</returns>
 		public static byte[] aesCrypt(byte[] IV, byte[] data, int length)
 		{
-			return aesCrypt(IV, data, length, CryptoConstants.getTrimmedUserKey());
+			return aesCrypt(IV, data, length, MapleCryptoConstants.getTrimmedUserKey());
 		}
 
 		/// <summary>

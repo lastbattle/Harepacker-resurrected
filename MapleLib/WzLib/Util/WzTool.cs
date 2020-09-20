@@ -111,9 +111,9 @@ namespace MapleLib.WzLib.Util
             switch (ver)
             {
                 case WzMapleVersion.EMS:
-                    return CryptoConstants.WZ_MSEAIV;//?
+                    return MapleCryptoConstants.WZ_MSEAIV;//?
                 case WzMapleVersion.GMS:
-                    return CryptoConstants.WZ_GMSIV;
+                    return MapleCryptoConstants.WZ_GMSIV;
                 case WzMapleVersion.CUSTOM: // custom WZ encryption bytes from stored app setting
                     {
                         ConfigurationManager config = new ConfigurationManager();

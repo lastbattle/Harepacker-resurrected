@@ -70,7 +70,7 @@ namespace MapleLib.MapleCryptoLib
 		/// <param name="data">The data to crypt</param>
 		public void crypt(byte[] data)
 		{
-			AESEncryption.aesCrypt(_IV, data, data.Length);
+			MapleAESEncryption.aesCrypt(_IV, data, data.Length);
 			updateIV();
 		}
 
@@ -101,21 +101,21 @@ namespace MapleLib.MapleCryptoLib
 			byte a = start[1];
 			byte b = a;
 			uint c, d;
-			b = CryptoConstants.bShuffle[b];
+			b = MapleCryptoConstants.bShuffle[b];
 			b -= inputByte;
 			start[0] += b;
 			b = start[2];
-			b ^= CryptoConstants.bShuffle[inputByte];
+			b ^= MapleCryptoConstants.bShuffle[inputByte];
 			a -= b;
 			start[1] = a;
 			a = start[3];
 			b = a;
 			a -= start[0];
-			b = CryptoConstants.bShuffle[b];
+			b = MapleCryptoConstants.bShuffle[b];
 			b += inputByte;
 			b ^= start[2];
 			start[2] = b;
-			a += CryptoConstants.bShuffle[inputByte];
+			a += MapleCryptoConstants.bShuffle[inputByte];
 			start[3] = a;
 
 			c = (uint)(start[0] + start[1] * 0x100 + start[2] * 0x10000 + start[3] * 0x1000000);

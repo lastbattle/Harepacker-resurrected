@@ -47,7 +47,7 @@ namespace MapleLib.WzLib.Util
 
         public static WzMutableKey GenerateWzKey(byte[] WzIv)
         {
-            return new WzMutableKey(WzIv, CryptoConstants.getTrimmedUserKey());
+            return new WzMutableKey(WzIv, MapleCryptoConstants.getTrimmedUserKey());
         }
         #endregion
     }
