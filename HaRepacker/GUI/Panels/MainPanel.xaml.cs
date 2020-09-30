@@ -1172,12 +1172,16 @@ namespace HaRepacker.GUI.Panels
             bool bIsWzFloatProperty = obj is WzFloatProperty;
             bool bIsWzShortProperty = obj is WzShortProperty;
 
+            bool bAnimateMoreButton = false; // The button to animate when there is more option under button_MoreOption
+
             // Set layout visibility
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
             }
             else if (obj is WzCanvasProperty)
             {
+                bAnimateMoreButton = true; // flag
+
                 menuItem_changeImage.Visibility = Visibility.Visible;
                 menuItem_saveImage.Visibility = Visibility.Visible;
 
@@ -1196,6 +1200,8 @@ namespace HaRepacker.GUI.Panels
             }
             else if (obj is WzUOLProperty)
             {
+                bAnimateMoreButton = true; // flag
+
                 // Image
                 WzObject linkValue = ((WzUOLProperty)obj).LinkValue;
                 if (linkValue is WzCanvasProperty)
@@ -1223,6 +1229,8 @@ namespace HaRepacker.GUI.Panels
             }
             else if (bIsWzSoundProperty)
             {
+                bAnimateMoreButton = true; // flag
+
                 mp3Player.Visibility = Visibility.Visible;
                 mp3Player.SoundProperty = (WzBinaryProperty)obj;
 
@@ -1333,6 +1341,13 @@ namespace HaRepacker.GUI.Panels
             }
             else
             {
+            }
+
+            button_MoreOption.Visibility = bAnimateMoreButton ? Visibility.Visible : Visibility.Collapsed;
+            if (bAnimateMoreButton)
+            {
+                System.Windows.Media.Animation.Storyboard storyboard_moreAnimation = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_TreeviewItemSelectedAnimation"));
+                storyboard_moreAnimation.Begin();
             }
         }
 

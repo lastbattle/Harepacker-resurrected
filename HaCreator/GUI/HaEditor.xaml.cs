@@ -85,7 +85,9 @@ namespace HaCreator.GUI
             commonPanel.Initialize(hcsm);
 
             if (!hcsm.backupMan.AttemptRestore())
+            {
                 hcsm.LoadMap(new Load(multiBoard, tabControl1, hcsm.MakeRightClickHandler()));
+            }
         }
 
         /// <summary>

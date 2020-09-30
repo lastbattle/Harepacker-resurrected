@@ -124,11 +124,22 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Storyboard x:Key="Storyboard_TreeviewItemSelectedAnimation">
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" Storyboard.TargetName="button_MoreOption">
+                <EasingDoubleKeyFrame KeyTime="0:0:0.2" Value="1.5"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.4" Value="1"/>
+            </DoubleAnimationUsingKeyFrames>
+            <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)" Storyboard.TargetName="button_MoreOption">
+                <EasingDoubleKeyFrame KeyTime="0:0:0.2" Value="1.5"/>
+                <EasingDoubleKeyFrame KeyTime="0:0:0.4" Value="1"/>
+            </DoubleAnimationUsingKeyFrames>
+        </Storyboard>
     </UserControl.Resources>
     <UserControl.Triggers>
         <EventTrigger RoutedEvent="FrameworkElement.Loaded">
             <BeginStoryboard Storyboard="{StaticResource Storyboard_Find_FadeIn}"/>
             <BeginStoryboard Storyboard="{StaticResource Storyboard_Find_FadeOut}"/>
+            <BeginStoryboard Storyboard="{StaticResource Storyboard_TreeviewItemSelectedAnimation}"/>
         </EventTrigger>
     </UserControl.Triggers>
 
@@ -310,7 +321,7 @@
                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch" 
                   ResizeBehavior="PreviousAndNext" />
 
-            
+
             <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
@@ -350,7 +361,16 @@
                 <Button x:Name="button_MoreOption" Content="..."  Width="40" Height="50" FontSize="40" Style="{DynamicResource ButtonStyle_MoreOption}"
                                 VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,10,20,10"
                         Grid.Row="0" Grid.RowSpan="2"
-                                Click="button_MoreOption_Click">
+                        Visibility="Collapsed"
+                                Click="button_MoreOption_Click" RenderTransformOrigin="0.5,0.5">
+                    <Button.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform/>
+                            <SkewTransform/>
+                            <RotateTransform/>
+                            <TranslateTransform/>
+                        </TransformGroup>
+                    </Button.RenderTransform>
                     <Button.ContextMenu>
                         <ContextMenu Name="cm" StaysOpen="true">
                             <MenuItem Header="Animate (F5)" x:Name="menuItem_Animate" Click="menuItem_Animate_Click"/>
