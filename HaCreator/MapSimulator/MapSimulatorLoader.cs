@@ -135,7 +135,21 @@ namespace HaCreator.MapSimulator
                     }
                     else
                     {
-                        WzCanvasProperty frameProp = (WzCanvasProperty)_frameProp;
+                        WzCanvasProperty frameProp;
+
+                        if (_frameProp is WzUOLProperty) // some could be UOL. Ex: 321100000 Mirror world: [Mirror World] Leafre
+                        {
+                            WzObject linkVal = ((WzUOLProperty)_frameProp).LinkValue;
+                            if (linkVal is WzCanvasProperty linkCanvas)
+                            {
+                                frameProp = linkCanvas;
+                            }
+                            else
+                                continue;
+                        } else
+                        {
+                            frameProp = (WzCanvasProperty)_frameProp;
+                        }
 
                         int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
 

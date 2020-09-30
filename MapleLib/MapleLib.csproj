@@ -158,8 +158,8 @@
     <Compile Include="WzLib\Spine\WzSpineTextureLoader.cs" />
     <Compile Include="WzLib\Util\WzMutableKey.cs" />
     <Compile Include="WzLib\WzExtended.cs" />
-    <Compile Include="MapleCryptoLib\AESEncryption.cs" />
-    <Compile Include="MapleCryptoLib\CryptoConstants.cs" />
+    <Compile Include="MapleCryptoLib\MapleAESEncryption.cs" />
+    <Compile Include="MapleCryptoLib\MapleCryptoConstants.cs" />
     <Compile Include="MapleCryptoLib\MapleCrypto.cs" />
     <Compile Include="MapleCryptoLib\MapleCustomEncryption.cs" />
     <Compile Include="PacketLib\AbstractPacket.cs" />

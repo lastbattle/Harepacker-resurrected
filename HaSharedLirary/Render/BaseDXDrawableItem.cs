@@ -131,8 +131,11 @@ namespace HaSharedLibrary.Render.DX
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
                     flip);
+
+                this._LastFrameDrawn = drawFrame; // set the last frame drawn
             }
-            this._LastFrameDrawn = drawFrame; // set the last frame drawn
+            else
+                this._LastFrameDrawn = null;
         }
 
         /// <summary>

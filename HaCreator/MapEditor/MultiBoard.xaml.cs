@@ -656,13 +656,10 @@ namespace HaCreator.MapEditor
         private void DxContainer_MouseWheel(object sender, System.Windows.Forms.MouseEventArgs e)
         {
             int rotationDelta = e.Delta;
-           //System.Diagnostics.Debug.Write("Rotation: " + rotationDelta);
+            //System.Diagnostics.Debug.Write("Rotation: " + rotationDelta);
 
             // wheel up = positive, wheel down = negative
-            hScrollBar.Value += rotationDelta;
-
-            // Update display
-            hScrollBar_Scroll(null, null);
+            AddHScrollbarValue((int)rotationDelta);
         }
 
         /// <summary>
@@ -913,6 +910,23 @@ namespace HaCreator.MapEditor
             DxDevice.Reset(pParams);
         }
 
+
+        /// <summary>
+        /// Adds the horizontal scroll bar value
+        /// </summary>
+        /// <param name="value"></param>
+        public void AddHScrollbarValue(int value)
+        {
+            SetHScrollbarValue((int) (hScrollBar.Value + value));
+
+            // Update display
+            hScrollBar_Scroll(null, null);
+        }
+
+        /// <summary>
+        /// Sets the horizontal scroll bar value
+        /// </summary>
+        /// <param name="value"></param>
         public void SetHScrollbarValue(int value)
         {
             lock (this)
@@ -921,6 +935,22 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Adds the horizontal scroll bar value
+        /// </summary>
+        /// <param name="value"></param>
+        public void AddVScrollbarValue(int value)
+        {
+            SetVScrollbarValue((int)(vScrollBar.Value + value));
+
+            // Update display
+            vScrollBar_Scroll(null, null);
+        }
+
+        /// <summary>
+        /// Sets the vertical scroll bar value
+        /// </summary>
+        /// <param name="value"></param>
         public void SetVScrollbarValue(int value)
         {
             lock (this)

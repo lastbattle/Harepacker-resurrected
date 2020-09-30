@@ -225,7 +225,7 @@ namespace MapleLib.WzLib.Util
 			uint encOffset = (uint)BaseStream.Position;
 			encOffset = (encOffset - Header.FStart) ^ 0xFFFFFFFF;
 			encOffset *= Hash;
-			encOffset -= CryptoConstants.WZ_OffsetConstant;
+			encOffset -= MapleCryptoConstants.WZ_OffsetConstant;
 			encOffset = RotateLeft(encOffset, (byte)(encOffset & 0x1F));
 			uint writeOffset = encOffset ^ (value - (Header.FStart * 2));
 			Write(writeOffset);

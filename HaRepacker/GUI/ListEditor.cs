@@ -18,17 +18,20 @@ namespace HaRepacker.GUI
 {
     public partial class ListEditor : Form
     {
-        WzMapleVersion version;
+        private readonly WzMapleVersion version;
 
         public ListEditor(string path, WzMapleVersion version)
         {
             this.version = version;
+
             InitializeComponent();
+
             string text = "";
             if (path != null)
             {
                 List<string> listEntries = ListFileParser.ParseListFile(path, version);
-                foreach (string entry in listEntries) text += entry + "\n";
+                foreach (string entry in listEntries) 
+                    text += entry + "\n";
                 text = text.Substring(0, text.Length - 1);
             }
             textBox.Text = text.Replace("\n", "\r\n");
@@ -42,8 +45,13 @@ namespace HaRepacker.GUI
 
         private void btnSave_Click(object sender, EventArgs e)
         {
-            SaveFileDialog dialog = new SaveFileDialog() { Title = "Select where to save the file", Filter = "List WZ File (*.wz)|*.wz" };
-            if (dialog.ShowDialog() != DialogResult.OK) return;
+            SaveFileDialog dialog = new SaveFileDialog() 
+            { 
+                Title = "Select where to save the file", Filter = "List WZ File (*.wz)|*.wz" 
+            };
+            if (dialog.ShowDialog() != DialogResult.OK) 
+                return;
+
             List<string> listEntries = textBox.Text.Replace("\r\n", "\n").Split("\n".ToCharArray()).ToList<string>();
             ListFileParser.SaveToDisk(dialog.FileName, version, listEntries);
         }
