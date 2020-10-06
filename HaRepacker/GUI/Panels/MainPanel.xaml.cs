@@ -28,6 +28,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
+using System.Reflection;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -782,9 +783,41 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void menuItem_Animate_Click(object sender, RoutedEventArgs e)
+        private void MenuItem_Animate_Click(object sender, RoutedEventArgs e)
         {
             StartAnimateSelectedCanvas();
+        }
+
+        /// <summary>
+        /// Save the image animation into a JPG file
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void MenuItem_saveImageAnimation_Click(object sender, RoutedEventArgs e)
+        {
+            WzObject seletedWzObject = (WzObject) DataTree.SelectedNode.Tag;
+
+            if (!AnimationBuilder.IsValidAnimationWzObject(seletedWzObject))
+                return;
+
+            // Check executing process architecture
+            /*AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
+            var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
+            if (assemblyArchitecture == ProcessorArchitecture.None)
+            {
+                System.Windows.Forms.MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, System.Windows.Forms.MessageBoxButtons.OK);
+                return;
+            }*/
+
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
+                Title = HaRepacker.Properties.Resources.SelectOutApng,
+                Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter)
+            };
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                return;
+
+            AnimationBuilder.ExtractAnimation((WzSubProperty)seletedWzObject, dialog.FileName, Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame);
         }
 
         /// <summary>
@@ -792,9 +825,9 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void menuItem_changeImage_Click(object sender, RoutedEventArgs e)
+        private void MenuItem_changeImage_Click(object sender, RoutedEventArgs e)
         {
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty)
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty property)
             {
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
                 {
@@ -814,7 +847,7 @@ namespace HaRepacker.GUI.Panels
                 }
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
-                WzCanvasProperty selectedWzCanvas = (WzCanvasProperty)DataTree.SelectedNode.Tag;
+                WzCanvasProperty selectedWzCanvas = property;
 
                 if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
@@ -855,7 +888,7 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void menuItem_changeSound_Click(object sender, RoutedEventArgs e)
+        private void MenuItem_changeSound_Click(object sender, RoutedEventArgs e)
         {
             if (DataTree.SelectedNode.Tag is WzBinaryProperty)
             {
@@ -889,7 +922,7 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void menuItem_saveSound_Click(object sender, RoutedEventArgs e)
+        private void MenuItem_saveSound_Click(object sender, RoutedEventArgs e)
         {
             if (!(DataTree.SelectedNode.Tag is WzBinaryProperty))
                 return;
@@ -1332,17 +1365,30 @@ namespace HaRepacker.GUI.Panels
                     textPropBox.Height = 35;
                 }
             }
-            else if (obj is WzVectorProperty)
+            else if (obj is WzVectorProperty property)
             {
                 vectorPanel.Visibility = Visibility.Visible;
 
-                vectorPanel.X = ((WzVectorProperty)obj).X.Value;
-                vectorPanel.Y = ((WzVectorProperty)obj).Y.Value;
+                vectorPanel.X = property.X.Value;
+                vectorPanel.Y = property.Y.Value;
             }
             else
             {
             }
 
+            // Animation button
+            if (AnimationBuilder.IsValidAnimationWzObject(obj))
+            {
+                bAnimateMoreButton = true; // flag
+
+                menuItem_saveImageAnimation.Visibility = Visibility.Visible;
+            } else
+            {
+                menuItem_saveImageAnimation.Visibility = Visibility.Collapsed;
+            }
+
+
+            // Storyboard hint
             button_MoreOption.Visibility = bAnimateMoreButton ? Visibility.Visible : Visibility.Collapsed;
             if (bAnimateMoreButton)
             {

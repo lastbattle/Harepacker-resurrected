@@ -225,9 +225,6 @@ Please make sure all values are valid before confirming.</value>
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y value</value>
   </data>
-  <data name="MainAnimationFail" xml:space="preserve">
-    <value>This item is not an animation.</value>
-  </data>
   <data name="MainConfirmAbort" xml:space="preserve">
     <value>Are you sure you want to abort the current operation?</value>
   </data>

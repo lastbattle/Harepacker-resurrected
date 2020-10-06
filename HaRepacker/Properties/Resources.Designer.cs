@@ -631,15 +631,6 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to This item is not an animation..
-        /// </summary>
-        public static string MainAnimationFail {
-            get {
-                return ResourceManager.GetString("MainAnimationFail", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Cannot insert selected object into this type of wz node..
         /// </summary>
         public static string MainCannotInsertToNode {
