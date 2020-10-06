@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib;
-using SharpApng;
 
 namespace HaRepacker
 {
@@ -128,14 +127,14 @@ namespace HaRepacker
 
                 delayList.Add((int) delay);
             }
-            Apng apngBuilder = new Apng();
+            SharpApng.SharpApng apngBuilder = new SharpApng.SharpApng();
             if (apngFirstFrame)
             {
-                apngBuilder.AddFrame(new Frame(CreateIncompatibilityFrame(new Size(bmpList[0].Width, bmpList[0].Height)),1,1));
+                apngBuilder.AddFrame(new SharpApng.SharpApngFrame(CreateIncompatibilityFrame(new Size(bmpList[0].Width, bmpList[0].Height)),1,1));
             }
             for (int i = 0; i < bmpList.Count; i++)
             {
-                apngBuilder.AddFrame(new Frame(bmpList[i], getNumByDelay(delayList[i]), getDenByDelay(delayList[i])));
+                apngBuilder.AddFrame(new SharpApng.SharpApngFrame(bmpList[i], getNumByDelay(delayList[i]), getDenByDelay(delayList[i])));
             }
             apngBuilder.WriteApng(savePath, apngFirstFrame, true);
         }
