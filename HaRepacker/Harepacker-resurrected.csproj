@@ -736,7 +736,7 @@
     <None Include="Resources\find.png" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaSharedLirary\HaSharedLibrary.csproj">
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>
     </ProjectReference>

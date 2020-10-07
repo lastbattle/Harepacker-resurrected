@@ -701,8 +701,8 @@
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
     </ProjectReference>
-    <ProjectReference Include="..\HaSharedLirary\HaSharedLibrary.csproj">
-      <Project>{5411388B-F3CB-4D52-9F55-ABD15CFE966C}</Project>
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
+      <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>
     </ProjectReference>
     <ProjectReference Include="..\MapleLib\MapleLib.csproj">
