@@ -6,6 +6,7 @@
 
 using HaCreator.CustomControls;
 using HaCreator.MapEditor;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
@@ -33,6 +34,7 @@ namespace HaCreator.GUI
         public HaRibbon()
         {
             InitializeComponent();
+
             this.PreviewMouseWheel += HaRibbon_PreviewMouseWheel;
         }
 
@@ -63,6 +65,30 @@ namespace HaCreator.GUI
             {
                 reducedHeight = (int)child.RowDefinitions[0].ActualHeight;
                 child.RowDefinitions[0].Height = new GridLength(0);
+            }
+
+            // Load map simulator resolutions
+            foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
+            {
+                ComboBoxItem comboBoxItem = new ComboBoxItem
+                {
+                    Tag = val,
+                    Content = val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale")
+                };
+
+                comboBox_Resolution.Items.Add(comboBoxItem);
+            }
+            //comboBox_Resolution.DisplayMemberPath = "Content";
+
+            int i = 0;
+            foreach (ComboBoxItem item in comboBox_Resolution.Items)
+            {
+                if ((RenderResolution)item.Tag == UserSettings.SimulateResolution)
+                {
+                    comboBox_Resolution.SelectedIndex = i;
+                    break;
+                }
+                i++;
             }
         }
 
@@ -529,6 +555,20 @@ namespace HaCreator.GUI
             {
                 RibbonKeyDown.Invoke(this, new System.Windows.Forms.KeyEventArgs((System.Windows.Forms.Keys)KeyInterop.VirtualKeyFromKey(e.Key)));
             }
+        }
+
+        /// <summary>
+        /// On simulator preview resolution changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void comboBox_Resolution_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (comboBox_Resolution.SelectedItem == null)
+                return;
+
+            RenderResolution selectedItem = (RenderResolution) (comboBox_Resolution.SelectedItem as ComboBoxItem).Tag;
+            UserSettings.SimulateResolution = selectedItem;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
         }
     }
 }
