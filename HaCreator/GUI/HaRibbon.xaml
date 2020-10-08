@@ -164,8 +164,17 @@
             <RibbonTab x:Name="toolsTab" Header="Tools" KeyTip="T">
                 <RibbonGroup x:Name="Tools" Header="Tools">
                     <RibbonButton Label="Settings" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Command="ns:HaRibbon.Settings" Focusable="False"/>
-                    <RibbonButton Label="Map Simulation" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Play.png" Command="ns:HaRibbon.MapSim" Focusable="False"/>
                     <RibbonButton Label="Manage User Objects" LargeImageSource="pack://application:,,,/HaCreator;component/Images/UserObjs.png" Command="ns:HaRibbon.UserObjs" Focusable="False"/>
+                </RibbonGroup>
+                <RibbonGroup x:Name="SimulatorSettings" Header="Map Simulator">
+                    <StackPanel Orientation="Horizontal">
+                        <RibbonButton Label="Preview" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Play.png" Command="ns:HaRibbon.MapSim" Focusable="False"/>
+
+                        <ComboBox x:Name="comboBox_Resolution" Width="100"
+                              Foreground="Black" VerticalAlignment="Center"
+                                  SelectionChanged="comboBox_Resolution_SelectionChanged">
+                        </ComboBox>
+                    </StackPanel>
                 </RibbonGroup>
                 <RibbonGroup x:Name="Options" Header="Options">
                     <RibbonToggleButton x:Name="minimapBtn" Label="Show Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Minimap.png" Command="ns:HaRibbon.Minimap" Focusable="False"/>

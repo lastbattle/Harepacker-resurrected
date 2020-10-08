@@ -497,7 +497,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_addTab_Click(object sender, EventArgs e)
+        private void Button_addTab_Click(object sender, EventArgs e)
         {
             AddTabsInternal();
         }
@@ -516,10 +516,11 @@ namespace HaRepacker.GUI
             {
                 Margin = new Padding(1, 1, 1, 1)
             };
-            System.Windows.Forms.Integration.ElementHost elemHost = new System.Windows.Forms.Integration.ElementHost();
-            elemHost.Dock = DockStyle.Fill;
-            elemHost.Child = new MainPanel();
-
+            System.Windows.Forms.Integration.ElementHost elemHost = new System.Windows.Forms.Integration.ElementHost
+            {
+                Dock = DockStyle.Fill,
+                Child = new MainPanel()
+            };
             tabPage.Controls.Add(elemHost);
 
 
@@ -1446,7 +1447,7 @@ namespace HaRepacker.GUI
         }
 
         private static readonly string HelpFile = "Help.htm";
-        private void viewHelpToolStripMenuItem_Click(object sender, EventArgs e)
+        private void ViewHelpToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string helpPath = Path.Combine(Application.StartupPath, HelpFile);
             if (File.Exists(helpPath))
@@ -1455,43 +1456,21 @@ namespace HaRepacker.GUI
                 Warning.Error(string.Format(HaRepacker.Properties.Resources.MainHelpOpenFail, HelpFile));
         }
 
-        private void copyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void CopyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.DoCopy();
         }
 
-        private void pasteToolStripMenuItem_Click(object sender, EventArgs e)
+        private void PasteToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.DoPaste();
         }
-
-        private void aPNGToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            if (MainPanel.DataTree.SelectedNode == null) return;
-            if (!ValidAnimation((WzObject)MainPanel.DataTree.SelectedNode.Tag))
-                Warning.Error(HaRepacker.Properties.Resources.MainAnimationFail);
-            else
-            {
-                SaveFileDialog dialog = new SaveFileDialog()
-                {
-                    Title = HaRepacker.Properties.Resources.SelectOutApng,
-                    Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter)
-                };
-                if (dialog.ShowDialog() != DialogResult.OK)
-                {
-                    return;
-                }
-                AnimationBuilder.ExtractAnimation((WzSubProperty)MainPanel.DataTree.SelectedNode.Tag, dialog.FileName,
-                    Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame);
-            }
-        }
-
         /// <summary>
         /// Wz string searcher tool
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void toolStripMenuItem_searchWzStrings_Click(object sender, EventArgs e)
+        private void ToolStripMenuItem_searchWzStrings_Click(object sender, EventArgs e)
         {
             // Map name load
             string loadedWzVersion;
@@ -1537,35 +1516,6 @@ namespace HaRepacker.GUI
                 runningThread.Abort();
             }
         }
-
-        #region Extras
-        private bool ValidAnimation(WzObject prop)
-        {
-            if (!(prop is WzSubProperty))
-                return false;
-
-            WzSubProperty castedProp = (WzSubProperty)prop;
-            List<WzCanvasProperty> props = new List<WzCanvasProperty>(castedProp.WzProperties.Count);
-            int foo;
-
-            foreach (WzImageProperty subprop in castedProp.WzProperties)
-            {
-                if (!(subprop is WzCanvasProperty))
-                    continue;
-                if (!int.TryParse(subprop.Name, out foo))
-                    return false;
-                props.Add((WzCanvasProperty)subprop);
-            }
-            if (props.Count < 2)
-                return false;
-
-            props.Sort(new Comparison<WzCanvasProperty>(AnimationBuilder.PropertySorter));
-            for (int i = 0; i < props.Count; i++)
-                if (i.ToString() != props[i].Name)
-                    return false;
-            return true;
-        }
-        #endregion
 
         #region Image directory add
         /// <summary>

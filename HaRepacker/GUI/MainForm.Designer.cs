@@ -85,7 +85,6 @@ namespace HaRepacker.GUI
             this.renderMapToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.zoomTextBox = new System.Windows.Forms.ToolStripTextBox();
-            this.animateToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem_searchWzStrings = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem_WzEncryption = new System.Windows.Forms.ToolStripMenuItem();
             this.encryptionBox = new System.Windows.Forms.ToolStripComboBox();
@@ -441,19 +440,18 @@ namespace HaRepacker.GUI
             // 
             this.copyToolStripMenuItem.Name = "copyToolStripMenuItem";
             resources.ApplyResources(this.copyToolStripMenuItem, "copyToolStripMenuItem");
-            this.copyToolStripMenuItem.Click += new System.EventHandler(this.copyToolStripMenuItem_Click);
+            this.copyToolStripMenuItem.Click += new System.EventHandler(this.CopyToolStripMenuItem_Click);
             // 
             // pasteToolStripMenuItem
             // 
             this.pasteToolStripMenuItem.Name = "pasteToolStripMenuItem";
             resources.ApplyResources(this.pasteToolStripMenuItem, "pasteToolStripMenuItem");
-            this.pasteToolStripMenuItem.Click += new System.EventHandler(this.pasteToolStripMenuItem_Click);
+            this.pasteToolStripMenuItem.Click += new System.EventHandler(this.PasteToolStripMenuItem_Click);
             // 
             // extrasToolStripMenuItem
             // 
             this.extrasToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fHMappingToolStripMenuItem,
-            this.animateToolStripMenuItem,
             this.toolStripMenuItem_searchWzStrings,
             this.toolStripMenuItem_WzEncryption});
             this.extrasToolStripMenuItem.Name = "extrasToolStripMenuItem";
@@ -487,18 +485,11 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.zoomTextBox, "zoomTextBox");
             this.zoomTextBox.Name = "zoomTextBox";
             // 
-            // animateToolStripMenuItem
-            // 
-            this.animateToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.lightning;
-            this.animateToolStripMenuItem.Name = "animateToolStripMenuItem";
-            resources.ApplyResources(this.animateToolStripMenuItem, "animateToolStripMenuItem");
-            this.animateToolStripMenuItem.Click += new System.EventHandler(this.aPNGToolStripMenuItem_Click);
-            // 
             // toolStripMenuItem_searchWzStrings
             // 
             this.toolStripMenuItem_searchWzStrings.Name = "toolStripMenuItem_searchWzStrings";
             resources.ApplyResources(this.toolStripMenuItem_searchWzStrings, "toolStripMenuItem_searchWzStrings");
-            this.toolStripMenuItem_searchWzStrings.Click += new System.EventHandler(this.toolStripMenuItem_searchWzStrings_Click);
+            this.toolStripMenuItem_searchWzStrings.Click += new System.EventHandler(this.ToolStripMenuItem_searchWzStrings_Click);
             // 
             // toolStripMenuItem_WzEncryption
             // 
@@ -527,7 +518,7 @@ namespace HaRepacker.GUI
             this.viewHelpToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.help;
             this.viewHelpToolStripMenuItem.Name = "viewHelpToolStripMenuItem";
             resources.ApplyResources(this.viewHelpToolStripMenuItem, "viewHelpToolStripMenuItem");
-            this.viewHelpToolStripMenuItem.Click += new System.EventHandler(this.viewHelpToolStripMenuItem_Click);
+            this.viewHelpToolStripMenuItem.Click += new System.EventHandler(this.ViewHelpToolStripMenuItem_Click);
             // 
             // aboutToolStripMenuItem
             // 
@@ -562,7 +553,7 @@ namespace HaRepacker.GUI
             this.button_addTab.DialogResult = System.Windows.Forms.DialogResult.Cancel;
             this.button_addTab.Name = "button_addTab";
             this.button_addTab.UseVisualStyleBackColor = true;
-            this.button_addTab.Click += new System.EventHandler(this.button_addTab_Click);
+            this.button_addTab.Click += new System.EventHandler(this.Button_addTab_Click);
             // 
             // MainForm
             // 
@@ -630,7 +621,6 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripMenuItem newToolStripMenuItem1;
         private System.Windows.Forms.Button AbortButton;
         private System.Windows.Forms.ToolStripMenuItem extrasToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem animateToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem fHMappingToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem renderMapToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;

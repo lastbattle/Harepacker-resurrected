@@ -107,10 +107,14 @@ namespace HaRepacker
         public static bool CanNodeBeInserted(WzNode parentNode, string name)
         {
             WzObject obj = (WzObject)parentNode.Tag;
-            if (obj is IPropertyContainer) return ((IPropertyContainer)obj)[name] == null;
-            else if (obj is WzDirectory) return ((WzDirectory)obj)[name] == null;
-            else if (obj is WzFile) return ((WzFile)obj).WzDirectory[name] == null;
-            else return false;
+            if (obj is IPropertyContainer container) 
+                return container[name] == null;
+            else if (obj is WzDirectory directory) 
+                return directory[name] == null;
+            else if (obj is WzFile file) 
+                return file.WzDirectory[name] == null;
+            else 
+                return false;
         }
 
         private bool AddObjInternal(WzObject obj)
@@ -125,7 +129,8 @@ namespace HaRepacker
                     directory.AddDirectory(wzDirectory);
                 else if (obj is WzImage wzImgProperty)
                     directory.AddImage(wzImgProperty);
-                else return false;
+                else
+                    return false;
             }
             else if (TaggedObject is WzImage wzImageProperty)
             {
@@ -136,7 +141,8 @@ namespace HaRepacker
                     wzImageProperty.AddProperty(imgProperty);
                     wzImageProperty.Changed = true;
                 }
-                else return false;
+                else 
+                    return false;
             }
             else if (TaggedObject is IPropertyContainer container)
             {
@@ -146,9 +152,12 @@ namespace HaRepacker
                     if (TaggedObject is WzImageProperty imgProperty)
                         imgProperty.ParentImage.Changed = true;
                 }
-                else return false;
+                else 
+                    return false;
             }
-            else return false;
+            else 
+                return false;
+
             return true;
         }
 

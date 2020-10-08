@@ -230,9 +230,6 @@
   <data name="MainAddVec" xml:space="preserve">
     <value>新增坐標</value>
   </data>
-  <data name="MainAnimationFail" xml:space="preserve">
-    <value>這個項目不是動畫</value>
-  </data>
   <data name="MainCannotInsertToNode" xml:space="preserve">
     <value>無法插入這個類型到選中的wz節點</value>
   </data>
