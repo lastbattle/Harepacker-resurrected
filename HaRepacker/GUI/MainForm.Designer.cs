@@ -193,13 +193,13 @@ namespace HaRepacker.GUI
             // 
             this.wzDirectoryToolStripMenuItem.Name = "wzDirectoryToolStripMenuItem";
             resources.ApplyResources(this.wzDirectoryToolStripMenuItem, "wzDirectoryToolStripMenuItem");
-            this.wzDirectoryToolStripMenuItem.Click += new System.EventHandler(this.wzDirectoryToolStripMenuItem_Click);
+            this.wzDirectoryToolStripMenuItem.Click += new System.EventHandler(this.WzDirectoryToolStripMenuItem_Click);
             // 
             // wzImageToolStripMenuItem
             // 
             this.wzImageToolStripMenuItem.Name = "wzImageToolStripMenuItem";
             resources.ApplyResources(this.wzImageToolStripMenuItem, "wzImageToolStripMenuItem");
-            this.wzImageToolStripMenuItem.Click += new System.EventHandler(this.wzImageToolStripMenuItem_Click);
+            this.wzImageToolStripMenuItem.Click += new System.EventHandler(this.WzImageToolStripMenuItem_Click);
             // 
             // toolStripSeparator1
             // 
@@ -210,79 +210,79 @@ namespace HaRepacker.GUI
             // 
             this.wzByteFloatPropertyToolStripMenuItem.Name = "wzByteFloatPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzByteFloatPropertyToolStripMenuItem, "wzByteFloatPropertyToolStripMenuItem");
-            this.wzByteFloatPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzByteFloatPropertyToolStripMenuItem_Click);
+            this.wzByteFloatPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzByteFloatPropertyToolStripMenuItem_Click);
             // 
             // wzCanvasPropertyToolStripMenuItem
             // 
             this.wzCanvasPropertyToolStripMenuItem.Name = "wzCanvasPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzCanvasPropertyToolStripMenuItem, "wzCanvasPropertyToolStripMenuItem");
-            this.wzCanvasPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzCanvasPropertyToolStripMenuItem_Click);
+            this.wzCanvasPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzCanvasPropertyToolStripMenuItem_Click);
             // 
             // wzLongPropertyToolStripMenuItem
             // 
             this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
-            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLongPropertyToolStripMenuItem_Click);
+            this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzLongPropertyToolStripMenuItem_Click);
             // 
             // wzCompressedIntPropertyToolStripMenuItem
             // 
             this.wzCompressedIntPropertyToolStripMenuItem.Name = "wzCompressedIntPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzCompressedIntPropertyToolStripMenuItem, "wzCompressedIntPropertyToolStripMenuItem");
-            this.wzCompressedIntPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzCompressedIntPropertyToolStripMenuItem_Click);
+            this.wzCompressedIntPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzCompressedIntPropertyToolStripMenuItem_Click);
             // 
             // wzConvexPropertyToolStripMenuItem
             // 
             this.wzConvexPropertyToolStripMenuItem.Name = "wzConvexPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzConvexPropertyToolStripMenuItem, "wzConvexPropertyToolStripMenuItem");
-            this.wzConvexPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzConvexPropertyToolStripMenuItem_Click);
+            this.wzConvexPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzConvexPropertyToolStripMenuItem_Click);
             // 
             // wzDoublePropertyToolStripMenuItem
             // 
             this.wzDoublePropertyToolStripMenuItem.Name = "wzDoublePropertyToolStripMenuItem";
             resources.ApplyResources(this.wzDoublePropertyToolStripMenuItem, "wzDoublePropertyToolStripMenuItem");
-            this.wzDoublePropertyToolStripMenuItem.Click += new System.EventHandler(this.wzDoublePropertyToolStripMenuItem_Click);
+            this.wzDoublePropertyToolStripMenuItem.Click += new System.EventHandler(this.WzDoublePropertyToolStripMenuItem_Click);
             // 
             // wzNullPropertyToolStripMenuItem
             // 
             this.wzNullPropertyToolStripMenuItem.Name = "wzNullPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzNullPropertyToolStripMenuItem, "wzNullPropertyToolStripMenuItem");
-            this.wzNullPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzNullPropertyToolStripMenuItem_Click);
+            this.wzNullPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzNullPropertyToolStripMenuItem_Click);
             // 
             // wzSoundPropertyToolStripMenuItem
             // 
             this.wzSoundPropertyToolStripMenuItem.Name = "wzSoundPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzSoundPropertyToolStripMenuItem, "wzSoundPropertyToolStripMenuItem");
-            this.wzSoundPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzSoundPropertyToolStripMenuItem_Click);
+            this.wzSoundPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzSoundPropertyToolStripMenuItem_Click);
             // 
             // wzStringPropertyToolStripMenuItem
             // 
             this.wzStringPropertyToolStripMenuItem.Name = "wzStringPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzStringPropertyToolStripMenuItem, "wzStringPropertyToolStripMenuItem");
-            this.wzStringPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzStringPropertyToolStripMenuItem_Click);
+            this.wzStringPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzStringPropertyToolStripMenuItem_Click);
             // 
             // wzSubPropertyToolStripMenuItem
             // 
             this.wzSubPropertyToolStripMenuItem.Name = "wzSubPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzSubPropertyToolStripMenuItem, "wzSubPropertyToolStripMenuItem");
-            this.wzSubPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzSubPropertyToolStripMenuItem_Click);
+            this.wzSubPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzSubPropertyToolStripMenuItem_Click);
             // 
             // wzUnsignedShortPropertyToolStripMenuItem
             // 
             this.wzUnsignedShortPropertyToolStripMenuItem.Name = "wzUnsignedShortPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzUnsignedShortPropertyToolStripMenuItem, "wzUnsignedShortPropertyToolStripMenuItem");
-            this.wzUnsignedShortPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzUnsignedShortPropertyToolStripMenuItem_Click);
+            this.wzUnsignedShortPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUnsignedShortPropertyToolStripMenuItem_Click);
             // 
             // wzUolPropertyToolStripMenuItem
             // 
             this.wzUolPropertyToolStripMenuItem.Name = "wzUolPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzUolPropertyToolStripMenuItem, "wzUolPropertyToolStripMenuItem");
-            this.wzUolPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzUolPropertyToolStripMenuItem_Click);
+            this.wzUolPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUolPropertyToolStripMenuItem_Click);
             // 
             // wzVectorPropertyToolStripMenuItem
             // 
             this.wzVectorPropertyToolStripMenuItem.Name = "wzVectorPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzVectorPropertyToolStripMenuItem, "wzVectorPropertyToolStripMenuItem");
-            this.wzVectorPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzVectorPropertyToolStripMenuItem_Click);
+            this.wzVectorPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzVectorPropertyToolStripMenuItem_Click);
             // 
             // removeToolStripMenuItem
             // 

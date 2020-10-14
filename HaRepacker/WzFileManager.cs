@@ -34,7 +34,7 @@ namespace HaRepacker
         };
         #endregion
 
-        private List<WzFile> wzFiles = new List<WzFile>();
+        private readonly List<WzFile> wzFiles = new List<WzFile>();
 
         public WzFileManager()
         {
@@ -125,11 +125,9 @@ namespace HaRepacker
         /// <returns></returns>
         public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, MainPanel panel)
         {
-            WzImage img;
-
             using (FileStream fs = File.Open(path, FileMode.Open))
             {
-                img = new WzImage(Path.GetFileName(path), fs, encVersion);
+                WzImage img = new WzImage(Path.GetFileName(path), fs, encVersion);
                 img.ParseImage(true);
 
                 WzNode node = new WzNode(img);
@@ -142,10 +140,8 @@ namespace HaRepacker
                 {
                     SortNodesRecursively(node);
                 }
+                return img;
             }
-
-            return img;
-
         }
 
         /// <summary>

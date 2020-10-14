@@ -653,6 +653,8 @@
     <EmbeddedResource Include="GUI\WaitWindow.resx">
       <DependentUpon>WaitWindow.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.ja.resx" />
+    <EmbeddedResource Include="Properties\Resources.ko.resx" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
@@ -691,6 +693,8 @@
     <EmbeddedResource Include="CustomControls\ThumbnailFlowLayoutPanel.resx">
       <DependentUpon>ThumbnailFlowLayoutPanel.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Properties\Resources.zh-CHS.resx" />
+    <EmbeddedResource Include="Properties\Resources.zh-CHT.resx" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\EmptyKeys.UIEngine\EmptyKeys.UserInterface.MonoGame\EmptyKeys.UserInterface.MonoGame.Standard.csproj">

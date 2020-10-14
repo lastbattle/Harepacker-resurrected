@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 using System.Drawing.Imaging;
 using System.Drawing;
 
-namespace HaRepacker.SharpApng
+namespace HaSharedLibrary.SharpApng
 {
     public class SharpApngFrame : IDisposable
     {

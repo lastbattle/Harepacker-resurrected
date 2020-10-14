@@ -398,9 +398,6 @@
       <DependentUpon>Resources.zh-CHT.resx</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
-    <Compile Include="SharpApng\SharpApng.cs" />
-    <Compile Include="SharpApng\SharpApngBasicWrapper.cs" />
-    <Compile Include="SharpApng\SharpApngFrame.cs" />
     <Compile Include="TreeViewMS.cs">
       <SubType>Component</SubType>
     </Compile>

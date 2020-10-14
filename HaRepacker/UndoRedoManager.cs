@@ -83,8 +83,8 @@ namespace HaRepacker
 
     public class UndoRedoAction
     {
-        private WzNode item;
-        private WzNode parent;
+        private readonly WzNode item;
+        private readonly WzNode parent;
         private UndoRedoType type;
 
         public UndoRedoAction(WzNode item, WzNode parent, UndoRedoType type)

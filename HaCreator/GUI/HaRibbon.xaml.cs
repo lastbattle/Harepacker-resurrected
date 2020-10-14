@@ -73,7 +73,7 @@ namespace HaCreator.GUI
                 ComboBoxItem comboBoxItem = new ComboBoxItem
                 {
                     Tag = val,
-                    Content = val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale")
+                    Content = RenderResolutionExtensions.ToReadableString(val)
                 };
 
                 comboBox_Resolution.Items.Add(comboBoxItem);

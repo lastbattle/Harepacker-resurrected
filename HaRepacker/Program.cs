@@ -70,6 +70,11 @@ namespace HaRepacker
             EndApplication(true, true);
         }
 
+        /// <summary>
+        /// Allows customisation of display text during runtime..
+        /// </summary>
+        /// <param name="ci"></param>
+        /// <returns></returns>
         private static CultureInfo GetMainCulture(CultureInfo ci)
         {
             if (!ci.Name.Contains("-"))

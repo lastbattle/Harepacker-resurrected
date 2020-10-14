@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaRepacker.SharpApng
+namespace HaSharedLibrary.SharpApng
 {
     public static class SharpApngBasicWrapper
     {

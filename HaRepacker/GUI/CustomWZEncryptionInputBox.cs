@@ -92,7 +92,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveButton_Click(object sender, EventArgs e)
+        private void SaveButton_Click(object sender, EventArgs e)
         {
             string strByte0 = textBox_byte0.Text;
             string strByte1 = textBox_byte1.Text;

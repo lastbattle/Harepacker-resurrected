@@ -36,8 +36,7 @@ namespace HaRepacker
 
         private void ParseChilds(WzObject SourceObject)
         {
-            if (SourceObject == null) throw new NullReferenceException("Cannot create a null WzNode");
-            Tag = SourceObject;
+            Tag = SourceObject ?? throw new NullReferenceException("Cannot create a null WzNode");
             SourceObject.HRTag = this;
             if (SourceObject is WzFile) SourceObject = ((WzFile)SourceObject).WzDirectory;
             if (SourceObject is WzDirectory)
@@ -47,15 +46,15 @@ namespace HaRepacker
                 foreach (WzImage img in ((WzDirectory)SourceObject).WzImages)
                     Nodes.Add(new WzNode(img));
             }
-            else if (SourceObject is WzImage)
+            else if (SourceObject is WzImage image)
             {
-                if (((WzImage)SourceObject).Parsed)
-                    foreach (WzImageProperty prop in ((WzImage)SourceObject).WzProperties)
+                if (image.Parsed)
+                    foreach (WzImageProperty prop in image.WzProperties)
                         Nodes.Add(new WzNode(prop));
             }
-            else if (SourceObject is IPropertyContainer)
+            else if (SourceObject is IPropertyContainer container)
             {
-                foreach (WzImageProperty prop in ((IPropertyContainer)SourceObject).WzProperties)
+                foreach (WzImageProperty prop in container.WzProperties)
                     Nodes.Add(new WzNode(prop));
             }
         }
@@ -253,8 +252,8 @@ namespace HaRepacker
         {
             Text = name;
             ((WzObject)Tag).Name = name;
-            if (Tag is WzImageProperty)
-                ((WzImageProperty)Tag).ParentImage.Changed = true;
+            if (Tag is WzImageProperty property)
+                property.ParentImage.Changed = true;
 
             isWzObjectAddedManually = true;
             ForeColor = NewObjectForeColor;
