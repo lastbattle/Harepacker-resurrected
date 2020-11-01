@@ -58,12 +58,11 @@ namespace HaRepacker
                 {
                     wzFiles.Add(f);
                 }
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
-                if (!parseSuccess)
+                WzFileParseStatus parseStatus = f.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
                 {
                     file = null;
-                    Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + parseErrorMessage + ").");
+                    Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + parseStatus.GetErrorDescription() + ").");
                     return false;
                 }
 

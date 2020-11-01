@@ -1000,8 +1000,7 @@ namespace HaRepacker.GUI
                 }
                 WzFile f = new WzFile(wzpath, version);
 
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
+                WzFileParseStatus parseStatus = f.ParseWzFile();
 
                 serializer.SerializeFile(f, Path.Combine(baseDir, f.Name));
                 f.Dispose();
