@@ -144,7 +144,7 @@ namespace MapleLib.Configuration
             bool loaded = Load();
             if (loaded)
             {
-                string storedCustomEnc = ApplicationSettings.MapleVersion_EncryptionBytes;
+                string storedCustomEnc = ApplicationSettings.MapleVersion_CustomEncryptionBytes;
                 byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
 
                 if (bytes.Length == 4)
@@ -152,7 +152,7 @@ namespace MapleLib.Configuration
                     return bytes;
                 }
             }
-            return new byte[4]; // fallback with BMS
+            return new byte[4] { 0x0, 0x0, 0x0, 0x0 }; // fallback with BMS
         }
     }
 }

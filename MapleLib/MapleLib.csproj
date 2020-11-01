@@ -173,6 +173,7 @@
     <Compile Include="PacketLib\SessionType.cs" />
     <Compile Include="PacketLib\SocketInfo.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WzLib\WzFileParseStatus.cs" />
     <Compile Include="WzLib\WzImageProperty.cs" />
     <Compile Include="WzLib\WzImageResource.cs" />
     <Compile Include="WzLib\WzObject.cs" />

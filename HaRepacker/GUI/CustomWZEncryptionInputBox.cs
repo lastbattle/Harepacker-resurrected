@@ -38,7 +38,7 @@ namespace HaRepacker.GUI
         private void SaveForm_Load(object sender, EventArgs e)
         { 
             // Load from settings
-            string storedCustomEnc = Program.ConfigurationManager.ApplicationSettings.MapleVersion_EncryptionBytes;
+            string storedCustomEnc = Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes;
             string[] splitBytes = storedCustomEnc.Split(' ');
 
             bool parsed = true;
@@ -59,7 +59,7 @@ namespace HaRepacker.GUI
             if (!parsed)
             {
                 // do nothing.. default, could be corrupted anyway
-                Program.ConfigurationManager.ApplicationSettings.MapleVersion_EncryptionBytes = "00 00 00 00";
+                Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes = "00 00 00 00";
                 Program.ConfigurationManager.Save();
             }
             else
@@ -105,7 +105,7 @@ namespace HaRepacker.GUI
                 return;
             }
 
-            Program.ConfigurationManager.ApplicationSettings.MapleVersion_EncryptionBytes =
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes =
                 string.Format("{0} {1} {2} {3}",
                 strByte0,
                 strByte1,

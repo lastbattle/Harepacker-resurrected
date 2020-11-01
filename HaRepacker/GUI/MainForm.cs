@@ -611,7 +611,7 @@ namespace HaRepacker.GUI
                     };
                     ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
                     {
-                        wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
+                        WzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
                     });
                 });
             }
@@ -645,7 +645,7 @@ namespace HaRepacker.GUI
         /// <param name="processorCount"></param>
         /// <param name="dialog"></param>
         /// <param name="currentDispatcher"></param>
-        private void wzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
+        private void WzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
         {
             int cpuId = cpuId_;
 

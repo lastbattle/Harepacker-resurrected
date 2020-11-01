@@ -12,7 +12,7 @@ namespace MapleLib.Configuration
 {
     public class ApplicationSettings
     {
-        #region Window
+        #region Application Window
         [JsonProperty(PropertyName = "WindowMaximized")]
         public bool WindowMaximized = false;
 
@@ -31,12 +31,18 @@ namespace MapleLib.Configuration
         #endregion
 
         #region Encryption
+        /// <summary>
+        /// The MapleStory encryption to use.
+        /// </summary>
         [JsonProperty(PropertyName = "MapleStoryVersion") ]
         [JsonConverter(typeof(StringEnumConverter))]
         public WzMapleVersion MapleVersion = WzMapleVersion.BMS;
 
+        /// <summary>
+        /// The custom encryption bytes to use when decrypting WZ files
+        /// </summary>
         [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
-        public string MapleVersion_EncryptionBytes = "0x00-0x00-0x00-0x00";
+        public string MapleVersion_CustomEncryptionBytes = "0x00-0x00-0x00-0x00";
         #endregion
     }
 }

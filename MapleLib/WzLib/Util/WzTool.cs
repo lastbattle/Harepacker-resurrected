@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
@@ -138,20 +139,21 @@ namespace MapleLib.WzLib.Util
             return result;
         }
 
-        
+
         /// <summary>
         /// Attempts to bruteforce the WzKey with a given WZ file
         /// </summary>
         /// <param name="wzPath"></param>
         /// <param name="wzIvKey"></param>
         /// <returns>The probability. Normalized to 100</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryBruteforcingWzIVKey(string wzPath, byte[] wzIvKey)
         {
             using (WzFile wzf = new WzFile(wzPath, wzIvKey))
             {
                 string parseErrorMessage = string.Empty;
-                bool parsedSuccessfully = wzf.LazyParseWzFile(out parseErrorMessage);
-                if (!parsedSuccessfully)
+                WzFileParseStatus parseStatus = wzf.ParseMainWzDirectory(true);
+                if (parseStatus != WzFileParseStatus.Success)
                 {
                     wzf.Dispose();
                     return false;
@@ -175,8 +177,7 @@ namespace MapleLib.WzLib.Util
             else
                 wzf = new WzFile(wzPath, (short)version, encVersion);
 
-            string parseErrorMessage = string.Empty;
-            bool parsedSuccessfully = wzf.ParseWzFile(out parseErrorMessage);
+            WzFileParseStatus parseStatus = wzf.ParseWzFile();
 
             if (version == null) version = wzf.Version;
             int recognizedChars = 0;
