@@ -206,14 +206,14 @@ namespace MapleLib.WzLib
             }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
-            this.Header = new WzHeader
-            {
-                Ident = reader.ReadString(4),
-                FSize = reader.ReadUInt64(),
-                FStart = reader.ReadUInt32(),
-                Copyright = reader.ReadNullTerminatedString()
-            };
-            reader.ReadBytes((int)(Header.FStart - reader.BaseStream.Position));
+            this.Header = new WzHeader();
+            this.Header.Ident = reader.ReadString(4);
+            this.Header.FSize = reader.ReadUInt64();
+            this.Header.FStart = reader.ReadUInt32();
+            this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
+
+            reader.ReadBytes(1);
+            reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
             reader.Header = this.Header;
             this.version = reader.ReadInt16();
 
