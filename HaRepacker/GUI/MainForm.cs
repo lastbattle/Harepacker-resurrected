@@ -30,6 +30,7 @@ using MapleLib.PacketLib;
 using System.Timers;
 using static MapleLib.Configuration.UserSettings;
 using HaSharedLibrary;
+using MapleLib.MapleCryptoLib;
 
 namespace HaRepacker.GUI
 {
@@ -202,7 +203,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
+        private void EncryptionBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (!mainFormLoaded) // first run during app startup
             {
@@ -217,6 +218,9 @@ namespace HaRepacker.GUI
             {
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+            } else
+            {
+                MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
         }
 
@@ -227,7 +231,7 @@ namespace HaRepacker.GUI
         /// <returns></returns>
         public static WzMapleVersion GetWzMapleVersionByWzEncryptionBoxSelection(int selectedIndex)
         {
-            WzMapleVersion wzMapleVer = WzMapleVersion.CUSTOM;
+            WzMapleVersion wzMapleVer;
             switch (selectedIndex)
             {
                 case 0:
@@ -286,12 +290,17 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
-        /// Sets the ComboBox selection index by WzMapleVersion enum
+        /// Sets the ComboBox selection index by WzMapleVersion enum 
+        /// on program init.
         /// </summary>
         /// <param name="versionSelected"></param>
         private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
         {
             encryptionBox.SelectedIndex = GetIndexByWzMapleVersion(versionSelected);
+            if (versionSelected == WzMapleVersion.CUSTOM)
+            {
+                Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
+            }
         }
         #endregion
 
@@ -961,7 +970,7 @@ namespace HaRepacker.GUI
             }
         }
 
-        private void removeToolStripMenuItem_Click(object sender, EventArgs e)
+        private void RemoveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             RemoveSelectedNodes();
         }

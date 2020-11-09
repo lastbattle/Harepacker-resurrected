@@ -12,20 +12,22 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System.Diagnostics;
 using HaRepacker.GUI.Panels;
+using MapleLib.MapleCryptoLib;
+using System.Linq;
 
 namespace HaRepacker.GUI
 {
     public partial class SaveForm : Form
     {
-        private WzNode wzNode;
+        private readonly WzNode wzNode;
 
-        private WzFile wzf; // it can either be a WzImage or a WzFile only.
-        private WzImage wzImg; // it can either be a WzImage or a WzFile only.
+        private readonly WzFile wzf; // it can either be a WzImage or a WzFile only.
+        private readonly WzImage wzImg; // it can either be a WzImage or a WzFile only.
 
-        private bool IsRegularWzFile = false; // or data.wz
+        private readonly bool IsRegularWzFile = false; // or data.wz
 
         public string path;
-        private MainPanel panel;
+        private readonly MainPanel panel;
 
 
         private bool bIsLoading = false;
@@ -118,6 +120,9 @@ namespace HaRepacker.GUI
             {
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+            } else
+            {
+                MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
         }
 
@@ -126,7 +131,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveButton_Click(object sender, EventArgs e)
+        private void SaveButton_Click(object sender, EventArgs e)
         {
             if (versionBox.Value < 0)
             {
@@ -148,13 +153,13 @@ namespace HaRepacker.GUI
                 WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
                 if (this.IsRegularWzFile)
                 {
-                    if (wzf is WzFile && wzf.MapleVersion != wzMapleVersionSelected)
-                        PrepareAllImgs(((WzFile)wzf).WzDirectory);
+                    if (wzf is WzFile file && wzf.MapleVersion != wzMapleVersionSelected)
+                        PrepareAllImgs(file.WzDirectory);
 
                     wzf.MapleVersion = wzMapleVersionSelected;
-                    if (wzf is WzFile)
+                    if (wzf is WzFile file1)
                     {
-                        ((WzFile)wzf).Version = (short)versionBox.Value;
+                        file1.Version = (short)versionBox.Value;
                     }
 
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())

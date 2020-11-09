@@ -23,6 +23,8 @@ namespace MapleLib.WzLib
 {
 	public class WzHeader
 	{
+        private const string DEFAULT_WZ_HEADER_COPYRIGHT = "Package file v1.0 Copyright 2002 Wizet, ZMS";
+
         private string ident;
         private string copyright;
         private ulong fsize;
@@ -59,12 +61,14 @@ namespace MapleLib.WzLib
 
 		public static WzHeader GetDefault()
 		{
-			WzHeader header = new WzHeader();
-			header.ident = "PKG1";
-			header.copyright = "Package file v1.0 Copyright 2002 Wizet, ZMS";
-			header.fstart = 60;
-			header.fsize = 0;
-			return header;
+            WzHeader header = new WzHeader
+            {
+                ident = "PKG1",
+                copyright = DEFAULT_WZ_HEADER_COPYRIGHT,
+                fstart = 60,
+                fsize = 0
+            };
+            return header;
 		}
 	}
 }

@@ -23,15 +23,20 @@ namespace MapleLib.WzLib.Util
 {
     public class WzMutableKey
     {
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="WzIv"></param>
+        /// <param name="AesKey">The 32-byte AES UserKey (derived from 32 DWORD)</param>
         public WzMutableKey(byte[] WzIv, byte[] AesKey)
         {
-            this.iv = WzIv;
-            this.aesKey = AesKey;
+            this.IV = WzIv;
+            this.AESUserKey = AesKey;
         }
 
         private static readonly int BatchSize = 4096;
-        private byte[] iv;
-        private byte[] aesKey;
+        private readonly byte[] IV;
+        private readonly byte[] AESUserKey;
 
         private byte[] keys;
 
@@ -57,7 +62,7 @@ namespace MapleLib.WzLib.Util
             size = (int)Math.Ceiling(1.0 * size / BatchSize) * BatchSize;
             byte[] newKeys = new byte[size];
 
-            if (BitConverter.ToInt32(this.iv, 0) == 0)
+            if (BitConverter.ToInt32(this.IV, 0) == 0)
             {
                 this.keys = newKeys;
                 return;
@@ -74,7 +79,7 @@ namespace MapleLib.WzLib.Util
             Rijndael aes = Rijndael.Create();
             aes.KeySize = 256;
             aes.BlockSize = 128;
-            aes.Key = aesKey;
+            aes.Key = AESUserKey;
             aes.Mode = CipherMode.ECB;
             MemoryStream ms = new MemoryStream(newKeys, startIndex, newKeys.Length - startIndex, true);
             CryptoStream s = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write);
@@ -86,7 +91,7 @@ namespace MapleLib.WzLib.Util
                     byte[] block = new byte[16];
                     for (int j = 0; j < block.Length; j++)
                     {
-                        block[j] = iv[j % 4];
+                        block[j] = IV[j % 4];
                     }
                     s.Write(block, 0, block.Length);
                 }

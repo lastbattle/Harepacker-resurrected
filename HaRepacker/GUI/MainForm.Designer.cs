@@ -288,7 +288,7 @@ namespace HaRepacker.GUI
             // 
             resources.ApplyResources(this.removeToolStripMenuItem, "removeToolStripMenuItem");
             this.removeToolStripMenuItem.Name = "removeToolStripMenuItem";
-            this.removeToolStripMenuItem.Click += new System.EventHandler(this.removeToolStripMenuItem_Click);
+            this.removeToolStripMenuItem.Click += new System.EventHandler(this.RemoveToolStripMenuItem_Click);
             // 
             // undoToolStripMenuItem
             // 
@@ -503,7 +503,7 @@ namespace HaRepacker.GUI
             this.encryptionBox.DropDownWidth = 400;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
-            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.encryptionBox_SelectedIndexChanged);
+            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.EncryptionBox_SelectedIndexChanged);
             // 
             // helpToolStripMenuItem
             // 

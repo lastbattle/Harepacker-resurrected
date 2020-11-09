@@ -182,8 +182,8 @@ namespace MapleLib.PacketLib
 								PacketReader headerReader = new PacketReader(socketInfo.DataBuffer);
 								byte[] packetHeaderB = headerReader.ToArray();
 								int packetHeader = headerReader.ReadInt();
-								short packetLength = (short)MapleCrypto.getPacketLength(packetHeader);
-								if (_type == SessionType.SERVER_TO_CLIENT && !_RIV.checkPacketToServer(BitConverter.GetBytes(packetHeader)))
+								short packetLength = (short)MapleCrypto.GetPacketLength(packetHeader);
+								if (_type == SessionType.SERVER_TO_CLIENT && !_RIV.CheckPacketToServer(BitConverter.GetBytes(packetHeader)))
 								{
 									Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "[Error] Packet check failed. Disconnecting client.");
 									//this.Socket.Close();
@@ -214,7 +214,7 @@ namespace MapleLib.PacketLib
 							}
 							else
 							{
-								_RIV.crypt(data);
+								_RIV.Crypt(data);
 								MapleCustomEncryption.Decrypt(data);
 								if (data.Length != 0 && OnPacketReceived != null)
 								{
@@ -277,10 +277,10 @@ namespace MapleLib.PacketLib
 		{
 			byte[] cryptData = input;
 			byte[] sendData = new byte[cryptData.Length + 4];
-			byte[] header = _type == SessionType.SERVER_TO_CLIENT ? _SIV.getHeaderToClient(cryptData.Length) : _SIV.getHeaderToServer(cryptData.Length);
+			byte[] header = _type == SessionType.SERVER_TO_CLIENT ? _SIV.GetHeaderToClient(cryptData.Length) : _SIV.GetHeaderToServer(cryptData.Length);
 
 			MapleCustomEncryption.Encrypt(cryptData);
-			_SIV.crypt(cryptData);
+			_SIV.Crypt(cryptData);
 
 			System.Buffer.BlockCopy(header, 0, sendData, 0, 4);
 			System.Buffer.BlockCopy(cryptData, 0, sendData, 4, cryptData.Length);

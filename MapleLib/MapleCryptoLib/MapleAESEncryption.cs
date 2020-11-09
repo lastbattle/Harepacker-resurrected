@@ -34,9 +34,9 @@ namespace MapleLib.MapleCryptoLib
 		/// <param name="data">Data to encrypt</param>
 		/// <param name="length">Length of data</param>
 		/// <returns>Crypted data</returns>
-		public static byte[] aesCrypt(byte[] IV, byte[] data, int length)
+		public static byte[] AesCrypt(byte[] IV, byte[] data, int length)
 		{
-			return aesCrypt(IV, data, length, MapleCryptoConstants.getTrimmedUserKey());
+			return AesCrypt(IV, data, length, MapleCryptoConstants.GetTrimmedUserKey(ref MapleCryptoConstants.UserKey_WzLib));
 		}
 
 		/// <summary>
@@ -47,7 +47,7 @@ namespace MapleLib.MapleCryptoLib
 		/// <param name="length">length of data</param>
 		/// <param name="key">the AES key to use</param>
 		/// <returns>Crypted data</returns>
-		public static byte[] aesCrypt(byte[] IV, byte[] data, int length, byte[] key)
+		public static byte[] AesCrypt(byte[] IV, byte[] data, int length, byte[] key)
 		{
 			AesManaged crypto = new AesManaged();
 			crypto.KeySize = 256; //in bits
@@ -62,7 +62,7 @@ namespace MapleLib.MapleCryptoLib
 			int start = 0;
 			while (remaining > 0)
 			{
-				byte[] myIV = MapleCrypto.multiplyBytes(IV, 4, 4);
+				byte[] myIV = MapleCrypto.MultiplyBytes(IV, 4, 4);
 				if (remaining < llength)
 				{
 					llength = remaining;

@@ -28,8 +28,6 @@ namespace MapleLib.WzLib.WzProperties
         internal WzObject parent;
         internal WzMutableKey WzKey;
         //internal WzImage imgParent;
-
-        internal static byte[] USE_IV_KEY = MapleCryptoConstants.WZ_MSEAIV;
         #endregion
 
         #region Inherited Members
@@ -103,7 +101,7 @@ namespace MapleLib.WzLib.WzProperties
         {
             this.name = name;
             this.encryptedBytes = encryptedBytes;
-            this.WzKey = WzKeyGenerator.GenerateWzKey(USE_IV_KEY);
+            this.WzKey = WzKeyGenerator.GenerateLuaWzKey();
         }
         #endregion
 

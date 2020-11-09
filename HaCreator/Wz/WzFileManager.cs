@@ -91,8 +91,12 @@ namespace HaCreator.Wz
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
 
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+                WzFileParseStatus parseStatus = wzf.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
+                {
+                    MessageBox.Show("Error parsing " + name + ".wz (" + parseStatus.GetErrorDescription() + ")");
+                    return false;
+                }
 
                 name = name.ToLower();
                 wzFiles[name] = wzf;
@@ -112,9 +116,13 @@ namespace HaCreator.Wz
             try
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
-
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+                
+                WzFileParseStatus parseStatus = wzf.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
+                {
+                    MessageBox.Show("Error parsing " + name + ".wz (" + parseStatus.GetErrorDescription() + ")");
+                    return false;
+                }
 
                 name = name.ToLower();
                 wzFiles[name] = wzf;

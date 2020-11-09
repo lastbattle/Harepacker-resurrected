@@ -45,9 +45,20 @@ namespace MapleLib.WzLib.Util
 			return aes;
 		}
 
-        public static WzMutableKey GenerateWzKey(byte[] WzIv)
+		/// <summary>
+		/// Generates the WZ Key for .Lua property
+		/// </summary>
+		/// <returns></returns>
+		public static WzMutableKey GenerateLuaWzKey()
+		{
+			return new WzMutableKey(
+				MapleCryptoConstants.WZ_MSEAIV, 
+				MapleCryptoConstants.GetTrimmedUserKey(ref MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT));
+		}
+
+		public static WzMutableKey GenerateWzKey(byte[] WzIv)
         {
-            return new WzMutableKey(WzIv, MapleCryptoConstants.getTrimmedUserKey());
+            return new WzMutableKey(WzIv, MapleCryptoConstants.GetTrimmedUserKey(ref MapleCryptoConstants.UserKey_WzLib));
         }
         #endregion
     }

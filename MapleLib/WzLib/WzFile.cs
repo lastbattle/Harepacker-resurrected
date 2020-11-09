@@ -22,6 +22,8 @@ using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using System.Threading.Tasks;
 using MapleLib.PacketLib;
+using MapleLib.MapleCryptoLib;
+using System.Linq;
 
 namespace MapleLib.WzLib
 {
@@ -340,18 +342,18 @@ namespace MapleLib.WzLib
         /// <param name="path">Path to the output wz file</param>
         public void SaveToDisk(string path, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
+            // WZ IV
             if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
                 WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion); // get from local WzFile
             else
                 WzIv = WzTool.GetIvByMapleVersion(savingToPreferredWzVer); // custom selected
 
-            bool bIsWzIvSimilar = true; // check if its saving to the same IV.
-            for (int i = 0; i < WzIv.Length; i++)
-            {
-                if (WzIv[i] != wzDir.WzIv[i]) 
-                    bIsWzIvSimilar = false;
-            }
+            bool bIsWzIvSimilar = WzIv.SequenceEqual(wzDir.WzIv); // check if its saving to the same IV.
             wzDir.WzIv = WzIv;
+
+            // MapleStory UserKey
+            bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
+            //
 
             CreateVersionHash();
             wzDir.SetVersionHash(versionHash);
@@ -360,7 +362,7 @@ namespace MapleLib.WzLib
             File.Create(tempFile).Close();
             using (FileStream fs = new FileStream(tempFile, FileMode.Append, FileAccess.Write)) 
             {
-                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, fs);
+                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, bIsWzUserKeyDefault, fs);
             }
 
             WzTool.StringCache.Clear();

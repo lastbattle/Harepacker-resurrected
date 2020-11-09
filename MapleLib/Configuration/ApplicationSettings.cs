@@ -39,7 +39,13 @@ namespace MapleLib.Configuration
         public WzMapleVersion MapleVersion = WzMapleVersion.BMS;
 
         /// <summary>
-        /// The custom encryption bytes to use when decrypting WZ files
+        /// The custom AES user key to use when encrypting and decrypting WZ files
+        /// </summary>
+        [JsonProperty(PropertyName = "MapleStoryVersion_CustomAESUserKey")]
+        public string MapleVersion_CustomAESUserKey = string.Empty; // str empty as default.
+
+        /// <summary>
+        /// The custom IV encryption bytes to use when encrypting and decrypting WZ files
         /// </summary>
         [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
         public string MapleVersion_CustomEncryptionBytes = "0x00-0x00-0x00-0x00";
