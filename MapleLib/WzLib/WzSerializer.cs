@@ -674,9 +674,9 @@ namespace MapleLib.WzLib.Serialization
     {
         public static NumberFormatInfo formattingInfo;
 
-        private bool useMemorySaving;
-        private byte[] iv;
-        private WzImgDeserializer imgDeserializer = new WzImgDeserializer(false);
+        private readonly bool useMemorySaving;
+        private readonly byte[] iv;
+        private readonly WzImgDeserializer imgDeserializer = new WzImgDeserializer(false);
 
         public WzXmlDeserializer(bool useMemorySaving, byte[] iv)
             : base()

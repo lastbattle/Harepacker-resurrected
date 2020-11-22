@@ -53,6 +53,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 // Set via app settings
                 checkbox_crosshair.IsChecked = Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation;
+                checkbox_border.IsChecked = Program.ConfigurationManager.UserSettings.EnableBorderDebugInformation;
 
                 ZoomSlider.Value = Program.ConfigurationManager.UserSettings.ImageZoomLevel;
             } finally
@@ -179,6 +180,27 @@ namespace HaRepacker.GUI.Panels.SubPanels
             } else
             {
                 Program.ConfigurationManager.UserSettings.EnableCrossHairDebugInformation = false;
+            }
+        }
+
+        /// <summary>
+        /// Checkbox for Border
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void checkbox_border_Checked(object sender, RoutedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            CheckBox checkbox = (CheckBox)sender;
+            if (checkbox.IsChecked == true)
+            {
+                Program.ConfigurationManager.UserSettings.EnableBorderDebugInformation = true;
+            }
+            else
+            {
+                Program.ConfigurationManager.UserSettings.EnableBorderDebugInformation = false;
             }
         }
 

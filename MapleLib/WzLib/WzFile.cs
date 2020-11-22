@@ -322,7 +322,7 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Version hash
         /// </summary>
-        private void CreateVersionHash()
+        private void CreateWZVersionHash()
         {
             versionHash = 0;
             foreach (char ch in mapleStoryPatchVersion.ToString())
@@ -355,7 +355,7 @@ namespace MapleLib.WzLib
             bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
             //
 
-            CreateVersionHash();
+            CreateWZVersionHash();
             wzDir.SetVersionHash(versionHash);
 
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
