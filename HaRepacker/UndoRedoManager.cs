@@ -99,7 +99,7 @@ namespace HaRepacker
             switch (type)
             {
                 case UndoRedoType.ObjectAdded:
-                    item.Delete();
+                    item.DeleteWzNode();
                     break;
                 case UndoRedoType.ObjectRemoved:
                     parent.AddNode(item, true);

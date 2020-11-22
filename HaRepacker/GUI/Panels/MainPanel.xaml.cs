@@ -524,7 +524,7 @@ namespace HaRepacker.GUI.Panels
                 if (!(node.Tag is WzFile) && node.Parent != null)
                 {
                     actions.Add(UndoRedoManager.ObjectRemoved((WzNode)node.Parent, node));
-                    node.Delete();
+                    node.DeleteWzNode();
                 }
             UndoRedoMan.AddUndoBatch(actions);
         }
@@ -858,7 +858,10 @@ namespace HaRepacker.GUI.Panels
 
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
-                    childInlinkNode.Delete(); // Delete '_inlink' node
+                    childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
+
+                    // TODO: changing _Inlink image crashes
+                    // Mob2.wz/9400121/hit/0
                 }
                 else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
@@ -869,7 +872,7 @@ namespace HaRepacker.GUI.Panels
 
                     // Add undo actions
                     //actions.Add(UndoRedoManager.ObjectRemoved((WzNode)parentCanvasNode, childInlinkNode));
-                    childInlinkNode.Delete(); // Delete '_inlink' node
+                    childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
                 }
 
                 selectedWzCanvas.PngProperty.SetImage(bmp);
@@ -1111,7 +1114,7 @@ namespace HaRepacker.GUI.Panels
                                     break;
 
                                 case ReplaceResult.Yes: // Replace just this
-                                    child.Delete();
+                                    child.DeleteWzNode();
                                     parent.AddNode(node, false);
                                     replaceBoxResult = ReplaceResult.NoneSelectedYet; // reset after use
                                     break;
@@ -1121,7 +1124,7 @@ namespace HaRepacker.GUI.Panels
                                     break;
 
                                 case ReplaceResult.YesToAll:
-                                    child.Delete();
+                                    child.DeleteWzNode();
                                     parent.AddNode(node, false);
                                     break;
                             }
