@@ -38,6 +38,7 @@
                 <CommandBinding Command="ns:HaRibbon.NewPlatform"  CanExecute="AlwaysExecute" Executed="NewPlatform_Executed" />
                 <CommandBinding Command="ns:HaRibbon.UserObjs"  CanExecute="AlwaysExecute" Executed="UserObjs_Executed" />
                 <CommandBinding Command="ns:HaRibbon.Export"  CanExecute="AlwaysExecute" Executed="Export_Executed" />
+                <CommandBinding Command="ns:HaRibbon.PhysicsEdit"  CanExecute="AlwaysExecute" Executed="PhysicsEdit_Executed" />
             </Ribbon.CommandBindings>
 
             <Ribbon.ApplicationMenu>
@@ -162,11 +163,29 @@
             </RibbonTab>
 
             <RibbonTab x:Name="toolsTab" Header="Tools" KeyTip="T">
-                <RibbonGroup x:Name="Tools" Header="Tools">
+                <RibbonGroup x:Name="RibbonGroup_Tools" Header="Tools">
                     <RibbonButton Label="Settings" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Settings_big.png" Command="ns:HaRibbon.Settings" Focusable="False"/>
                     <RibbonButton Label="Manage User Objects" LargeImageSource="pack://application:,,,/HaCreator;component/Images/UserObjs.png" Command="ns:HaRibbon.UserObjs" Focusable="False"/>
                 </RibbonGroup>
-                <RibbonGroup x:Name="SimulatorSettings" Header="Map Simulator">
+
+                <RibbonGroup x:Name="RibbonGroup_Physics" Header="Map Physics">
+                    <RibbonButton Label="Edit" LargeImageSource="pack://application:,,,/HaCreator;component/Images/box_edit-big.png" Command="ns:HaRibbon.PhysicsEdit" Focusable="False"/>
+                </RibbonGroup>
+
+                <RibbonGroup x:Name="RibbonGroup_Options" Header="Options">
+                    <RibbonToggleButton x:Name="minimapBtn" Label="Show Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Minimap.png" Command="ns:HaRibbon.Minimap" Focusable="False"/>
+                    <RibbonToggleButton x:Name="parallaxBtn" Label="Parallax BGs" LargeImageSource="pack://application:,,,/HaCreator;component/Images/diagram_parallax.png" Command="ns:HaRibbon.Parallax" Focusable="False"/>
+                    <RibbonToggleButton x:Name="snapBtn" Label="Snapping" LargeImageSource="pack://application:,,,/HaCreator;component/Images/magnet_32.png" Command="ns:HaRibbon.Snapping" Focusable="False"/>
+                    <RibbonToggleButton x:Name="randomBtn" Label="Random Tiles" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Untitled1.png" Command="ns:HaRibbon.Random" Focusable="False"/>
+                    <RibbonToggleButton x:Name="infomodeBtn" Label="Info Mode" LargeImageSource="pack://application:,,,/HaCreator;component/Images/About.png" Command="ns:HaRibbon.InfoMode" Focusable="False"/>
+                </RibbonGroup>
+                <RibbonGroup x:Name="RibbonGroup_Saving" Header="Saving">
+                    <RibbonButton Label="Regenerate Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/RegenMinimap.png" Command="ns:HaRibbon.RegenMinimap" Focusable="False"/>
+                    <RibbonButton Label="Finalize Footholds" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Foothold.png" Command="ns:HaRibbon.Finalize" Focusable="False"/>
+                </RibbonGroup>
+
+                <!-- Preview -->
+                <RibbonGroup x:Name="RibbonGroup_SimulatorSettings" Header="Map Simulator">
                     <StackPanel Orientation="Horizontal">
                         <RibbonButton Label="Preview" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Play.png" Command="ns:HaRibbon.MapSim" Focusable="False"/>
 
@@ -176,18 +195,8 @@
                         </ComboBox>
                     </StackPanel>
                 </RibbonGroup>
-                <RibbonGroup x:Name="Options" Header="Options">
-                    <RibbonToggleButton x:Name="minimapBtn" Label="Show Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Minimap.png" Command="ns:HaRibbon.Minimap" Focusable="False"/>
-                    <RibbonToggleButton x:Name="parallaxBtn" Label="Parallax BGs" LargeImageSource="pack://application:,,,/HaCreator;component/Images/diagram_parallax.png" Command="ns:HaRibbon.Parallax" Focusable="False"/>
-                    <RibbonToggleButton x:Name="snapBtn" Label="Snapping" LargeImageSource="pack://application:,,,/HaCreator;component/Images/magnet_32.png" Command="ns:HaRibbon.Snapping" Focusable="False"/>
-                    <RibbonToggleButton x:Name="randomBtn" Label="Random Tiles" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Untitled1.png" Command="ns:HaRibbon.Random" Focusable="False"/>
-                    <RibbonToggleButton x:Name="infomodeBtn" Label="Info Mode" LargeImageSource="pack://application:,,,/HaCreator;component/Images/About.png" Command="ns:HaRibbon.InfoMode" Focusable="False"/>
-                </RibbonGroup>
-                <RibbonGroup x:Name="Saving" Header="Saving">
-                    <RibbonButton Label="Regenerate Minimap" LargeImageSource="pack://application:,,,/HaCreator;component/Images/RegenMinimap.png" Command="ns:HaRibbon.RegenMinimap" Focusable="False"/>
-                    <RibbonButton Label="Finalize Footholds" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Foothold.png" Command="ns:HaRibbon.Finalize" Focusable="False"/>
-                </RibbonGroup>
             </RibbonTab>
+
 
             <!-- <RibbonTab x:Name="statTab" Header="Stats" KeyTip="S">
                 <RibbonGroup x:Name="mouseVirt" Header="Mouse Virtual">

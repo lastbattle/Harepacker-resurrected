@@ -122,13 +122,13 @@
   </metadata>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="newToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>152, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="newToolStripMenuItem.Text" xml:space="preserve">
     <value>New (Ctl + T)</value>
   </data>
   <data name="openToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>152, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="openToolStripMenuItem.Text" xml:space="preserve">
     <value>Open (Ctl + O)</value>
@@ -151,7 +151,7 @@
 </value>
   </data>
   <data name="saveToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>152, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="saveToolStripMenuItem.Text" xml:space="preserve">
     <value>Save...</value>
@@ -174,7 +174,7 @@
 </value>
   </data>
   <data name="unloadAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>152, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="unloadAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Unload All</value>
@@ -196,7 +196,7 @@
 </value>
   </data>
   <data name="reloadAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>152, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="reloadAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Reload All</value>
@@ -318,7 +318,7 @@
 </value>
   </data>
   <data name="addToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="addToolStripMenuItem.Text" xml:space="preserve">
     <value>Add</value>
@@ -341,13 +341,13 @@
 </value>
   </data>
   <data name="removeToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="removeToolStripMenuItem.Text" xml:space="preserve">
     <value>Remove (Del)</value>
   </data>
   <data name="undoToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="undoToolStripMenuItem.Text" xml:space="preserve">
     <value>Undo</value>
@@ -357,7 +357,7 @@
     <value>False</value>
   </data>
   <data name="redoToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="redoToolStripMenuItem.Text" xml:space="preserve">
     <value>Redo</value>
@@ -366,13 +366,13 @@
     <value>False</value>
   </data>
   <data name="expandAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="expandAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Expand All</value>
   </data>
   <data name="collapseAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>145, 22</value>
   </data>
   <data name="collapseAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Collapse All</value>
@@ -402,7 +402,7 @@
     <value>IMG</value>
   </data>
   <data name="exportFilesToXMLToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="exportFilesToXMLToolStripMenuItem.Text" xml:space="preserve">
     <value>Export File(s) to</value>
@@ -444,7 +444,7 @@
     <value>IMG</value>
   </data>
   <data name="exportDataToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="exportDataToolStripMenuItem.Text" xml:space="preserve">
     <value>Export Selection</value>
@@ -462,13 +462,13 @@
     <value>IMG</value>
   </data>
   <data name="importToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="importToolStripMenuItem.Text" xml:space="preserve">
     <value>Import</value>
   </data>
   <data name="optionsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="optionsToolStripMenuItem.Text" xml:space="preserve">
     <value>Options...</value>
@@ -490,19 +490,19 @@
 </value>
   </data>
   <data name="searchToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="searchToolStripMenuItem.Text" xml:space="preserve">
     <value>Search (Ctrl+F)</value>
   </data>
   <data name="copyToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="copyToolStripMenuItem.Text" xml:space="preserve">
     <value>Copy (Ctrl+C)</value>
   </data>
   <data name="pasteToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>188, 30</value>
+    <value>159, 22</value>
   </data>
   <data name="pasteToolStripMenuItem.Text" xml:space="preserve">
     <value>Paste (Ctrl+V)</value>

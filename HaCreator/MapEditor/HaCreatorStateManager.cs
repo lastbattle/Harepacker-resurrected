@@ -94,6 +94,7 @@ namespace HaCreator.MapEditor
             this.ribbon.UserObjsClicked += Ribbon_UserObjsClicked;
             this.ribbon.ExportClicked += Ribbon_ExportClicked;
             this.ribbon.RibbonKeyDown += multiBoard.DxContainer_KeyDown;
+            this.ribbon.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
 
             this.tabs.SelectionChanged += Tabs_SelectionChanged;
 
@@ -819,6 +820,15 @@ namespace HaCreator.MapEditor
                 ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
                 ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
             }
+        }
+
+        /// <summary>
+        /// Edit map Physics
+        /// </summary>
+        private void Ribbon_EditMapPhysicsClicked()
+        {
+            MapPhysicsEditor editor = new MapPhysicsEditor();
+            editor.ShowDialog();
         }
         #endregion
 

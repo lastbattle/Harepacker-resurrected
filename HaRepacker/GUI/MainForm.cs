@@ -925,7 +925,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveToolStripMenuItem_Click(object sender, EventArgs e)
+        private void SaveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             WzNode node;
             if (MainPanel.DataTree.SelectedNode == null)

@@ -691,16 +691,21 @@ namespace HaRepacker.GUI.Panels
             string setText = textPropBox.Text;
 
             WzObject obj = (WzObject)DataTree.SelectedNode.Tag;
-            if (obj is WzImageProperty)
-                ((WzImageProperty)obj).ParentImage.Changed = true;
-            if (obj is WzVectorProperty)
+            if (obj is WzImageProperty imageProperty)
             {
-                ((WzVectorProperty)obj).X.Value = vectorPanel.X;
-                ((WzVectorProperty)obj).Y.Value = vectorPanel.Y;
+                imageProperty.ParentImage.Changed = true;
             }
-            else if (obj is WzStringProperty)
-                ((WzStringProperty)obj).Value = setText;
-            else if (obj is WzFloatProperty)
+
+            if (obj is WzVectorProperty vectorProperty)
+            {
+                vectorProperty.X.Value = vectorPanel.X;
+                vectorProperty.Y.Value = vectorPanel.Y;
+            }
+            else if (obj is WzStringProperty stringProperty)
+            {
+                stringProperty.Value = setText;
+            }
+            else if (obj is WzFloatProperty floatProperty)
             {
                 float val;
                 if (!float.TryParse(setText, out val))
@@ -708,9 +713,9 @@ namespace HaRepacker.GUI.Panels
                     Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
                     return;
                 }
-                ((WzFloatProperty)obj).Value = val;
+                floatProperty.Value = val;
             }
-            else if (obj is WzIntProperty)
+            else if (obj is WzIntProperty intProperty)
             {
                 int val;
                 if (!int.TryParse(setText, out val))
@@ -718,9 +723,9 @@ namespace HaRepacker.GUI.Panels
                     Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
                     return;
                 }
-                ((WzIntProperty)obj).Value = val;
+                intProperty.Value = val;
             }
-            else if (obj is WzLongProperty)
+            else if (obj is WzLongProperty longProperty)
             {
                 long val;
                 if (!long.TryParse(setText, out val))
@@ -728,9 +733,9 @@ namespace HaRepacker.GUI.Panels
                     Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
                     return;
                 }
-                ((WzLongProperty)obj).Value = val;
+                longProperty.Value = val;
             }
-            else if (obj is WzDoubleProperty)
+            else if (obj is WzDoubleProperty doubleProperty)
             {
                 double val;
                 if (!double.TryParse(setText, out val))
@@ -738,9 +743,9 @@ namespace HaRepacker.GUI.Panels
                     Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
                     return;
                 }
-                ((WzDoubleProperty)obj).Value = val;
+                doubleProperty.Value = val;
             }
-            else if (obj is WzShortProperty)
+            else if (obj is WzShortProperty shortProperty)
             {
                 short val;
                 if (!short.TryParse(setText, out val))
@@ -748,12 +753,12 @@ namespace HaRepacker.GUI.Panels
                     Warning.Error(string.Format(Properties.Resources.MainConversionError, setText));
                     return;
                 }
-                ((WzShortProperty)obj).Value = val;
+                shortProperty.Value = val;
             }
-            else if (obj is WzUOLProperty)
+            else if (obj is WzUOLProperty UOLProperty)
             {
-                ((WzUOLProperty)obj).Value = setText;
-            } 
+                UOLProperty.Value = setText;
+            }
             else if (obj is WzLuaProperty)
             {
                 WzLuaProperty luaProp = (WzLuaProperty)obj;

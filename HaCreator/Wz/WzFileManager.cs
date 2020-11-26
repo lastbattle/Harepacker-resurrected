@@ -50,7 +50,7 @@ namespace HaCreator.Wz
 
         private string baseDir;
         public Dictionary<string, WzFile> wzFiles = new Dictionary<string, WzFile>();
-        public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>();
+        public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>(); // flag for the list of WZ files changed to be saved later via Repack 
         public HashSet<WzImage> updatedImages = new HashSet<WzImage>();
         public Dictionary<string, WzMainDirectory> wzDirs = new Dictionary<string, WzMainDirectory>();
         private WzMapleVersion version;

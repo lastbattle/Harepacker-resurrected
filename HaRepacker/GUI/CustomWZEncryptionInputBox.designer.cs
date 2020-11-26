@@ -42,6 +42,7 @@ namespace HaRepacker.GUI
             this.label4 = new System.Windows.Forms.Label();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.groupBox2 = new System.Windows.Forms.GroupBox();
+            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
             this.button_resetAESUserKey = new System.Windows.Forms.Button();
             this.textBox_AESUserKey32 = new System.Windows.Forms.TextBox();
             this.textBox_AESUserKey29 = new System.Windows.Forms.TextBox();
@@ -76,7 +77,7 @@ namespace HaRepacker.GUI
             this.textBox_AESUserKey1 = new System.Windows.Forms.TextBox();
             this.textBox_AESUserKey3 = new System.Windows.Forms.TextBox();
             this.textBox_AESUserKey2 = new System.Windows.Forms.TextBox();
-            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
+            this.label6 = new System.Windows.Forms.Label();
             this.groupBox1.SuspendLayout();
             this.groupBox2.SuspendLayout();
             this.SuspendLayout();
@@ -144,6 +145,7 @@ namespace HaRepacker.GUI
             // 
             // groupBox2
             // 
+            this.groupBox2.Controls.Add(this.label6);
             this.groupBox2.Controls.Add(this.linkLabel1);
             this.groupBox2.Controls.Add(this.button_resetAESUserKey);
             this.groupBox2.Controls.Add(this.textBox_AESUserKey32);
@@ -182,6 +184,13 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.groupBox2, "groupBox2");
             this.groupBox2.Name = "groupBox2";
             this.groupBox2.TabStop = false;
+            // 
+            // linkLabel1
+            // 
+            resources.ApplyResources(this.linkLabel1, "linkLabel1");
+            this.linkLabel1.Name = "linkLabel1";
+            this.linkLabel1.TabStop = true;
+            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
             // 
             // button_resetAESUserKey
             // 
@@ -388,12 +397,11 @@ namespace HaRepacker.GUI
             this.textBox_AESUserKey2.Name = "textBox_AESUserKey2";
             this.textBox_AESUserKey2.Tag = "1";
             // 
-            // linkLabel1
+            // label6
             // 
-            resources.ApplyResources(this.linkLabel1, "linkLabel1");
-            this.linkLabel1.Name = "linkLabel1";
-            this.linkLabel1.TabStop = true;
-            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
+            resources.ApplyResources(this.label6, "label6");
+            this.label6.ForeColor = System.Drawing.SystemColors.AppWorkspace;
+            this.label6.Name = "label6";
             // 
             // CustomWZEncryptionInputBox
             // 
@@ -461,5 +469,6 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.TextBox textBox_AESUserKey2;
         private System.Windows.Forms.Button button_resetAESUserKey;
         private System.Windows.Forms.LinkLabel linkLabel1;
+        private System.Windows.Forms.Label label6;
     }
 }

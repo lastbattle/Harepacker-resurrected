@@ -119,7 +119,7 @@
   </resheader>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="saveButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>12, 379</value>
+    <value>12, 382</value>
   </data>
   <data name="saveButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>447, 31</value>
@@ -381,11 +381,38 @@
   <data name="&gt;&gt;groupBox1.ZOrder" xml:space="preserve">
     <value>1</value>
   </data>
+  <data name="label6.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="label6.Location" type="System.Drawing.Point, System.Drawing">
+    <value>57, 31</value>
+  </data>
+  <data name="label6.Size" type="System.Drawing.Size, System.Drawing">
+    <value>303, 13</value>
+  </data>
+  <data name="label6.TabIndex" type="System.Int32, mscorlib">
+    <value>47</value>
+  </data>
+  <data name="label6.Text" xml:space="preserve">
+    <value>Custom UserKey will only be used if IV is not '00 00 00 00'.</value>
+  </data>
+  <data name="&gt;&gt;label6.Name" xml:space="preserve">
+    <value>label6</value>
+  </data>
+  <data name="&gt;&gt;label6.Type" xml:space="preserve">
+    <value>System.Windows.Forms.Label, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;label6.Parent" xml:space="preserve">
+    <value>groupBox2</value>
+  </data>
+  <data name="&gt;&gt;label6.ZOrder" xml:space="preserve">
+    <value>0</value>
+  </data>
   <data name="linkLabel1.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="linkLabel1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>54, 263</value>
+    <value>57, 268</value>
   </data>
   <data name="linkLabel1.Size" type="System.Drawing.Size, System.Drawing">
     <value>325, 13</value>
@@ -406,10 +433,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;linkLabel1.ZOrder" xml:space="preserve">
-    <value>0</value>
+    <value>1</value>
   </data>
   <data name="button_resetAESUserKey.Location" type="System.Drawing.Point, System.Drawing">
-    <value>313, 32</value>
+    <value>313, 47</value>
   </data>
   <data name="button_resetAESUserKey.Size" type="System.Drawing.Size, System.Drawing">
     <value>128, 218</value>
@@ -430,10 +457,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;button_resetAESUserKey.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="textBox_AESUserKey32.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 228</value>
+    <value>237, 243</value>
   </data>
   <data name="textBox_AESUserKey32.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -454,10 +481,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey32.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <data name="textBox_AESUserKey29.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 228</value>
+    <value>6, 243</value>
   </data>
   <data name="textBox_AESUserKey29.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -478,10 +505,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey29.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="textBox_AESUserKey31.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 228</value>
+    <value>161, 243</value>
   </data>
   <data name="textBox_AESUserKey31.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -502,10 +529,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey31.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="textBox_AESUserKey30.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 228</value>
+    <value>85, 243</value>
   </data>
   <data name="textBox_AESUserKey30.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -526,10 +553,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey30.ZOrder" xml:space="preserve">
-    <value>5</value>
+    <value>6</value>
   </data>
   <data name="textBox_AESUserKey28.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 200</value>
+    <value>237, 215</value>
   </data>
   <data name="textBox_AESUserKey28.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -550,10 +577,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey28.ZOrder" xml:space="preserve">
-    <value>6</value>
+    <value>7</value>
   </data>
   <data name="textBox_AESUserKey25.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 200</value>
+    <value>6, 215</value>
   </data>
   <data name="textBox_AESUserKey25.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -574,10 +601,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey25.ZOrder" xml:space="preserve">
-    <value>7</value>
+    <value>8</value>
   </data>
   <data name="textBox_AESUserKey27.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 200</value>
+    <value>161, 215</value>
   </data>
   <data name="textBox_AESUserKey27.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -598,10 +625,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey27.ZOrder" xml:space="preserve">
-    <value>8</value>
+    <value>9</value>
   </data>
   <data name="textBox_AESUserKey26.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 200</value>
+    <value>85, 215</value>
   </data>
   <data name="textBox_AESUserKey26.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -622,10 +649,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey26.ZOrder" xml:space="preserve">
-    <value>9</value>
+    <value>10</value>
   </data>
   <data name="textBox_AESUserKey24.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 172</value>
+    <value>237, 187</value>
   </data>
   <data name="textBox_AESUserKey24.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -646,10 +673,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey24.ZOrder" xml:space="preserve">
-    <value>10</value>
+    <value>11</value>
   </data>
   <data name="textBox_AESUserKey21.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 172</value>
+    <value>6, 187</value>
   </data>
   <data name="textBox_AESUserKey21.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -670,10 +697,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey21.ZOrder" xml:space="preserve">
-    <value>11</value>
+    <value>12</value>
   </data>
   <data name="textBox_AESUserKey23.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 172</value>
+    <value>161, 187</value>
   </data>
   <data name="textBox_AESUserKey23.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -694,10 +721,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey23.ZOrder" xml:space="preserve">
-    <value>12</value>
+    <value>13</value>
   </data>
   <data name="textBox_AESUserKey22.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 172</value>
+    <value>85, 187</value>
   </data>
   <data name="textBox_AESUserKey22.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -718,10 +745,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey22.ZOrder" xml:space="preserve">
-    <value>13</value>
+    <value>14</value>
   </data>
   <data name="textBox_AESUserKey20.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 144</value>
+    <value>237, 159</value>
   </data>
   <data name="textBox_AESUserKey20.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -742,10 +769,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey20.ZOrder" xml:space="preserve">
-    <value>14</value>
+    <value>15</value>
   </data>
   <data name="textBox_AESUserKey17.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 144</value>
+    <value>6, 159</value>
   </data>
   <data name="textBox_AESUserKey17.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -766,10 +793,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey17.ZOrder" xml:space="preserve">
-    <value>15</value>
+    <value>16</value>
   </data>
   <data name="textBox_AESUserKey19.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 144</value>
+    <value>161, 159</value>
   </data>
   <data name="textBox_AESUserKey19.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -790,10 +817,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey19.ZOrder" xml:space="preserve">
-    <value>16</value>
+    <value>17</value>
   </data>
   <data name="textBox_AESUserKey18.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 144</value>
+    <value>85, 159</value>
   </data>
   <data name="textBox_AESUserKey18.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -814,10 +841,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey18.ZOrder" xml:space="preserve">
-    <value>17</value>
+    <value>18</value>
   </data>
   <data name="textBox_AESUserKey16.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 116</value>
+    <value>237, 131</value>
   </data>
   <data name="textBox_AESUserKey16.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -838,10 +865,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey16.ZOrder" xml:space="preserve">
-    <value>18</value>
+    <value>19</value>
   </data>
   <data name="textBox_AESUserKey13.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 116</value>
+    <value>6, 131</value>
   </data>
   <data name="textBox_AESUserKey13.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -862,10 +889,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey13.ZOrder" xml:space="preserve">
-    <value>19</value>
+    <value>20</value>
   </data>
   <data name="textBox_AESUserKey15.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 116</value>
+    <value>161, 131</value>
   </data>
   <data name="textBox_AESUserKey15.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -886,10 +913,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey15.ZOrder" xml:space="preserve">
-    <value>20</value>
+    <value>21</value>
   </data>
   <data name="textBox_AESUserKey14.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 116</value>
+    <value>85, 131</value>
   </data>
   <data name="textBox_AESUserKey14.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -910,10 +937,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey14.ZOrder" xml:space="preserve">
-    <value>21</value>
+    <value>22</value>
   </data>
   <data name="textBox_AESUserKey12.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 88</value>
+    <value>237, 103</value>
   </data>
   <data name="textBox_AESUserKey12.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -934,10 +961,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey12.ZOrder" xml:space="preserve">
-    <value>22</value>
+    <value>23</value>
   </data>
   <data name="textBox_AESUserKey9.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 88</value>
+    <value>6, 103</value>
   </data>
   <data name="textBox_AESUserKey9.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -958,10 +985,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey9.ZOrder" xml:space="preserve">
-    <value>23</value>
+    <value>24</value>
   </data>
   <data name="textBox_AESUserKey11.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 88</value>
+    <value>161, 103</value>
   </data>
   <data name="textBox_AESUserKey11.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -982,10 +1009,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey11.ZOrder" xml:space="preserve">
-    <value>24</value>
+    <value>25</value>
   </data>
   <data name="textBox_AESUserKey10.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 88</value>
+    <value>85, 103</value>
   </data>
   <data name="textBox_AESUserKey10.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1006,10 +1033,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey10.ZOrder" xml:space="preserve">
-    <value>25</value>
+    <value>26</value>
   </data>
   <data name="textBox_AESUserKey8.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 60</value>
+    <value>237, 75</value>
   </data>
   <data name="textBox_AESUserKey8.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1030,10 +1057,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey8.ZOrder" xml:space="preserve">
-    <value>26</value>
+    <value>27</value>
   </data>
   <data name="textBox_AESUserKey5.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 60</value>
+    <value>6, 75</value>
   </data>
   <data name="textBox_AESUserKey5.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1054,10 +1081,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey5.ZOrder" xml:space="preserve">
-    <value>27</value>
+    <value>28</value>
   </data>
   <data name="textBox_AESUserKey7.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 60</value>
+    <value>161, 75</value>
   </data>
   <data name="textBox_AESUserKey7.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1078,10 +1105,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey7.ZOrder" xml:space="preserve">
-    <value>28</value>
+    <value>29</value>
   </data>
   <data name="textBox_AESUserKey6.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 60</value>
+    <value>85, 75</value>
   </data>
   <data name="textBox_AESUserKey6.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1102,10 +1129,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey6.ZOrder" xml:space="preserve">
-    <value>29</value>
+    <value>30</value>
   </data>
   <data name="textBox_AESUserKey4.Location" type="System.Drawing.Point, System.Drawing">
-    <value>237, 32</value>
+    <value>237, 47</value>
   </data>
   <data name="textBox_AESUserKey4.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1126,13 +1153,13 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey4.ZOrder" xml:space="preserve">
-    <value>30</value>
+    <value>31</value>
   </data>
   <data name="label5.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
   <data name="label5.Location" type="System.Drawing.Point, System.Drawing">
-    <value>141, 16</value>
+    <value>68, 18</value>
   </data>
   <data name="label5.Size" type="System.Drawing.Size, System.Drawing">
     <value>252, 13</value>
@@ -1153,10 +1180,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;label5.ZOrder" xml:space="preserve">
-    <value>31</value>
+    <value>32</value>
   </data>
   <data name="textBox_AESUserKey1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>6, 32</value>
+    <value>6, 47</value>
   </data>
   <data name="textBox_AESUserKey1.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1177,10 +1204,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey1.ZOrder" xml:space="preserve">
-    <value>32</value>
+    <value>33</value>
   </data>
   <data name="textBox_AESUserKey3.Location" type="System.Drawing.Point, System.Drawing">
-    <value>161, 32</value>
+    <value>161, 47</value>
   </data>
   <data name="textBox_AESUserKey3.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1201,10 +1228,10 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey3.ZOrder" xml:space="preserve">
-    <value>33</value>
+    <value>34</value>
   </data>
   <data name="textBox_AESUserKey2.Location" type="System.Drawing.Point, System.Drawing">
-    <value>85, 32</value>
+    <value>85, 47</value>
   </data>
   <data name="textBox_AESUserKey2.Size" type="System.Drawing.Size, System.Drawing">
     <value>70, 22</value>
@@ -1225,13 +1252,13 @@
     <value>groupBox2</value>
   </data>
   <data name="&gt;&gt;textBox_AESUserKey2.ZOrder" xml:space="preserve">
-    <value>34</value>
+    <value>35</value>
   </data>
   <data name="groupBox2.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 83</value>
   </data>
   <data name="groupBox2.Size" type="System.Drawing.Size, System.Drawing">
-    <value>447, 290</value>
+    <value>447, 293</value>
   </data>
   <data name="groupBox2.TabIndex" type="System.Int32, mscorlib">
     <value>14</value>
@@ -1258,7 +1285,7 @@
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>471, 422</value>
+    <value>471, 424</value>
   </data>
   <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>

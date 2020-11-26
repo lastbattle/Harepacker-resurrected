@@ -146,6 +146,8 @@ namespace HaCreator.GUI
             new InputGestureCollection() { });
         public static readonly RoutedUICommand Export = new RoutedUICommand("Export", "Export", typeof(HaRibbon),
             new InputGestureCollection() { });
+        public static readonly RoutedUICommand PhysicsEdit = new RoutedUICommand("PhysicsEdit", "PhysicsEdit", typeof(HaRibbon),
+            new InputGestureCollection() { });
 
         private void AlwaysExecute(object sender, CanExecuteRoutedEventArgs e)
         {
@@ -270,6 +272,18 @@ namespace HaCreator.GUI
             if (ExportClicked != null)
                 ExportClicked.Invoke();
         }
+
+        /// <summary>
+        /// Edit map physics
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void PhysicsEdit_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (MapPhysicsClicked != null)
+                MapPhysicsClicked.Invoke();
+        }
+
 
         #region Layer UI
         private void LayerUp_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -482,6 +496,7 @@ namespace HaCreator.GUI
         public event EmptyEvent ExportClicked;
         public event EmptyEvent NewPlatformClicked;
         public event EmptyEvent UserObjsClicked;
+        public event EmptyEvent MapPhysicsClicked;
         public event EventHandler<System.Windows.Forms.KeyEventArgs> RibbonKeyDown;
 
         public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)
