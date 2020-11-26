@@ -81,30 +81,28 @@ namespace MapleLib.WzLib.Util
             aes.BlockSize = 128;
             aes.Key = AESUserKey;
             aes.Mode = CipherMode.ECB;
+            MemoryStream ms = new MemoryStream(newKeys, startIndex, newKeys.Length - startIndex, true);
+            CryptoStream s = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write);
 
-            using (MemoryStream ms = new MemoryStream(newKeys, startIndex, newKeys.Length - startIndex, true))
+            for (int i = startIndex; i < size; i += 16)
             {
-                using (CryptoStream s = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
+                if (i == 0)
                 {
-                    for (int i = startIndex; i < size; i += 16)
+                    byte[] block = new byte[16];
+                    for (int j = 0; j < block.Length; j++)
                     {
-                        if (i == 0)
-                        {
-                            byte[] block = new byte[16];
-                            for (int j = 0; j < block.Length; j++)
-                            {
-                                block[j] = IV[j % 4];
-                            }
-                            s.Write(block, 0, block.Length);
-                        }
-                        else
-                        {
-                            s.Write(newKeys, i - 16, 16);
-                        }
+                        block[j] = IV[j % 4];
                     }
-                    s.Flush();
+                    s.Write(block, 0, block.Length);
+                }
+                else
+                {
+                    s.Write(newKeys, i - 16, 16);
                 }
             }
+
+            s.Flush();
+            ms.Close();
             this.keys = newKeys;
         }
     }

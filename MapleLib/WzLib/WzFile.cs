@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
 using System.Linq;
+using System.Diagnostics;
 
 namespace MapleLib.WzLib
 {
@@ -224,8 +225,10 @@ namespace MapleLib.WzLib
                         testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                         testDirectory.ParseDirectory(lazyParse);
                     }
-                    catch
+                    catch (Exception exp)
                     {
+                        Debug.WriteLine(exp.ToString());
+
                         reader.BaseStream.Position = position;
                         continue;
                     }
