@@ -58,6 +58,19 @@ namespace HaCreator
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 #endif
 
+            // Localisation
+            CultureInfo ci = GetMainCulture(CultureInfo.CurrentCulture);
+            Properties.Resources.Culture = ci;
+
+            Thread.CurrentThread.CurrentCulture = ci;
+            Thread.CurrentThread.CurrentUICulture = ci;
+
+            CultureInfo.CurrentCulture = ci;
+            CultureInfo.CurrentUICulture = ci;
+            CultureInfo.DefaultThreadCurrentCulture = ci;
+            CultureInfo.DefaultThreadCurrentUICulture = ci;
+
+
             Properties.Resources.Culture = CultureInfo.CurrentCulture;
             InfoManager = new WzInformationManager();
             SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
@@ -81,6 +94,34 @@ namespace HaCreator
                 Application.Restart();
             }
         }
+
+        /// <summary>
+        /// Allows customisation of display text during runtime..
+        /// </summary>
+        /// <param name="ci"></param>
+        /// <returns></returns>
+        private static CultureInfo GetMainCulture(CultureInfo ci)
+        {
+            if (!ci.Name.Contains("-"))
+                return ci;
+            switch (ci.Name.Split("-".ToCharArray())[0])
+            {
+                case "ko":
+                    return new CultureInfo("ko");
+                case "ja":
+                    return new CultureInfo("ja");
+                case "en":
+                    return new CultureInfo("en");
+                case "zh":
+                    if (ci.EnglishName.Contains("Simplified"))
+                        return new CultureInfo("zh-CHS");
+                    else
+                        return new CultureInfo("zh-CHT");
+                default:
+                    return ci;
+            }
+        }
+
         private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             new ThreadExceptionDialog((Exception)e.ExceptionObject).ShowDialog();

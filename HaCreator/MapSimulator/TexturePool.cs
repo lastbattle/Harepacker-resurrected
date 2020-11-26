@@ -39,12 +39,19 @@ namespace HaCreator.MapSimulator
         public void AddTextureToPool(string wzpath, Texture2D texture)
         {
             if (!TEXTURE_POOL.ContainsKey(wzpath))
-                TEXTURE_POOL.Add(wzpath, texture);
+            {
+                lock (TEXTURE_POOL)
+                    if (!TEXTURE_POOL.ContainsKey(wzpath)) // check again
+                    {
+                        TEXTURE_POOL.Add(wzpath, texture);
+                    }
+            }
         }
 
         public void Dispose()
         {
-            TEXTURE_POOL.Clear();
+            lock (TEXTURE_POOL)
+                TEXTURE_POOL.Clear();
         }
     }
 }

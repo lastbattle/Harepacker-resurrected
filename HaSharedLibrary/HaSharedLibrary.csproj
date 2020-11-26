@@ -24,6 +24,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <PlatformTarget>x64</PlatformTarget>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -32,6 +33,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="MonoGame.Framework, Version=3.7.1.189, Culture=neutral, processorArchitecture=MSIL">
@@ -106,6 +108,9 @@
     <Compile Include="Render\DX\DXSpineObject.cs" />
     <Compile Include="Render\DX\IDXObject.cs" />
     <Compile Include="Render\RenderResolution.cs" />
+    <Compile Include="SharpApng\SharpApng.cs" />
+    <Compile Include="SharpApng\SharpApngBasicWrapper.cs" />
+    <Compile Include="SharpApng\SharpApngFrame.cs" />
     <Compile Include="user32.cs" />
     <Compile Include="Util\BitmapHelper.cs" />
     <Compile Include="Util\ScreenDPIUtil.cs" />

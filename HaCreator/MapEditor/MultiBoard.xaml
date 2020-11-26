@@ -26,8 +26,8 @@
         </WindowsFormsHost>
 
         <ScrollBar x:Name="vScrollBar" HorizontalAlignment="Right"
-                   Scroll="vScrollBar_Scroll"/>
+                   Scroll="VScrollBar_Scroll"/>
         <ScrollBar x:Name="hScrollBar" VerticalAlignment="Bottom" Orientation="Horizontal" Margin="0,0,20,0"
-                   Scroll="hScrollBar_Scroll"/>
+                   Scroll="HScrollBar_Scroll"/>
     </Grid>
 </UserControl>

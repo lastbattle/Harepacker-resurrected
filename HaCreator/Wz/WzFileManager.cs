@@ -50,7 +50,7 @@ namespace HaCreator.Wz
 
         private string baseDir;
         public Dictionary<string, WzFile> wzFiles = new Dictionary<string, WzFile>();
-        public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>();
+        public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>(); // flag for the list of WZ files changed to be saved later via Repack 
         public HashSet<WzImage> updatedImages = new HashSet<WzImage>();
         public Dictionary<string, WzMainDirectory> wzDirs = new Dictionary<string, WzMainDirectory>();
         private WzMapleVersion version;
@@ -91,8 +91,12 @@ namespace HaCreator.Wz
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
 
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+                WzFileParseStatus parseStatus = wzf.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
+                {
+                    MessageBox.Show("Error parsing " + name + ".wz (" + parseStatus.GetErrorDescription() + ")");
+                    return false;
+                }
 
                 name = name.ToLower();
                 wzFiles[name] = wzf;
@@ -112,9 +116,13 @@ namespace HaCreator.Wz
             try
             {
                 WzFile wzf = new WzFile(Path.Combine(baseDir, Capitalize(name) + ".wz"), version);
-
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = wzf.ParseWzFile(out parseErrorMessage);
+                
+                WzFileParseStatus parseStatus = wzf.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
+                {
+                    MessageBox.Show("Error parsing " + name + ".wz (" + parseStatus.GetErrorDescription() + ")");
+                    return false;
+                }
 
                 name = name.ToLower();
                 wzFiles[name] = wzf;

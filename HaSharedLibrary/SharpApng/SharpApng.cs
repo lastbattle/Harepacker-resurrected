@@ -11,7 +11,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 using System.Drawing.Imaging;
 
-namespace HaRepacker.SharpApng
+namespace HaSharedLibrary.SharpApng
 {
 
     public class SharpApng : IDisposable

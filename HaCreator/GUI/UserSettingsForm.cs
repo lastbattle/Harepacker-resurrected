@@ -36,9 +36,11 @@ namespace HaCreator.GUI
             // Resolutions
             foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
             {
-                ComboBoxItem comboBoxItem = new ComboBoxItem();
-                comboBoxItem.Tag = val;
-                comboBoxItem.Content = val.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
+                ComboBoxItem comboBoxItem = new ComboBoxItem
+                {
+                    Tag = val,
+                    Content = RenderResolutionExtensions.ToReadableString(val)
+                };
 
                 comboBox_resolution.Items.Add(comboBoxItem);
             }

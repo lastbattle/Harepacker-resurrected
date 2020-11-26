@@ -235,6 +235,7 @@ namespace MapleLib.WzLib
             for (int x = 0; x < segments.Length; x++)
             {
                 bool foundChild = false;
+
                 foreach (WzImageProperty iwp in (ret == null ? this.properties : ret.WzProperties))
                 {
                     if (iwp.Name == segments[x])
@@ -352,7 +353,6 @@ namespace MapleLib.WzLib
                                 parsed = true; // test
                                 return true;
                             }
-
                             return false; // unhandled for now, if it isnt an .lua image
                         }
                     case WzImageHeaderByte:
@@ -414,10 +414,13 @@ namespace MapleLib.WzLib
         /// Writes the WzImage object to the underlying WzBinaryWriter
         /// </summary>
         /// <param name="writer"></param>
+        /// <param name="bIsWzUserKeyDefault">Uses the default MapleStory UserKey or a custom key.</param>
         /// <param name="forceReadFromData">Read from data regardless of base data that's changed or not.</param>
-		public void SaveImage(WzBinaryWriter writer, bool forceReadFromData = false)
+		public void SaveImage(WzBinaryWriter writer, bool bIsWzUserKeyDefault = true, bool forceReadFromData = false)
         {
-            if (bIsImageChanged || forceReadFromData) // if its not being force-read and written, it saves with the previous WZ encryption IV.
+            if (bIsImageChanged ||
+                !bIsWzUserKeyDefault || //  everything needs to be re-written when a custom UserKey is used
+                forceReadFromData) // if its not being force-read and written, it saves with the previous WZ encryption IV.
             {
                 if (reader != null && !parsed)
                 {

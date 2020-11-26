@@ -82,7 +82,7 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.listBox, "listBox");
             this.listBox.Name = "listBox";
             this.listBox.UseVisualStyleBackColor = true;
-            this.listBox.CheckedChanged += new System.EventHandler(this.listwz_CheckedChanged);
+            this.listBox.CheckedChanged += new System.EventHandler(this.Listwz_CheckedChanged);
             // 
             // copyrightBox
             // 
@@ -124,7 +124,7 @@ namespace HaRepacker.GUI
             this.encryptionBox.FormattingEnabled = true;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
-            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.encryptionBox_SelectionChanged);
+            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.EncryptionBox_SelectionChanged);
             // 
             // radioButton_hotfix
             // 

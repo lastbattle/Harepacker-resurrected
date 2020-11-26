@@ -21,7 +21,7 @@ namespace HaRepacker.FHMapper
     {
         public static string SettingsPath = Path.Combine(ConfigurationManager.GetLocalFolderPath(), "Settings.ini");
         public List<Object> settings = new List<object>();
-        private MainPanel MainPanel;
+        private readonly MainPanel MainPanel;
         private TreeNode node;
 
         // Fonts
@@ -639,12 +639,14 @@ namespace HaRepacker.FHMapper
                 return false;
 
             // Display render map
-            DisplayMap showMap = new DisplayMap();
-            showMap.map = fullBmp;
-            showMap.Footholds = FHs;
-            showMap.thePortals = Ps;
-            showMap.settings = settings;
-            showMap.MobSpawnPoints = MSPs;
+            DisplayMap showMap = new DisplayMap
+            {
+                map = fullBmp,
+                Footholds = FHs,
+                thePortals = Ps,
+                settings = settings,
+                MobSpawnPoints = MSPs
+            };
             showMap.FormClosed += new FormClosedEventHandler(DisplayMapClosed);
             try
             {

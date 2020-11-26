@@ -22,6 +22,9 @@ using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using System.Threading.Tasks;
 using MapleLib.PacketLib;
+using MapleLib.MapleCryptoLib;
+using System.Linq;
+using System.Diagnostics;
 
 namespace MapleLib.WzLib
 {
@@ -162,7 +165,7 @@ namespace MapleLib.WzLib
         /// Parses the wz file, if the wz file is a list.wz file, WzDirectory will be a WzListDirectory, if not, it'll simply be a WzDirectory
         /// </summary>
         /// <param name="WzIv">WzIv is not set if null (Use existing iv)</param>
-        public bool ParseWzFile(out string parseErrorMessage, byte[] WzIv = null)
+        public WzFileParseStatus ParseWzFile(byte[] WzIv = null)
         {
             /*if (maplepLocalVersion != WzMapleVersion.GENERATE)
             {
@@ -173,20 +176,7 @@ namespace MapleLib.WzLib
             {
                 this.WzIv = WzIv;
             }
-            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage, false);
-
-            return parseSuccess;
-        }
-
-        /// <summary>
-        /// Lazly parses the wz file, for faster bruteforcing
-        /// </summary>
-        /// <param name="parseErrorMessage"></param>
-        /// <returns></returns>
-        public bool LazyParseWzFile(out string parseErrorMessage)
-        {
-            bool parseSuccess = ParseMainWzDirectory(out parseErrorMessage, true);
-            return parseSuccess;
+            return ParseMainWzDirectory(false);
         }
 
 
@@ -196,13 +186,12 @@ namespace MapleLib.WzLib
         /// <param name="parseErrorMessage"></param>
         /// <param name="lazyParse">Only load the firt WzDirectory found if true</param>
         /// <returns></returns>
-        internal bool ParseMainWzDirectory(out string parseErrorMessage, bool lazyParse = false)
+        internal WzFileParseStatus ParseMainWzDirectory(bool lazyParse = false)
         {
             if (this.path == null)
             {
                 Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "[Error] Path is null");
-                parseErrorMessage = "[Error] Path is null";
-                return false;
+                return WzFileParseStatus.Path_Is_Null;
             }
             WzBinaryReader reader = new WzBinaryReader(File.Open(this.path, FileMode.Open, FileAccess.Read, FileShare.Read), WzIv);
 
@@ -236,8 +225,10 @@ namespace MapleLib.WzLib
                         testDirectory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                         testDirectory.ParseDirectory(lazyParse);
                     }
-                    catch
+                    catch (Exception exp)
                     {
+                        Debug.WriteLine(exp.ToString());
+
                         reader.BaseStream.Position = position;
                         continue;
                     }
@@ -266,9 +257,7 @@ namespace MapleLib.WzLib
                                         WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                                         directory.ParseDirectory(lazyParse);
                                         this.wzDir = directory;
-
-                                        parseErrorMessage = "Success";
-                                        return true;
+                                        return WzFileParseStatus.Success;
                                     }
                                 default:
                                     {
@@ -289,7 +278,8 @@ namespace MapleLib.WzLib
                         testDirectory.Dispose();
                     }
                 }
-                parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
+                //parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
+                return WzFileParseStatus.Error_Game_Ver_Hash;
             }
             else
             {
@@ -299,9 +289,7 @@ namespace MapleLib.WzLib
                 directory.ParseDirectory();
                 this.wzDir = directory;
             }
-
-            parseErrorMessage = "Success";
-            return true;
+            return WzFileParseStatus.Success;
         }
 
         /// <summary>
@@ -337,7 +325,7 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Version hash
         /// </summary>
-        private void CreateVersionHash()
+        private void CreateWZVersionHash()
         {
             versionHash = 0;
             foreach (char ch in mapleStoryPatchVersion.ToString())
@@ -357,27 +345,27 @@ namespace MapleLib.WzLib
         /// <param name="path">Path to the output wz file</param>
         public void SaveToDisk(string path, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
+            // WZ IV
             if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
                 WzIv = WzTool.GetIvByMapleVersion(maplepLocalVersion); // get from local WzFile
             else
                 WzIv = WzTool.GetIvByMapleVersion(savingToPreferredWzVer); // custom selected
 
-            bool bIsWzIvSimilar = true; // check if its saving to the same IV.
-            for (int i = 0; i < WzIv.Length; i++)
-            {
-                if (WzIv[i] != wzDir.WzIv[i]) 
-                    bIsWzIvSimilar = false;
-            }
+            bool bIsWzIvSimilar = WzIv.SequenceEqual(wzDir.WzIv); // check if its saving to the same IV.
             wzDir.WzIv = WzIv;
 
-            CreateVersionHash();
+            // MapleStory UserKey
+            bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
+            //
+
+            CreateWZVersionHash();
             wzDir.SetVersionHash(versionHash);
 
             string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
             File.Create(tempFile).Close();
             using (FileStream fs = new FileStream(tempFile, FileMode.Append, FileAccess.Write)) 
             {
-                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, fs);
+                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, bIsWzUserKeyDefault, fs);
             }
 
             WzTool.StringCache.Clear();
@@ -452,8 +440,10 @@ namespace MapleLib.WzLib
                 return new List<WzObject> { WzDirectory };
             else if (path == "*")
             {
-                List<WzObject> fullList = new List<WzObject>();
-                fullList.Add(WzDirectory);
+                List<WzObject> fullList = new List<WzObject>
+                {
+                    WzDirectory
+                };
                 fullList.AddRange(GetObjectsFromDirectory(WzDirectory));
                 return fullList;
             }

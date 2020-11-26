@@ -34,7 +34,7 @@ namespace HaRepacker
         };
         #endregion
 
-        private List<WzFile> wzFiles = new List<WzFile>();
+        private readonly List<WzFile> wzFiles = new List<WzFile>();
 
         public WzFileManager()
         {
@@ -58,12 +58,11 @@ namespace HaRepacker
                 {
                     wzFiles.Add(f);
                 }
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
-                if (!parseSuccess)
+                WzFileParseStatus parseStatus = f.ParseWzFile();
+                if (parseStatus != WzFileParseStatus.Success)
                 {
                     file = null;
-                    Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + parseErrorMessage + ").");
+                    Warning.Error("Error initializing " + Path.GetFileName(path) + " (" + parseStatus.GetErrorDescription() + ").");
                     return false;
                 }
 
@@ -84,7 +83,7 @@ namespace HaRepacker
             {
                 if (wzFiles.Contains(file)) // check again within scope
                 {
-                    ((WzNode)file.HRTag).Delete();
+                    ((WzNode)file.HRTag).DeleteWzNode();
                     wzFiles.Remove(file);
                 }
             }
@@ -125,11 +124,9 @@ namespace HaRepacker
         /// <returns></returns>
         public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, MainPanel panel)
         {
-            WzImage img;
-
             using (FileStream fs = File.Open(path, FileMode.Open))
             {
-                img = new WzImage(Path.GetFileName(path), fs, encVersion);
+                WzImage img = new WzImage(Path.GetFileName(path), fs, encVersion);
                 img.ParseImage(true);
 
                 WzNode node = new WzNode(img);
@@ -142,10 +139,8 @@ namespace HaRepacker
                 {
                     SortNodesRecursively(node);
                 }
+                return img;
             }
-
-            return img;
-
         }
 
         /// <summary>

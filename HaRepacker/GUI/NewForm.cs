@@ -8,6 +8,8 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib;
 using HaRepacker.GUI.Panels;
+using MapleLib.MapleCryptoLib;
+using System.Linq;
 
 namespace HaRepacker.GUI
 {
@@ -62,7 +64,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void encryptionBox_SelectionChanged(object sender, EventArgs e)
+        private void EncryptionBox_SelectionChanged(object sender, EventArgs e)
         {
             if (bIsLoading)
                 return;
@@ -73,6 +75,9 @@ namespace HaRepacker.GUI
             {
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+            } else
+            {
+                MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
         }
 
@@ -81,7 +86,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void listwz_CheckedChanged(object sender, EventArgs e)
+        private void Listwz_CheckedChanged(object sender, EventArgs e)
         {
             copyrightBox.Enabled = true;
             versionBox.Enabled = true;

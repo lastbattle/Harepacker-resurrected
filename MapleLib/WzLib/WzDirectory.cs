@@ -314,9 +314,10 @@ namespace MapleLib.WzLib
         /// 
         /// </summary>
         /// <param name="useIv">The IV to use while generating the data file. If null, it'll use the WzDirectory default</param>
+        /// <param name="bIsWzUserKeyDefault">Uses the default MapleStory UserKey or a custom key.</param>
         /// <param name="prevOpenedStream">The previously opened file stream</param>
         /// <returns></returns>
-		internal int GenerateDataFile(byte[] useIv, FileStream prevOpenedStream)
+		internal int GenerateDataFile(byte[] useIv, bool bIsWzUserKeyDefault, FileStream prevOpenedStream)
         {
             bool useCustomIv = useIv != null; // whole shit gonna be re-written if its a custom IV specified
 
@@ -332,13 +333,15 @@ namespace MapleLib.WzLib
 
             foreach (WzImage img in images)
             {
-                if (useCustomIv || img.bIsImageChanged)
+                if (useCustomIv ||// everything needs to be re-written when a custom IV is used.
+                    !bIsWzUserKeyDefault || //  everything needs to be re-written when a custom UserKey is used too
+                    img.bIsImageChanged) // or when an image is changed
                 {
                     using (MemoryStream memStream = new MemoryStream())
                     {
                         using (WzBinaryWriter imgWriter = new WzBinaryWriter(memStream, useCustomIv ? useIv : this.WzIv))
                         {
-                            img.SaveImage(imgWriter, useCustomIv);
+                            img.SaveImage(imgWriter, bIsWzUserKeyDefault, useCustomIv);
 
                             img.CalculateAndSetImageChecksum(memStream.ToArray()); // checksum
 
@@ -368,7 +371,7 @@ namespace MapleLib.WzLib
                 offsetSize += 4;
 
                 // otherwise Item.wz (300MB) probably uses > 4GB
-                if (useCustomIv) // when using custom IV, or changing IVs, all images have to be re-read and re-written..
+                if (useCustomIv || !bIsWzUserKeyDefault) // when using custom IV, or changing IVs, all images have to be re-read and re-written..
                 {
                     GC.Collect(); // GC slows down writing of maps in HaCreator
                     GC.WaitForPendingFinalizers();
@@ -381,7 +384,7 @@ namespace MapleLib.WzLib
             {
                 int nameLen = WzTool.GetWzObjectValueLength(dir.name, 3);
                 size += nameLen;
-                size += dir.GenerateDataFile(useIv, prevOpenedStream);
+                size += dir.GenerateDataFile(useIv, bIsWzUserKeyDefault, prevOpenedStream);
                 size += WzTool.GetCompressedIntLength(dir.size);
                 size += WzTool.GetCompressedIntLength(dir.Checksum);
                 size += 4;

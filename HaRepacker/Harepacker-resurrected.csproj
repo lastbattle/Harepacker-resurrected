@@ -194,6 +194,7 @@
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
+    <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
     <Compile Include="GUI\ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
@@ -398,9 +399,6 @@
       <DependentUpon>Resources.zh-CHT.resx</DependentUpon>
     </Compile>
     <Compile Include="SavedFolderBrowser.cs" />
-    <Compile Include="SharpApng\SharpApng.cs" />
-    <Compile Include="SharpApng\SharpApngBasicWrapper.cs" />
-    <Compile Include="SharpApng\SharpApngFrame.cs" />
     <Compile Include="TreeViewMS.cs">
       <SubType>Component</SubType>
     </Compile>

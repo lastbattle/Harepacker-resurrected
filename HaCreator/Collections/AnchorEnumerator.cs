@@ -20,7 +20,7 @@ namespace HaCreator.Collections
         private FootholdAnchor first;
         private FootholdAnchor curr;
         private HashSet<FootholdAnchor> visited = new HashSet<FootholdAnchor>();
-        private Stack<FootholdAnchor> toVisit = new Stack<FootholdAnchor>();
+        private readonly Stack<FootholdAnchor> toVisit = new Stack<FootholdAnchor>();
 
 
         public AnchorEnumerator(FootholdAnchor start)

@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
+using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using Newtonsoft.Json;
 using System;
@@ -144,7 +145,7 @@ namespace MapleLib.Configuration
             bool loaded = Load();
             if (loaded)
             {
-                string storedCustomEnc = ApplicationSettings.MapleVersion_EncryptionBytes;
+                string storedCustomEnc = ApplicationSettings.MapleVersion_CustomEncryptionBytes;
                 byte[] bytes = HexEncoding.GetBytes(storedCustomEnc);
 
                 if (bytes.Length == 4)
@@ -152,7 +153,22 @@ namespace MapleLib.Configuration
                     return bytes;
                 }
             }
-            return new byte[4]; // fallback with BMS
+            return new byte[4] { 0x0, 0x0, 0x0, 0x0 }; // fallback with BMS
+        }
+
+        public void SetCustomWzUserKeyFromConfig()
+        {
+            // Set the UserKey in memory.
+            MapleCryptoConstants.UserKey_WzLib = new byte[128];
+            byte[] bytes = HexEncoding.GetBytes(ApplicationSettings.MapleVersion_CustomAESUserKey);
+
+            for (int i = 0; i < MapleCryptoConstants.UserKey_WzLib.Length; i += 4)
+            {
+                MapleCryptoConstants.UserKey_WzLib[i] = bytes[i / 4];
+                MapleCryptoConstants.UserKey_WzLib[i + 1] = 0;
+                MapleCryptoConstants.UserKey_WzLib[i + 2] = 0;
+                MapleCryptoConstants.UserKey_WzLib[i + 3] = 0;
+            }
         }
     }
 }

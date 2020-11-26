@@ -33,4 +33,17 @@ namespace HaSharedLibrary.Render.DX
         Res_1920x1200_120PercScaled = 0x80, // 1920x1200 16:9 120% scale
         Res_1920x1200_150PercScaled = 0x100, // 1920x1200 16:9 150% scale
     }
+
+    public static class RenderResolutionExtensions
+    {
+        /// <summary>
+        /// Converts RenderResolution name to human readable text
+        /// </summary>
+        /// <param name="rr"></param>
+        /// <returns></returns>
+        public static string ToReadableString(this RenderResolution rr)
+        {
+            return rr.ToString().Replace("Res_", "").Replace("_", " ").Replace("PercScaled", "% scale");
+        }
+    }
 }

@@ -22,7 +22,7 @@ namespace HaRepacker.Converter
 	/// </summary>
     public class VectorOriginPointFToMarginConverter : IValueConverter
 	{
-		private float fCrossHairWidthHeight = 10f / 2f;
+		private readonly float fCrossHairWidthHeight = 10f / 2f;
 
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{

@@ -49,14 +49,14 @@ namespace HaCreator.MapEditor
     {
         private GraphicsDevice DxDevice;
         private Microsoft.Xna.Framework.Graphics.SpriteBatch sprite;
-        private PresentationParameters pParams = new PresentationParameters();
+        private readonly PresentationParameters pParams = new PresentationParameters();
         private Microsoft.Xna.Framework.Graphics.Texture2D pixel;
 
         private FontEngine fontEngine;
         private Thread renderer;
         private bool needsReset = false;
-        private IntPtr dxHandle;
-        private UserObjectsManager userObjs;
+        private readonly IntPtr dxHandle;
+        private readonly UserObjectsManager userObjs;
         private Scheduler scheduler;
 
         // UI
@@ -426,7 +426,7 @@ namespace HaCreator.MapEditor
         #endregion
 
         #region Human I\O Handling
-        private BoardItem GetHighestItem(List<BoardItem> items)
+        private BoardItem GetHighestBoardItem(List<BoardItem> items)
         {
             if (items.Count < 1) return null;
             int highestZ = -1;
@@ -659,7 +659,10 @@ namespace HaCreator.MapEditor
             //System.Diagnostics.Debug.Write("Rotation: " + rotationDelta);
 
             // wheel up = positive, wheel down = negative
-            AddHScrollbarValue((int)rotationDelta);
+            if (!AddHScrollbarValue((int)rotationDelta))
+            {
+                //AddVScrollbarValue((int)rotationDelta); // scroll v scroll bar instead if its not possible
+            }
         }
 
         /// <summary>
@@ -842,7 +845,7 @@ namespace HaCreator.MapEditor
                     vScrollBar.Value = vScrollBar.Maximum;
                 else
                     vScrollBar.Value -= (int)scrollValue;
-                vScrollBar_Scroll(null, null);
+                VScrollBar_Scroll(null, null);
 
                 return true;
             }
@@ -910,17 +913,21 @@ namespace HaCreator.MapEditor
             DxDevice.Reset(pParams);
         }
 
-
         /// <summary>
         /// Adds the horizontal scroll bar value
         /// </summary>
         /// <param name="value"></param>
-        public void AddHScrollbarValue(int value)
+        /// <returns>True if scrolling is possible</returns>
+        public bool AddHScrollbarValue(int value)
         {
+            if (hScrollBar.Value + value == hScrollBar.Value)
+                return false;
+
             SetHScrollbarValue((int) (hScrollBar.Value + value));
 
             // Update display
-            hScrollBar_Scroll(null, null);
+            HScrollBar_Scroll(null, null);
+            return true;
         }
 
         /// <summary>
@@ -939,12 +946,17 @@ namespace HaCreator.MapEditor
         /// Adds the horizontal scroll bar value
         /// </summary>
         /// <param name="value"></param>
-        public void AddVScrollbarValue(int value)
+        /// <returns>True if scrolling is possible</returns>
+        public bool AddVScrollbarValue(int value)
         {
+            if (vScrollBar.Value + value == hScrollBar.Value)
+                return false;
+
             SetVScrollbarValue((int)(vScrollBar.Value + value));
 
             // Update display
-            vScrollBar_Scroll(null, null);
+            VScrollBar_Scroll(null, null);
+            return true;
         }
 
         /// <summary>
@@ -964,7 +976,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void vScrollBar_Scroll(object sender, System.Windows.Controls.Primitives.ScrollEventArgs e)
+        private void VScrollBar_Scroll(object sender, System.Windows.Controls.Primitives.ScrollEventArgs e)
         {
             lock (this)
             {
@@ -977,7 +989,7 @@ namespace HaCreator.MapEditor
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void hScrollBar_Scroll(object sender, System.Windows.Controls.Primitives.ScrollEventArgs e)
+        private void HScrollBar_Scroll(object sender, System.Windows.Controls.Primitives.ScrollEventArgs e)
         {
             lock (this)
             {

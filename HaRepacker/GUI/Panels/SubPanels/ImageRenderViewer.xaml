@@ -16,6 +16,7 @@
         <converter:ImageWidthOrHeightToScreenDPIConverter x:Key="imageWidthOrHeightToScreenDPIConverter"/>
         <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
         <converter:PointFToVisiblityConverter x:Key="pointFToVisiblityConverter"/>
+        <converter:CheckboxToBorderTransparencyConverter x:Key="checkboxToBorderTransparencyConverter"/>
 
         <ControlTemplate x:Key="ScrollViewerControlTemplate1" TargetType="{x:Type ScrollViewer}">
             <Grid x:Name="Grid" Background="{TemplateBinding Background}">
@@ -515,7 +516,8 @@
                   Height="{Binding ImageHeight, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                 VerticalAlignment="Top" HorizontalAlignment="Left" Margin="80,50,0,0">
 
-                    <Border BorderBrush="Red" BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Border BorderBrush="{Binding ElementName=checkbox_border, Path=IsChecked, Converter={StaticResource checkboxToBorderTransparencyConverter}}"
+                            BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Border.RenderTransform>
                             <ScaleTransform 
                                 ScaleX="{Binding ElementName=ZoomSlider, Path='Value'}" 
@@ -529,6 +531,26 @@
                                Source="{Binding Image}" 
                                Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"
                                />
+
+                            <!-- Click draggable borders-->
+                            <Grid
+                                Visibility="{Binding ElementName=checkbox_border, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}">
+                                <!-- Top-Left -->
+                                <Rectangle Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Top" HorizontalAlignment="Left"/>
+
+                                <!-- Top-Right -->
+                                <Rectangle Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Top" HorizontalAlignment="Right"/>
+                                
+                                <!-- Bottom-Left -->
+                                <Rectangle Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Bottom" HorizontalAlignment="Left"/>
+                                
+                                <!-- Bottom-Right -->
+                                <Rectangle Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Bottom" HorizontalAlignment="Right"/>
+                            </Grid>
 
                             <!-- Crosshair for vector origin-->
                             <!-- Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"
@@ -630,10 +652,12 @@
                 </StackPanel>
             </StackPanel>
 
-            <Grid VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,60,10,0">
-                <CheckBox x:Name="checkbox_crosshair" Content="Enable Crosshair"
+            <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,5,10,0">
+                <CheckBox x:Name="checkbox_crosshair" Content="Crosshair"
                           Checked="checkbox_crosshair_Checked" Unchecked="checkbox_crosshair_Checked"/>
-            </Grid>
+                <CheckBox x:Name="checkbox_border" Content="Border"
+                          Checked="checkbox_border_Checked" Unchecked="checkbox_border_Checked"/>
+            </StackPanel>
         </Grid>
 
 

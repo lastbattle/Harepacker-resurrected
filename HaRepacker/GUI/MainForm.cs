@@ -30,6 +30,7 @@ using MapleLib.PacketLib;
 using System.Timers;
 using static MapleLib.Configuration.UserSettings;
 using HaSharedLibrary;
+using MapleLib.MapleCryptoLib;
 
 namespace HaRepacker.GUI
 {
@@ -202,7 +203,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
+        private void EncryptionBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (!mainFormLoaded) // first run during app startup
             {
@@ -217,6 +218,9 @@ namespace HaRepacker.GUI
             {
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+            } else
+            {
+                MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
         }
 
@@ -227,7 +231,7 @@ namespace HaRepacker.GUI
         /// <returns></returns>
         public static WzMapleVersion GetWzMapleVersionByWzEncryptionBoxSelection(int selectedIndex)
         {
-            WzMapleVersion wzMapleVer = WzMapleVersion.CUSTOM;
+            WzMapleVersion wzMapleVer;
             switch (selectedIndex)
             {
                 case 0:
@@ -286,12 +290,17 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
-        /// Sets the ComboBox selection index by WzMapleVersion enum
+        /// Sets the ComboBox selection index by WzMapleVersion enum 
+        /// on program init.
         /// </summary>
         /// <param name="versionSelected"></param>
         private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
         {
             encryptionBox.SelectedIndex = GetIndexByWzMapleVersion(versionSelected);
+            if (versionSelected == WzMapleVersion.CUSTOM)
+            {
+                Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
+            }
         }
         #endregion
 
@@ -611,7 +620,7 @@ namespace HaRepacker.GUI
                     };
                     ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
                     {
-                        wzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
+                        WzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
                     });
                 });
             }
@@ -645,7 +654,7 @@ namespace HaRepacker.GUI
         /// <param name="processorCount"></param>
         /// <param name="dialog"></param>
         /// <param name="currentDispatcher"></param>
-        private void wzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
+        private void WzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
         {
             int cpuId = cpuId_;
 
@@ -916,7 +925,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void saveToolStripMenuItem_Click(object sender, EventArgs e)
+        private void SaveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             WzNode node;
             if (MainPanel.DataTree.SelectedNode == null)
@@ -961,7 +970,7 @@ namespace HaRepacker.GUI
             }
         }
 
-        private void removeToolStripMenuItem_Click(object sender, EventArgs e)
+        private void RemoveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             RemoveSelectedNodes();
         }
@@ -1000,8 +1009,7 @@ namespace HaRepacker.GUI
                 }
                 WzFile f = new WzFile(wzpath, version);
 
-                string parseErrorMessage = string.Empty;
-                bool parseSuccess = f.ParseWzFile(out parseErrorMessage);
+                WzFileParseStatus parseStatus = f.ParseWzFile();
 
                 serializer.SerializeFile(f, Path.Combine(baseDir, f.Name));
                 f.Dispose();
@@ -1523,7 +1531,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzDirectoryToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzDirectoryToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzDirectoryToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1533,7 +1541,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzImageToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzImageToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzImageToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1543,7 +1551,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzByteFloatPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzByteFloatPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzByteFloatToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1553,7 +1561,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzCanvasPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzCanvasPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzCanvasToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1563,7 +1571,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzCompressedIntPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzCompressedIntPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzCompressedIntToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1573,7 +1581,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzLongPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzLongPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzLongToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1583,7 +1591,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzConvexPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzConvexPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzConvexPropertyToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1593,7 +1601,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzDoublePropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzDoublePropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzDoublePropertyToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1603,7 +1611,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzNullPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzNullPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzNullPropertyToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1613,7 +1621,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzSoundPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzSoundPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzSoundPropertyToSelectedNode(MainPanel.DataTree.SelectedNode);
         }
@@ -1623,7 +1631,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzStringPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzStringPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzStringPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
@@ -1633,7 +1641,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzSubPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzSubPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzSubPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
@@ -1643,7 +1651,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzUnsignedShortPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzUnsignedShortPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzUnsignedShortPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
@@ -1653,7 +1661,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzUolPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzUolPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzUOLPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
@@ -1663,7 +1671,7 @@ namespace HaRepacker.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void wzVectorPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        private void WzVectorPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzVectorPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
@@ -1678,7 +1686,7 @@ namespace HaRepacker.GUI
             if (child != null)
             {
                 if (ShowReplaceDialog(node.Text))
-                    child.Delete();
+                    child.DeleteWzNode();
                 else return;
             }
             parent.AddNode(node, true);

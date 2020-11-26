@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib;
+using HaSharedLibrary.SharpApng;
 
 namespace HaRepacker
 {
@@ -60,11 +61,12 @@ namespace HaRepacker
             return empty;
         }
 
-        public static int PropertySorter(WzCanvasProperty a, WzCanvasProperty b)
+        private static int PropertySorter(WzCanvasProperty a, WzCanvasProperty b)
         {
             int aIndex = 0;
             int bIndex = 0;
-            if (!int.TryParse(a.Name, out aIndex) || !int.TryParse(b.Name, out bIndex)) return 0;
+            if (!int.TryParse(a.Name, out aIndex) || !int.TryParse(b.Name, out bIndex)) 
+                return 0;
             return aIndex.CompareTo(bIndex);
         }
 
@@ -127,38 +129,38 @@ namespace HaRepacker
 
                 delayList.Add((int) delay);
             }
-            SharpApng.SharpApng apngBuilder = new SharpApng.SharpApng();
+            SharpApng apngBuilder = new SharpApng();
             if (apngFirstFrame)
             {
-                apngBuilder.AddFrame(new SharpApng.SharpApngFrame(CreateIncompatibilityFrame(new Size(bmpList[0].Width, bmpList[0].Height)),1,1));
+                apngBuilder.AddFrame(new SharpApngFrame(CreateIncompatibilityFrame(new Size(bmpList[0].Width, bmpList[0].Height)),1,1));
             }
             for (int i = 0; i < bmpList.Count; i++)
             {
-                apngBuilder.AddFrame(new SharpApng.SharpApngFrame(bmpList[i], getNumByDelay(delayList[i]), getDenByDelay(delayList[i])));
+                apngBuilder.AddFrame(new SharpApngFrame(bmpList[i], GetNumByDelay(delayList[i]), GetDenByDelay(delayList[i])));
             }
             apngBuilder.WriteApng(savePath, apngFirstFrame, true);
         }
 
-        private static int getNumByDelay(int delay)
+        private static int GetNumByDelay(int delay)
         {
             int num = delay;
             int den = 1000;
             while (num % 10 == 0 && num != 0)
             {
-                num = num / 10;
-                den = den / 10;
+                num /= 10;
+                den /= 10;
             }
             return num;
         }
 
-        private static int getDenByDelay(int delay)
+        private static int GetDenByDelay(int delay)
         {
             int num = delay;
             int den = 1000;
             while (num % 10 == 0 && num != 0)
             {
-                num = num / 10;
-                den = den / 10;
+                num /= 10;
+                den /= 10;
             }
             return den;
         }
