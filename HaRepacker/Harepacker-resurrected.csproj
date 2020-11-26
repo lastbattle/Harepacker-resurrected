@@ -194,6 +194,7 @@
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
+    <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
     <Compile Include="GUI\ContextMenuManager.cs" />
     <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />

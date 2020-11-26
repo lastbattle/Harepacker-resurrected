@@ -38,7 +38,9 @@ namespace HaRepacker
         {
             Tag = SourceObject ?? throw new NullReferenceException("Cannot create a null WzNode");
             SourceObject.HRTag = this;
-            if (SourceObject is WzFile) SourceObject = ((WzFile)SourceObject).WzDirectory;
+
+            if (SourceObject is WzFile) 
+                SourceObject = ((WzFile)SourceObject).WzDirectory;
             if (SourceObject is WzDirectory)
             {
                 foreach (WzDirectory dir in ((WzDirectory)SourceObject).WzDirectories)
@@ -59,7 +61,7 @@ namespace HaRepacker
             }
         }
 
-        public void Delete()
+        public void DeleteWzNode()
         {
             try
             {
@@ -71,7 +73,11 @@ namespace HaRepacker
             }
 
             if (Tag is WzImageProperty property)
+            {
+                if (property.ParentImage == null) // _inlink WzNode doesnt have a parent
+                    return;
                 property.ParentImage.Changed = true;
+            }
             ((WzObject)Tag).Remove();
         }
 

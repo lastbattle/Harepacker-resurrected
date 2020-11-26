@@ -1686,7 +1686,7 @@ namespace HaRepacker.GUI
             if (child != null)
             {
                 if (ShowReplaceDialog(node.Text))
-                    child.Delete();
+                    child.DeleteWzNode();
                 else return;
             }
             parent.AddNode(node, true);

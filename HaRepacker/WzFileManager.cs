@@ -83,7 +83,7 @@ namespace HaRepacker
             {
                 if (wzFiles.Contains(file)) // check again within scope
                 {
-                    ((WzNode)file.HRTag).Delete();
+                    ((WzNode)file.HRTag).DeleteWzNode();
                     wzFiles.Remove(file);
                 }
             }

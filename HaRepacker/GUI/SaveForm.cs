@@ -165,14 +165,14 @@ namespace HaRepacker.GUI
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
                     {
                         wzf.SaveToDisk(dialog.FileName + "$tmp", wzMapleVersionSelected);
-                        wzNode.Delete();
+                        wzNode.DeleteWzNode();
                         File.Delete(dialog.FileName);
                         File.Move(dialog.FileName + "$tmp", dialog.FileName);
                     }
                     else
                     {
                         wzf.SaveToDisk(dialog.FileName, wzMapleVersionSelected);
-                        wzNode.Delete();
+                        wzNode.DeleteWzNode();
                     }
 
                     // Reload the new file
@@ -207,7 +207,7 @@ namespace HaRepacker.GUI
                         {
                             Debug.WriteLine(exp); // nvm, dont show to user
                         }
-                        wzNode.Delete();
+                        wzNode.DeleteWzNode();
                     }
                     catch (UnauthorizedAccessException)
                     {
