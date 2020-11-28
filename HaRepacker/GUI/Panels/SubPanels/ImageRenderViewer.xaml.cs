@@ -81,6 +81,20 @@ namespace HaRepacker.GUI.Panels.SubPanels
             }
         }
 
+        private int _Delay = 0;
+        /// <summary>
+        /// Delay of the image
+        /// </summary>
+        public int Delay
+        {
+            get { return _Delay; }
+            set
+            {
+                _Delay = value;
+                OnPropertyChanged("Delay");
+            }
+        }
+
         private PointF _CanvasVectorOrigin = new PointF(0, 0);
         /// <summary>
         /// Origin to center the crosshair
@@ -216,6 +230,32 @@ namespace HaRepacker.GUI.Panels.SubPanels
 
             Slider zoomSlider = (Slider)sender;
             Program.ConfigurationManager.UserSettings.ImageZoomLevel = zoomSlider.Value;
+        }
+
+        private bool bBorderDragging = false;
+
+        private void Rectangle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            bBorderDragging = true;
+            Rectangle_MouseMove(sender, e);
+
+            System.Diagnostics.Debug.WriteLine("Mouse left button down");
+        }
+
+        private void Rectangle_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (bBorderDragging)
+            {
+                // dragMove
+                System.Diagnostics.Debug.WriteLine("Mouse drag move");
+            }
+        }
+
+        private void Rectangle_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            bBorderDragging = false;
+
+            System.Diagnostics.Debug.WriteLine("Mouse left button up");
         }
         #endregion
     }

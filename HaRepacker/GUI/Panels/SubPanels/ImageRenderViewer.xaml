@@ -498,6 +498,9 @@
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="checkbox_crosshair">
                             <EasingColorKeyFrame KeyTime="0" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="checkbox_border">
+                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        </ColorAnimationUsingKeyFrames>
                     </Storyboard>
                 </VisualState>
             </VisualStateGroup>
@@ -536,20 +539,32 @@
                             <Grid
                                 Visibility="{Binding ElementName=checkbox_border, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}">
                                 <!-- Top-Left -->
-                                <Rectangle Stroke="Black" Height="1" Width="1"
-                                           VerticalAlignment="Top" HorizontalAlignment="Left"/>
+                                <Rectangle x:Name="Rectangle_TopLeft" 
+                                           Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Top" HorizontalAlignment="Left"
+                                           MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
+                                           />
 
                                 <!-- Top-Right -->
-                                <Rectangle Stroke="Black" Height="1" Width="1"
-                                           VerticalAlignment="Top" HorizontalAlignment="Right"/>
+                                <Rectangle x:Name="Rectangle_TopRight"
+                                            Stroke="Black" Height="1" Width="1"
+                                            VerticalAlignment="Top" HorizontalAlignment="Right"
+                                           MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
+                                           />
                                 
                                 <!-- Bottom-Left -->
-                                <Rectangle Stroke="Black" Height="1" Width="1"
-                                           VerticalAlignment="Bottom" HorizontalAlignment="Left"/>
+                                <Rectangle x:Name="Rectangle_BottomLeft"
+                                            Stroke="Black" Height="1" Width="1"
+                                            VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                          MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
+                                           />
                                 
                                 <!-- Bottom-Right -->
-                                <Rectangle Stroke="Black" Height="1" Width="1"
-                                           VerticalAlignment="Bottom" HorizontalAlignment="Right"/>
+                                <Rectangle x:Name="Rectangle_BottomRight"
+                                            Stroke="Black" Height="1" Width="1"
+                                           VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                           MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
+                                           />
                             </Grid>
 
                             <!-- Crosshair for vector origin-->
@@ -627,9 +642,16 @@
         <!-- Checkbox to enable crosshair or not-->
         <Grid Grid.Row="0" Margin="15">
             <!-- Displays the origin-->
-            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Left"
+            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right" 
                         Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                        Orientation="Vertical" Margin="70,70,0,0">
+                        Orientation="Vertical" Margin="0,70,30,0">
+                <!-- 'delay' -->
+                <StackPanel Orientation="Horizontal"
+                            Visibility="Visible">
+                    <TextBlock Text="Delay " Margin="0,0,0,0" FontSize="10" Foreground="Gray" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding Delay}" Margin="3,0,0,0" FontSize="10"  Foreground="Gray"/>
+                </StackPanel>
+                
                 <!-- 'origin' -->
                 <StackPanel Orientation="Horizontal"
                             Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
