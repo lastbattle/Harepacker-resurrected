@@ -33,29 +33,6 @@ namespace HaCreator.GUI
             invertUpDownBox.Checked = UserSettings.InverseUpDown;
             autoBackupBox.Checked = UserSettings.BackupEnabled;
 
-            // Resolutions
-            foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
-            {
-                ComboBoxItem comboBoxItem = new ComboBoxItem
-                {
-                    Tag = val,
-                    Content = RenderResolutionExtensions.ToReadableString(val)
-                };
-
-                comboBox_resolution.Items.Add(comboBoxItem);
-            }
-            comboBox_resolution.DisplayMember = "Content";
-
-            int i = 0;
-            foreach (ComboBoxItem item in comboBox_resolution.Items)
-            {
-                if ((RenderResolution)item.Tag == UserSettings.SimulateResolution)
-                {
-                    comboBox_resolution.SelectedIndex = i;
-                    break;
-                }
-                i++;
-            }
             tabColorPicker.Color = UserSettings.TabColor;
             dragColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquare);
             dragFillColorPicker.Color = XNAToSystemColor(UserSettings.SelectSquareFill);
@@ -117,7 +94,6 @@ namespace HaCreator.GUI
             UserSettings.DotWidth = (int)dotwBox.Value;
             MapleDot.OnDotWidthChanged(); // Update DotWidth in dots to avoid requiring a restart
             UserSettings.NonActiveAlpha = (int)inactiveaBox.Value;
-            UserSettings.SimulateResolution = ((RenderResolution) ((ComboBoxItem) comboBox_resolution.SelectedItem).Tag);  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
             UserSettings.ClipText = clipBox.Checked;
             UserSettings.FixFootholdMispositions = fixFh.Checked;
             UserSettings.InverseUpDown = invertUpDownBox.Checked;
