@@ -21,11 +21,14 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator
 {
@@ -241,101 +244,152 @@ namespace HaCreator.MapSimulator
                 vr_fieldBoundary = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
-            // Background and objects
+            // test benchmark
+#if DEBUG
+            var watch = new System.Diagnostics.Stopwatch();
+            watch.Start();
+#endif 
+
+            /////// Background and objects
             List<WzObject> usedProps = new List<WzObject>();
-
-            foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
+            
+            // Objects
+            Task t_tiles = Task.Run(() =>
             {
-                WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
+                foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
+                {
+                    WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
 
-                mapObjects[tileObj.LayerNumber].Add(
-                    MapSimulatorLoader.CreateMapItemFromProperty(texturePool, tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
-            }
-            foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
+                    mapObjects[tileObj.LayerNumber].Add(
+                        MapSimulatorLoader.CreateMapItemFromProperty(texturePool, tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                }
+            });
+
+            // Background
+            Task t_Background = Task.Run(() =>
             {
-                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
+                {
+                    WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
 
-                backgrounds_back.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
-            }
-            foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
+                    backgrounds_back.Add(
+                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                }
+                foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
+                {
+                    WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+
+                    backgrounds_front.Add(
+                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                }
+            });
+
+            // Reactors
+            Task t_reactor = Task.Run(() =>
             {
-                WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
+                {
+                    //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
-                backgrounds_front.Add(
-                    MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
-            }
+                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    mapObjects_Reactors.Add(reactorItem);
+                }
+            });
 
-            // Load reactors
-            foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
+            // NPCs
+            Task t_npc = Task.Run(() =>
             {
-                //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
+                foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
+                {
+                    //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
 
-                ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                mapObjects_Reactors.Add(reactorItem);
-            }
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    mapObjects_NPCs.Add(npcItem);
+                }
+            });
 
-            // Load NPCs
-            foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
+            // Mobs
+            Task t_mobs = Task.Run(() =>
             {
-                //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
+                foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
+                {
+                    //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
 
-                NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                mapObjects_NPCs.Add(npcItem);
-            }
-            // Load Mobs
-            foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
+                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    mapObjects_Mobs.Add(npcItem);
+                }
+            });
+
+            // Portals
+            Task t_portal = Task.Run(() =>
             {
-                //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
+                WzSubProperty portalParent = (WzSubProperty)MapWzFile["MapHelper.img"]["portal"];
 
-                MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                mapObjects_Mobs.Add(npcItem);
-            }
+                WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+                //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
 
-            // Load portals
-            WzSubProperty portalParent = (WzSubProperty)MapWzFile["MapHelper.img"]["portal"];
+                foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
+                {
+                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    if (portalItem != null)
+                        mapObjects_Portal.Add(portalItem);
+                }
+            });
 
-            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
-            //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
-
-            foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
+            // Tooltips
+            Task t_tooltips = Task.Run(() =>
             {
-                PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                if (portalItem != null)
-                    mapObjects_Portal.Add(portalItem);
-            }
+                WzSubProperty farmFrameParent = (WzSubProperty)UIWZFile["UIToolTip.img"]?["Item"]?["FarmFrame"];
+                foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
+                {
+                    TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
 
-            // Load tooltips
-            WzSubProperty farmFrameParent = (WzSubProperty)UIWZFile["UIToolTip.img"]?["Item"]?["FarmFrame"];
-            foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
-            {
-                TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
-
-                mapObjects_tooltips.Add(item);
-            }
+                    mapObjects_tooltips.Add(item);
+                }
+            });
 
             // Cursor
-            WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
-            this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+            Task t_cursor = Task.Run(() =>
+            {
+                WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
+                this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+            });
 
             // Spine object
-            skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+            Task t_spine = Task.Run(() =>
             {
-                PremultipliedAlpha = false
-            };
+                skeletonMeshRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+                {
+                    PremultipliedAlpha = false
+                };
+            });
 
             // Minimap
-            if (!mapBoard.MapInfo.hideMinimap)
+            Task t_minimap = Task.Run(() =>
             {
-                WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
-
-                if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+                if (!mapBoard.MapInfo.hideMinimap)
                 {
-                    minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+                    WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+
+                    if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+                    {
+                        minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+                    }
+                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
                 }
-                miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
+            });
+
+            while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted || 
+                !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted)
+            {
+                Thread.Sleep(50);
             }
 
+#if DEBUG
+            // test benchmark
+            watch.Stop();
+            Debug.WriteLine($"Map loaded. Execution Time: {watch.ElapsedMilliseconds} ms");
+#endif
             //
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
@@ -791,16 +845,14 @@ namespace HaCreator.MapSimulator
                 //     mapShiftX + offset);
 
                 if (bIsLeftKeyPressed)
-                    mapShiftX =
-                        Math.Max(
-                            (int)(vr_fieldBoundary.Left * RenderObjectScaling),
-                            mapShiftX - moveOffset);
+                {
+                    mapShiftX = Math.Max((int)(vr_fieldBoundary.Left * RenderObjectScaling), mapShiftX - moveOffset);
 
+                }
                 else if (bIsRightKeyPressed)
-                    mapShiftX =
-                        Math.Min(
-                             (int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))),
-                            mapShiftX + moveOffset);
+                {
+                    mapShiftX = Math.Min((int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))), mapShiftX + moveOffset);
+                } 
             }
         }
 
@@ -827,16 +879,13 @@ namespace HaCreator.MapSimulator
 
 
                 if (bIsUpKeyPressed)
-                    mapShiftY =
-                        Math.Max(
-                            (int)(vr_fieldBoundary.Top),
-                            mapShiftY - moveOffset);
-
+                {
+                    mapShiftY = Math.Max((int)(vr_fieldBoundary.Top), mapShiftY - moveOffset);
+                }
                 else if (bIsDownKeyPressed)
-                    mapShiftY =
-                        Math.Min(
-                            (int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))),
-                            mapShiftY + moveOffset);
+                {
+                    mapShiftY = Math.Min((int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))), mapShiftY + moveOffset);
+                }
             }
         }
         #endregion
