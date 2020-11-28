@@ -325,13 +325,16 @@ namespace HaCreator.MapSimulator
             };
 
             // Minimap
-            WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
-
-            if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+            if (!mapBoard.MapInfo.hideMinimap)
             {
-                minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+                WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+
+                if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+                {
+                    minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+                }
+                miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
             }
-            miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
 
             //
             spriteBatch = new SpriteBatch(GraphicsDevice);
@@ -584,10 +587,13 @@ namespace HaCreator.MapSimulator
             }
 
             // Minimap
-            miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
+            if (miniMap != null)
+            {
+                miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
+            }
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 spriteBatch.DrawString(font_navigationKeysHelper, 

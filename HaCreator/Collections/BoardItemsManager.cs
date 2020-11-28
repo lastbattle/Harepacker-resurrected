@@ -15,6 +15,7 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using MapleLib.WzLib.WzStructure;
 
 namespace HaCreator.Collections
 {
@@ -37,6 +38,11 @@ namespace HaCreator.Collections
         public MapleList<ToolTipDot> ToolTipDots = new MapleList<ToolTipDot>(ItemTypes.ToolTips, true);
         public MapleList<BoardItem> MiscItems = new MapleList<BoardItem>(ItemTypes.Misc, true);
         public MapleList<MapleDot> SpecialDots = new MapleList<MapleDot>(ItemTypes.Misc, true);
+
+        /// <summary>
+        /// Map info/
+        /// </summary>
+        public MapInfo MapInfo { get { return board.MapInfo; } }
 
         public List<Rope> Ropes = new List<Rope>();
         public IMapleList[] AllItemLists;
