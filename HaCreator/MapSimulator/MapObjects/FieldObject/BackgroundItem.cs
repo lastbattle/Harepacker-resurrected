@@ -239,7 +239,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         {
             int height = (int)((RenderHeight / 2) / RenderObjectScaling);
 
-            return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height;
+            return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height + 95/*hack job for now*/;
         }
 
         public Color Color
