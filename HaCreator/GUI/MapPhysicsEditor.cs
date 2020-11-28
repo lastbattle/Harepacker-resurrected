@@ -133,26 +133,25 @@ namespace HaCreator.GUI
                 WzImage image = (WzImage)wzMapFile[WZ_FILE_IMAGE];
                 if (image != null)
                 {
-                    SetWzImageValue(image["walkForce"], numericUpDown_walkForce.Value);
-                    SetWzImageValue(image["walkSpeed"], numericUpDown_walkSpeed.Value);
-                    SetWzImageValue(image["walkDrag"], numericUpDown_walkDrag.Value);
-                    SetWzImageValue(image["slipForce"], numericUpDown_slipForce.Value);
-                    SetWzImageValue(image["slipSpeed"], numericUpDown_slipSpeed.Value);
-                    SetWzImageValue(image["floatDrag1"], numericUpDown_floatDrag1.Value);
-                    SetWzImageValue(image["floatDrag2"], numericUpDown_floatDrag2.Value);
-                    SetWzImageValue(image["floatCoefficient"], numericUpDown_floatCoefficient.Value);
-                    SetWzImageValue(image["swimForce"], numericUpDown_swimForce.Value);
-                    SetWzImageValue(image["swimSpeed"], numericUpDown_swimSpeed.Value);
-                    SetWzImageValue(image["flyForce"], numericUpDown_flyForce.Value);
-                    SetWzImageValue(image["flySpeed"], numericUpDown_flySpeed.Value);
-                    SetWzImageValue(image["gravityAcc"], numericUpDown_gravityAcc.Value);
-                    SetWzImageValue(image["fallSpeed"], numericUpDown_fallSpeed.Value);
-                    SetWzImageValue(image["jumpSpeed"], numericUpDown_jumpSpeed.Value);
-                    SetWzImageValue(image["maxFriction"], numericUpDown_maxFriction.Value);
-                    SetWzImageValue(image["minFriction"], numericUpDown_minFriction.Value);
-                    SetWzImageValue(image["swimSpeedDec"], numericUpDown_swimSpeedDec.Value);
-                    SetWzImageValue(image["flyJumpDec"], numericUpDown_flyJumpDec.Value);
-
+                    image["walkForce"].SetValue(numericUpDown_walkForce.Value);
+                    image["walkSpeed"].SetValue(numericUpDown_walkSpeed.Value);
+                    image["walkDrag"].SetValue(numericUpDown_walkDrag.Value);
+                    image["slipForce"].SetValue(numericUpDown_slipForce.Value);
+                    image["slipSpeed"].SetValue(numericUpDown_slipSpeed.Value);
+                    image["floatDrag1"].SetValue(numericUpDown_floatDrag1.Value);
+                    image["floatDrag2"].SetValue(numericUpDown_floatDrag2.Value);
+                    image["floatCoefficient"].SetValue(numericUpDown_floatCoefficient.Value);
+                    image["swimForce"].SetValue(numericUpDown_swimForce.Value);
+                    image["swimSpeed"].SetValue(numericUpDown_swimSpeed.Value);
+                    image["flyForce"].SetValue(numericUpDown_flyForce.Value);
+                    image["flySpeed"].SetValue(numericUpDown_flySpeed.Value);
+                    image["gravityAcc"].SetValue(numericUpDown_gravityAcc.Value);
+                    image["fallSpeed"].SetValue(numericUpDown_fallSpeed.Value);
+                    image["jumpSpeed"].SetValue(numericUpDown_jumpSpeed.Value);
+                    image["maxFriction"].SetValue(numericUpDown_maxFriction.Value);
+                    image["minFriction"].SetValue(numericUpDown_minFriction.Value);
+                    image["swimSpeedDec"].SetValue(numericUpDown_swimSpeedDec.Value);
+                    image["flyJumpDec"].SetValue(numericUpDown_flyJumpDec.Value);
 
                     Program.WzManager.SetWzFileUpdated(WZ_FILE_NAME, image); // flag as changed 
                 }
@@ -197,18 +196,6 @@ namespace HaCreator.GUI
             button_save.Enabled = false;
 
             Save();
-        }
-
-        private void SetWzImageValue(WzImageProperty image, decimal value)
-        {
-            if (image is WzDoubleProperty doubleProperty)
-            {
-                doubleProperty.Value = (double)value;
-            }
-            else if (image is WzFloatProperty floatProperty)
-            {
-                floatProperty.Value = (float)value;
-            }
         }
 
         /// <summary>

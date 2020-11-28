@@ -34,7 +34,7 @@ namespace MapleLib.WzLib.WzProperties
 		#region Inherited Members
         public override void SetValue(object value)
         {
-            val = (double)value;
+            val = System.Convert.ToDouble(value);
         }
 
         public override WzImageProperty DeepClone()
@@ -79,7 +79,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// <summary>
 		/// The value of this property
 		/// </summary>
-		public double Value { get { return val; } set { val = value; } }
+		public double Value { get { return val; } set { val = (double) value; } }
 		/// <summary>
 		/// Creates a blank WzDoubleProperty
 		/// </summary>
