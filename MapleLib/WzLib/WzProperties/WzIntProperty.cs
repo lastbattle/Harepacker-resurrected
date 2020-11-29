@@ -83,7 +83,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// <summary>
 		/// The value of the property
 		/// </summary>
-		public int Value { get { return val; } set { val = value; } }
+		public int Value { get { return val; } set { val = (int) value; } }
 		/// <summary>
 		/// Creates a blank WzCompressedIntProperty
 		/// </summary>

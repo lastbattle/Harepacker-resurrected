@@ -1,4 +1,6 @@
-﻿using System;
+﻿using HaRepacker.GUI.Input;
+using MapleLib.WzLib.WzProperties;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -63,6 +65,19 @@ namespace HaRepacker.GUI.Panels.SubPanels
         }
 
         #region Exported Fields
+        private WzCanvasProperty _ParentWzCanvasProperty = null;
+        /// <summary>
+        /// The parent WZCanvasProperty to display from
+        /// </summary>
+        public WzCanvasProperty ParentWzCanvasProperty
+        {
+            get { return _ParentWzCanvasProperty; }
+            set
+            {
+                _ParentWzCanvasProperty = value;
+            }
+        }
+
         private ImageSource _Image = null;
         /// <summary>
         /// The image to display on the canvas
@@ -81,6 +96,22 @@ namespace HaRepacker.GUI.Panels.SubPanels
             }
         }
 
+        private int _Delay = 0;
+        /// <summary>
+        /// Delay of the image
+        /// </summary>
+        public int Delay
+        {
+            get { return _Delay; }
+            set
+            {
+                _Delay = value;
+                OnPropertyChanged("Delay");
+
+                textbox_delay.Text = _Delay.ToString();
+            }
+        }
+
         private PointF _CanvasVectorOrigin = new PointF(0, 0);
         /// <summary>
         /// Origin to center the crosshair
@@ -92,6 +123,9 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 _CanvasVectorOrigin = value;
                 OnPropertyChanged("CanvasVectorOrigin");
+
+                textbox_originX.Text = _CanvasVectorOrigin.X.ToString();
+                textbox_originY.Text = _CanvasVectorOrigin.Y.ToString();
             }
         }
 
@@ -106,6 +140,9 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 _CanvasVectorHead = value;
                 OnPropertyChanged("CanvasVectorHead");
+
+                textbox_headX.Text = _CanvasVectorHead.X.ToString();
+                textbox_headY.Text = _CanvasVectorHead.Y.ToString();
             }
         }
 
@@ -120,6 +157,9 @@ namespace HaRepacker.GUI.Panels.SubPanels
             {
                 _CanvasVectorLt = value;
                 OnPropertyChanged("CanvasVectorLt");
+
+                textbox_ltX.Text = _CanvasVectorLt.X.ToString();
+                textbox_ltY.Text = _CanvasVectorLt.Y.ToString();
             }
         }
 
@@ -205,6 +245,161 @@ namespace HaRepacker.GUI.Panels.SubPanels
         }
 
         /// <summary>
+        /// 'lt' value changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void textbox_lt_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            button_ltEdit.IsEnabled = true;
+        }
+
+        /// <summary>
+        /// 'head' value changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void textbox_head_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            button_headEdit.IsEnabled = true;
+        }
+
+        /// <summary>
+        ///  'vector' value changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void textbox_origin_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            button_originEdit.IsEnabled = true;
+        }
+
+        /// <summary>
+        /// 'delay' valeu changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void textbox_delay_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            button_delayEdit.IsEnabled = true;
+        }
+
+        /// <summary>
+        /// Easy access to editing image 'lt' properties 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_ltEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            if (int.TryParse(textbox_ltX.Text, out int newX) && int.TryParse(textbox_ltY.Text, out int newY))
+            {
+                WzVectorProperty vectorProp = _ParentWzCanvasProperty[WzCanvasProperty.LtPropertyName] as WzVectorProperty;
+                if (vectorProp != null)
+                {
+                    vectorProp.X.Value = newX;
+                    vectorProp.Y.Value = newY;
+
+                    // Update local UI
+                    CanvasVectorLt = new PointF(newX, newY);
+
+                    button_ltEdit.IsEnabled = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Easy access to editing image 'head' properties 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_headEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            if (int.TryParse(textbox_headX.Text, out int newX) && int.TryParse(textbox_headY.Text, out int newY))
+            {
+                WzVectorProperty vectorProp = _ParentWzCanvasProperty[WzCanvasProperty.HeadPropertyName] as WzVectorProperty;
+                if (vectorProp != null)
+                {
+                    vectorProp.X.Value = newX;
+                    vectorProp.Y.Value = newY;
+
+                    // Update local UI
+                    CanvasVectorHead = new PointF(newX, newY);
+
+                    button_headEdit.IsEnabled = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Easy access to editing image 'delay' properties 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_delayEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            if (int.TryParse(textbox_delay.Text, out int newdelay))
+            {
+                WzIntProperty intProperty = _ParentWzCanvasProperty[WzCanvasProperty.AnimationDelayPropertyName] as WzIntProperty;
+                if (intProperty != null)
+                {
+                    intProperty.Value = newdelay;
+
+                    // Update local UI
+                    Delay = newdelay;
+
+                    button_delayEdit.IsEnabled = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Easy access to editing image 'origin' properties 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_originEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (isLoading)
+                return;
+
+            if (int.TryParse(textbox_originX.Text, out int newX) && int.TryParse(textbox_originY.Text, out int newY))
+            {
+                WzVectorProperty vectorProp = _ParentWzCanvasProperty[WzCanvasProperty.OriginPropertyName] as WzVectorProperty;
+                if (vectorProp != null)
+                {
+                    vectorProp.X.Value = newX;
+                    vectorProp.Y.Value = newY;
+
+                    // Update local UI
+                    CanvasVectorOrigin = new PointF(newX, newY);
+
+                    button_originEdit.IsEnabled = false;
+                }
+            }
+        }
+
+        /// <summary>
         /// Image zoom level on value changed
         /// </summary>
         /// <param name="sender"></param>
@@ -216,6 +411,32 @@ namespace HaRepacker.GUI.Panels.SubPanels
 
             Slider zoomSlider = (Slider)sender;
             Program.ConfigurationManager.UserSettings.ImageZoomLevel = zoomSlider.Value;
+        }
+
+        private bool bBorderDragging = false;
+
+        private void Rectangle_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            bBorderDragging = true;
+            Rectangle_MouseMove(sender, e);
+
+            System.Diagnostics.Debug.WriteLine("Mouse left button down");
+        }
+
+        private void Rectangle_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (bBorderDragging)
+            {
+                // dragMove
+                System.Diagnostics.Debug.WriteLine("Mouse drag move");
+            }
+        }
+
+        private void Rectangle_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            bBorderDragging = false;
+
+            System.Diagnostics.Debug.WriteLine("Mouse left button up");
         }
         #endregion
     }

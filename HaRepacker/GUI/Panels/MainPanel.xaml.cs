@@ -85,7 +85,7 @@ namespace HaRepacker.GUI.Panels
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
             menuItem_saveImage.Visibility = Visibility.Collapsed;
-            
+
             Loaded += MainPanelXAML_Loaded;
 
 
@@ -323,7 +323,10 @@ namespace HaRepacker.GUI.Panels
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!IntInputBox.Show(Properties.Resources.MainAddInt, out name, out value))
+            else if (!IntInputBox.Show(
+                Properties.Resources.MainAddInt, 
+                "", 0,
+                out name, out value))
                 return;
             ((WzNode)target).AddObject(new WzIntProperty(name, (int)value), UndoRedoMan);
         }
@@ -464,7 +467,9 @@ namespace HaRepacker.GUI.Panels
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!IntInputBox.Show(Properties.Resources.MainAddShort, out name, out value))
+            else if (!IntInputBox.Show(Properties.Resources.MainAddShort,
+                "", 0,
+                out name, out value))
                 return;
             ((WzNode)target).AddObject(new WzShortProperty(name, (short)value), UndoRedoMan);
         }
@@ -615,15 +620,7 @@ namespace HaRepacker.GUI.Panels
                 }
             });
             thread.Start();
-           // thread.Join();
-        }
-
-        private class CanvasAnimationFrame
-        {
-            public string Name;
-            public int Delay;
-            public PointF origin, head, lt;
-            public ImageSource Image;
+            // thread.Join();
         }
 
         private void nextLoopTime_comboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -779,8 +776,8 @@ namespace HaRepacker.GUI.Panels
             Button clickSrc = (Button)sender;
 
             clickSrc.ContextMenu.IsOpen = true;
-          //  System.Windows.Forms.ContextMenuStrip contextMenu = new System.Windows.Forms.ContextMenuStrip();
-          //  contextMenu.Show(clickSrc, 0, 0);
+            //  System.Windows.Forms.ContextMenuStrip contextMenu = new System.Windows.Forms.ContextMenuStrip();
+            //  contextMenu.Show(clickSrc, 0, 0);
         }
 
         /// <summary>
@@ -800,7 +797,7 @@ namespace HaRepacker.GUI.Panels
         /// <param name="e"></param>
         private void MenuItem_saveImageAnimation_Click(object sender, RoutedEventArgs e)
         {
-            WzObject seletedWzObject = (WzObject) DataTree.SelectedNode.Tag;
+            WzObject seletedWzObject = (WzObject)DataTree.SelectedNode.Tag;
 
             if (!AnimationBuilder.IsValidAnimationWzObject(seletedWzObject))
                 return;
@@ -1186,14 +1183,14 @@ namespace HaRepacker.GUI.Panels
                 }
                 menuItem_Animate.Visibility = bIsAllCanvas ? Visibility.Visible : Visibility.Collapsed;
             }
-            
+
             // Set default layout collapsed state
             mp3Player.Visibility = Visibility.Collapsed;
             // Button collapsed state
             menuItem_changeImage.Visibility = Visibility.Collapsed;
             menuItem_saveImage.Visibility = Visibility.Collapsed;
             menuItem_changeSound.Visibility = Visibility.Collapsed;
-            menuItem_saveSound.Visibility = Visibility.Collapsed; 
+            menuItem_saveSound.Visibility = Visibility.Collapsed;
             // Canvas collapsed state
             canvasPropBox.Visibility = Visibility.Collapsed;
             // Value
@@ -1237,7 +1234,7 @@ namespace HaRepacker.GUI.Panels
                 else
                     canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetLinkedWzCanvasBitmap());
 
-                SetImageRenderView(canvas, null);
+                SetImageRenderView(canvas);
             }
             else if (obj is WzUOLProperty)
             {
@@ -1253,8 +1250,8 @@ namespace HaRepacker.GUI.Panels
 
                     WzCanvasProperty linkProperty = ((WzCanvasProperty)linkValue);
 
-                    SetImageRenderView(linkProperty, null);
-                } 
+                    SetImageRenderView(linkProperty);
+                }
                 else if (linkValue is WzBinaryProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
                 {
                     mp3Player.Visibility = Visibility.Visible;
@@ -1301,7 +1298,7 @@ namespace HaRepacker.GUI.Panels
                                 SpineAnimationWindow Window = new SpineAnimationWindow(item);
                                 Window.Run();
                             }
-                            catch (Exception e) 
+                            catch (Exception e)
                             {
                                 Warning.Error("Error initialising/ rendering spine object. " + e.ToString());
                             }
@@ -1324,7 +1321,8 @@ namespace HaRepacker.GUI.Panels
                         {
                             toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
                         }
-                    } else
+                    }
+                    else
                     {
                         textPropBox.AcceptsReturn = true;
                         if (stringObj.IsSpineRelatedResources)
@@ -1337,7 +1335,7 @@ namespace HaRepacker.GUI.Panels
                         }
 
                     }
-                } 
+                }
                 else if (bIsWzLuaProperty)
                 {
                     textPropBox.AcceptsReturn = true;
@@ -1351,10 +1349,11 @@ namespace HaRepacker.GUI.Panels
                     ulong value_ = 0;
                     if (bIsWzLongProperty)
                     {
-                        value_ = (ulong) ((WzLongProperty)obj).GetLong();
-                    } else if (bIsWzIntProperty)
+                        value_ = (ulong)((WzLongProperty)obj).GetLong();
+                    }
+                    else if (bIsWzIntProperty)
                     {
-                        value_ = (ulong) ((WzIntProperty)obj).GetLong();
+                        value_ = (ulong)((WzIntProperty)obj).GetLong();
                     }
 
                     // field limit UI
@@ -1367,7 +1366,8 @@ namespace HaRepacker.GUI.Panels
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
                     }
-                } else
+                }
+                else
                 {
                     textPropBox.AcceptsReturn = false;
                     textPropBox.Height = 35;
@@ -1390,7 +1390,8 @@ namespace HaRepacker.GUI.Panels
                 bAnimateMoreButton = true; // flag
 
                 menuItem_saveImageAnimation.Visibility = Visibility.Visible;
-            } else
+            }
+            else
             {
                 menuItem_saveImageAnimation.Visibility = Visibility.Collapsed;
             }
@@ -1410,30 +1411,21 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="canvas"></param>
         /// <param name="animationFrame"></param>
-        private void SetImageRenderView(WzCanvasProperty canvas, CanvasAnimationFrame animationFrame)
+        private void SetImageRenderView(WzCanvasProperty canvas)
         {
-            if (animationFrame != null)
-            {
-                // Set XY point to canvas xaml
-                canvasPropBox.CanvasVectorOrigin = animationFrame.origin;
-                canvasPropBox.CanvasVectorHead = animationFrame.head;
-                canvasPropBox.CanvasVectorLt = animationFrame.lt;
+            // origin
+            int? delay = canvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt();
+            PointF originVector = canvas.GetCanvasOriginPosition();
+            PointF headVector = canvas.GetCanvasHeadPosition();
+            PointF ltVector = canvas.GetCanvasLtPosition();
 
-                // Set image
-                canvasPropBox.Image = animationFrame.Image;
-            }
-            else
-            {
-                // origin
-                PointF originVector = canvas.GetCanvasOriginPosition();
-                PointF headVector = canvas.GetCanvasHeadPosition();
-                PointF ltVector = canvas.GetCanvasLtPosition();
+            // Set XY point to canvas xaml
+            canvasPropBox.ParentWzCanvasProperty = canvas;
+            canvasPropBox.Delay = delay ?? 0;
+            canvasPropBox.CanvasVectorOrigin = originVector;
+            canvasPropBox.CanvasVectorHead = headVector;
+            canvasPropBox.CanvasVectorLt = ltVector;
 
-                // Set XY point to canvas xaml
-                canvasPropBox.CanvasVectorOrigin = originVector;
-                canvasPropBox.CanvasVectorHead = headVector;
-                canvasPropBox.CanvasVectorLt = ltVector;
-            }
             if (canvasPropBox.Visibility != Visibility.Visible)
                 canvasPropBox.Visibility = Visibility.Visible;
         }

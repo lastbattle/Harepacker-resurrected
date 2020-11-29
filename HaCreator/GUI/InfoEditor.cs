@@ -25,14 +25,15 @@ namespace HaCreator.GUI
     public partial class InfoEditor : EditorBase
     {
         public MapInfo info;
-        private MultiBoard multiBoard;
-        private Board board;
+        private readonly MultiBoard multiBoard;
+        private readonly Board board;
 
         public InfoEditor(Board board, MapInfo info, MultiBoard multiBoard)
         {
             InitializeComponent();
 
             this.board = board;
+            this.info = info;
             this.multiBoard = multiBoard;
 
             timeLimitEnable.Tag = timeLimit;
@@ -62,7 +63,6 @@ namespace HaCreator.GUI
             autoLieDetectorEnable.Tag = new Control[] { autoLieEnd, autoLieInterval, autoLieProp, autoLieStart };
             allowedItemsEnable.Tag = new Control[] { allowedItems, allowedItemsAdd, allowedItemsRemove };
 
-            this.info = info;
             this.fieldType.SelectedIndex = 0;
 
             xBox.Value = board.MapSize.X;
@@ -101,9 +101,11 @@ namespace HaCreator.GUI
             streetBox.Text = info.strStreetName;
             categoryBox.Text = info.strCategoryName;
             markBox.SelectedItem = info.mapMark;
-            if (info.returnMap == info.id) cannotReturnCBX.Checked = true;
+            if (info.returnMap == info.id) 
+                cannotReturnCBX.Checked = true;
             else returnBox.Text = info.returnMap.ToString();
-            if (info.forcedReturn == 999999999) returnHereCBX.Checked = true;
+            if (info.forcedReturn == 999999999) 
+                returnHereCBX.Checked = true;
             else forcedRet.Text = info.forcedReturn.ToString();
             mobRate.Value = (decimal)info.mobRate;
             //LoadOptionalInt(info.link, linkBox);

@@ -70,8 +70,6 @@
             this.label38 = new System.Windows.Forms.Label();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.label45 = new System.Windows.Forms.Label();
-            this.comboBox_resolution = new System.Windows.Forms.ComboBox();
             this.autoBackupBox = new System.Windows.Forms.CheckBox();
             this.invertUpDownBox = new System.Windows.Forms.CheckBox();
             this.fixFh = new System.Windows.Forms.CheckBox();
@@ -624,8 +622,6 @@
             // tabPage1
             // 
             this.tabPage1.BackColor = System.Drawing.SystemColors.Control;
-            this.tabPage1.Controls.Add(this.label45);
-            this.tabPage1.Controls.Add(this.comboBox_resolution);
             this.tabPage1.Controls.Add(this.autoBackupBox);
             this.tabPage1.Controls.Add(this.invertUpDownBox);
             this.tabPage1.Controls.Add(this.fixFh);
@@ -642,26 +638,6 @@
             this.tabPage1.Size = new System.Drawing.Size(537, 447);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "General";
-            // 
-            // label45
-            // 
-            this.label45.AutoSize = true;
-            this.label45.Location = new System.Drawing.Point(165, 332);
-            this.label45.Margin = new System.Windows.Forms.Padding(2, 0, 2, 0);
-            this.label45.Name = "label45";
-            this.label45.Size = new System.Drawing.Size(136, 13);
-            this.label45.TabIndex = 66;
-            this.label45.Text = "Simulate field resolution:";
-            // 
-            // comboBox_resolution
-            // 
-            this.comboBox_resolution.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.comboBox_resolution.FormattingEnabled = true;
-            this.comboBox_resolution.Location = new System.Drawing.Point(165, 347);
-            this.comboBox_resolution.Margin = new System.Windows.Forms.Padding(2);
-            this.comboBox_resolution.Name = "comboBox_resolution";
-            this.comboBox_resolution.Size = new System.Drawing.Size(157, 21);
-            this.comboBox_resolution.TabIndex = 65;
             // 
             // autoBackupBox
             // 
@@ -1434,7 +1410,5 @@
         private System.Windows.Forms.Label label44;
         private CustomControls.AlphaColorPicker minimapColorPicker;
         private System.Windows.Forms.CheckBox autoBackupBox;
-        private System.Windows.Forms.Label label45;
-        private System.Windows.Forms.ComboBox comboBox_resolution;
     }
 }

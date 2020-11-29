@@ -35,7 +35,7 @@ namespace MapleLib.WzLib.WzProperties
 		#region Inherited Members
         public override void SetValue(object value)
         {
-            val = (float)value;
+            val = System.Convert.ToSingle(value);
         }
 
         public override WzImageProperty DeepClone()
@@ -91,7 +91,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// <summary>
 		/// The value of the property
 		/// </summary>
-		public float Value { get { return val; } set { val = value; } }
+		public float Value { get { return val; } set { val = (float) value; } }
 		/// <summary>
 		/// Creates a blank WzByteFloatProperty
 		/// </summary>

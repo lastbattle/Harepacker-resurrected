@@ -161,7 +161,10 @@ namespace MapleLib.Configuration
             // Set the UserKey in memory.
             MapleCryptoConstants.UserKey_WzLib = new byte[128];
             byte[] bytes = HexEncoding.GetBytes(ApplicationSettings.MapleVersion_CustomAESUserKey);
+            if (bytes.Length == 0)
+                return;
 
+            MapleCryptoConstants.UserKey_WzLib = new byte[MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.Length];
             for (int i = 0; i < MapleCryptoConstants.UserKey_WzLib.Length; i += 4)
             {
                 MapleCryptoConstants.UserKey_WzLib[i] = bytes[i / 4];

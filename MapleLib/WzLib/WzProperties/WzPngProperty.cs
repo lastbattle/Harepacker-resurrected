@@ -150,24 +150,27 @@ namespace MapleLib.WzLib.WzProperties
             int len = reader.ReadInt32() - 1;
             reader.BaseStream.Position += 1;
 
-            if (len > 0)
+            lock (reader) // lock WzBinaryReader, allowing it to be loaded from multiple threads at once
             {
-                if (parseNow)
+                if (len > 0)
                 {
-                    if (wzReader == null) // when saving the WZ file to a new encryption
+                    if (parseNow)
                     {
-                        compressedImageBytes = reader.ReadBytes(len);
+                        if (wzReader == null) // when saving the WZ file to a new encryption
+                        {
+                            compressedImageBytes = reader.ReadBytes(len);
+                        }
+                        else // when opening the Wz property
+                        {
+                            compressedImageBytes = wzReader.ReadBytes(len);
+                        }
+                        ParsePng();
                     }
-                    else // when opening the Wz property
-                    {
-                        compressedImageBytes = wzReader.ReadBytes(len);
-                    }
-                    ParsePng();
+                    else
+                        reader.BaseStream.Position += len;
                 }
-                else 
-                    reader.BaseStream.Position += len;
+                this.wzReader = reader;
             }
-            this.wzReader = reader;
         }
         #endregion
 
@@ -176,17 +179,20 @@ namespace MapleLib.WzLib.WzProperties
         {
             if (compressedImageBytes == null)
             {
-                long pos = this.wzReader.BaseStream.Position;
-                this.wzReader.BaseStream.Position = offs;
-                int len = this.wzReader.ReadInt32() - 1;
-                if (len <= 0) // possibility an image written with the wrong wzIv 
-                    throw new Exception("The length of the image is negative. WzPngProperty.");
+                lock (wzReader)// lock WzBinaryReader, allowing it to be loaded from multiple threads at once
+                {
+                    long pos = this.wzReader.BaseStream.Position;
+                    this.wzReader.BaseStream.Position = offs;
+                    int len = this.wzReader.ReadInt32() - 1;
+                    if (len <= 0) // possibility an image written with the wrong wzIv 
+                        throw new Exception("The length of the image is negative. WzPngProperty.");
 
-                this.wzReader.BaseStream.Position += 1;
+                    this.wzReader.BaseStream.Position += 1;
 
-                if (len > 0)
-                    compressedImageBytes = this.wzReader.ReadBytes(len);
-                this.wzReader.BaseStream.Position = pos;
+                    if (len > 0)
+                        compressedImageBytes = this.wzReader.ReadBytes(len);
+                    this.wzReader.BaseStream.Position = pos;
+                }
 
                 if (!saveInMemory)
                 {
