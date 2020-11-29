@@ -5,9 +5,9 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
              mc:Ignorable="d" 
-             d:DesignHeight="200" d:DesignWidth="300">
+             d:DesignHeight="160" d:DesignWidth="300">
 
-    <Grid Width="300" Height="200" >
+    <Grid Width="300" Height="160" >
         <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
             
             <!-- X -->
@@ -27,7 +27,7 @@
             </StackPanel>
         </StackPanel>
 
-        <Button x:Name="button_ApplyChanges" Content="Apply" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="150" Margin="10" Height="30"
+        <Button x:Name="button_ApplyChanges" Content="Apply" VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="250" Margin="10" Height="30"
                 Click="button_ApplyChanges_Click"/>
     </Grid>
 </UserControl>

@@ -323,7 +323,10 @@ namespace HaRepacker.GUI.Panels
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!IntInputBox.Show(Properties.Resources.MainAddInt, out name, out value))
+            else if (!IntInputBox.Show(
+                Properties.Resources.MainAddInt, 
+                "", 0,
+                out name, out value))
                 return;
             ((WzNode)target).AddObject(new WzIntProperty(name, (int)value), UndoRedoMan);
         }
@@ -464,7 +467,9 @@ namespace HaRepacker.GUI.Panels
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
                 return;
             }
-            else if (!IntInputBox.Show(Properties.Resources.MainAddShort, out name, out value))
+            else if (!IntInputBox.Show(Properties.Resources.MainAddShort,
+                "", 0,
+                out name, out value))
                 return;
             ((WzNode)target).AddObject(new WzShortProperty(name, (short)value), UndoRedoMan);
         }
@@ -1415,6 +1420,7 @@ namespace HaRepacker.GUI.Panels
             PointF ltVector = canvas.GetCanvasLtPosition();
 
             // Set XY point to canvas xaml
+            canvasPropBox.ParentWzCanvasProperty = canvas;
             canvasPropBox.Delay = delay ?? 0;
             canvasPropBox.CanvasVectorOrigin = originVector;
             canvasPropBox.CanvasVectorHead = headVector;

@@ -641,38 +641,138 @@
 
         <!-- Checkbox to enable crosshair or not-->
         <Grid Grid.Row="0" Margin="15">
-            <!-- Displays the origin-->
-            <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Right" 
+            
+            <!-- Displays the origin, delay, head and lt-->
+            <Grid VerticalAlignment="Bottom" HorizontalAlignment="Right" 
                         Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                        Orientation="Vertical" Margin="0,70,30,0">
-                <!-- 'delay' -->
-                <StackPanel Orientation="Horizontal"
-                            Visibility="Visible">
-                    <TextBlock Text="Delay " Margin="0,0,0,0" FontSize="10" Foreground="Gray" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding Delay}" Margin="3,0,0,0" FontSize="10"  Foreground="Gray"/>
-                </StackPanel>
-                
-                <!-- 'origin' -->
-                <StackPanel Orientation="Horizontal"
+                        Margin="0,70,0,0">
+
+                <Border BorderBrush="Gray" BorderThickness="0.6">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="15"/>
+                            <RowDefinition Height="15"/>
+                            <RowDefinition Height="15"/>
+                            <RowDefinition Height="15"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- 'delay' -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="50"/>
+                                <ColumnDefinition Width="75"/>
+                                <ColumnDefinition Width="33"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="Delay:" Margin="0,0,0,0" FontSize="10" Foreground="Gray" FontWeight="Bold"
+                                    Grid.Column="0"/>
+
+                            <TextBox x:Name="textbox_delay" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
+                                        Grid.Column="1"
+                                         TextChanged="textbox_delay_TextChanged"/>
+                            <!--<TextBlock Text="{Binding Delay}" Margin="3,0,0,0" FontSize="10"  Foreground="Gray"
+                                    Grid.Column="1"/>-->
+
+                            <Button x:Name="button_delayEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
+                                    Grid.Column="2" Click="button_delayEdit_Click" HorizontalAlignment="Left"/>
+                        </Grid>
+
+
+                        <!-- 'origin' -->
+                        <Grid Grid.Row="1"
                             Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
-                    <TextBlock Text="Origin " Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"/>
-                </StackPanel>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="50"/>
+                                <ColumnDefinition Width="75"/>
+                                <ColumnDefinition Width="33"/>
+                            </Grid.ColumnDefinitions>
 
-                <!-- 'head' -->
-                <StackPanel Orientation="Horizontal" 
+                            <TextBlock Text="Origin XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"
+                                       Grid.Column="0"/>
+                            <Grid Grid.Column="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="5*"/>
+                                    <ColumnDefinition Width="5*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="textbox_originX" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
+                                        Grid.Column="0"
+                                         TextChanged="textbox_origin_TextChanged"/>
+                                <TextBox x:Name="textbox_originY" Text="0" Margin="3,0,0,0" FontSize="10"  InputScope="Number" 
+                                        Grid.Column="1"
+                                         TextChanged="textbox_origin_TextChanged"/>
+                            </Grid>
+                            <!--<TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"
+                                        Grid.Column="1"/>-->
+
+                            <Button x:Name="button_originEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30" IsEnabled="False"
+                                        Grid.Column="2" Click="button_originEdit_Click"/>
+                        </Grid>
+
+                        <!-- 'head' -->
+                        <Grid Grid.Row="2"
                             Visibility="{Binding CanvasVectorHead, Converter={StaticResource pointFToVisiblityConverter}}">
-                    <TextBlock Text="Head " Margin="0,0,0,0" FontSize="10" Foreground="DarkOrange" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding CanvasVectorHead, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkOrange"/>
-                </StackPanel>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="50"/>
+                                <ColumnDefinition Width="75"/>
+                                <ColumnDefinition Width="33"/>
+                            </Grid.ColumnDefinitions>
 
-                <!-- 'lt' -->
-                <StackPanel Orientation="Horizontal" 
+                            <TextBlock Text="Head XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkOrange" FontWeight="Bold"
+                                        Grid.Column="0"/>
+                            <Grid Grid.Column="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="5*"/>
+                                    <ColumnDefinition Width="5*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="textbox_headX" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
+                                        Grid.Column="0"
+                                         TextChanged="textbox_head_TextChanged"/>
+                                <TextBox x:Name="textbox_headY" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
+                                        Grid.Column="1"
+                                         TextChanged="textbox_head_TextChanged"/>
+                            </Grid>
+                            <!-- <TextBlock Text="{Binding CanvasVectorHead, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkOrange"
+                                        Grid.Column="1"/>-->
+
+                            <Button x:Name="button_headEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
+                                        Grid.Column="2" Click="button_headEdit_Click"/>
+                        </Grid>
+
+                        <!-- 'lt' -->
+                        <Grid Grid.Row="3"
                             Visibility="{Binding CanvasVectorLt, Converter={StaticResource pointFToVisiblityConverter}}">
-                    <TextBlock Text="lt " Margin="0,0,0,0" FontSize="10" Foreground="DarkMagenta" FontWeight="Bold"/>
-                    <TextBlock Text="{Binding CanvasVectorLt, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkMagenta"/>
-                </StackPanel>
-            </StackPanel>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="50"/>
+                                <ColumnDefinition Width="75"/>
+                                <ColumnDefinition Width="33"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="lt XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkMagenta" FontWeight="Bold"
+                                        Grid.Column="0"/>
+                            <Grid Grid.Column="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="5*"/>
+                                    <ColumnDefinition Width="5*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="textbox_ltX" Text="0" Margin="3,0,0,0" FontSize="10"  InputScope="Number"
+                                        Grid.Column="0"
+                                         TextChanged="textbox_lt_TextChanged"/>
+                                <TextBox x:Name="textbox_ltY" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
+                                        Grid.Column="1"
+                                         TextChanged="textbox_lt_TextChanged"/>
+                            </Grid>
+                          <!--  <TextBlock Text="{Binding CanvasVectorLt, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkMagenta"
+                                        Grid.Column="1"/>-->
+
+                            <Button x:Name="button_ltEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
+                                        Grid.Column="2" Click="button_ltEdit_Click"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
 
             <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,5,10,0">
                 <CheckBox x:Name="checkbox_crosshair" Content="Crosshair"

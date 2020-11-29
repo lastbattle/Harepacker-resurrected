@@ -11,9 +11,26 @@ namespace HaRepacker.GUI.Input
 {
     public partial class IntInputBox : Form
     {
-        public static bool Show(string title, out string name, out int? integer)
+        private bool bHideNameInputBox = false;
+
+        public static bool Show(string title, 
+            string defaultName, int defaultValue,
+            out string name, out int? integer, bool bHideNameInputBox = false)
         {
             IntInputBox form = new IntInputBox(title);
+            form.bHideNameInputBox = bHideNameInputBox;
+            if (bHideNameInputBox)
+            {
+                form.nameBox.Visible = false;
+                form.label_name.Visible = false;
+            }
+
+            // Set default value 
+            if (defaultName != null)
+                form.nameBox.Text = defaultName;
+            if (defaultValue != 0)
+                form.valueBox.Value = defaultValue;
+
             bool result = form.ShowDialog() == DialogResult.OK;
             name = form.nameResult;
             integer = form.intResult;
@@ -36,9 +53,14 @@ namespace HaRepacker.GUI.Input
                 okButton_Click(null, null);
         }
 
+        /// <summary>
+        /// On ok clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void okButton_Click(object sender, EventArgs e)
         {
-            if (nameBox.Text != "" && nameBox.Text != null)
+            if ((nameBox.Text != "" && nameBox.Text != null) || bHideNameInputBox)
             {
                 nameResult = nameBox.Text;
                 intResult = valueBox.Value;
