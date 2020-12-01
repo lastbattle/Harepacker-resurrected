@@ -29,7 +29,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
 using System.Reflection;
-using HaRepacker.Converter;
+using HaSharedLibrary.Converter;
 
 namespace HaRepacker.GUI.Panels
 {

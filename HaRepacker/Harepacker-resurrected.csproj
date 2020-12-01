@@ -196,7 +196,6 @@
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
     <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
     <Compile Include="GUI\ContextMenuManager.cs" />
-    <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
     <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
     <Compile Include="Converter\ImageWidthOrHeightToScreenDPIConverter.cs" />

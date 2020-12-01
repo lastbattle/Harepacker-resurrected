@@ -88,6 +88,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Converter\BitmapToImageSource.cs" />
     <Compile Include="Render\BaseDXDrawableItem.cs" />
     <Compile Include="GUI\ChangeableTextBox.xaml.cs">
       <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
