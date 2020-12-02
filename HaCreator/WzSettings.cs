@@ -87,8 +87,5 @@ namespace HaCreator
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";
         public static string LastXmlPath = "";
-        public static string AuthorEmail = new string(Encoding.ASCII.GetChars(new byte[] { 
-                                            0x68,0x61,0x68,0x61,0x30,0x31,0x68,0x61,0x68,0x61,0x30,0x31,0x40,0x67,0x6d,0x61,0x69,0x6c,0x2e,0x63,0x6f,0x6d 
-                                            })); // The email address is obfuscated to prevent spambots from finding it on the git webpage
     }
 }

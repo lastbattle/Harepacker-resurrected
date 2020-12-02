@@ -781,8 +781,10 @@
     <None Include="Resources\expand.png" />
     <None Include="Resources\collapse.png" />
     <None Include="Resources\ladyboss_test_attack2_0.png" />
+    <None Include="Resources\copyFile.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
+    <None Include="Resources\pasteFile.png" />
     <Content Include="Resources\Pause.png" />
   </ItemGroup>
   <ItemGroup>
