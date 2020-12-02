@@ -605,7 +605,7 @@ namespace HaCreator.MapEditor
                 MessageBox.Show("Minimap regenerated successfully", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
             {
-                MessageBox.Show("An error occured during minimap regeneration. The error has been logged. If possible, save the map and send it to" + ApplicationSettings.AuthorEmail, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("An error occured during minimap regeneration. The error has been logged. If possible, save the map report it via github.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ErrorLogger.Log(ErrorLevel.Critical, "error regenning minimap for map " + multiBoard.SelectedBoard.MapInfo.id.ToString());
             }
         }
