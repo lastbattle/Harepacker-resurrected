@@ -824,7 +824,7 @@
       <Version>3.0.6</Version>
     </PackageReference>
     <PackageReference Include="MonoGame.Framework.WindowsDX">
-      <Version>3.7.1.189</Version>
+      <Version>3.8.0.1641</Version>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json">
       <Version>12.0.3</Version>
