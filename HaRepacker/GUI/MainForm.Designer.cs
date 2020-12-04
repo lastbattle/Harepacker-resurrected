@@ -35,11 +35,11 @@ namespace HaRepacker.GUI
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.newToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.copyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pasteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.unloadAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.reloadAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.unloadAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.editToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.addToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzDirectoryToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -86,7 +86,6 @@ namespace HaRepacker.GUI
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.zoomTextBox = new System.Windows.Forms.ToolStripTextBox();
             this.toolStripMenuItem_searchWzStrings = new System.Windows.Forms.ToolStripMenuItem();
-            this.toolStripMenuItem_WzEncryption = new System.Windows.Forms.ToolStripMenuItem();
             this.encryptionBox = new System.Windows.Forms.ToolStripComboBox();
             this.helpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.viewHelpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -95,6 +94,8 @@ namespace HaRepacker.GUI
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.jSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.bSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -139,6 +140,12 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.openToolStripMenuItem, "openToolStripMenuItem");
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
             // 
+            // saveToolStripMenuItem
+            // 
+            resources.ApplyResources(this.saveToolStripMenuItem, "saveToolStripMenuItem");
+            this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
+            this.saveToolStripMenuItem.Click += new System.EventHandler(this.SaveToolStripMenuItem_Click);
+            // 
             // copyToolStripMenuItem
             // 
             this.copyToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.copyFile;
@@ -151,23 +158,17 @@ namespace HaRepacker.GUI
             this.pasteToolStripMenuItem.Name = "pasteToolStripMenuItem";
             resources.ApplyResources(this.pasteToolStripMenuItem, "pasteToolStripMenuItem");
             // 
-            // saveToolStripMenuItem
+            // reloadAllToolStripMenuItem
             // 
-            resources.ApplyResources(this.saveToolStripMenuItem, "saveToolStripMenuItem");
-            this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
-            this.saveToolStripMenuItem.Click += new System.EventHandler(this.SaveToolStripMenuItem_Click);
+            resources.ApplyResources(this.reloadAllToolStripMenuItem, "reloadAllToolStripMenuItem");
+            this.reloadAllToolStripMenuItem.Name = "reloadAllToolStripMenuItem";
+            this.reloadAllToolStripMenuItem.Click += new System.EventHandler(this.reloadAllToolStripMenuItem_Click);
             // 
             // unloadAllToolStripMenuItem
             // 
             resources.ApplyResources(this.unloadAllToolStripMenuItem, "unloadAllToolStripMenuItem");
             this.unloadAllToolStripMenuItem.Name = "unloadAllToolStripMenuItem";
             this.unloadAllToolStripMenuItem.Click += new System.EventHandler(this.unloadAllToolStripMenuItem_Click);
-            // 
-            // reloadAllToolStripMenuItem
-            // 
-            resources.ApplyResources(this.reloadAllToolStripMenuItem, "reloadAllToolStripMenuItem");
-            this.reloadAllToolStripMenuItem.Name = "reloadAllToolStripMenuItem";
-            this.reloadAllToolStripMenuItem.Click += new System.EventHandler(this.reloadAllToolStripMenuItem_Click);
             // 
             // editToolStripMenuItem
             // 
@@ -369,6 +370,8 @@ namespace HaRepacker.GUI
             // 
             this.exportDataToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.xMLToolStripMenuItem1,
+            this.jSONToolStripMenuItem,
+            this.bSONToolStripMenuItem,
             this.pNGsToolStripMenuItem,
             this.imgToolStripMenuItem1});
             this.exportDataToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.page_go;
@@ -452,8 +455,7 @@ namespace HaRepacker.GUI
             // 
             this.extrasToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fHMappingToolStripMenuItem,
-            this.toolStripMenuItem_searchWzStrings,
-            this.toolStripMenuItem_WzEncryption});
+            this.toolStripMenuItem_searchWzStrings});
             this.extrasToolStripMenuItem.Name = "extrasToolStripMenuItem";
             resources.ApplyResources(this.extrasToolStripMenuItem, "extrasToolStripMenuItem");
             // 
@@ -490,12 +492,6 @@ namespace HaRepacker.GUI
             this.toolStripMenuItem_searchWzStrings.Name = "toolStripMenuItem_searchWzStrings";
             resources.ApplyResources(this.toolStripMenuItem_searchWzStrings, "toolStripMenuItem_searchWzStrings");
             this.toolStripMenuItem_searchWzStrings.Click += new System.EventHandler(this.ToolStripMenuItem_searchWzStrings_Click);
-            // 
-            // toolStripMenuItem_WzEncryption
-            // 
-            this.toolStripMenuItem_WzEncryption.Name = "toolStripMenuItem_WzEncryption";
-            resources.ApplyResources(this.toolStripMenuItem_WzEncryption, "toolStripMenuItem_WzEncryption");
-            this.toolStripMenuItem_WzEncryption.Click += new System.EventHandler(this.toolStripMenuItem_WzEncryption_Click);
             // 
             // encryptionBox
             // 
@@ -554,6 +550,18 @@ namespace HaRepacker.GUI
             this.button_addTab.Name = "button_addTab";
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.Button_addTab_Click);
+            // 
+            // jSONToolStripMenuItem
+            // 
+            this.jSONToolStripMenuItem.Name = "jSONToolStripMenuItem";
+            resources.ApplyResources(this.jSONToolStripMenuItem, "jSONToolStripMenuItem");
+            this.jSONToolStripMenuItem.Click += new System.EventHandler(this.jSONToolStripMenuItem_Click);
+            // 
+            // bSONToolStripMenuItem
+            // 
+            this.bSONToolStripMenuItem.Name = "bSONToolStripMenuItem";
+            resources.ApplyResources(this.bSONToolStripMenuItem, "bSONToolStripMenuItem");
+            this.bSONToolStripMenuItem.Click += new System.EventHandler(this.bSONToolStripMenuItem_Click);
             // 
             // MainForm
             // 
@@ -637,9 +645,10 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
-        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_WzEncryption;
         private System.Windows.Forms.ToolStripMenuItem copyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem jSONToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem bSONToolStripMenuItem;
     }
 }
 

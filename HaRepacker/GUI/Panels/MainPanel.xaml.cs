@@ -79,20 +79,20 @@ namespace HaRepacker.GUI.Panels
             System.Windows.Media.Animation.Storyboard sbb = (System.Windows.Media.Animation.Storyboard)(this.FindResource("Storyboard_Find_FadeIn"));
             sbb.Completed += Storyboard_Find_FadeIn_Completed;
 
-            // buttons
 
+            // buttons
             menuItem_Animate.Visibility = Visibility.Collapsed;
             menuItem_changeImage.Visibility = Visibility.Collapsed;
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
             menuItem_saveImage.Visibility = Visibility.Collapsed;
 
+            textEditor.SaveButtonClicked += TextEditor_SaveButtonClicked;
             Loaded += MainPanelXAML_Loaded;
 
 
             isLoading = false;
         }
-
 
         private void MainPanelXAML_Loaded(object sender, RoutedEventArgs e)
         {
@@ -759,11 +759,26 @@ namespace HaRepacker.GUI.Panels
             }
             else if (obj is WzLuaProperty)
             {
-                WzLuaProperty luaProp = (WzLuaProperty)obj;
+                throw new NotSupportedException("Moved to TextEditor_SaveButtonClicked()");
+            }
+        }
 
+        /// <summary>
+        /// On texteditor save button clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void TextEditor_SaveButtonClicked(object sender, EventArgs e)
+        {
+            if (DataTree.SelectedNode == null)
+                return;
+
+            WzObject obj = (WzObject)DataTree.SelectedNode.Tag;
+            if (obj is WzLuaProperty luaProp)
+            {
+                string setText = textEditor.textEditor.Text;
                 byte[] encBytes = luaProp.EncodeDecode(Encoding.ASCII.GetBytes(setText));
                 luaProp.Value = encBytes;
-                //  ((WzLuaProperty)obj).Value = setText;
             }
         }
 
@@ -1276,6 +1291,8 @@ namespace HaRepacker.GUI.Panels
             fieldLimitPanelHost.Visibility = Visibility.Collapsed;
             // Vector panel
             vectorPanel.Visibility = Visibility.Collapsed;
+            // Avalon Text editor
+            textEditor.Visibility = Visibility.Collapsed;
 
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
@@ -1352,7 +1369,13 @@ namespace HaRepacker.GUI.Panels
                 menuItem_changeSound.Visibility = Visibility.Visible;
                 menuItem_saveSound.Visibility = Visibility.Visible;
             }
-            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzLongProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty || bIsWzLuaProperty)
+            else if (bIsWzLuaProperty)
+            {
+                textEditor.Visibility = Visibility.Visible;
+
+                textEditor.textEditor.Text = obj.ToString();
+            }
+            else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzLongProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty)
             {
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
@@ -1412,11 +1435,6 @@ namespace HaRepacker.GUI.Panels
                         }
 
                     }
-                }
-                else if (bIsWzLuaProperty)
-                {
-                    textPropBox.AcceptsReturn = true;
-                    textPropBox.Height = 700;
                 }
                 else if (bIsWzLongProperty || bIsWzIntProperty)
                 {

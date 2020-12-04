@@ -28,6 +28,9 @@ using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Bson;
+using Newtonsoft.Json;
 
 namespace MapleLib.WzLib.Serialization
 {
@@ -40,7 +43,7 @@ namespace MapleLib.WzLib.Serialization
 
         protected static void createDirSafe(ref string path)
         {
-            if (path.Substring(path.Length - 1, 1) == @"\") 
+            if (path.Substring(path.Length - 1, 1) == @"\")
                 path = path.Substring(0, path.Length - 1);
 
             string basePath = path;
@@ -53,7 +56,7 @@ namespace MapleLib.WzLib.Serialization
             Directory.CreateDirectory(path);
         }
 
-        private static string regexSearch = ":" +  new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
+        private static string regexSearch = ":" + new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
         private static Regex regex_invalidPath = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
         /// <summary>
         /// Escapes invalid file name and paths (if nexon uses any illegal character that causes issue during saving)
@@ -65,12 +68,12 @@ namespace MapleLib.WzLib.Serialization
         }
     }
 
-    public abstract class WzXmlSerializer : ProgressingWzSerializer
+    public abstract class WzSerializer : ProgressingWzSerializer
     {
         protected string indent;
         protected string lineBreak;
         public static NumberFormatInfo formattingInfo;
-        protected bool ExportBase64Data = false;
+        protected bool bExportBase64Data = false;
 
         protected static char[] amp = "&amp;".ToCharArray();
         protected static char[] lt = "&lt;".ToCharArray();
@@ -78,14 +81,16 @@ namespace MapleLib.WzLib.Serialization
         protected static char[] apos = "&apos;".ToCharArray();
         protected static char[] quot = "&quot;".ToCharArray();
 
-        static WzXmlSerializer()
+        static WzSerializer()
         {
-            formattingInfo = new NumberFormatInfo();
-            formattingInfo.NumberDecimalSeparator = ".";
-            formattingInfo.NumberGroupSeparator = ",";
+            formattingInfo = new NumberFormatInfo
+            {
+                NumberDecimalSeparator = ".",
+                NumberGroupSeparator = ","
+            };
         }
 
-        public WzXmlSerializer(int indentation, LineBreak lineBreakType)
+        public WzSerializer(int indentation, LineBreak lineBreakType)
         {
             switch (lineBreakType)
             {
@@ -117,7 +122,7 @@ namespace MapleLib.WzLib.Serialization
             if (prop is WzCanvasProperty)
             {
                 WzCanvasProperty property3 = (WzCanvasProperty)prop;
-                if (ExportBase64Data)
+                if (bExportBase64Data)
                 {
                     MemoryStream stream = new MemoryStream();
                     property3.PngProperty.GetImage(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
@@ -152,7 +157,7 @@ namespace MapleLib.WzLib.Serialization
             else if (prop is WzBinaryProperty)
             {
                 WzBinaryProperty property7 = (WzBinaryProperty)prop;
-                if (ExportBase64Data)
+                if (bExportBase64Data)
                     tw.Write(string.Concat(new object[] { depth, "<sound name=\"", XmlUtil.SanitizeText(property7.Name), "\" length=\"", property7.Length.ToString(), "\" basehead=\"", Convert.ToBase64String(property7.Header), "\" basedata=\"", Convert.ToBase64String(property7.GetBytes(false)), "\"/>" }) + lineBreak);
                 else
                     tw.Write(depth + "<sound name=\"" + XmlUtil.SanitizeText(property7.Name) + "\"/>" + lineBreak);
@@ -213,20 +218,316 @@ namespace MapleLib.WzLib.Serialization
                     WritePropertyToXML(tw, newDepth, property, exportFilePath);
                 }
                 tw.Write(depth + "</extended>" + lineBreak);
-            } 
-            else if (prop is WzLuaProperty) // probably added on v188 gms?
+            }
+            else if (prop is WzLuaProperty propertyLua)
             {
-                WzLuaProperty property15 = (WzLuaProperty)prop;
-
-                string parentName = property15.Parent.Name;
+                string parentName = propertyLua.Parent.Name;
 
                 tw.Write(depth);
                 tw.Write(lineBreak);
+                if (bExportBase64Data)
+                {
 
+                }
                 // Export standalone file here
                 using (TextWriter twLua = new StreamWriter(File.Create(exportFilePath.Replace(parentName + ".xml", parentName))))
                 {
-                    twLua.Write(property15.ToString());
+                    twLua.Write(propertyLua.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Writes WzImageProperty to Json or Bson
+        /// </summary>
+        /// <param name="json"></param>
+        /// <param name="depth"></param>
+        /// <param name="prop"></param>
+        /// <param name="exportFilePath"></param>
+        protected void WritePropertyToJsonBson(JObject json, string depth, WzImageProperty prop, string exportFilePath)
+        {
+            const string FIELD_TYPE_NAME = "_dirType"; // avoid the same naming as anything in the WZ to avoid exceptions
+            //const string FIELD_DEPTH_NAME = "_depth";
+            const string FIELD_NAME_NAME = "_dirName";
+
+            const string FIELD_WIDTH_NAME = "_width";
+            const string FIELD_HEIGHT_NAME = "_height";
+
+            const string FIELD_X_NAME = "_x";
+            const string FIELD_Y_NAME = "_y";
+
+            const string FIELD_BASEDATA_NAME = "_height";
+
+            const string FIELD_VALUE_NAME = "_value";
+
+            const string FIELD_LENGTH_NAME = "_length";
+            const string FIELD_FILENAME_NAME = "_fileName";
+
+            if (prop is WzCanvasProperty propertyCanvas)
+            {
+                JObject jsonCanvas = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyCanvas.Name) },
+                        { FIELD_TYPE_NAME, "canvas" },
+                        { FIELD_WIDTH_NAME, propertyCanvas.PngProperty.Width },
+                        { FIELD_HEIGHT_NAME, propertyCanvas.PngProperty.Height },
+                    };
+                if (bExportBase64Data)
+                {
+                    byte[] pngbytes;
+                    using (MemoryStream stream = new MemoryStream())
+                    {
+                        propertyCanvas.PngProperty.GetImage(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                        pngbytes = stream.ToArray();
+                    }
+                    jsonCanvas.Add(FIELD_BASEDATA_NAME, Convert.ToBase64String(pngbytes));
+                }
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyCanvas.Name);
+                if (!json.ContainsKey(jPropertyName))  // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                                                       // FullPath = "Item.wz\\Install\\0380.img\\03800572\\info\\icon\\foothold\\foothold" <<< double 'foothold' here :( 
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyCanvas.Name), jsonCanvas)); // add this json to the main json object parent
+
+                    string newDepth = depth + indent;
+                    foreach (WzImageProperty property in propertyCanvas.WzProperties)
+                    {
+                        WritePropertyToJsonBson(jsonCanvas, newDepth, property, exportFilePath);
+                    }
+                }
+            }
+            else if (prop is WzIntProperty propertyInt)
+            {
+                JObject jsonInt = new JObject
+                {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyInt.Name) },
+                        { FIELD_TYPE_NAME, "int" },
+                        { FIELD_VALUE_NAME, propertyInt.Value },
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyInt.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyInt.Name), jsonInt)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzDoubleProperty propertyDouble)
+            {
+                JObject jsonDouble = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyDouble.Name) },
+                         { FIELD_TYPE_NAME, "double" },
+                        { FIELD_VALUE_NAME, propertyDouble.Value },
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyDouble.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyDouble.Name), jsonDouble)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzNullProperty propertyNull)
+            {
+                JObject jsonNull = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyNull.Name) },
+                        { FIELD_TYPE_NAME, "null" },
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyNull.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyNull.Name), jsonNull)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzBinaryProperty propertyBin)
+            {
+                JObject jsonBinary = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyBin.Name) },
+                        { FIELD_TYPE_NAME, "binary" },
+                        { FIELD_LENGTH_NAME, propertyBin.Length.ToString() }
+                    };
+                if (bExportBase64Data)
+                {
+                    jsonBinary.Add("basehead", Convert.ToBase64String(propertyBin.Header));
+                    jsonBinary.Add("basedata", Convert.ToBase64String(propertyBin.GetBytes(false)));
+                }
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyBin.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyBin.Name), jsonBinary)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzStringProperty propertyStr)
+            {
+                string str = XmlUtil.SanitizeText(propertyStr.Value);
+
+                JObject jsonString = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyStr.Name) },
+                        { FIELD_TYPE_NAME, "string" },
+                        { FIELD_VALUE_NAME, str }
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyStr.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyStr.Name), jsonString)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzSubProperty propertySub)
+            {
+                JObject jsonSub = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertySub.Name) },
+                        { FIELD_TYPE_NAME, "sub" },
+                    };
+
+                string newDepth = depth + indent;
+                foreach (WzImageProperty property in propertySub.WzProperties)
+                {
+                    WritePropertyToJsonBson(jsonSub, newDepth, property, exportFilePath);
+                }
+
+                string jPropertyName = XmlUtil.SanitizeText(propertySub.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertySub.Name), jsonSub)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzShortProperty propertyShort)
+            {
+                JObject jsonShort = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyShort.Name) },
+                        { FIELD_TYPE_NAME, "short" },
+                        { FIELD_VALUE_NAME, propertyShort.Value},
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyShort.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyShort.Name), jsonShort)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzLongProperty propertyLong)
+            {
+                JObject jsonLong = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyLong.Name) },
+                        { FIELD_TYPE_NAME, "long" },
+                        { FIELD_VALUE_NAME, propertyLong.Value},
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyLong.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyLong.Name), jsonLong)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzUOLProperty propertyUOL)
+            {
+                JObject jsonUOL = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyUOL.Name) },
+                        { FIELD_TYPE_NAME, "uol" },
+                        { FIELD_VALUE_NAME, propertyUOL.Value},
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyUOL.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyUOL.Name), jsonUOL)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzVectorProperty propertyVector)
+            {
+                JObject jsonVector = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyVector.Name) },
+                        { FIELD_TYPE_NAME, "vector" },
+                        { FIELD_X_NAME, propertyVector.X.Value },
+                        { FIELD_Y_NAME, propertyVector.Y.Value },
+                    };
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyVector.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyVector.Name), jsonVector)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzFloatProperty propertyFloat)
+            {
+                JObject jsonfloat = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyFloat.Name) },
+                        { FIELD_TYPE_NAME, "float" },
+                    };
+                string str2 = Convert.ToString(propertyFloat.Value, formattingInfo);
+                if (!str2.Contains("."))
+                    str2 += ".0";
+                jsonfloat.Add(FIELD_VALUE_NAME, str2);
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyFloat.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyFloat.Name), jsonfloat)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzConvexProperty propertyConvex)
+            {
+                JObject jsonConvex = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyConvex.Name) },
+                        { FIELD_TYPE_NAME, "convex" },
+                    };
+                string newDepth = depth + indent;
+                foreach (WzImageProperty property in propertyConvex.WzProperties)
+                {
+                    WritePropertyToJsonBson(jsonConvex, newDepth, property, exportFilePath);
+                }
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyConvex.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyConvex.Name), jsonConvex)); // add this json to the main json object parent
+                }
+            }
+            else if (prop is WzLuaProperty propertyLua)
+            {
+                string parentName = propertyLua.Parent.Name;
+
+                JObject jsonLua = new JObject
+                    {
+                        //{ FIELD_DEPTH_NAME, depth },
+                        { FIELD_NAME_NAME, XmlUtil.SanitizeText(propertyLua.Name) },
+                        { FIELD_TYPE_NAME, "lua" },
+                        { FIELD_FILENAME_NAME, parentName },
+                    };
+                if (bExportBase64Data)
+                {
+                    jsonLua.Add(FIELD_BASEDATA_NAME, propertyLua.ToString());
+                }
+
+                string jPropertyName = XmlUtil.SanitizeText(propertyLua.Name);
+                if (!json.ContainsKey(jPropertyName)) // making the assumption that only the first wz image will be used, everything is dropped since its not going to be read in wz anyway
+                {
+                    json.Add(new JProperty(XmlUtil.SanitizeText(propertyLua.Name), jsonLua)); // add this json to the main json object parent
                 }
             }
         }
@@ -311,7 +612,7 @@ namespace MapleLib.WzLib.Serialization
             curr = 0;
 
             if (!Directory.Exists(outPath))
-                WzXmlSerializer.createDirSafe(ref outPath);
+                WzSerializer.createDirSafe(ref outPath);
 
             if (outPath.Substring(outPath.Length - 1, 1) != @"\")
             {
@@ -420,10 +721,10 @@ namespace MapleLib.WzLib.Serialization
             this.outPath = outPath;
             if (!Directory.Exists(outPath))
             {
-                WzXmlSerializer.createDirSafe(ref outPath);
+                WzSerializer.createDirSafe(ref outPath);
             }
 
-            if (outPath.Substring(outPath.Length - 1, 1) != @"\") 
+            if (outPath.Substring(outPath.Length - 1, 1) != @"\")
                 outPath += @"\";
 
             total = CalculateTotal(obj);
@@ -465,7 +766,7 @@ namespace MapleLib.WzLib.Serialization
             else if (currObj is WzDirectory)
             {
                 outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
-                if (!Directory.Exists(outPath)) 
+                if (!Directory.Exists(outPath))
                     Directory.CreateDirectory(outPath);
                 foreach (WzDirectory subdir in ((WzDirectory)currObj).WzDirectories)
                 {
@@ -495,7 +796,7 @@ namespace MapleLib.WzLib.Serialization
                 WzImage wzImage = ((WzImage)currObj);
 
                 outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
-                if (!Directory.Exists(outPath)) 
+                if (!Directory.Exists(outPath))
                     Directory.CreateDirectory(outPath);
 
                 bool parse = wzImage.Parsed || wzImage.Changed;
@@ -526,11 +827,120 @@ namespace MapleLib.WzLib.Serialization
         }
     }
 
-    public class WzClassicXmlSerializer : WzXmlSerializer, IWzImageSerializer
+    public class WzJsonBsonSerializer : WzSerializer, IWzImageSerializer
+    {
+        private readonly bool bExportAsJson; // otherwise bson
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="indentation"></param>
+        /// <param name="lineBreakType"></param>
+        /// <param name="bExportBase64Data"></param>
+        /// <param name="bExportAsJson"></param>
+        public WzJsonBsonSerializer(int indentation, LineBreak lineBreakType, bool bExportBase64Data, bool bExportAsJson)
+            : base(indentation, lineBreakType)
+        {
+            this.bExportBase64Data = bExportBase64Data;
+            this.bExportAsJson = bExportAsJson;
+        }
+
+        private void ExportInternal(WzImage img, string path)
+        {
+            bool parsed = img.Parsed || img.Changed;
+            if (!parsed)
+                img.ParseImage();
+            curr++;
+
+            // TODO: Use System.Text.Json after .NET 5.0 or above 
+            // for better performance via SMID related intrinsics
+
+            if (File.Exists(path))
+                File.Delete(path);
+
+            using (System.IO.FileStream file = File.Create(path))
+            {
+                JObject jsonObject = new JObject();
+                foreach (WzImageProperty property in img.WzProperties)
+                {
+                    WritePropertyToJsonBson(jsonObject, indent, property, path);
+                }
+
+                if (!bExportAsJson)
+                {
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        using (BsonWriter writer = new BsonWriter(ms))
+                        {
+                            JsonSerializer serializer = new JsonSerializer();
+                            serializer.Serialize(writer, jsonObject);
+
+                            using (StreamWriter st = new StreamWriter(file))
+                            {
+                                st.WriteLine(Convert.ToBase64String(ms.ToArray()));
+                            }
+                        }
+                    }
+                }
+                else // json string
+                {
+                    using (StreamWriter st = new StreamWriter(file))
+                    {
+                        st.WriteLine(jsonObject.ToString());
+                    }
+                }
+            }
+
+            if (!parsed)
+                img.UnparseImage();
+        }
+
+        private void exportDirInternal(WzDirectory dir, string path)
+        {
+            if (!Directory.Exists(path))
+                createDirSafe(ref path);
+
+            if (path.Substring(path.Length - 1) != @"\")
+                path += @"\";
+
+            foreach (WzDirectory subdir in dir.WzDirectories)
+            {
+                exportDirInternal(subdir, path + ProgressingWzSerializer.EscapeInvalidFilePathNames(subdir.name) + @"\");
+            }
+            foreach (WzImage subimg in dir.WzImages)
+            {
+                ExportInternal(subimg, path + ProgressingWzSerializer.EscapeInvalidFilePathNames(subimg.Name) + (bExportAsJson ? ".json" : ".bin"));
+            }
+        }
+
+        public void SerializeImage(WzImage img, string path)
+        {
+            total = 1;
+            curr = 0;
+
+            if (Path.GetExtension(path) != (bExportAsJson ? ".json" : ".bin"))
+                path += (bExportAsJson ? ".json" : ".bin");
+            ExportInternal(img, path);
+        }
+
+        public void SerializeDirectory(WzDirectory dir, string path)
+        {
+            total = dir.CountImages();
+            curr = 0;
+            exportDirInternal(dir, path);
+        }
+
+        public void SerializeFile(WzFile file, string path)
+        {
+            SerializeDirectory(file.WzDirectory, path);
+        }
+    }
+
+    public class WzClassicXmlSerializer : WzSerializer, IWzImageSerializer
     {
         public WzClassicXmlSerializer(int indentation, LineBreak lineBreakType, bool exportbase64)
             : base(indentation, lineBreakType)
-        { ExportBase64Data = exportbase64; }
+        { bExportBase64Data = exportbase64; }
 
         private void exportXmlInternal(WzImage img, string path)
         {
@@ -539,6 +949,8 @@ namespace MapleLib.WzLib.Serialization
                 img.ParseImage();
             curr++;
 
+            if (File.Exists(path))
+                File.Delete(path);
             using (TextWriter tw = new StreamWriter(File.Create(path)))
             {
                 tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
@@ -591,7 +1003,7 @@ namespace MapleLib.WzLib.Serialization
         }
     }
 
-    public class WzNewXmlSerializer : WzXmlSerializer
+    public class WzNewXmlSerializer : WzSerializer
     {
         public WzNewXmlSerializer(int indentation, LineBreak lineBreakType)
             : base(indentation, lineBreakType)
@@ -600,7 +1012,7 @@ namespace MapleLib.WzLib.Serialization
         internal void DumpImageToXML(TextWriter tw, string depth, WzImage img, string exportFilePath)
         {
             bool parsed = img.Parsed || img.Changed;
-            if (!parsed) 
+            if (!parsed)
                 img.ParseImage();
 
             curr++;
@@ -611,7 +1023,7 @@ namespace MapleLib.WzLib.Serialization
                 WritePropertyToXML(tw, newDepth, property, exportFilePath);
             }
             tw.Write(depth + "</wzimg>");
-            if (!parsed) 
+            if (!parsed)
                 img.UnparseImage();
         }
 
@@ -640,33 +1052,35 @@ namespace MapleLib.WzLib.Serialization
                 exportFilePath += ".xml";
             foreach (WzObject obj in objects)
             {
-                if (obj is WzImage) 
+                if (obj is WzImage)
                     total++;
-                else if (obj is WzDirectory) 
+                else if (obj is WzDirectory)
                     total += ((WzDirectory)obj).CountImages();
             }
 
-            ExportBase64Data = true;
-            TextWriter tw = new StreamWriter(exportFilePath);
-            tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
-            tw.Write("<xmldump>" + lineBreak);
-            foreach (WzObject obj in objects)
+            bExportBase64Data = true;
+
+            using (TextWriter tw = new StreamWriter(exportFilePath))
             {
-                if (obj is WzDirectory)
+                tw.Write("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + lineBreak);
+                tw.Write("<xmldump>" + lineBreak);
+                foreach (WzObject obj in objects)
                 {
-                    DumpDirectoryToXML(tw, indent, (WzDirectory)obj, exportFilePath);
+                    if (obj is WzDirectory)
+                    {
+                        DumpDirectoryToXML(tw, indent, (WzDirectory)obj, exportFilePath);
+                    }
+                    else if (obj is WzImage)
+                    {
+                        DumpImageToXML(tw, indent, (WzImage)obj, exportFilePath);
+                    }
+                    else if (obj is WzImageProperty)
+                    {
+                        WritePropertyToXML(tw, indent, (WzImageProperty)obj, exportFilePath);
+                    }
                 }
-                else if (obj is WzImage)
-                {
-                    DumpImageToXML(tw, indent, (WzImage)obj, exportFilePath);
-                }
-                else if (obj is WzImageProperty)
-                {
-                    WritePropertyToXML(tw, indent, (WzImageProperty)obj, exportFilePath);
-                }
+                tw.Write("</xmldump>" + lineBreak);
             }
-            tw.Write("</xmldump>" + lineBreak);
-            tw.Close();
         }
     }
 

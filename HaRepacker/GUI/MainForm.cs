@@ -732,7 +732,7 @@ namespace HaRepacker.GUI
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|*.wz",
+                Filter = string.Format("{0}|*.wz;ZLZ.dll",
                 HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
             })
@@ -746,7 +746,29 @@ namespace HaRepacker.GUI
                 {
                     string filePathLowerCase = filePath.ToLower();
 
-                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
+                    if (filePathLowerCase.EndsWith("zlz.dll")) // ZLZ.dll encryption keys
+                    {
+                        AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
+                        //similarly to find process architecture  
+                        var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
+
+                        if (assemblyArchitecture == ProcessorArchitecture.X86)
+                        {
+                            ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
+                            bool opened = form.OpenZLZDllFile();
+
+                            if (opened)
+                                form.Show();
+                        }
+                        else
+                        {
+                            MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
+                        }
+                        return;
+                    }
+
+                    // Other WZs
+                    else if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
                     {
                         WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected, MainPanel);
                         if (img == null)
@@ -1221,6 +1243,11 @@ namespace HaRepacker.GUI
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
+        /// <summary>
+        /// Export IMG
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void imgToolStripMenuItem1_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
@@ -1250,6 +1277,11 @@ namespace HaRepacker.GUI
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
+        /// <summary>
+        /// Export PNG / MP3
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void pNGsToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
@@ -1275,6 +1307,62 @@ namespace HaRepacker.GUI
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
+
+        /// <summary>
+        /// Export as Json
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void jSONToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ExportBsonJsonInternal(true);
+        }
+
+        /// <summary>
+        /// Export as BSON
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void bSONToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ExportBsonJsonInternal(false);
+        }
+
+        /// <summary>
+        /// Export as Json or Bson
+        /// </summary>
+        /// <param name="isJson"></param>
+        private void ExportBsonJsonInternal(bool isJson)
+        {
+            string outPath = GetOutputDirectory();
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            bool bIncludeBase64BinData = MessageBox.Show(Properties.Resources.MainWzExportJson_IncludeBase64, Properties.Resources.MainWzExportJson_IncludeBase64_Title, MessageBoxButtons.YesNo) == DialogResult.Yes;
+
+            List<WzDirectory> dirs = new List<WzDirectory>();
+            List<WzImage> imgs = new List<WzImage>();
+            foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
+            {
+                if (node.Tag is WzDirectory directory)
+                    dirs.Add(directory);
+                else if (node.Tag is WzImage image)
+                    imgs.Add(image);
+                else if (node.Tag is WzFile file)
+                {
+                    dirs.Add(file.WzDirectory);
+                }
+            }
+            WzJsonBsonSerializer serializer = new WzJsonBsonSerializer(Program.ConfigurationManager.UserSettings.Indentation, Program.ConfigurationManager.UserSettings.LineBreakType, bIncludeBase64BinData, isJson);
+            threadDone = false;
+            runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
+            runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
+
+            new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
+        }
+
         /// <summary>
         /// Export to private server toolstrip
         /// </summary>
@@ -1293,13 +1381,13 @@ namespace HaRepacker.GUI
             List<WzImage> imgs = new List<WzImage>();
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
-                if (node.Tag is WzDirectory)
-                    dirs.Add((WzDirectory)node.Tag);
-                else if (node.Tag is WzImage)
-                    imgs.Add((WzImage)node.Tag);
-                else if (node.Tag is WzFile)
+                if (node.Tag is WzDirectory directory)
+                    dirs.Add(directory);
+                else if (node.Tag is WzImage image)
+                    imgs.Add(image);
+                else if (node.Tag is WzFile file)
                 {
-                    dirs.Add(((WzFile)node.Tag).WzDirectory);
+                    dirs.Add(file.WzDirectory);
                 }
             }
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
@@ -1312,6 +1400,11 @@ namespace HaRepacker.GUI
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
+        /// <summary>
+        /// Export as XML,  classic
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void classicToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string outPath = GetOutputDirectory();
@@ -1343,6 +1436,11 @@ namespace HaRepacker.GUI
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
+        /// <summary>
+        /// Export as XML, new
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void newToolStripMenuItem1_Click(object sender, EventArgs e)
         {
             SaveFileDialog dialog = new SaveFileDialog()
@@ -1487,31 +1585,6 @@ namespace HaRepacker.GUI
             {
                 WzStringSearchForm form = new WzStringSearchForm(dataCache, loadedWzVersion);
                 form.Show();
-            }
-        }
-
-        /// <summary>
-        /// Get packet encryption keys from ZLZ.dll
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void toolStripMenuItem_WzEncryption_Click(object sender, EventArgs e)
-        {
-            AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-            //similarly to find process architecture  
-            var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
-
-            if (assemblyArchitecture == ProcessorArchitecture.X86)
-            {
-                ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                bool opened = form.OpenZLZDllFile();
-
-                if (opened)
-                    form.Show();
-            }
-            else
-            {
-                MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
             }
         }
         #endregion 
