@@ -396,4 +396,10 @@
   <data name="RelativeTime_YearsAgo" xml:space="preserve">
     <value>{0} years(s) ago</value>
   </data>
+  <data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
+    <value>Would you like to include the base64 data of image, mp3 &amp; other binary data in the json?</value>
+  </data>
+  <data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
+    <value>Data</value>
+  </data>
 </root>

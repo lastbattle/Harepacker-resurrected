@@ -877,6 +877,24 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Would you like to include the base64 data of image, mp3 &amp; other binary data in the json?.
+        /// </summary>
+        public static string MainWzExportJson_IncludeBase64 {
+            get {
+                return ResourceManager.GetString("MainWzExportJson_IncludeBase64", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Data.
+        /// </summary>
+        public static string MainWzExportJson_IncludeBase64_Title {
+            get {
+                return ResourceManager.GetString("MainWzExportJson_IncludeBase64_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap map {

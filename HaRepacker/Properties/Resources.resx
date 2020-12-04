@@ -512,4 +512,10 @@ Click "Yes" to download the new version.</value>
   <data name="pasteFile" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\pasteFile.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
+  <data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
+    <value>Would you like to include the base64 data of image, mp3 &amp; other binary data in the json?</value>
+  </data>
+  <data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
+    <value>Data</value>
+  </data>
 </root>
