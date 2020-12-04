@@ -351,7 +351,11 @@
                         <localSubPanels:ImageRenderViewer x:Name="canvasPropBox"
                                                           Margin="0,40,0,0"
                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                                          Visibility="Collapsed">
+                                                          Visibility="Collapsed"
+                                                         
+                                                          AllowDrop="True"
+                                                          DragEnter="canvasPropBox_DragEnter" DragLeave="canvasPropBox_DragLeave"
+                                                          Drop="canvasPropBox_Drop">
 
                         </localSubPanels:ImageRenderViewer>
                     </Grid>

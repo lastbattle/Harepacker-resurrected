@@ -29,6 +29,7 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
 using System.Reflection;
+using HaSharedLibrary.Converter;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -324,7 +325,7 @@ namespace HaRepacker.GUI.Panels
                 return;
             }
             else if (!IntInputBox.Show(
-                Properties.Resources.MainAddInt, 
+                Properties.Resources.MainAddInt,
                 "", 0,
                 out name, out value))
                 return;
@@ -829,14 +830,15 @@ namespace HaRepacker.GUI.Panels
         /// <param name="e"></param>
         private void MenuItem_changeImage_Click(object sender, RoutedEventArgs e)
         {
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty property)
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty) // only allow button click if its an image property
             {
                 System.Windows.Forms.OpenFileDialog dialog = new System.Windows.Forms.OpenFileDialog()
                 {
-                    Title = "Select the image",
+                    Title = "Select an image",
                     Filter = "Supported Image Formats (*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff)|*.png;*.bmp;*.jpg;*.gif;*.jpeg;*.tif;*.tiff"
                 };
-                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                    return;
                 System.Drawing.Bitmap bmp;
                 try
                 {
@@ -849,6 +851,19 @@ namespace HaRepacker.GUI.Panels
                 }
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
+                ChangeCanvasPropBoxImage(bmp);
+            }
+        }
+
+        /// <summary>
+        /// Changes the displayed image in 'canvasPropBox' with a user defined input.
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name=""></param>
+        private void ChangeCanvasPropBoxImage(Bitmap bmp)
+        {
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty property)
+            {
                 WzCanvasProperty selectedWzCanvas = property;
 
                 if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
@@ -881,7 +896,8 @@ namespace HaRepacker.GUI.Panels
 
                 // Updates
                 selectedWzCanvas.ParentImage.Changed = true;
-                canvasPropBox.Image = new BitmapImage(new Uri(dialog.FileName));
+
+                canvasPropBox.Image = bmp.ToWpfBitmap();
 
                 // Add undo actions
                 //UndoRedoMan.AddUndoBatch(actions);
@@ -1007,6 +1023,67 @@ namespace HaRepacker.GUI.Panels
                 case 5: //tiff
                     wzCanvasPropertyObjLocation.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Tiff);
                     break;
+            }
+        }
+        #endregion
+
+        #region Drag and Drop Image
+        private bool bDragEnterActive = false;
+        /// <summary>
+        /// Scroll viewer drag enter
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void canvasPropBox_DragEnter(object sender, DragEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Drag Enter");
+            if (!bDragEnterActive)
+            {
+                bDragEnterActive = true;
+            }
+        }
+
+        /// <summary>
+        ///  Scroll viewer drag leave
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void canvasPropBox_DragLeave(object sender, DragEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Drag Leave");
+
+            bDragEnterActive = false;
+        }
+        /// <summary>
+        /// Scroll viewer drag drop
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void canvasPropBox_Drop(object sender, DragEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine("Drag Drop");
+            if (bDragEnterActive && DataTree.SelectedNode.Tag is WzCanvasProperty) // only allow button click if its an image property
+            {
+                if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                {
+                    string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                    if (files.Length == 0)
+                        return;
+
+                    System.Drawing.Bitmap bmp;
+                    try
+                    {
+                        bmp = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(files[0]);
+                    }
+                    catch
+                    {
+                        return;
+                    }
+                    if (bmp != null)
+                        ChangeCanvasPropBoxImage(bmp);
+
+                    //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
+                }
             }
         }
         #endregion

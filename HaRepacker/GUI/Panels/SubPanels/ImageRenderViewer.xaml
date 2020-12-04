@@ -512,7 +512,9 @@
         </Grid.RowDefinitions>
 
         <ScrollViewer Grid.Row="0" 
-                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}">
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}"
+                      >
+            
             <Grid Height="2000" Width="2000" Margin="100,50,0,0">
                 <!-- Image and borders-->
                 <Grid Width="{Binding ImageWidth, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
@@ -532,8 +534,7 @@
                             <!-- Source="{Binding Image}"  -->
                             <Image x:Name="canvasPropBox" 
                                Source="{Binding Image}" 
-                               Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"
-                               />
+                               Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"/>
 
                             <!-- Click draggable borders-->
                             <Grid

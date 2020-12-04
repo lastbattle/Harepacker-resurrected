@@ -45,7 +45,8 @@ namespace MapleLib.WzLib.WzProperties
         #region Inherited Members
         public override void SetValue(object value)
         {
-            if (value is Bitmap) SetImage((Bitmap)value);
+            if (value is Bitmap) 
+                SetImage((Bitmap)value);
             else compressedImageBytes = (byte[])value;
         }
 
@@ -244,15 +245,14 @@ namespace MapleLib.WzLib.WzProperties
                 using (DeflateStream zip = new DeflateStream(memStream, CompressionMode.Compress, true))
                 {
                     zip.Write(decompressedBuffer, 0, decompressedBuffer.Length);
-
-                    memStream.Position = 0;
-                    byte[] buffer = new byte[memStream.Length + 2];
-                    memStream.Read(buffer, 2, buffer.Length - 2);
-
-                    System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
-
-                    return buffer;
                 }
+                memStream.Position = 0;
+                byte[] buffer = new byte[memStream.Length + 2];
+                memStream.Read(buffer, 2, buffer.Length - 2);
+
+                System.Buffer.BlockCopy(new byte[] { 0x78, 0x9C }, 0, buffer, 0, 2);
+
+                return buffer;
             }
         }
 

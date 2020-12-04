@@ -26,7 +26,7 @@ namespace HaCreator.MapEditor
     {
         protected XNA.Vector3 position;
         private Dictionary<BoardItem, XNA.Point> boundItems = new Dictionary<BoardItem, XNA.Point>();//key = BoardItem; value = point (distance)
-        private List<BoardItem> boundItemsList = new List<BoardItem>();
+        private readonly List<BoardItem> boundItemsList = new List<BoardItem>();
         private BoardItem parent = null;
         private bool selected = false;
         protected Board board;

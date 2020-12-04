@@ -242,9 +242,24 @@ namespace HaCreator.Wz
                     soundImage.ParseImage();
                 try
                 {
-                    foreach (WzBinaryProperty bgm in soundImage.WzProperties)
+                    foreach (WzImageProperty bgmImage in soundImage.WzProperties)
                     {
-                        Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + bgm.Name] = bgm;
+                        WzBinaryProperty binProperty = null;
+                        if (bgmImage is WzBinaryProperty bgm)
+                        {
+                            binProperty = bgm;
+                        } 
+                        else if (bgmImage is WzUOLProperty uolBGM) // is UOL property
+                        {
+                            WzObject linkVal = ((WzUOLProperty)bgmImage).LinkValue;
+                            if (linkVal is WzBinaryProperty linkCanvas)
+                            {
+                                binProperty = linkCanvas;
+                            }
+                        }
+
+                        if (binProperty != null)
+                            Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name] = binProperty;
                     }
                 }
                 catch (Exception e) 

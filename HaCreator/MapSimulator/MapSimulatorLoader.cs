@@ -6,7 +6,7 @@ using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
-using HaRepacker.Converter;
+using HaSharedLibrary.Converter;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
