@@ -23,7 +23,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
     /// <summary>
     /// Interaction logic for ImageRenderViewer.xaml
     /// </summary>
-    public partial class ImageRenderViewer : UserControl, INotifyPropertyChanged
+    public partial class ImageRenderViewer : UserControl,  INotifyPropertyChanged
     {
         private bool isLoading = false;
 
@@ -190,7 +190,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
         }
         #endregion
 
-        #region PropertyChanged
+        #region Property Changed
         /// <summary>
         /// Property changed event handler to trigger update UI
         /// </summary>
