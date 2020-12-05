@@ -1340,7 +1340,11 @@ namespace HaRepacker.GUI
                 MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            bool bIncludeBase64BinData = MessageBox.Show(Properties.Resources.MainWzExportJson_IncludeBase64, Properties.Resources.MainWzExportJson_IncludeBase64_Title, MessageBoxButtons.YesNo) == DialogResult.Yes;
+
+            DialogResult dlgResult = MessageBox.Show(Properties.Resources.MainWzExportJson_IncludeBase64, Properties.Resources.MainWzExportJson_IncludeBase64_Title, MessageBoxButtons.YesNoCancel);
+            if (dlgResult == DialogResult.Cancel)
+                return;
+            bool bIncludeBase64BinData = dlgResult == DialogResult.Yes;
 
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
@@ -1747,6 +1751,16 @@ namespace HaRepacker.GUI
         private void WzVectorPropertyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             MainPanel.AddWzVectorPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
+        }
+
+        /// <summary>
+        /// Add Lua script property
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void wzLuaPropertyToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MainPanel.AddWzLuaPropertyToSelectedIndex(MainPanel.DataTree.SelectedNode);
         }
         #endregion
 

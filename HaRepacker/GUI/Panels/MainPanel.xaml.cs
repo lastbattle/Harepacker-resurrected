@@ -512,6 +512,30 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
+        /// WzLuaProperty
+        /// </summary>
+        /// <param name="target"></param>
+        public void AddWzLuaPropertyToSelectedIndex(System.Windows.Forms.TreeNode target)
+        {
+ /*           string name;
+            string value;
+            if (!(target.Tag is WzDirectory) && !(target.Tag is WzFile))
+            {
+                Warning.Error(Properties.Resources.MainCannotInsertToNode);
+                return;
+            }
+            else if (!NameValueInputBox.Show(Properties.Resources.MainAddString, out name, out value))
+                return;
+
+            string propertyName = name;
+            if (!propertyName.EndsWith(".lua"))
+            {
+                propertyName += ".lua"; // it must end with .lua regardless
+            }
+            ((WzNode)target).AddObject(new WzImage(propertyName), UndoRedoMan);*/
+        }
+
+        /// <summary>
         /// Remove selected nodes
         /// </summary>
         public void PromptRemoveSelectedTreeNodes()
