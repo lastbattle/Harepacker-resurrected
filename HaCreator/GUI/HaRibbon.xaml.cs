@@ -35,6 +35,12 @@ namespace HaCreator.GUI
         {
             InitializeComponent();
 
+#if DEBUG
+            debugTab.Visibility = Visibility.Visible;
+#else
+            debugTab.Visibility = Visibility.Collapsed;
+#endif
+
             this.PreviewMouseWheel += HaRibbon_PreviewMouseWheel;
         }
 
@@ -148,6 +154,11 @@ namespace HaCreator.GUI
             new InputGestureCollection() { });
         public static readonly RoutedUICommand PhysicsEdit = new RoutedUICommand("PhysicsEdit", "PhysicsEdit", typeof(HaRibbon),
             new InputGestureCollection() { });
+
+        #region Debug Items
+        public static readonly RoutedUICommand ShowMapProperties = new RoutedUICommand("ShowMapProperties", "ShowMapProperties", typeof(HaRibbon),
+            new InputGestureCollection() { });
+        #endregion
 
         private void AlwaysExecute(object sender, CanExecuteRoutedEventArgs e)
         {
@@ -282,6 +293,18 @@ namespace HaCreator.GUI
         {
             if (MapPhysicsClicked != null)
                 MapPhysicsClicked.Invoke();
+        }
+
+
+        /// <summary>
+        /// Show map 'info' properties clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ShowMapProperties_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ShowMapPropertiesClicked != null)
+                ShowMapPropertiesClicked.Invoke();
         }
 
 
@@ -467,7 +490,7 @@ namespace HaCreator.GUI
             endInternalEditing();
         }
 
-        #endregion
+#endregion
 
         public delegate void EmptyEvent();
         public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc);
@@ -497,6 +520,7 @@ namespace HaCreator.GUI
         public event EmptyEvent NewPlatformClicked;
         public event EmptyEvent UserObjsClicked;
         public event EmptyEvent MapPhysicsClicked;
+        public event EmptyEvent ShowMapPropertiesClicked;
         public event EventHandler<System.Windows.Forms.KeyEventArgs> RibbonKeyDown;
 
         public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)

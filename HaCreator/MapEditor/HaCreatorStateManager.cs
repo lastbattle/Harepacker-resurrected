@@ -96,6 +96,10 @@ namespace HaCreator.MapEditor
             this.ribbon.RibbonKeyDown += multiBoard.DxContainer_KeyDown;
             this.ribbon.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
 
+            // Debug
+            this.ribbon.ShowMapPropertiesClicked += Ribbon_ShowMapPropertiesClicked;
+            //
+
             this.tabs.SelectionChanged += Tabs_SelectionChanged;
 
             this.multiBoard.OnBringToFrontClicked += MultiBoard_OnBringToFrontClicked;
@@ -485,6 +489,30 @@ namespace HaCreator.MapEditor
             }
         }
         #endregion
+
+        #region Ribbon Debug Handlers
+        /// <summary>
+        /// Show map '/info' handlers
+        /// </summary>
+        private void Ribbon_ShowMapPropertiesClicked()
+        {
+            if (multiBoard.SelectedBoard == null)
+                return;
+            List<WzImageProperty> unsupportedProp = multiBoard.SelectedBoard.MapInfo.unsupportedInfoProperties;
+
+            StringBuilder sb = new StringBuilder();
+            int i = 1;
+            foreach (WzImageProperty imgProp in unsupportedProp)
+            {
+                sb.Append(i).Append(": ").Append(imgProp.Name).Append(", val: ").Append(imgProp.WzValue.ToString()).Append(Environment.NewLine);
+                i++;
+            }
+            sb.Append(Environment.NewLine).Append("Fix it under MapInfo.cs");
+
+            MessageBox.Show(sb.ToString(), "List of unsupported properties.");
+        }
+        #endregion
+
 
         #region Ribbon Handlers
         private string lastSaveLoc = null;
