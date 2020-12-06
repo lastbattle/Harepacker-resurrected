@@ -1476,7 +1476,7 @@ namespace HaRepacker.GUI.Panels
                         }
                     }
                 }
-                else if (bIsWzLongProperty || bIsWzIntProperty)
+                else if (bIsWzLongProperty || bIsWzIntProperty || bIsWzShortProperty)
                 {
                     textPropBox.Visibility = Visibility.Visible;
                     textPropBox.AcceptsReturn = false;
@@ -1490,6 +1490,9 @@ namespace HaRepacker.GUI.Panels
                     else if (bIsWzIntProperty)
                     {
                         value_ = (ulong)((WzIntProperty)obj).GetLong();
+                    } else if (bIsWzShortProperty)
+                    {
+                        value_ = (ulong)((WzShortProperty)obj).GetLong();
                     }
 
                     // field limit UI
@@ -1503,6 +1506,21 @@ namespace HaRepacker.GUI.Panels
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
                     }
                     textPropBox.Text = value_.ToString();
+                } 
+                else if (bIsWzDoubleProperty || bIsWzFloatProperty)
+                {
+                    textPropBox.Visibility = Visibility.Visible;
+                    textPropBox.AcceptsReturn = false;
+                    textPropBox.ApplyButtonEnabled = false; // reset to disabled mode when changed
+
+                    if (bIsWzFloatProperty)
+                    {
+                        textPropBox.Text = ((WzFloatProperty)obj).GetFloat().ToString();
+                    } 
+                    else if (bIsWzDoubleProperty)
+                    {
+                        textPropBox.Text = ((WzDoubleProperty)obj).GetDouble().ToString();
+                    }
                 }
                 else
                 {
