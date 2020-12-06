@@ -89,6 +89,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Converter\BitmapToImageSource.cs" />
+    <Compile Include="GUI\FieldTypePanel.xaml.cs">
+      <DependentUpon>FieldTypePanel.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Render\BaseDXDrawableItem.cs" />
     <Compile Include="GUI\ChangeableTextBox.xaml.cs">
       <DependentUpon>ChangeableTextBox.xaml</DependentUpon>
@@ -122,6 +125,10 @@
     <Page Include="GUI\ChangeableTextBox.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
+    </Page>
+    <Page Include="GUI\FieldTypePanel.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="GUI\SoundPlayer.xaml">
       <Generator>MSBuild:Compile</Generator>

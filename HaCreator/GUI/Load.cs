@@ -21,11 +21,9 @@ namespace HaCreator.GUI
 {
     public partial class Load : System.Windows.Forms.Form
     {
-        public bool usebasepng = false;
-        public int bufferzone = 100;
-        private MultiBoard multiBoard;
-        private System.Windows.Controls.TabControl Tabs;
-        private System.Windows.RoutedEventHandler[] rightClickHandler;
+        private readonly MultiBoard multiBoard;
+        private readonly System.Windows.Controls.TabControl Tabs;
+        private readonly System.Windows.RoutedEventHandler[] rightClickHandler;
 
         private readonly string defaultMapNameFilter;
 
