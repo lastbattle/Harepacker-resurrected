@@ -6,6 +6,19 @@ using System.Threading.Tasks;
 
 namespace MapleLib.WzLib.WzStructure.Data
 {
+    public static class FieldTypeExtensions
+    {
+        public static string ToReadableString(this FieldType str)
+        {
+            string name = str.ToString().Replace("FIELDTYPE_", "");
+            string mostLower = name.Substring(0, 1) + name.Substring(1).ToLower(); // only cap on the first character
+
+            mostLower += string.Format(" = {0}", (int) str); 
+
+            return mostLower;
+        }
+    }
+
     public enum FieldType
     {        
         // for older versions, probably not accurate anyway

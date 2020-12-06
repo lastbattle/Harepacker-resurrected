@@ -339,9 +339,14 @@
 
 
                 <Grid x:Name="grid1" Grid.Row="2" Grid.RowSpan="2">
+                    <!-- Map.wz/../fieldLimit-->
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
+                    
+                    <!-- Map.wz/../fieldType -->
+                    <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
+
                     <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"/>
 
                     <sharedLib:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>

@@ -40,6 +40,7 @@ namespace HaRepacker.GUI.Panels
     {
         // Constants
         private const string FIELD_LIMIT_OBJ_NAME = "fieldLimit";
+        private const string FIELD_TYPE_OBJ_NAME = "fieldType";
         private const string PORTAL_NAME_OBJ_NAME = "pn";
 
         // Etc
@@ -97,6 +98,7 @@ namespace HaRepacker.GUI.Panels
         private void MainPanelXAML_Loaded(object sender, RoutedEventArgs e)
         {
             this.fieldLimitPanel1.SetTextboxOnFieldLimitChange(textPropBox);
+            this.fieldTypePanel.SetTextboxOnFieldTypeChange(textPropBox);
         }
 
         #region Exported Fields
@@ -1321,21 +1323,30 @@ namespace HaRepacker.GUI.Panels
 
             // Set default layout collapsed state
             mp3Player.Visibility = Visibility.Collapsed;
+
             // Button collapsed state
             menuItem_changeImage.Visibility = Visibility.Collapsed;
             menuItem_saveImage.Visibility = Visibility.Collapsed;
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
+
             // Canvas collapsed state
             canvasPropBox.Visibility = Visibility.Collapsed;
+
             // Value
             textPropBox.Visibility = Visibility.Collapsed;
-            // Field limit panel
+            
+            // Field limit panel Map.wz/../fieldLimit
             fieldLimitPanelHost.Visibility = Visibility.Collapsed;
+            // fieldType panel Map.wz/../fieldType
+            fieldTypePanel.Visibility = Visibility.Collapsed;
+
             // Vector panel
             vectorPanel.Visibility = Visibility.Collapsed;
+
             // Avalon Text editor
             textEditor.Visibility = Visibility.Collapsed;
+
 
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
@@ -1496,7 +1507,7 @@ namespace HaRepacker.GUI.Panels
                     }
 
                     // field limit UI
-                    if (obj.Name == FIELD_LIMIT_OBJ_NAME)
+                    if (obj.Name == FIELD_LIMIT_OBJ_NAME) // fieldLimit
                     {
                         isSelectingWzMapFieldLimit = true;
 
@@ -1504,6 +1515,13 @@ namespace HaRepacker.GUI.Panels
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
+                    }
+                    else if (obj.Name == FIELD_TYPE_OBJ_NAME) // fieldType
+                    {
+                        fieldTypePanel.SetFieldTypeIndex(value_);
+
+                        // Set visibility
+                        fieldTypePanel.Visibility = Visibility.Visible;
                     }
                     textPropBox.Text = value_.ToString();
                 } 
