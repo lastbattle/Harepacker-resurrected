@@ -24,10 +24,12 @@ namespace MapleLib.Helpers
 {
     public static class ErrorLogger
     {
-        private static List<Error> errorList = new List<Error>();
+        private static readonly List<Error> errorList = new List<Error>();
+
         public static void Log(ErrorLevel level, string message)
         {
-            errorList.Add(new Error(level, message));
+            lock (errorList)
+                errorList.Add(new Error(level, message));
         }
 
         public static bool ErrorsPresent()
@@ -37,25 +39,42 @@ namespace MapleLib.Helpers
 
         public static void ClearErrors()
         {
-            errorList.Clear();
+            lock (errorList)
+                errorList.Clear();
         }
 
         /// <summary>
-        /// Logs all pending errors to file
+        /// Logs all pending errors in the queue to file, and clears the queue
         /// </summary>
         /// <param name="filename"></param>
         public static void SaveToFile(string filename)
         {
+            if (!ErrorsPresent())
+                return;
+
             using (StreamWriter sw = new StreamWriter(File.Open(filename, FileMode.Append, FileAccess.Write, FileShare.Read)))
             {
-                sw.WriteLine("Starting error log on " + DateTime.Today.ToString());
-                foreach (Error e in errorList) 
-                {
-                    sw.WriteLine(e.level.ToString() + ": " + e.message);
-                    sw.WriteLine(": ");
-                    sw.WriteLine(e.message);
-                }
+                sw.Write("----- Start of the error log. [");
+                sw.Write(DateTime.Today.ToString());
+                sw.Write("] -----");
                 sw.WriteLine();
+
+                List<Error> errorList_;
+                lock (errorList)
+                {
+                    errorList_ = new List<Error>(errorList); // make a copy before writing
+                    ClearErrors();
+                }
+
+                foreach (Error e in errorList_) 
+                {
+                    sw.Write("[");
+                    sw.Write(e.level.ToString());
+                    sw.Write("] : ");
+                    sw.Write(e.message);
+
+                    sw.WriteLine();
+                }
                 sw.WriteLine();
             }
         }

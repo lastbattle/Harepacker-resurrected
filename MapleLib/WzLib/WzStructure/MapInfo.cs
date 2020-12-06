@@ -372,6 +372,7 @@ namespace MapleLib.WzLib.WzStructure
                     case "jumpApplyVX":
                     case "dashSkill":
                     case "speedMaxOver":
+                    case "speedMaxOver ": // with a space, stupid nexon
                     case "isSpecialMoveCheck":
                     case "forceSpeed":
                     case "forceJump":
@@ -431,6 +432,7 @@ namespace MapleLib.WzLib.WzStructure
                     case "taggedObjRegenInfo":
                     case "offSoulAbsorption":
                     case "canPartyStatChangeIgnoreParty":
+                    case "canPartyStatChangeIgnoreParty ": // with a space
                     case "forceReturnOnDead":
                     case "zoomOutField":
                     case "EscortMinTime":
@@ -514,14 +516,14 @@ namespace MapleLib.WzLib.WzStructure
                     case "blockTakeOffItem":
                     case "PartyOnly":
                     case "climb":
-                    //case "speedMaxOver":
-                    //case "canPartyStatChangeIgnoreParty": // casing
                     case "bulletConsume":
                     case "gaugeDelay":
+                    case "individualPet":
+                    case "level":
                         unsupportedInfoProperties.Add(prop);
                         break;
                     default:
-                        ErrorLogger.Log(ErrorLevel.MissingFeature, string.Format("Unknown field info/ property: {0}. {1}. Please fix it at MapInfo.cs", prop.Name, loggerSuffix));
+                        ErrorLogger.Log(ErrorLevel.MissingFeature, string.Format("Unknown field info/ property: '{0}'. {1}. Please fix it at MapInfo.cs", prop.Name, loggerSuffix));
                         additionalProps.Add(prop.DeepClone());
                         break;
                 }

@@ -273,14 +273,15 @@ namespace HaCreator.GUI
                 MapLoader.VerifyMapPropsKnown(mapImage, true);
                 MapInfo info = new MapInfo(mapImage, null, null, null);
                 MapLoader.LoadMisc(mapImage, b);
-                if (ErrorLogger.ErrorsPresent())
-                {
-                    ErrorLogger.SaveToFile("debug_errors.txt");
-                    ErrorLogger.ClearErrors();
-                }
+
                 mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
             }
-            MessageBox.Show("Done");
+
+            if (ErrorLogger.ErrorsPresent())
+            {
+                ErrorLogger.SaveToFile("Debug_errors.txt");
+            }
+            MessageBox.Show("Check for map errors completed. See 'Debug_errors.txt' for more information.");
         }
 
         private void Initialization_KeyDown(object sender, KeyEventArgs e)
