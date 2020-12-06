@@ -36,31 +36,38 @@ namespace HaRepacker.GUI
             this.newToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator5 = new System.Windows.Forms.ToolStripSeparator();
             this.copyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pasteToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator4 = new System.Windows.Forms.ToolStripSeparator();
             this.reloadAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.unloadAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.editToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.addToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzDirectoryToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzImageToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
-            this.wzByteFloatPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzSubPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzUolPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.wzCanvasPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
+            this.wzStringPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzByteFloatPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzLongPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzCompressedIntPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzConvexPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzDoublePropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzCompressedIntPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzUnsignedShortPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator3 = new System.Windows.Forms.ToolStripSeparator();
+            this.wzConvexPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzNullPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzSoundPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzStringPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzSubPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzUnsignedShortPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.wzUolPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.wzVectorPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.wzLuaPropertyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.removeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator7 = new System.Windows.Forms.ToolStripSeparator();
             this.undoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.redoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator6 = new System.Windows.Forms.ToolStripSeparator();
             this.expandAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.collapseAllToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -73,12 +80,16 @@ namespace HaRepacker.GUI
             this.privateServerToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.classicToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.newToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
+            this.jSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.bSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pNGsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.imgToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.importToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem2 = new System.Windows.Forms.ToolStripMenuItem();
             this.iMGToolStripMenuItem2 = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator9 = new System.Windows.Forms.ToolStripSeparator();
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator8 = new System.Windows.Forms.ToolStripSeparator();
             this.searchToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.extrasToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fHMappingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -94,8 +105,6 @@ namespace HaRepacker.GUI
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.button_addTab = new System.Windows.Forms.Button();
-            this.jSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.bSONToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -119,8 +128,10 @@ namespace HaRepacker.GUI
             this.newToolStripMenuItem,
             this.openToolStripMenuItem,
             this.saveToolStripMenuItem,
+            this.toolStripSeparator5,
             this.copyToolStripMenuItem,
             this.pasteToolStripMenuItem,
+            this.toolStripSeparator4,
             this.reloadAllToolStripMenuItem,
             this.unloadAllToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
@@ -146,6 +157,11 @@ namespace HaRepacker.GUI
             this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
             this.saveToolStripMenuItem.Click += new System.EventHandler(this.SaveToolStripMenuItem_Click);
             // 
+            // toolStripSeparator5
+            // 
+            this.toolStripSeparator5.Name = "toolStripSeparator5";
+            resources.ApplyResources(this.toolStripSeparator5, "toolStripSeparator5");
+            // 
             // copyToolStripMenuItem
             // 
             this.copyToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.copyFile;
@@ -157,6 +173,11 @@ namespace HaRepacker.GUI
             this.pasteToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.pasteFile;
             this.pasteToolStripMenuItem.Name = "pasteToolStripMenuItem";
             resources.ApplyResources(this.pasteToolStripMenuItem, "pasteToolStripMenuItem");
+            // 
+            // toolStripSeparator4
+            // 
+            this.toolStripSeparator4.Name = "toolStripSeparator4";
+            resources.ApplyResources(this.toolStripSeparator4, "toolStripSeparator4");
             // 
             // reloadAllToolStripMenuItem
             // 
@@ -175,8 +196,10 @@ namespace HaRepacker.GUI
             this.editToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.addToolStripMenuItem,
             this.removeToolStripMenuItem,
+            this.toolStripSeparator7,
             this.undoToolStripMenuItem,
             this.redoToolStripMenuItem,
+            this.toolStripSeparator6,
             this.expandAllToolStripMenuItem,
             this.collapseAllToolStripMenuItem});
             this.editToolStripMenuItem.Name = "editToolStripMenuItem";
@@ -187,20 +210,23 @@ namespace HaRepacker.GUI
             this.addToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.wzDirectoryToolStripMenuItem,
             this.wzImageToolStripMenuItem,
-            this.toolStripSeparator1,
-            this.wzByteFloatPropertyToolStripMenuItem,
+            this.wzSubPropertyToolStripMenuItem,
+            this.wzUolPropertyToolStripMenuItem,
+            this.toolStripSeparator2,
             this.wzCanvasPropertyToolStripMenuItem,
+            this.toolStripSeparator1,
+            this.wzStringPropertyToolStripMenuItem,
+            this.wzByteFloatPropertyToolStripMenuItem,
             this.wzLongPropertyToolStripMenuItem,
-            this.wzCompressedIntPropertyToolStripMenuItem,
-            this.wzConvexPropertyToolStripMenuItem,
             this.wzDoublePropertyToolStripMenuItem,
+            this.wzCompressedIntPropertyToolStripMenuItem,
+            this.wzUnsignedShortPropertyToolStripMenuItem,
+            this.toolStripSeparator3,
+            this.wzConvexPropertyToolStripMenuItem,
             this.wzNullPropertyToolStripMenuItem,
             this.wzSoundPropertyToolStripMenuItem,
-            this.wzStringPropertyToolStripMenuItem,
-            this.wzSubPropertyToolStripMenuItem,
-            this.wzUnsignedShortPropertyToolStripMenuItem,
-            this.wzUolPropertyToolStripMenuItem,
-            this.wzVectorPropertyToolStripMenuItem});
+            this.wzVectorPropertyToolStripMenuItem,
+            this.wzLuaPropertyToolStripMenuItem});
             resources.ApplyResources(this.addToolStripMenuItem, "addToolStripMenuItem");
             this.addToolStripMenuItem.Name = "addToolStripMenuItem";
             // 
@@ -216,16 +242,22 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.wzImageToolStripMenuItem, "wzImageToolStripMenuItem");
             this.wzImageToolStripMenuItem.Click += new System.EventHandler(this.WzImageToolStripMenuItem_Click);
             // 
-            // toolStripSeparator1
+            // wzSubPropertyToolStripMenuItem
             // 
-            this.toolStripSeparator1.Name = "toolStripSeparator1";
-            resources.ApplyResources(this.toolStripSeparator1, "toolStripSeparator1");
+            this.wzSubPropertyToolStripMenuItem.Name = "wzSubPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzSubPropertyToolStripMenuItem, "wzSubPropertyToolStripMenuItem");
+            this.wzSubPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzSubPropertyToolStripMenuItem_Click);
             // 
-            // wzByteFloatPropertyToolStripMenuItem
+            // wzUolPropertyToolStripMenuItem
             // 
-            this.wzByteFloatPropertyToolStripMenuItem.Name = "wzByteFloatPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzByteFloatPropertyToolStripMenuItem, "wzByteFloatPropertyToolStripMenuItem");
-            this.wzByteFloatPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzByteFloatPropertyToolStripMenuItem_Click);
+            this.wzUolPropertyToolStripMenuItem.Name = "wzUolPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzUolPropertyToolStripMenuItem, "wzUolPropertyToolStripMenuItem");
+            this.wzUolPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUolPropertyToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator2
+            // 
+            this.toolStripSeparator2.Name = "toolStripSeparator2";
+            resources.ApplyResources(this.toolStripSeparator2, "toolStripSeparator2");
             // 
             // wzCanvasPropertyToolStripMenuItem
             // 
@@ -233,11 +265,34 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.wzCanvasPropertyToolStripMenuItem, "wzCanvasPropertyToolStripMenuItem");
             this.wzCanvasPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzCanvasPropertyToolStripMenuItem_Click);
             // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            resources.ApplyResources(this.toolStripSeparator1, "toolStripSeparator1");
+            // 
+            // wzStringPropertyToolStripMenuItem
+            // 
+            this.wzStringPropertyToolStripMenuItem.Name = "wzStringPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzStringPropertyToolStripMenuItem, "wzStringPropertyToolStripMenuItem");
+            this.wzStringPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzStringPropertyToolStripMenuItem_Click);
+            // 
+            // wzByteFloatPropertyToolStripMenuItem
+            // 
+            this.wzByteFloatPropertyToolStripMenuItem.Name = "wzByteFloatPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzByteFloatPropertyToolStripMenuItem, "wzByteFloatPropertyToolStripMenuItem");
+            this.wzByteFloatPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzByteFloatPropertyToolStripMenuItem_Click);
+            // 
             // wzLongPropertyToolStripMenuItem
             // 
             this.wzLongPropertyToolStripMenuItem.Name = "wzLongPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzLongPropertyToolStripMenuItem, "wzLongPropertyToolStripMenuItem");
             this.wzLongPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzLongPropertyToolStripMenuItem_Click);
+            // 
+            // wzDoublePropertyToolStripMenuItem
+            // 
+            this.wzDoublePropertyToolStripMenuItem.Name = "wzDoublePropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzDoublePropertyToolStripMenuItem, "wzDoublePropertyToolStripMenuItem");
+            this.wzDoublePropertyToolStripMenuItem.Click += new System.EventHandler(this.WzDoublePropertyToolStripMenuItem_Click);
             // 
             // wzCompressedIntPropertyToolStripMenuItem
             // 
@@ -245,17 +300,22 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.wzCompressedIntPropertyToolStripMenuItem, "wzCompressedIntPropertyToolStripMenuItem");
             this.wzCompressedIntPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzCompressedIntPropertyToolStripMenuItem_Click);
             // 
+            // wzUnsignedShortPropertyToolStripMenuItem
+            // 
+            this.wzUnsignedShortPropertyToolStripMenuItem.Name = "wzUnsignedShortPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzUnsignedShortPropertyToolStripMenuItem, "wzUnsignedShortPropertyToolStripMenuItem");
+            this.wzUnsignedShortPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUnsignedShortPropertyToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator3
+            // 
+            this.toolStripSeparator3.Name = "toolStripSeparator3";
+            resources.ApplyResources(this.toolStripSeparator3, "toolStripSeparator3");
+            // 
             // wzConvexPropertyToolStripMenuItem
             // 
             this.wzConvexPropertyToolStripMenuItem.Name = "wzConvexPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzConvexPropertyToolStripMenuItem, "wzConvexPropertyToolStripMenuItem");
             this.wzConvexPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzConvexPropertyToolStripMenuItem_Click);
-            // 
-            // wzDoublePropertyToolStripMenuItem
-            // 
-            this.wzDoublePropertyToolStripMenuItem.Name = "wzDoublePropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzDoublePropertyToolStripMenuItem, "wzDoublePropertyToolStripMenuItem");
-            this.wzDoublePropertyToolStripMenuItem.Click += new System.EventHandler(this.WzDoublePropertyToolStripMenuItem_Click);
             // 
             // wzNullPropertyToolStripMenuItem
             // 
@@ -269,41 +329,28 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.wzSoundPropertyToolStripMenuItem, "wzSoundPropertyToolStripMenuItem");
             this.wzSoundPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzSoundPropertyToolStripMenuItem_Click);
             // 
-            // wzStringPropertyToolStripMenuItem
-            // 
-            this.wzStringPropertyToolStripMenuItem.Name = "wzStringPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzStringPropertyToolStripMenuItem, "wzStringPropertyToolStripMenuItem");
-            this.wzStringPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzStringPropertyToolStripMenuItem_Click);
-            // 
-            // wzSubPropertyToolStripMenuItem
-            // 
-            this.wzSubPropertyToolStripMenuItem.Name = "wzSubPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzSubPropertyToolStripMenuItem, "wzSubPropertyToolStripMenuItem");
-            this.wzSubPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzSubPropertyToolStripMenuItem_Click);
-            // 
-            // wzUnsignedShortPropertyToolStripMenuItem
-            // 
-            this.wzUnsignedShortPropertyToolStripMenuItem.Name = "wzUnsignedShortPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzUnsignedShortPropertyToolStripMenuItem, "wzUnsignedShortPropertyToolStripMenuItem");
-            this.wzUnsignedShortPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUnsignedShortPropertyToolStripMenuItem_Click);
-            // 
-            // wzUolPropertyToolStripMenuItem
-            // 
-            this.wzUolPropertyToolStripMenuItem.Name = "wzUolPropertyToolStripMenuItem";
-            resources.ApplyResources(this.wzUolPropertyToolStripMenuItem, "wzUolPropertyToolStripMenuItem");
-            this.wzUolPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzUolPropertyToolStripMenuItem_Click);
-            // 
             // wzVectorPropertyToolStripMenuItem
             // 
             this.wzVectorPropertyToolStripMenuItem.Name = "wzVectorPropertyToolStripMenuItem";
             resources.ApplyResources(this.wzVectorPropertyToolStripMenuItem, "wzVectorPropertyToolStripMenuItem");
             this.wzVectorPropertyToolStripMenuItem.Click += new System.EventHandler(this.WzVectorPropertyToolStripMenuItem_Click);
             // 
+            // wzLuaPropertyToolStripMenuItem
+            // 
+            this.wzLuaPropertyToolStripMenuItem.Name = "wzLuaPropertyToolStripMenuItem";
+            resources.ApplyResources(this.wzLuaPropertyToolStripMenuItem, "wzLuaPropertyToolStripMenuItem");
+            this.wzLuaPropertyToolStripMenuItem.Click += new System.EventHandler(this.wzLuaPropertyToolStripMenuItem_Click);
+            // 
             // removeToolStripMenuItem
             // 
             resources.ApplyResources(this.removeToolStripMenuItem, "removeToolStripMenuItem");
             this.removeToolStripMenuItem.Name = "removeToolStripMenuItem";
             this.removeToolStripMenuItem.Click += new System.EventHandler(this.RemoveToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator7
+            // 
+            this.toolStripSeparator7.Name = "toolStripSeparator7";
+            resources.ApplyResources(this.toolStripSeparator7, "toolStripSeparator7");
             // 
             // undoToolStripMenuItem
             // 
@@ -314,6 +361,11 @@ namespace HaRepacker.GUI
             // 
             this.redoToolStripMenuItem.Name = "redoToolStripMenuItem";
             resources.ApplyResources(this.redoToolStripMenuItem, "redoToolStripMenuItem");
+            // 
+            // toolStripSeparator6
+            // 
+            this.toolStripSeparator6.Name = "toolStripSeparator6";
+            resources.ApplyResources(this.toolStripSeparator6, "toolStripSeparator6");
             // 
             // expandAllToolStripMenuItem
             // 
@@ -333,7 +385,9 @@ namespace HaRepacker.GUI
             this.exportFilesToXMLToolStripMenuItem,
             this.exportDataToolStripMenuItem,
             this.importToolStripMenuItem,
+            this.toolStripSeparator9,
             this.optionsToolStripMenuItem,
+            this.toolStripSeparator8,
             this.searchToolStripMenuItem});
             this.toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
             resources.ApplyResources(this.toolsToolStripMenuItem, "toolsToolStripMenuItem");
@@ -405,6 +459,18 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.newToolStripMenuItem1, "newToolStripMenuItem1");
             this.newToolStripMenuItem1.Click += new System.EventHandler(this.newToolStripMenuItem1_Click);
             // 
+            // jSONToolStripMenuItem
+            // 
+            this.jSONToolStripMenuItem.Name = "jSONToolStripMenuItem";
+            resources.ApplyResources(this.jSONToolStripMenuItem, "jSONToolStripMenuItem");
+            this.jSONToolStripMenuItem.Click += new System.EventHandler(this.jSONToolStripMenuItem_Click);
+            // 
+            // bSONToolStripMenuItem
+            // 
+            this.bSONToolStripMenuItem.Name = "bSONToolStripMenuItem";
+            resources.ApplyResources(this.bSONToolStripMenuItem, "bSONToolStripMenuItem");
+            this.bSONToolStripMenuItem.Click += new System.EventHandler(this.bSONToolStripMenuItem_Click);
+            // 
             // pNGsToolStripMenuItem
             // 
             this.pNGsToolStripMenuItem.Name = "pNGsToolStripMenuItem";
@@ -438,12 +504,22 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.iMGToolStripMenuItem2, "iMGToolStripMenuItem2");
             this.iMGToolStripMenuItem2.Click += new System.EventHandler(this.iMGToolStripMenuItem2_Click);
             // 
+            // toolStripSeparator9
+            // 
+            this.toolStripSeparator9.Name = "toolStripSeparator9";
+            resources.ApplyResources(this.toolStripSeparator9, "toolStripSeparator9");
+            // 
             // optionsToolStripMenuItem
             // 
             this.optionsToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.cog;
             this.optionsToolStripMenuItem.Name = "optionsToolStripMenuItem";
             resources.ApplyResources(this.optionsToolStripMenuItem, "optionsToolStripMenuItem");
             this.optionsToolStripMenuItem.Click += new System.EventHandler(this.optionsToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator8
+            // 
+            this.toolStripSeparator8.Name = "toolStripSeparator8";
+            resources.ApplyResources(this.toolStripSeparator8, "toolStripSeparator8");
             // 
             // searchToolStripMenuItem
             // 
@@ -551,18 +627,6 @@ namespace HaRepacker.GUI
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.Button_addTab_Click);
             // 
-            // jSONToolStripMenuItem
-            // 
-            this.jSONToolStripMenuItem.Name = "jSONToolStripMenuItem";
-            resources.ApplyResources(this.jSONToolStripMenuItem, "jSONToolStripMenuItem");
-            this.jSONToolStripMenuItem.Click += new System.EventHandler(this.jSONToolStripMenuItem_Click);
-            // 
-            // bSONToolStripMenuItem
-            // 
-            this.bSONToolStripMenuItem.Name = "bSONToolStripMenuItem";
-            resources.ApplyResources(this.bSONToolStripMenuItem, "bSONToolStripMenuItem");
-            this.bSONToolStripMenuItem.Click += new System.EventHandler(this.bSONToolStripMenuItem_Click);
-            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -649,6 +713,15 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem jSONToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem bSONToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem wzLuaPropertyToolStripMenuItem;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator5;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator4;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator3;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator6;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator9;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator8;
+        private System.Windows.Forms.ToolStripSeparator toolStripSeparator7;
     }
 }
 

@@ -45,8 +45,8 @@ namespace HaCreator.MapEditor
         private int _vScroll = 0;
         private int _mag = 16;
         private UndoRedoManager undoRedoMan;
-        ItemTypes visibleTypes;
-        ItemTypes editedTypes;
+        private ItemTypes visibleTypes;
+        private ItemTypes editedTypes;
         private bool loading = false;
         private VRRectangle vrRect = null;
         private MinimapRectangle mmRect = null;

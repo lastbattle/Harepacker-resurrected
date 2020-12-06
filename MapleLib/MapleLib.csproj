@@ -212,6 +212,8 @@
     <Compile Include="WzLib\WzStructure\Data\MapConstants.cs" />
     <Compile Include="WzLib\WzStructure\Data\FieldType.cs" />
     <Compile Include="WzLib\WzStructure\Data\ItemTypes.cs" />
+    <Compile Include="WzLib\WzStructure\Data\MapStructure\AutoLieDetector.cs" />
+    <Compile Include="WzLib\WzStructure\Data\MapStructure\TimeMob.cs" />
     <Compile Include="WzLib\WzStructure\Data\MapType.cs" />
     <Compile Include="WzLib\WzStructure\Data\PortalType.cs" />
     <Compile Include="WzLib\WzStructure\Data\FieldLimitType.cs" />

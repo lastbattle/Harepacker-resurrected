@@ -39,6 +39,8 @@
                 <CommandBinding Command="ns:HaRibbon.UserObjs"  CanExecute="AlwaysExecute" Executed="UserObjs_Executed" />
                 <CommandBinding Command="ns:HaRibbon.Export"  CanExecute="AlwaysExecute" Executed="Export_Executed" />
                 <CommandBinding Command="ns:HaRibbon.PhysicsEdit"  CanExecute="AlwaysExecute" Executed="PhysicsEdit_Executed" />
+
+                <CommandBinding Command="ns:HaRibbon.ShowMapProperties"  CanExecute="AlwaysExecute" Executed="ShowMapProperties_Executed" />
             </Ribbon.CommandBindings>
 
             <Ribbon.ApplicationMenu>
@@ -194,6 +196,13 @@
                                   SelectionChanged="comboBox_Resolution_SelectionChanged">
                         </ComboBox>
                     </StackPanel>
+                </RibbonGroup>
+            </RibbonTab>
+
+            <!-- Debug, only appear when run under DEBUG mode-->
+            <RibbonTab x:Name="debugTab" Header="DEBUG" KeyTip="D">
+                <RibbonGroup x:Name="RibbonGroup_DebugMap" Header="Map">
+                    <RibbonButton Label="Show unsupported 'info/' props" Command="ns:HaRibbon.ShowMapProperties" Focusable="False"/>
                 </RibbonGroup>
             </RibbonTab>
 
