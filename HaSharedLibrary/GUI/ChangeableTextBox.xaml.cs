@@ -48,7 +48,10 @@ namespace HaSharedLibrary.GUI
             }
         }
 
-        public bool ButtonEnabled
+        /// <summary>
+        /// Apply button
+        /// </summary>
+        public bool ApplyButtonEnabled
         {
             get { return applyButton.IsEnabled; }
             set {

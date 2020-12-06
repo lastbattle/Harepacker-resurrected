@@ -5,25 +5,25 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
 
              mc:Ignorable="d" 
-             Height="35"
              d:DesignHeight="40" d:DesignWidth="570">
     
-    <Grid Width="570">
+    <Grid>
         <Grid Margin="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="70" />
-                <ColumnDefinition Width="410" />
+                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="70"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="{Binding Header}" VerticalAlignment="Center" Grid.Column="0" FontSize="20"
+            <TextBlock Text="{Binding Header}" VerticalAlignment="Center" Grid.Column="0" FontSize="16"
                        Foreground="Gray"/>
             
             <TextBox x:Name="textBox" Grid.Column="1"
+                     VerticalContentAlignment="Center"
                              Background="White" BorderBrush="White" FontSize="16" TextWrapping="{Binding TextWrap}"
                      TextChanged="textBox_TextChanged" AcceptsReturn="{Binding AcceptsReturn}"/>
             
-            <Button x:Name="applyButton" Content="Apply" Grid.Column="2" MaxHeight="40" MinHeight="30" VerticalAlignment="Top"
+            <Button x:Name="applyButton" Content="Apply" Grid.Column="2" Margin="5,0,0,0" Height="25" VerticalAlignment="Center"
                     Click="applyButton_Click"/>
         </Grid>
     </Grid>

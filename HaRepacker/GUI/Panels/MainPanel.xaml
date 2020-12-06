@@ -326,19 +326,19 @@
             <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
+                    <RowDefinition Height="40"/>
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <!-- Text box -->
-                <sharedLib:ChangeableTextBox x:Name="nameBox" Grid.Row="0" 
-                                                  AcceptsReturn="False"
+                <sharedLib:ChangeableTextBox x:Name="nameBox" Grid.Row="0"
+                                                  AcceptsReturn="False" Margin="20,0,20,0"
                                                       ButtonClicked="nameBox_ButtonClicked"/>
-                <sharedLib:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" 
-                                                  VerticalAlignment="Top"
-                                                  TextWrap="Wrap" />
+                <sharedLib:ChangeableTextBox x:Name="textPropBox" Grid.Row="1"
+                                                  TextWrap="Wrap" Margin="20,0,20,0" />
 
 
-                <Grid x:Name="grid1" Grid.Row="1" Grid.RowSpan="2">
+                <Grid x:Name="grid1" Grid.Row="2" Grid.RowSpan="2">
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
@@ -366,8 +366,8 @@
 
                 <!-- Context menu -->
                 <Button x:Name="button_MoreOption" Content="..."  Width="40" Height="50" FontSize="40" Style="{DynamicResource ButtonStyle_MoreOption}"
-                                VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,10,20,10"
-                        Grid.Row="0" Grid.RowSpan="2"
+                                VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,0,20,10"
+                        Grid.Row="2" 
                         Visibility="Collapsed"
                                 Click="button_MoreOption_Click" RenderTransformOrigin="0.5,0.5">
                     <Button.RenderTransform>

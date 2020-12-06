@@ -66,7 +66,7 @@ namespace HaRepacker.GUI.Panels
                 DataTree.ForeColor = System.Drawing.Color.White;
             }
 
-            nameBox.Header = "Key";
+            nameBox.Header = "Name";
             textPropBox.Header = "Value";
             textPropBox.ButtonClicked += applyChangesButton_Click;
 
@@ -688,7 +688,7 @@ namespace HaRepacker.GUI.Panels
                 string text = nameBox.Text;
                 ((WzNode)DataTree.SelectedNode).ChangeName(text);
                 nameBox.Text = text;
-                nameBox.ButtonEnabled = false;
+                nameBox.ApplyButtonEnabled = false;
             }
             else
                 Warning.Error(Properties.Resources.MainNodeExists);
@@ -1292,7 +1292,7 @@ namespace HaRepacker.GUI.Panels
         {
             mp3Player.SoundProperty = null;
             nameBox.Text = obj is WzFile ? ((WzFile)obj).Header.Copyright : obj.Name;
-            nameBox.ButtonEnabled = false;
+            nameBox.ApplyButtonEnabled = false;
 
             toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
             if (isSelectingWzMapFieldLimit) // previously already selected. update again
@@ -1400,6 +1400,7 @@ namespace HaRepacker.GUI.Panels
 
                 // Value
                 textPropBox.Visibility = Visibility.Visible;
+                textPropBox.ApplyButtonEnabled = false; // reset to disabled mode when changed
                 textPropBox.Text = obj.ToString();
             }
             else if (bIsWzSoundProperty)
@@ -1449,16 +1450,13 @@ namespace HaRepacker.GUI.Panels
                         });
                         thread.Start();
                         thread.Join();
-
-                        // atlas string display
-                        textPropBox.AcceptsReturn = true;
-                        textPropBox.Height = 700;
                     }
                     else
                     {
                         // Value
                         textPropBox.Visibility = Visibility.Visible;
                         textPropBox.Text = obj.ToString();
+                        textPropBox.ApplyButtonEnabled = false; // reset to disabled mode when changed
 
                         if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                         {
@@ -1475,15 +1473,14 @@ namespace HaRepacker.GUI.Panels
                         else
                         {
                             textPropBox.AcceptsReturn = true;
-
-                            textPropBox.Height = 200;
                         }
                     }
                 }
                 else if (bIsWzLongProperty || bIsWzIntProperty)
                 {
+                    textPropBox.Visibility = Visibility.Visible;
                     textPropBox.AcceptsReturn = false;
-                    textPropBox.Height = 35;
+                    textPropBox.ApplyButtonEnabled = false; // reset to disabled mode when changed
 
                     ulong value_ = 0;
                     if (bIsWzLongProperty)
@@ -1505,11 +1502,11 @@ namespace HaRepacker.GUI.Panels
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
                     }
+                    textPropBox.Text = value_.ToString();
                 }
                 else
                 {
                     textPropBox.AcceptsReturn = false;
-                    textPropBox.Height = 35;
                 }
             }
             else if (obj is WzVectorProperty property)
