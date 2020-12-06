@@ -17,6 +17,7 @@
         <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
         <converter:PointFToVisiblityConverter x:Key="pointFToVisiblityConverter"/>
         <converter:CheckboxToBorderTransparencyConverter x:Key="checkboxToBorderTransparencyConverter"/>
+        <converter:ImageZoomSliderConverter x:Key="imageZoomSliderConverter"/>
 
         <ControlTemplate x:Key="ScrollViewerControlTemplate1" TargetType="{x:Type ScrollViewer}">
             <Grid x:Name="Grid" Background="{TemplateBinding Background}">
@@ -525,15 +526,18 @@
                             BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Border.RenderTransform>
                             <ScaleTransform 
-                                ScaleX="{Binding ElementName=ZoomSlider, Path='Value'}" 
-                                ScaleY="{Binding ElementName=ZoomSlider, Path='Value'}"/>
+                                ScaleX="{Binding ElementName=ZoomSlider, Path='Value', Converter={StaticResource imageZoomSliderConverter}}" 
+                                ScaleY="{Binding ElementName=ZoomSlider, Path='Value', Converter={StaticResource imageZoomSliderConverter}}"/>
                         </Border.RenderTransform>
 
                         <Grid>
                             <!-- Source="pack://siteoforigin:,,,/Resources/ladyboss_test_attack2_0.png" -->
                             <!-- Source="{Binding Image}"  -->
                             <Image x:Name="canvasPropBox" 
-                               Source="{Binding Image}" 
+                               Source="{Binding Image}"  
+                                   SnapsToDevicePixels="True" UseLayoutRounding="True" 
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor" RenderOptions.EdgeMode="Aliased"
+                                   
                                Stretch="None" VerticalAlignment="Center" HorizontalAlignment="Center"/>
 
                             <!-- Click draggable borders-->

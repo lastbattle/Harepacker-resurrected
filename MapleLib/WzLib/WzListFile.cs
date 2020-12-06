@@ -39,7 +39,7 @@ namespace MapleLib.WzLib
 		/// Parses a wz list file on the disk
 		/// </summary>
 		/// <param name="filePath">Path to the wz file</param>
-        public static List<string> ParseListFile(string filePath, byte[] WzIv)
+        private static List<string> ParseListFile(string filePath, byte[] WzIv)
         {
             List<string> listEntries = new List<string>();
             byte[] wzFileBytes = File.ReadAllBytes(filePath);

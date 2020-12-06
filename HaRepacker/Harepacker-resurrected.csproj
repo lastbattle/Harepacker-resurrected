@@ -198,6 +198,7 @@
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
     <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
+    <Compile Include="Converter\ImageZoomSliderConverter.cs" />
     <Compile Include="GUI\ContextMenuManager.cs" />
     <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
     <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
