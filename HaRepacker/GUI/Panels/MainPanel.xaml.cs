@@ -725,7 +725,13 @@ namespace HaRepacker.GUI.Panels
             }
             else if (obj is WzStringProperty stringProperty)
             {
-                stringProperty.Value = setText;
+                if (!stringProperty.IsSpineAtlasResources)
+                {
+                    stringProperty.Value = setText;
+                } else
+                {
+                    throw new NotSupportedException("Usage of textBoxProp for spine WzStringProperty.");
+                }
             }
             else if (obj is WzFloatProperty floatProperty)
             {
@@ -803,6 +809,19 @@ namespace HaRepacker.GUI.Panels
                 string setText = textEditor.textEditor.Text;
                 byte[] encBytes = luaProp.EncodeDecode(Encoding.ASCII.GetBytes(setText));
                 luaProp.Value = encBytes;
+            } 
+            else if (obj is WzStringProperty stringProp)
+            {
+                if (stringProp.IsSpineAtlasResources)
+                {
+                    string setText = textEditor.textEditor.Text;
+
+                    stringProp.Value = setText;
+                } 
+                else
+                {
+                    throw new NotSupportedException("Usage of TextEditor for non-spine WzStringProperty.");
+                }
             }
         }
 
@@ -1396,15 +1415,12 @@ namespace HaRepacker.GUI.Panels
             else if (bIsWzLuaProperty)
             {
                 textEditor.Visibility = Visibility.Visible;
+                textEditor.SetHighlightingDefinitionIndex(2); // javascript
 
                 textEditor.textEditor.Text = obj.ToString();
             }
             else if (bIsWzStringProperty || bIsWzIntProperty || bIsWzLongProperty || bIsWzDoubleProperty || bIsWzFloatProperty || bIsWzShortProperty)
             {
-                // Value
-                textPropBox.Visibility = Visibility.Visible;
-                textPropBox.Text = obj.ToString();
-
                 // If text is a string property, expand the textbox
                 if (bIsWzStringProperty)
                 {
@@ -1412,6 +1428,10 @@ namespace HaRepacker.GUI.Panels
 
                     if (stringObj.IsSpineAtlasResources) // spine related resource
                     {
+                        textEditor.Visibility = Visibility.Visible;
+                        textEditor.SetHighlightingDefinitionIndex(20); // json
+                        textEditor.textEditor.Text = obj.ToString();
+
                         Thread thread = new Thread(() =>
                         {
                             try
@@ -1434,30 +1454,30 @@ namespace HaRepacker.GUI.Panels
                         textPropBox.AcceptsReturn = true;
                         textPropBox.Height = 700;
                     }
-                    else if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
-                    {
-                        if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
-                        {
-                            toolStripStatusLabel_additionalInfo.Text =
-                                string.Format(Properties.Resources.MainAdditionalInfo_PortalType, MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
-                        }
-                        else
-                        {
-                            toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
-                        }
-                    }
                     else
                     {
-                        textPropBox.AcceptsReturn = true;
-                        if (stringObj.IsSpineRelatedResources)
+                        // Value
+                        textPropBox.Visibility = Visibility.Visible;
+                        textPropBox.Text = obj.ToString();
+
+                        if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                         {
-                            textPropBox.Height = 700;
+                            if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString()))
+                            {
+                                toolStripStatusLabel_additionalInfo.Text =
+                                    string.Format(Properties.Resources.MainAdditionalInfo_PortalType, MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
+                            }
+                            else
+                            {
+                                toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
+                            }
                         }
                         else
                         {
+                            textPropBox.AcceptsReturn = true;
+
                             textPropBox.Height = 200;
                         }
-
                     }
                 }
                 else if (bIsWzLongProperty || bIsWzIntProperty)

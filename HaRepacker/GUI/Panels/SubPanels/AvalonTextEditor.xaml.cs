@@ -42,6 +42,15 @@ namespace HaRepacker.GUI.Panels.SubPanels
         }
 
         #region Data Context
+        /// <summary>
+        /// Sets the default syntax highlighting index
+        /// </summary>
+        /// <param name="index"></param>
+        public void SetHighlightingDefinitionIndex(int index)
+        {
+            this.HighlightingDefinition = _highlightingManager.HighlightingDefinitions[index]; // default to javascript
+        }
+
         private readonly HighlightingManager _highlightingManager;
         private IHighlightingDefinition _HighlightingDefinition;
         /// <summary>
