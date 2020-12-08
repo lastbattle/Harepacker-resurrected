@@ -302,6 +302,8 @@ namespace HaCreator.MapSimulator
                 foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
                 {
                     //WzImage imageProperty = (WzImage) NPCWZFile[npcInfo.ID + ".img"];
+                    if (npc.Hide)
+                        continue;
 
                     NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
                     mapObjects_NPCs.Add(npcItem);
@@ -314,7 +316,8 @@ namespace HaCreator.MapSimulator
                 foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
                 {
                     //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
-
+                    if (mob.Hide)
+                        continue;
                     MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
                     mapObjects_Mobs.Add(npcItem);
                 }

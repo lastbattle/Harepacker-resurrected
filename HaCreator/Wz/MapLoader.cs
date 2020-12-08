@@ -971,8 +971,10 @@ namespace HaCreator.Wz
                 Board newBoard = multiBoard.CreateBoard(size, center, menu);
                 GenerateDefaultZms(newBoard);
 
-                System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem();
-                newTabPage.Header = string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName); // Header of the tab
+                System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem
+                {
+                    Header = string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName) // Header of the tab
+                };
                 newTabPage.MouseRightButtonUp += (sender, e) =>
                 {
                     System.Windows.Controls.TabItem senderTab = (System.Windows.Controls.TabItem)sender;
