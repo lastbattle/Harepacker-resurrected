@@ -1390,20 +1390,18 @@ namespace HaRepacker.GUI.Panels
 
                 // Image
                 WzObject linkValue = ((WzUOLProperty)obj).LinkValue;
-                if (linkValue is WzCanvasProperty)
+                if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(linkValue.GetBitmap());
-                    menuItem_saveImage.Visibility = Visibility.Visible;
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasUOL.GetLinkedWzCanvasBitmap()); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+                    menuItem_saveImage.Visibility = Visibility.Visible; // dont show change image, as its a UOL
 
-                    WzCanvasProperty linkProperty = ((WzCanvasProperty)linkValue);
-
-                    SetImageRenderView(linkProperty);
+                    SetImageRenderView(canvasUOL);
                 }
-                else if (linkValue is WzBinaryProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
+                else if (linkValue is WzBinaryProperty binProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
                 {
                     mp3Player.Visibility = Visibility.Visible;
-                    mp3Player.SoundProperty = (WzBinaryProperty)linkValue;
+                    mp3Player.SoundProperty = binProperty;
 
                     menuItem_changeSound.Visibility = Visibility.Visible;
                     menuItem_saveSound.Visibility = Visibility.Visible;

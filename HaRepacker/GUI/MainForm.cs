@@ -1037,6 +1037,8 @@ namespace HaRepacker.GUI
                 f.Dispose();
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
+            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+
             threadDone = true;
         }
 
@@ -1072,7 +1074,9 @@ namespace HaRepacker.GUI
                 serializer.SerializeDirectory(dir, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
-            threadDone = true;
+           MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+
+           threadDone = true;
         }
 
         private void RunWzObjExtraction(object param)
@@ -1100,6 +1104,8 @@ namespace HaRepacker.GUI
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
 
             }
+            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+
             threadDone = true;
         }
 
@@ -1878,6 +1884,8 @@ namespace HaRepacker.GUI
                 }
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
+            MapleLib.Helpers.ErrorLogger.SaveToFile("WzImport_Errors.txt");
+
             threadDone = true;
         }
     }

@@ -520,6 +520,9 @@ namespace MapleLib.WzLib.WzStructure
                     case "gaugeDelay":
                     case "individualPet":
                     case "level":
+                    case "hungryMuto":
+                    case "property": //  map 921172300.img
+                    case "spiritSavior":
                         unsupportedInfoProperties.Add(prop);
                         break;
                     default:

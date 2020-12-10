@@ -49,7 +49,6 @@ namespace HaCreator.MapSimulator
             {
                 Priority = ThreadPriority.Highest
             };
-
             thread.Start();
             thread.Join();
 
