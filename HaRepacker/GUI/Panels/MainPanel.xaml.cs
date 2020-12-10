@@ -1398,10 +1398,10 @@ namespace HaRepacker.GUI.Panels
 
                     SetImageRenderView(canvasUOL);
                 }
-                else if (linkValue is WzBinaryProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
+                else if (linkValue is WzBinaryProperty binProperty) // Sound, used rarely in wz. i.e Sound.wz/Rune/1/Destroy
                 {
                     mp3Player.Visibility = Visibility.Visible;
-                    mp3Player.SoundProperty = (WzBinaryProperty)linkValue;
+                    mp3Player.SoundProperty = binProperty;
 
                     menuItem_changeSound.Visibility = Visibility.Visible;
                     menuItem_saveSound.Visibility = Visibility.Visible;
