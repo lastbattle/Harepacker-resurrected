@@ -343,6 +343,22 @@ namespace MapleLib.WzLib.WzProperties
                                     bmp.UnlockBits(bmpData);
                                     break;
                                 }
+                            case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
+                                {
+                                    bmp = new Bitmap(width, height, PixelFormat.Format16bppArgb1555);
+                                    BitmapData bmpData = bmp.LockBits(new Rectangle(Point.Empty, bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format16bppArgb1555);
+                                    // "Npc.wz\\2570101.img\\info\\illustration2\\face\\0"
+
+                                    int uncompressedSize = width * height * 2;
+                                    byte[] decBuf = new byte[uncompressedSize];
+                                    zlib.Read(decBuf, 0, uncompressedSize);
+                                    zlib.Close();
+
+                                    CopyBmpDataWithStride(decBuf, bmp.Width * 2, bmpData);
+
+                                    bmp.UnlockBits(bmpData);
+                                    break;
+                                }
                             case 513:
                                 {
                                     bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
@@ -571,6 +587,23 @@ namespace MapleLib.WzLib.WzProperties
             pixelData[offset + 1] = color.G;
             pixelData[offset + 2] = color.R;
             pixelData[offset + 3] = alpha;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void CopyBmpDataWithStride(byte[] source, int stride, BitmapData bmpData)
+        {
+            if (bmpData.Stride == stride)
+            {
+                Marshal.Copy(source, 0, bmpData.Scan0, source.Length);
+            }
+            else
+            {
+                for (int y = 0; y < bmpData.Height; y++)
+                {
+                    Marshal.Copy(source, stride * y, bmpData.Scan0 + bmpData.Stride * y, stride);
+                }
+            }
+
         }
         #endregion
 
