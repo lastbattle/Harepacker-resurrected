@@ -35,7 +35,7 @@
                            AutomationProperties.AutomationId="VerticalScrollBar" 
                            Cursor="Arrow" 
                            Grid.Column="1" 
-                           Maximum="{TemplateBinding ScrollableHeight}" Minimum="0" 
+                           Maximum="{TemplateBinding ScrollableHeight}" Minimum="-200" 
                            Grid.Row="0" 
                            Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" 
                            Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" 
@@ -46,7 +46,7 @@
                            AutomationProperties.AutomationId="HorizontalScrollBar" 
                            Cursor="Arrow" 
                            Grid.Column="0" 
-                           Maximum="{TemplateBinding ScrollableWidth}" Minimum="0" 
+                           Maximum="{TemplateBinding ScrollableWidth}" Minimum="-200" 
                            Orientation="Horizontal" 
                            Grid.Row="1" 
                            Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" 
@@ -516,7 +516,7 @@
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}"
                       >
             
-            <Grid Height="2000" Width="2000" Margin="100,50,0,0">
+            <Grid Height="4000" Width="4000" Margin="200,100,0,0">
                 <!-- Image and borders-->
                 <Grid Width="{Binding ImageWidth, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                   Height="{Binding ImageHeight, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
