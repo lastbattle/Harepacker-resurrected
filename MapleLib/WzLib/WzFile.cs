@@ -25,6 +25,7 @@ using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
 using System.Linq;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 
 namespace MapleLib.WzLib
 {
@@ -259,9 +260,12 @@ namespace MapleLib.WzLib
                                         this.wzDir = directory;
                                         return WzFileParseStatus.Success;
                                     }
+                                case 0x30:
+                                case 0x6C: // idk
                                 default:
                                     {
-                                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, "New Wz image header found. checkByte = " + checkByte);
+                                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, 
+                                            string.Format("[WzFile.cs] New Wz image header found. checkByte = {0}. File Name = {1}", checkByte, Name));
                                         // log or something
                                         break;
                                     }
@@ -325,6 +329,7 @@ namespace MapleLib.WzLib
         /// <summary>
         /// Version hash
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void CreateWZVersionHash()
         {
             versionHash = 0;
@@ -455,11 +460,11 @@ namespace MapleLib.WzLib
             List<WzObject> objList = new List<WzObject>();
             foreach (WzImage img in WzDirectory.WzImages)
                 foreach (string spath in GetPathsFromImage(img, name + "/" + img.Name))
-                    if (strMatch(path, spath))
+                    if (StringMatch(path, spath))
                         objList.Add(GetObjectFromPath(spath));
             foreach (WzDirectory dir in wzDir.WzDirectories)
                 foreach (string spath in GetPathsFromDirectory(dir, name + "/" + dir.Name))
-                    if (strMatch(path, spath))
+                    if (StringMatch(path, spath))
                         objList.Add(GetObjectFromPath(spath));
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -681,20 +686,20 @@ namespace MapleLib.WzLib
             return null;
         }
 
-        internal bool strMatch(string strWildCard, string strCompare)
+        internal bool StringMatch(string strWildCard, string strCompare)
         {
             if (strWildCard.Length == 0) return strCompare.Length == 0;
             if (strCompare.Length == 0) return false;
             if (strWildCard[0] == '*' && strWildCard.Length > 1)
                 for (int index = 0; index < strCompare.Length; index++)
                 {
-                    if (strMatch(strWildCard.Substring(1), strCompare.Substring(index)))
+                    if (StringMatch(strWildCard.Substring(1), strCompare.Substring(index)))
                         return true;
                 }
             else if (strWildCard[0] == '*')
                 return true;
             else if (strWildCard[0] == strCompare[0])
-                return strMatch(strWildCard.Substring(1), strCompare.Substring(1));
+                return StringMatch(strWildCard.Substring(1), strCompare.Substring(1));
             return false;
         }
 
