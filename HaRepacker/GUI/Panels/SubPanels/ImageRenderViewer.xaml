@@ -17,7 +17,6 @@
         <converter:PointFOriginToStringConverter x:Key="pointFOriginToStringConverter"/>
         <converter:PointFToVisiblityConverter x:Key="pointFToVisiblityConverter"/>
         <converter:CheckboxToBorderTransparencyConverter x:Key="checkboxToBorderTransparencyConverter"/>
-        <converter:ImageZoomSliderConverter x:Key="imageZoomSliderConverter"/>
 
         <ControlTemplate x:Key="ScrollViewerControlTemplate1" TargetType="{x:Type ScrollViewer}">
             <Grid x:Name="Grid" Background="{TemplateBinding Background}">
@@ -526,8 +525,8 @@
                             BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Border.RenderTransform>
                             <ScaleTransform 
-                                ScaleX="{Binding ElementName=ZoomSlider, Path='Value', Converter={StaticResource imageZoomSliderConverter}}" 
-                                ScaleY="{Binding ElementName=ZoomSlider, Path='Value', Converter={StaticResource imageZoomSliderConverter}}"/>
+                                ScaleX="{Binding ElementName=ZoomSlider, Path='Value'}" 
+                                ScaleY="{Binding ElementName=ZoomSlider, Path='Value'}"/>
                         </Border.RenderTransform>
 
                         <Grid>
