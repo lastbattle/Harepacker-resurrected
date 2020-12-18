@@ -45,8 +45,12 @@ namespace HaCreator.GUI.InstanceEditor
             typeBox.SelectedIndex = (int)item.type;
             alphaBox.Value = item.a;
             front.Checked = item.front;
+
             rxBox.Value = item.rx;
+            trackBar_parallaxX.Value = item.rx;
             ryBox.Value = item.ry;
+            trackBar_parallaxY.Value = item.ry;
+
             cxBox.Value = item.cx;
             cyBox.Value = item.cy;
 
@@ -169,6 +173,30 @@ namespace HaCreator.GUI.InstanceEditor
                 }
             }
             Close();
+        }
+
+        /// <summary>
+        /// TrackBar for parallaxY
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void trackBar_parallaxY_Scroll(object sender, EventArgs e)
+        {
+            TrackBar trackBar = sender as TrackBar;
+
+            ryBox.Value = trackBar.Value;
+        }
+
+        /// <summary>
+        /// TrackBar for parallax X
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void trackBar_parallaxX_Scroll(object sender, EventArgs e)
+        {
+            TrackBar trackBar = sender as TrackBar;
+
+            rxBox.Value = trackBar.Value;
         }
     }
 }

@@ -279,8 +279,8 @@ namespace HaCreator.MapEditor.Instance
 
         public void MoveBase(int x, int y)
         {
-            BaseX = x;
-            BaseY = y;
+            this.BaseX = x;
+            this.BaseY = y;
         }
 
         public new class SerializationForm : BoardItem.SerializationForm
