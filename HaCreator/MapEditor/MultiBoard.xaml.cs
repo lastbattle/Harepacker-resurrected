@@ -244,7 +244,7 @@ namespace HaCreator.MapEditor
             {
                 Board newBoard = new Board(mapSize, centerPoint, this, menu, ApplicationSettings.theoreticalVisibleTypes, ApplicationSettings.theoreticalEditedTypes);
                 boards.Add(newBoard);
-                newBoard.CreateLayers();
+                newBoard.CreateMapLayers();
                 return newBoard;
             }
         }
@@ -254,7 +254,7 @@ namespace HaCreator.MapEditor
             lock (this)
             {
                 Board newBoard = new Board(mapSize, centerPoint, this, null, ItemTypes.None, ItemTypes.None);
-                newBoard.CreateLayers();
+                newBoard.CreateMapLayers();
                 return newBoard;
             }
         }

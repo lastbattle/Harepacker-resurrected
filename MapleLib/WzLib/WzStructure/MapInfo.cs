@@ -523,10 +523,12 @@ namespace MapleLib.WzLib.WzStructure
                     case "hungryMuto":
                     case "property": //  map 921172300.img
                     case "spiritSavior":
+                    case "standAlonePermitUpgrade": //  993059600.img
+                    case "limitHeadAlarmField": // 993180000.img
                         unsupportedInfoProperties.Add(prop);
                         break;
                     default:
-                        ErrorLogger.Log(ErrorLevel.MissingFeature, string.Format("Unknown field info/ property: '{0}'. {1}. Please fix it at MapInfo.cs", prop.Name, loggerSuffix));
+                        ErrorLogger.Log(ErrorLevel.MissingFeature, string.Format("[MapInfo] Unknown field info/ property: '{0}'. {1}. Please fix it at MapInfo.cs", prop.Name, loggerSuffix));
                         additionalProps.Add(prop.DeepClone());
                         break;
                 }

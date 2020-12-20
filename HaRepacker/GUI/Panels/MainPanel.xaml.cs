@@ -814,16 +814,16 @@ namespace HaRepacker.GUI.Panels
             } 
             else if (obj is WzStringProperty stringProp)
             {
-                if (stringProp.IsSpineAtlasResources)
-                {
+                //if (stringProp.IsSpineAtlasResources)
+               // {
                     string setText = textEditor.textEditor.Text;
 
                     stringProp.Value = setText;
-                } 
+              /*  } 
                 else
                 {
                     throw new NotSupportedException("Usage of TextEditor for non-spine WzStringProperty.");
-                }
+                }*/
             }
         }
 
@@ -1459,6 +1459,12 @@ namespace HaRepacker.GUI.Panels
                         });
                         thread.Start();
                         thread.Join();
+                    }
+                    else if (stringObj.Name.EndsWith(".json")) // Map001.wz/Back/BM3_3.img/spine/skeleton.json
+                    {
+                        textEditor.Visibility = Visibility.Visible;
+                        textEditor.SetHighlightingDefinitionIndex(20); // json
+                        textEditor.textEditor.Text = obj.ToString();
                     }
                     else
                     {

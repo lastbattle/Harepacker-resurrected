@@ -37,7 +37,7 @@
             this.textBox2 = new System.Windows.Forms.TextBox();
             this.pathBox = new System.Windows.Forms.ComboBox();
             this.button2 = new System.Windows.Forms.Button();
-            this.debugButton = new System.Windows.Forms.Button();
+            this.button_checkMapErrors = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // button1
@@ -45,7 +45,7 @@
             this.button1.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             this.button1.Location = new System.Drawing.Point(5, 65);
             this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(353, 28);
+            this.button1.Size = new System.Drawing.Size(186, 28);
             this.button1.TabIndex = 1;
             this.button1.Text = "Initialize";
             this.button1.Click += new System.EventHandler(this.button1_Click);
@@ -113,22 +113,22 @@
             this.button2.Text = "...";
             this.button2.Click += new System.EventHandler(this.button2_Click);
             // 
-            // debugButton
+            // button_checkMapErrors
             // 
-            this.debugButton.Location = new System.Drawing.Point(251, 56);
-            this.debugButton.Name = "debugButton";
-            this.debugButton.Size = new System.Drawing.Size(106, 37);
-            this.debugButton.TabIndex = 15;
-            this.debugButton.Text = "DEBUG - check map errors";
-            this.debugButton.UseVisualStyleBackColor = true;
-            this.debugButton.Click += new System.EventHandler(this.debugButton_Click);
+            this.button_checkMapErrors.Location = new System.Drawing.Point(197, 65);
+            this.button_checkMapErrors.Name = "button_checkMapErrors";
+            this.button_checkMapErrors.Size = new System.Drawing.Size(160, 28);
+            this.button_checkMapErrors.TabIndex = 15;
+            this.button_checkMapErrors.Text = "Check map errors";
+            this.button_checkMapErrors.UseVisualStyleBackColor = true;
+            this.button_checkMapErrors.Click += new System.EventHandler(this.debugButton_Click);
             // 
             // Initialization
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(360, 131);
-            this.Controls.Add(this.debugButton);
+            this.Controls.Add(this.button_checkMapErrors);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);
             this.Controls.Add(this.label3);
@@ -161,7 +161,7 @@
         private System.Windows.Forms.TextBox textBox2;
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button2;
-        private System.Windows.Forms.Button debugButton;
+        private System.Windows.Forms.Button button_checkMapErrors;
     }
 }
 

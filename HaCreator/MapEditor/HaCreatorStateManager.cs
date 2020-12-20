@@ -504,7 +504,9 @@ namespace HaCreator.MapEditor
             int i = 1;
             foreach (WzImageProperty imgProp in unsupportedProp)
             {
-                sb.Append(i).Append(": ").Append(imgProp.Name).Append(", val: ").Append(imgProp.WzValue.ToString()).Append(Environment.NewLine);
+                sb.Append(i).Append(": ").Append(imgProp.Name);
+                sb.Append(", val: ").Append(imgProp.WzValue != null ? imgProp.WzValue.ToString() : Environment.NewLine);
+                sb.Append(Environment.NewLine);
                 i++;
             }
             sb.Append(Environment.NewLine).Append("Fix it under MapInfo.cs");
