@@ -155,7 +155,9 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            return CreateInstance(board, x, y, z, -100, -100, 0, 0, 0, 255, false, flip, 0, null, false);
+            const int DEFAULT_RX = -5;
+            const int DEFAULT_RY = -5;
+            return CreateInstance(board, x, y, z, DEFAULT_RX, DEFAULT_RY, 0, 0, 0, 255, false, flip, 0, null, false);
         }
 
         /// <summary>
