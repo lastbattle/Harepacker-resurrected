@@ -129,6 +129,9 @@ namespace HaCreator.Wz
                     case "footprintData":
                     case "illuminantCluster": // 450016030.img
                     case "property": // 450016110.img
+                    case "languageSchool": // 702090101.img
+                    case "languageSchoolQuizTime":
+                    case "languageSchoolMobSummonItemID":
                         continue;
 
                     default:
