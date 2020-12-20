@@ -130,11 +130,7 @@ namespace HaCreator.Wz
                         continue;
 
                     default:
-                        string loggerSuffix = string.Format("Map: '{0}' {1}", 
-                            mapImage.Name, 
-                            ((mapImage.WzFileParent != null) ? (" : of version " + Enum.GetName(typeof(WzMapleVersion), mapImage.WzFileParent.MapleVersion) + ", v" + mapImage.WzFileParent.Version.ToString()) : ""));
-
-                        string error = string.Format("Unknown field property '{0}', {1}", prop.Name, loggerSuffix);
+                        string error = string.Format("Unknown field property '{0}', {1}", prop.Name, mapImage.ToString() /*overrides see WzImage.ToString()*/);
 
                         MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         copyPropNames.Add(prop.Name);

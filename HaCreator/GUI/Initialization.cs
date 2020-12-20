@@ -16,6 +16,7 @@ using MapleLib.WzLib.Util;
 using HaCreator.Wz;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;
+using HaCreator.MapEditor.Instance;
 
 namespace HaCreator.GUI
 {
@@ -237,6 +238,11 @@ namespace HaCreator.GUI
             };
         }
 
+        /// <summary>
+        /// Check map errors
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void debugButton_Click(object sender, EventArgs e)
         {
             // This function iterates over all maps in the game and verifies that we recognize all their props
@@ -247,7 +253,7 @@ namespace HaCreator.GUI
             InitializeWzFiles(wzPath, fileVersion);
 
             MultiBoard mb = new MultiBoard();
-            Board b = new Board(
+            Board board = new Board(
                 new Microsoft.Xna.Framework.Point(), 
                 new Microsoft.Xna.Framework.Point(), 
                 mb, 
@@ -272,7 +278,22 @@ namespace HaCreator.GUI
                 }
                 MapLoader.VerifyMapPropsKnown(mapImage, true);
                 MapInfo info = new MapInfo(mapImage, null, null, null);
-                MapLoader.LoadMisc(mapImage, b);
+                MapLoader.LoadMisc(mapImage, board);
+
+                List<BackgroundInstance> allBackgrounds = new List<BackgroundInstance>();
+                allBackgrounds.AddRange(board.BoardItems.BackBackgrounds);
+                allBackgrounds.AddRange(board.BoardItems.FrontBackgrounds);
+                foreach (BackgroundInstance bg in allBackgrounds)
+                {
+                    if (bg.type != MapleLib.WzLib.WzStructure.Data.BackgroundType.Regular)
+                        if (bg.cx < 0 || bg.cy < 0)
+                        {
+                            string error = string.Format("Negative CX/ CY moving background object. CX='{0}', CY={1}, Type={2}, {3}{4}", bg.cx, bg.cy, bg.type.ToString(), Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/);
+
+                            MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.Critical, error);
+                        }
+                }
+                allBackgrounds.Clear();
 
                 mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
             }

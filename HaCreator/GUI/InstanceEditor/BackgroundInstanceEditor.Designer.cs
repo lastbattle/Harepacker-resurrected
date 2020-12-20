@@ -199,6 +199,7 @@
             this.typeBox.Name = "typeBox";
             this.typeBox.Size = new System.Drawing.Size(184, 21);
             this.typeBox.TabIndex = 3;
+            this.typeBox.SelectedIndexChanged += new System.EventHandler(this.typeBox_SelectedIndexChanged);
             // 
             // label5
             // 
@@ -316,6 +317,7 @@
             this.cyBox.Name = "cyBox";
             this.cyBox.Size = new System.Drawing.Size(50, 22);
             this.cyBox.TabIndex = 9;
+            this.cyBox.ValueChanged += new System.EventHandler(this.cyBox_ValueChanged);
             // 
             // cxLabel
             // 
@@ -342,6 +344,7 @@
             this.cxBox.Name = "cxBox";
             this.cxBox.Size = new System.Drawing.Size(50, 22);
             this.cxBox.TabIndex = 8;
+            this.cxBox.ValueChanged += new System.EventHandler(this.cxBox_ValueChanged);
             // 
             // label9
             // 

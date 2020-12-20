@@ -461,5 +461,15 @@ namespace MapleLib.WzLib
             }
         }
         #endregion
+
+        #region Overrides
+        public override string ToString()
+        {
+            string loggerSuffix = string.Format("WzImage: '{0}' {1}", Name,
+                ((WzFileParent != null) ? (" : of version " + Enum.GetName(typeof(WzMapleVersion), WzFileParent.MapleVersion) + ", v" + WzFileParent.Version.ToString()) : ""));
+
+            return loggerSuffix;
+        }
+        #endregion
     }
 }
