@@ -127,10 +127,12 @@ namespace HaCreator.Wz
                     case "WindArea":
                     case "pocketdrop":
                     case "footprintData":
+                    case "illuminantCluster": // 450016030.img
+                    case "property": // 450016110.img
                         continue;
 
                     default:
-                        string error = string.Format("Unknown field property '{0}', {1}", prop.Name, mapImage.ToString() /*overrides see WzImage.ToString()*/);
+                        string error = string.Format("[MapLoader] Unknown field property '{0}', {1}", prop.Name, mapImage.ToString() /*overrides see WzImage.ToString()*/);
 
                         MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         copyPropNames.Add(prop.Name);
