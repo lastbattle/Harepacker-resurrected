@@ -262,6 +262,7 @@ namespace MapleLib.WzLib
                                     }
                                 case 0x30:
                                 case 0x6C: // idk
+                                case 0xBC: // Map002.wz? KMST?
                                 default:
                                     {
                                         Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, 
