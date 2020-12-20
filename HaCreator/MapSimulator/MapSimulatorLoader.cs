@@ -510,6 +510,9 @@ namespace HaCreator.MapSimulator
         /// <returns></returns>
         public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName)
         {
+            if (mapBoard.MiniMap == null)
+                return null;
+
             WzSubProperty maxMapProperty = (WzSubProperty)minimapFrameProperty["MaxMap"];
             WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps

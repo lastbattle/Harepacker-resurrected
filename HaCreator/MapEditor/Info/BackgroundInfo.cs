@@ -196,6 +196,7 @@ namespace HaCreator.MapEditor.Info
 
 
         #region Members
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public string bS
         {
             get { return _bS; }
@@ -211,6 +212,7 @@ namespace HaCreator.MapEditor.Info
             set { this._type = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public string no
         {
             get { return _no; }

@@ -140,30 +140,35 @@ namespace HaCreator.MapEditor.Instance
             set { _ry = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public int cx
         {
             get { return _cx; }
             set { _cx = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public int cy
         {
             get { return _cy; }
             set { _cy = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public int a
         {
             get { return _a; }
             set { _a = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public BackgroundType type
         {
             get { return _type; }
             set { _type = value; }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public bool front
         {
             get { return _front; }
