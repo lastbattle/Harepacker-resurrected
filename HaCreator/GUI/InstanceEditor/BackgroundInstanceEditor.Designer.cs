@@ -184,7 +184,7 @@
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(6, 82);
+            this.label4.Location = new System.Drawing.Point(6, 21);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(33, 13);
             this.label4.TabIndex = 9;
@@ -195,7 +195,7 @@
             this.typeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.typeBox.FormattingEnabled = true;
             this.typeBox.ItemHeight = 13;
-            this.typeBox.Location = new System.Drawing.Point(44, 79);
+            this.typeBox.Location = new System.Drawing.Point(45, 21);
             this.typeBox.Name = "typeBox";
             this.typeBox.Size = new System.Drawing.Size(184, 21);
             this.typeBox.TabIndex = 3;
@@ -204,7 +204,7 @@
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(6, 48);
+            this.label5.Location = new System.Drawing.Point(6, 79);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(116, 13);
             this.label5.TabIndex = 11;
@@ -212,7 +212,7 @@
             // 
             // alphaBox
             // 
-            this.alphaBox.Location = new System.Drawing.Point(128, 45);
+            this.alphaBox.Location = new System.Drawing.Point(128, 77);
             this.alphaBox.Maximum = new decimal(new int[] {
             255,
             0,
@@ -286,7 +286,7 @@
             // copyLabel
             // 
             this.copyLabel.AutoSize = true;
-            this.copyLabel.Location = new System.Drawing.Point(6, 20);
+            this.copyLabel.Location = new System.Drawing.Point(6, 49);
             this.copyLabel.Name = "copyLabel";
             this.copyLabel.Size = new System.Drawing.Size(36, 13);
             this.copyLabel.TabIndex = 23;
@@ -295,7 +295,7 @@
             // cyLabel
             // 
             this.cyLabel.AutoSize = true;
-            this.cyLabel.Location = new System.Drawing.Point(134, 20);
+            this.cyLabel.Location = new System.Drawing.Point(134, 49);
             this.cyLabel.Name = "cyLabel";
             this.cyLabel.Size = new System.Drawing.Size(12, 13);
             this.cyLabel.TabIndex = 22;
@@ -303,7 +303,7 @@
             // 
             // cyBox
             // 
-            this.cyBox.Location = new System.Drawing.Point(150, 17);
+            this.cyBox.Location = new System.Drawing.Point(150, 46);
             this.cyBox.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -322,7 +322,7 @@
             // cxLabel
             // 
             this.cxLabel.AutoSize = true;
-            this.cxLabel.Location = new System.Drawing.Point(57, 20);
+            this.cxLabel.Location = new System.Drawing.Point(57, 49);
             this.cxLabel.Name = "cxLabel";
             this.cxLabel.Size = new System.Drawing.Size(13, 13);
             this.cxLabel.TabIndex = 20;
@@ -330,7 +330,7 @@
             // 
             // cxBox
             // 
-            this.cxBox.Location = new System.Drawing.Point(73, 17);
+            this.cxBox.Location = new System.Drawing.Point(73, 46);
             this.cxBox.Maximum = new decimal(new int[] {
             2147483647,
             0,

@@ -27,10 +27,6 @@ namespace HaCreator.GUI
         public Initialization()
         {
             InitializeComponent();
-
-#if RELEASE
-                debugButton.Visible = false;
-#endif
         }
 
         private bool IsPathCommon(string path)
@@ -278,22 +274,36 @@ namespace HaCreator.GUI
                 }
                 MapLoader.VerifyMapPropsKnown(mapImage, true);
                 MapInfo info = new MapInfo(mapImage, null, null, null);
-                MapLoader.LoadMisc(mapImage, board);
-
-                List<BackgroundInstance> allBackgrounds = new List<BackgroundInstance>();
-                allBackgrounds.AddRange(board.BoardItems.BackBackgrounds);
-                allBackgrounds.AddRange(board.BoardItems.FrontBackgrounds);
-                foreach (BackgroundInstance bg in allBackgrounds)
+                try
                 {
-                    if (bg.type != MapleLib.WzLib.WzStructure.Data.BackgroundType.Regular)
-                        if (bg.cx < 0 || bg.cy < 0)
-                        {
-                            string error = string.Format("Negative CX/ CY moving background object. CX='{0}', CY={1}, Type={2}, {3}{4}", bg.cx, bg.cy, bg.type.ToString(), Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/);
+                    MapLoader.LoadBackgrounds(mapImage, board);
+                    MapLoader.LoadMisc(mapImage, board);
 
-                            MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.Critical, error);
+                    // Check background to ensure that its correct
+                    List<BackgroundInstance> allBackgrounds = new List<BackgroundInstance>();
+                    allBackgrounds.AddRange(board.BoardItems.BackBackgrounds);
+                    allBackgrounds.AddRange(board.BoardItems.FrontBackgrounds);
+
+                    foreach (BackgroundInstance bg in allBackgrounds)
+                    {
+                        if (bg.type != MapleLib.WzLib.WzStructure.Data.BackgroundType.Regular)
+                        {
+                            if (bg.cx < 0 || bg.cy < 0)
+                            {
+                                string error = string.Format("Negative CX/ CY moving background object. CX='{0}', CY={1}, Type={2}, {3}{4}", bg.cx, bg.cy, bg.type.ToString(), Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/);
+                                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                            }
                         }
+                    }
+                    allBackgrounds.Clear();
+                    board.BoardItems.BackBackgrounds.Clear();
+                    board.BoardItems.FrontBackgrounds.Clear();
                 }
-                allBackgrounds.Clear();
+                catch (Exception exp)
+                {
+                    string error = string.Format("Exception occured loading {0}{1}{2}{3}{4}", mapcat, Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
+                    ErrorLogger.Log(ErrorLevel.Crash, error);
+                }
 
                 mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
             }
@@ -305,6 +315,11 @@ namespace HaCreator.GUI
             MessageBox.Show("Check for map errors completed. See 'Debug_errors.txt' for more information.");
         }
 
+        /// <summary>
+        /// Keyboard navigation
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Initialization_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
