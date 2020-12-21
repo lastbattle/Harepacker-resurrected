@@ -324,7 +324,7 @@ namespace HaCreator.Wz
             }
         }
 
-        private static void LoadChairs(WzImage mapImage, Board mapBoard)
+        public static void LoadChairs(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty chairParent = (WzSubProperty)mapImage["seat"];
             if (chairParent != null)
