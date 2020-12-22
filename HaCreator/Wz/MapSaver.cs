@@ -287,6 +287,9 @@ namespace HaCreator.Wz
 
         public void SavePortals()
         {
+            List<PortalInstance> portalInstanceSorted = new List<PortalInstance>(board.BoardItems.Portals);
+
+
             WzSubProperty portalParent = new WzSubProperty();
             for (int i = 0; i < board.BoardItems.Portals.Count; i++)
             {

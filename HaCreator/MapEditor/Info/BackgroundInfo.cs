@@ -63,7 +63,7 @@ namespace HaCreator.MapEditor.Info
                 return null;
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
-            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"][no];
+            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"]?[no];
 
             if (type == BackgroundInfoType.Spine)
             {

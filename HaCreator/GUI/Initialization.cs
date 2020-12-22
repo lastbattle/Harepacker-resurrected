@@ -278,6 +278,8 @@ namespace HaCreator.GUI
                 MapInfo info = new MapInfo(mapImage, null, null, null);
                 try
                 {
+                    mapBoard.CreateMapLayers();
+
                     MapLoader.LoadLayers(mapImage, mapBoard);
                     MapLoader.LoadLife(mapImage, mapBoard);
                     MapLoader.LoadFootholds(mapImage, mapBoard);
@@ -310,16 +312,21 @@ namespace HaCreator.GUI
                         }
                     }
                     allBackgrounds.Clear();
-                    mapBoard.BoardItems.BackBackgrounds.Clear();
-                    mapBoard.BoardItems.FrontBackgrounds.Clear();
                 }
                 catch (Exception exp)
                 {
                     string error = string.Format("Exception occured loading {0}{1}{2}{3}{4}", mapcat, Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
-                }
+                } 
+                finally
+                {
+                    mapBoard.Dispose();
 
-                mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
+                    mapBoard.BoardItems.BackBackgrounds.Clear();
+                    mapBoard.BoardItems.FrontBackgrounds.Clear();
+
+                    mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
+                }
 
                 if (ErrorLogger.NumberOfErrorsPresent() > 200)
                     ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
