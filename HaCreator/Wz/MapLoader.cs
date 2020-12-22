@@ -329,10 +329,19 @@ namespace HaCreator.Wz
             WzSubProperty chairParent = (WzSubProperty)mapImage["seat"];
             if (chairParent != null)
             {
-                foreach (WzVectorProperty chair in chairParent.WzProperties)
+                int i = 0;
+                WzImageProperty chairImage;
+                while ((chairImage = chairParent[i.ToString()]) != null)
                 {
-                    mapBoard.BoardItems.Chairs.Add(new Chair(mapBoard, chair.X.Value, chair.Y.Value));
+                    if (chairImage is WzVectorProperty chair)
+                    {
+                        mapBoard.BoardItems.Chairs.Add(new Chair(mapBoard, chair.X.Value, chair.Y.Value));
+                    }
+
+                    i++;
                 }
+                // Other WzSubProperty exist in maps like 330000100.img, FriendsStory
+                // 'sitDir' 'offset'
             }
             mapBoard.BoardItems.Chairs.Sort(new Comparison<Chair>(
                     delegate(Chair a, Chair b)
