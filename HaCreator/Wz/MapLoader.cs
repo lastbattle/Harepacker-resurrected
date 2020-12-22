@@ -85,7 +85,7 @@ namespace HaCreator.Wz
                             MessageBox.Show("The map you are opening has the feature \"" + prop.Name + "\", which is purposely not supported in the editor.\r\nTo get around this, HaCreator will copy the original feature's data byte-to-byte. This might cause the feature to stop working if it depends on map objects, such as footholds or mobs.");
                         }
                         continue;
-
+                    case "tokyoBossParty": // Neo Tokyo 802000801.img
                     case "skyWhale":
                     case "rectInfo":
                     case "directionInfo":
