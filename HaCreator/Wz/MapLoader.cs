@@ -271,7 +271,24 @@ namespace HaCreator.Wz
         public static void LoadLife(WzImage mapImage, Board mapBoard)
         {
             WzImageProperty lifeParent = mapImage["life"];
-            if (lifeParent == null) return;
+            if (lifeParent == null) 
+                return;
+
+            if (InfoTool.GetOptionalBool(lifeParent["isCategory"]) == true) // cant handle this for now.  262021001.img TODO
+            {
+                // - 170
+                // -- 5
+                // -- 4
+                // -- 3
+                // -- 2
+                // -- 1
+                // -- 0
+                // - 130
+                // - 85
+                // - 45
+                return;
+            }
+
             foreach (WzSubProperty life in lifeParent.WzProperties)
             {
                 string id = InfoTool.GetString(life["id"]);
