@@ -32,11 +32,27 @@ namespace MapleLib.Helpers
                 errorList.Add(new Error(level, message));
         }
 
+        /// <summary>
+        /// Returns the numbers of errors currently in the pending queue
+        /// </summary>
+        /// <returns></returns>
+        public static int NumberOfErrorsPresent()
+        {
+            return errorList.Count;
+        }
+
+        /// <summary>
+        /// Errors present currently in the pending queue
+        /// </summary>
+        /// <returns></returns>
         public static bool ErrorsPresent()
         {
             return errorList.Count > 0;
         }
 
+        /// <summary>
+        /// Clears all errors currently in the pending queue
+        /// </summary>
         public static void ClearErrors()
         {
             lock (errorList)

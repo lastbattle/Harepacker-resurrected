@@ -7,6 +7,7 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.Properties;
 using HaCreator.Wz;
+using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
@@ -63,7 +64,14 @@ namespace HaCreator.MapEditor.Info
                 return null;
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
-            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"][no];
+            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"]?[no];
+
+            if (bgInfoProp == null)
+            {
+                string logError = string.Format("Background image {0}/{1} is null, {2}", bS, no, bsImg.ToString());
+                MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, logError);
+                return null;
+            }
 
             if (type == BackgroundInfoType.Spine)
             {

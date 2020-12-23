@@ -10,6 +10,7 @@ using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
@@ -61,7 +62,7 @@ namespace HaCreator.GUI
         private int actualLayerIndex = 0;
         private int actualPlatform = 0;
         private int changingIndexCnt = 0;
-        private List<Layer> layers = null;
+        private ReadOnlyCollection<Layer> layers = null;
         private bool hasMinimap = false;
 
         private void Ribbon_Loaded(object sender, RoutedEventArgs e)
@@ -464,7 +465,7 @@ namespace HaCreator.GUI
             endInternalEditing();
         }
 
-        public void SetLayers(List<Layer> layers)
+        public void SetLayers(ReadOnlyCollection<Layer> layers)
         {
             beginInternalEditing();
 

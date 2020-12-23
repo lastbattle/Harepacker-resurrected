@@ -85,7 +85,7 @@ namespace HaCreator.Wz
                             MessageBox.Show("The map you are opening has the feature \"" + prop.Name + "\", which is purposely not supported in the editor.\r\nTo get around this, HaCreator will copy the original feature's data byte-to-byte. This might cause the feature to stop working if it depends on map objects, such as footholds or mobs.");
                         }
                         continue;
-
+                    case "tokyoBossParty": // Neo Tokyo 802000801.img
                     case "skyWhale":
                     case "rectInfo":
                     case "directionInfo":
@@ -129,6 +129,9 @@ namespace HaCreator.Wz
                     case "footprintData":
                     case "illuminantCluster": // 450016030.img
                     case "property": // 450016110.img
+                    case "languageSchool": // 702090101.img
+                    case "languageSchoolQuizTime":
+                    case "languageSchoolMobSummonItemID":
                         continue;
 
                     default:
@@ -268,7 +271,24 @@ namespace HaCreator.Wz
         public static void LoadLife(WzImage mapImage, Board mapBoard)
         {
             WzImageProperty lifeParent = mapImage["life"];
-            if (lifeParent == null) return;
+            if (lifeParent == null) 
+                return;
+
+            if (InfoTool.GetOptionalBool(lifeParent["isCategory"]) == true) // cant handle this for now.  262021001.img TODO
+            {
+                // - 170
+                // -- 5
+                // -- 4
+                // -- 3
+                // -- 2
+                // -- 1
+                // -- 0
+                // - 130
+                // - 85
+                // - 45
+                return;
+            }
+
             foreach (WzSubProperty life in lifeParent.WzProperties)
             {
                 string id = InfoTool.GetString(life["id"]);
@@ -321,15 +341,24 @@ namespace HaCreator.Wz
             }
         }
 
-        private static void LoadChairs(WzImage mapImage, Board mapBoard)
+        public static void LoadChairs(WzImage mapImage, Board mapBoard)
         {
             WzSubProperty chairParent = (WzSubProperty)mapImage["seat"];
             if (chairParent != null)
             {
-                foreach (WzVectorProperty chair in chairParent.WzProperties)
+                int i = 0;
+                WzImageProperty chairImage;
+                while ((chairImage = chairParent[i.ToString()]) != null)
                 {
-                    mapBoard.BoardItems.Chairs.Add(new Chair(mapBoard, chair.X.Value, chair.Y.Value));
+                    if (chairImage is WzVectorProperty chair)
+                    {
+                        mapBoard.BoardItems.Chairs.Add(new Chair(mapBoard, chair.X.Value, chair.Y.Value));
+                    }
+
+                    i++;
                 }
+                // Other WzSubProperty exist in maps like 330000100.img, FriendsStory
+                // 'sitDir' 'offset'
             }
             mapBoard.BoardItems.Chairs.Sort(new Comparison<Chair>(
                     delegate(Chair a, Chair b)

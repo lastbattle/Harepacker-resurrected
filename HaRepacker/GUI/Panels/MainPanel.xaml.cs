@@ -1364,7 +1364,7 @@ namespace HaRepacker.GUI.Panels
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
             }
-            else if (obj is WzCanvasProperty)
+            else if (obj is WzCanvasProperty canvasProp)
             {
                 bAnimateMoreButton = true; // flag
 
@@ -1372,24 +1372,23 @@ namespace HaRepacker.GUI.Panels
                 menuItem_saveImage.Visibility = Visibility.Visible;
 
                 // Image
-                WzCanvasProperty canvas = (WzCanvasProperty)obj;
-                if (canvas.HaveInlinkProperty() || canvas.HaveOutlinkProperty())
+                if (canvasProp.HaveInlinkProperty() || canvasProp.HaveOutlinkProperty())
                 {
-                    System.Drawing.Image img = canvas.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                     if (img != null)
                         canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
                 }
                 else
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvas.GetLinkedWzCanvasBitmap());
+                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasProp.GetLinkedWzCanvasBitmap());
 
-                SetImageRenderView(canvas);
+                SetImageRenderView(canvasProp);
             }
-            else if (obj is WzUOLProperty)
+            else if (obj is WzUOLProperty uolProperty)
             {
                 bAnimateMoreButton = true; // flag
 
                 // Image
-                WzObject linkValue = ((WzUOLProperty)obj).LinkValue;
+                WzObject linkValue = uolProperty.LinkValue;
                 if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;

@@ -32,7 +32,10 @@ namespace HaCreator.GUI
             this.board = board;
             InitializeComponent();
             
-            board.Layers.ForEach(x => layerBox.Items.Add(x.ToString()));
+            foreach (Layer mapLayer in board.Layers)
+            {
+                layerBox.Items.Add(mapLayer.ToString());
+            }
             if (board.SelectedLayerIndex == -1)
             {
                 layerBox.SelectedIndex = 0;

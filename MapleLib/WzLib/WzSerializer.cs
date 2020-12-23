@@ -854,18 +854,16 @@ namespace MapleLib.WzLib.Serialization
 
             // TODO: Use System.Text.Json after .NET 5.0 or above 
             // for better performance via SMID related intrinsics
+            JObject jsonObject = new JObject();
+            foreach (WzImageProperty property in img.WzProperties)
+            {
+                WritePropertyToJsonBson(jsonObject, indent, property, path);
+            }
 
             if (File.Exists(path))
                 File.Delete(path);
-
             using (System.IO.FileStream file = File.Create(path))
             {
-                JObject jsonObject = new JObject();
-                foreach (WzImageProperty property in img.WzProperties)
-                {
-                    WritePropertyToJsonBson(jsonObject, indent, property, path);
-                }
-
                 if (!bExportAsJson)
                 {
                     using (MemoryStream ms = new MemoryStream())

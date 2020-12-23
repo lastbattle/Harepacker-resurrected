@@ -241,6 +241,8 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void debugButton_Click(object sender, EventArgs e)
         {
+            const string OUTPUT_ERROR_FILENAME = "Debug_errors.txt";
+
             // This function iterates over all maps in the game and verifies that we recognize all their props
             // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
             string wzPath = pathBox.Text;
@@ -249,7 +251,7 @@ namespace HaCreator.GUI
             InitializeWzFiles(wzPath, fileVersion);
 
             MultiBoard mb = new MultiBoard();
-            Board board = new Board(
+            Board mapBoard = new Board(
                 new Microsoft.Xna.Framework.Point(), 
                 new Microsoft.Xna.Framework.Point(), 
                 mb, 
@@ -276,13 +278,27 @@ namespace HaCreator.GUI
                 MapInfo info = new MapInfo(mapImage, null, null, null);
                 try
                 {
-                    MapLoader.LoadBackgrounds(mapImage, board);
-                    MapLoader.LoadMisc(mapImage, board);
+                    mapBoard.CreateMapLayers();
+
+                    MapLoader.LoadLayers(mapImage, mapBoard);
+                    MapLoader.LoadLife(mapImage, mapBoard);
+                    MapLoader.LoadFootholds(mapImage, mapBoard);
+                    MapLoader.GenerateDefaultZms(mapBoard);
+                    MapLoader.LoadRopes(mapImage, mapBoard);
+                    MapLoader.LoadChairs(mapImage, mapBoard);
+                    MapLoader.LoadPortals(mapImage, mapBoard);
+                    MapLoader.LoadReactors(mapImage, mapBoard);
+                    MapLoader.LoadToolTips(mapImage, mapBoard);
+                    MapLoader.LoadBackgrounds(mapImage, mapBoard);
+                    MapLoader.LoadMisc(mapImage, mapBoard);
+
+                    //MapLoader.LoadBackgrounds(mapImage, board);
+                    //MapLoader.LoadMisc(mapImage, board);
 
                     // Check background to ensure that its correct
                     List<BackgroundInstance> allBackgrounds = new List<BackgroundInstance>();
-                    allBackgrounds.AddRange(board.BoardItems.BackBackgrounds);
-                    allBackgrounds.AddRange(board.BoardItems.FrontBackgrounds);
+                    allBackgrounds.AddRange(mapBoard.BoardItems.BackBackgrounds);
+                    allBackgrounds.AddRange(mapBoard.BoardItems.FrontBackgrounds);
 
                     foreach (BackgroundInstance bg in allBackgrounds)
                     {
@@ -296,23 +312,29 @@ namespace HaCreator.GUI
                         }
                     }
                     allBackgrounds.Clear();
-                    board.BoardItems.BackBackgrounds.Clear();
-                    board.BoardItems.FrontBackgrounds.Clear();
                 }
                 catch (Exception exp)
                 {
                     string error = string.Format("Exception occured loading {0}{1}{2}{3}{4}", mapcat, Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
+                } 
+                finally
+                {
+                    mapBoard.Dispose();
+
+                    mapBoard.BoardItems.BackBackgrounds.Clear();
+                    mapBoard.BoardItems.FrontBackgrounds.Clear();
+
+                    mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
                 }
 
-                mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
+                if (ErrorLogger.NumberOfErrorsPresent() > 200)
+                    ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
             }
+            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
 
-            if (ErrorLogger.ErrorsPresent())
-            {
-                ErrorLogger.SaveToFile("Debug_errors.txt");
-            }
-            MessageBox.Show("Check for map errors completed. See 'Debug_errors.txt' for more information.");
+
+            MessageBox.Show(string.Format("Check for map errors completed. See '{0}' for more information.", OUTPUT_ERROR_FILENAME));
         }
 
         /// <summary>

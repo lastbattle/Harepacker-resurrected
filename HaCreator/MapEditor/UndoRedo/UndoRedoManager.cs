@@ -18,7 +18,7 @@ namespace HaCreator.MapEditor.UndoRedo
     {
         public List<UndoRedoBatch> UndoList = new List<UndoRedoBatch>();
         public List<UndoRedoBatch> RedoList = new List<UndoRedoBatch>();
-        private Board parentBoard;
+        private readonly Board parentBoard;
 
         public UndoRedoManager(Board parentBoard)
         {
@@ -87,6 +87,13 @@ namespace HaCreator.MapEditor.UndoRedo
             return new UndoRedoAction(tt, UndoRedoType.ToolTipUnlinked, ttc, null);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="item"></param>
+        /// <param name="oldPos"></param>
+        /// <param name="newPos"></param>
+        /// <returns></returns>
         public static UndoRedoAction BackgroundMoved(BackgroundInstance item, Point oldPos, Point newPos)
         {
             return new UndoRedoAction(item, UndoRedoType.BackgroundMoved, oldPos, newPos);
