@@ -129,7 +129,7 @@ namespace HaCreator.MapSimulator
                 PreferredBackBufferWidth = Math.Max(RenderWidth, 1),
                 PreferredBackBufferHeight = Math.Max(RenderHeight, 1),
                 PreferredBackBufferFormat = SurfaceFormat.Color,
-                PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
+                PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8, 
             };
             _DxDeviceManager.ApplyChanges();
 

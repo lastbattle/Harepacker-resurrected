@@ -84,6 +84,7 @@ namespace HaSharedLibrary.Render.DX
             this._Position = new Point(0, 0);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected IDXObject GetCurrFrame(int TickCount)
         {
             if (notAnimated)

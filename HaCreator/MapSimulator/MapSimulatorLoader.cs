@@ -536,6 +536,8 @@ namespace HaCreator.MapSimulator
 
             // Constants
             const float TOOLTIP_FONTSIZE = 10f;
+            const int MAPMARK_IMAGE_ALIGN_LEFT = 7; // the number of pixels from the left to draw the map mark image
+            const int MAP_IMAGE_ALIGN_LEFT = 2; // the number of pixels from the left to draw the minimap image
             System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
 
@@ -555,10 +557,11 @@ namespace HaCreator.MapSimulator
 
                 effective_width = Math.Max((int)tooltipSize.Width + nw.Width, effective_width); // set new width
 
+                int miniMapAlignXFromLeft = MAP_IMAGE_ALIGN_LEFT;
+                if (effective_width > miniMapImage.Width) // if minimap is smaller in size than the (text + frame), minimap will be aligned to the center instead
+                    miniMapAlignXFromLeft = (effective_width - miniMapImage.Width) / 2/* - miniMapAlignXFromLeft*/;
+
                 System.Drawing.Bitmap miniMapUIImage = new System.Drawing.Bitmap(effective_width, effective_height);
-
-                int mapDrawPositionX = (effective_width / 2) - nw.Width;  // map is on the center. The position relative to the UI
-
                 using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(miniMapUIImage))
                 {
                     // Frames and background
@@ -572,12 +575,12 @@ namespace HaCreator.MapSimulator
                     if (Program.InfoManager.MapMarks.ContainsKey(mapBoard.MapInfo.mapMark))
                     {
                         System.Drawing.Bitmap mapMark = Program.InfoManager.MapMarks[mapBoard.MapInfo.mapMark];
-                        graphics.DrawImage(mapMark.ToImage(), 7, 17);
+                        graphics.DrawImage(mapMark.ToImage(), MAPMARK_IMAGE_ALIGN_LEFT, 17);
                     }
 
                     // Map image
                     graphics.DrawImage(miniMapImage,
-                        mapDrawPositionX, // map is on the center
+                        miniMapAlignXFromLeft, // map is on the center
                         n.Height);
 
                     graphics.Flush();
@@ -594,7 +597,7 @@ namespace HaCreator.MapSimulator
                 BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(dxObj_miniMapPixel, false)
                 {
                     Position = new Point(
-                    mapDrawPositionX, // map is on the center
+                    miniMapAlignXFromLeft, // map is on the center
                     0)
                 };
 
