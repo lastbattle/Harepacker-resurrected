@@ -47,7 +47,6 @@ How about contributing instead? Great! Fork it, create pull request! Its all fre
 > p.s. This is purely community driven & at my free time, please don't expect me to fix things for you immediately.
 
 ##### Third party libraries
-- [EmptyKeys_UIEngines](https://github.com/EmptyKeys/UI_Engines)
 
 ##### Credits
  - [@haha01haha](https://github.com/hadeutscher)
