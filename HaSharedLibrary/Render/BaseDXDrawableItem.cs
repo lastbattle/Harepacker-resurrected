@@ -40,7 +40,7 @@ namespace HaSharedLibrary.Render.DX
 
         private Point _Position;
         /// <summary>
-        /// The additional position of the image (used primarily for UI overlay) 
+        /// The additional relative position of the image (used primarily for UI overlay) 
         /// </summary>
         public Point Position
         {
@@ -84,6 +84,7 @@ namespace HaSharedLibrary.Render.DX
             this._Position = new Point(0, 0);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         protected IDXObject GetCurrFrame(int TickCount)
         {
             if (notAnimated)

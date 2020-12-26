@@ -22,7 +22,7 @@ namespace HaCreator.MapEditor
 
         private InputHandler input;
         private MultiBoard multiBoard;
-        private HaCreatorStateManager hcsm;
+        private readonly HaCreatorStateManager hcsm;
         private System.Windows.Controls.TabControl tabs;
         private bool enabled = false;
 

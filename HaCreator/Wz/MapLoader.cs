@@ -274,7 +274,7 @@ namespace HaCreator.Wz
             if (lifeParent == null) 
                 return;
 
-            if (InfoTool.GetOptionalBool(lifeParent["isCategory"]) == true) // cant handle this for now.  262021001.img TODO
+            if (InfoTool.GetOptionalBool(lifeParent["isCategory"]) == true) // cant handle this for now.  Azwan 262021001.img TODO
             {
                 // - 170
                 // -- 5

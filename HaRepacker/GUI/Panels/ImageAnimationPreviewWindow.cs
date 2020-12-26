@@ -58,6 +58,8 @@ namespace HaRepacker.GUI.Panels
 			//Window.Position = new Point(0, 0);
 			Window.Title = "Animation preview";
 			IsFixedTimeStep = false; // dont cap fps
+			Content.RootDirectory = "Content";
+
 			graphicsDeviceMgr = new GraphicsDeviceManager(this)
 			{
 				SynchronizeWithVerticalRetrace = true,

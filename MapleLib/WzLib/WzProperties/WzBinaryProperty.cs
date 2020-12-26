@@ -130,6 +130,11 @@ namespace MapleLib.WzLib.WzProperties
         {
             get { return wavFormat != null ? wavFormat.SampleRate : 0; }
         }
+        public WaveFormat WavFormat
+        {
+            get { return wavFormat; }
+            private set { }
+        }
         /// <summary>
         /// BPS of the mp3 file
         /// </summary>
@@ -159,7 +164,7 @@ namespace MapleLib.WzLib.WzProperties
             ParseWzSoundPropertyHeader();
 
             //sound file offs
-            offs = reader.BaseStream.Position;
+            this.offs = reader.BaseStream.Position;
             if (parseNow)
                 mp3bytes = reader.ReadBytes(soundDataLen);
             else
@@ -258,7 +263,7 @@ namespace MapleLib.WzLib.WzProperties
             return hex.ToString();
         }
 
-        public void RebuildHeader()
+        private void RebuildHeader()
         {
             using (BinaryWriter bw = new BinaryWriter(new MemoryStream()))
             {
@@ -329,7 +334,6 @@ namespace MapleLib.WzLib.WzProperties
                 return;
 
             WaveFormat wavFmt = BytesToStruct<WaveFormat>(wavHeader);
-
             if (Marshal.SizeOf<WaveFormat>() + wavFmt.ExtraSize != wavHeader.Length)
             {
                 //try decrypt
