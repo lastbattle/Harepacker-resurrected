@@ -32,6 +32,15 @@ namespace HaSharedLibrary.Render.DX
             this.delay = delay;
         }
 
+        public DXObject(System.Drawing.PointF point, Texture2D texture, int delay = 0)
+        {
+            this._x = (int) point.X;
+            this._y = (int)point.Y;
+            this.texture = texture;
+
+            this.delay = delay;
+        }
+
         /// <summary>
         /// Draw map objects
         /// </summary>

@@ -835,6 +835,9 @@ namespace HaCreator.Wz
             }
         }
 
+        /// <summary>
+        /// Saves the additional unsupported properties read from the map image.
+        /// </summary>
         private void SaveAdditionals()
         {
             foreach (WzImageProperty prop in board.MapInfo.additionalNonInfoProps)

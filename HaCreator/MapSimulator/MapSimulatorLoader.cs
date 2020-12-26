@@ -2,6 +2,7 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.MapObjects.UIObject;
 using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
@@ -500,7 +501,8 @@ namespace HaCreator.MapSimulator
 
         #region UI
         /// <summary>
-        /// 
+        /// Draws the frame and the UI of the minimap.
+        /// TODO: This whole thing needs to be dramatically simplified via further abstraction to keep it noob-proof :(
         /// </summary>
         /// <param name="minimapFrameProperty">UI.wz/UIWindow2.img/MiniMap</param>
         /// <param name="mapBoard"></param>
@@ -508,7 +510,7 @@ namespace HaCreator.MapSimulator
         /// <param name="MapName">The map name. i.e The Hill North</param>
         /// <param name="StreetName">The street name. i.e Hidden street</param>
         /// <returns></returns>
-        public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName)
+        public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName, WzDirectory SoundWZFile)
         {
             if (mapBoard.MiniMap == null)
                 return null;
@@ -517,6 +519,12 @@ namespace HaCreator.MapSimulator
             WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
             WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
+
+            WzSubProperty BtNpc = (WzSubProperty)minimapFrameProperty["BtNpc"]; // npc button
+            WzSubProperty BtMin = (WzSubProperty)minimapFrameProperty["BtMin"]; // mininise button
+            WzSubProperty BtMax = (WzSubProperty)minimapFrameProperty["BtMax"]; // maximise button
+            WzSubProperty BtBig = (WzSubProperty)minimapFrameProperty["BtBig"]; // big button
+            WzSubProperty BtMap = (WzSubProperty)minimapFrameProperty["BtMap"]; // world button
 
             WzSubProperty useFrame;
             if (mapBoard.MapInfo.zeroSideOnly || MapConstants.IsZerosTemple(mapBoard.MapInfo.id)) // zero's temple
@@ -537,7 +545,7 @@ namespace HaCreator.MapSimulator
             // Constants
             const float TOOLTIP_FONTSIZE = 10f;
             const int MAPMARK_IMAGE_ALIGN_LEFT = 7; // the number of pixels from the left to draw the map mark image
-            const int MAP_IMAGE_ALIGN_LEFT = 2; // the number of pixels from the left to draw the minimap image
+            const int MAP_IMAGE_PADDING = 2; // the number of pixels from the left to draw the minimap image
             System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
 
@@ -557,7 +565,7 @@ namespace HaCreator.MapSimulator
 
                 effective_width = Math.Max((int)tooltipSize.Width + nw.Width, effective_width); // set new width
 
-                int miniMapAlignXFromLeft = MAP_IMAGE_ALIGN_LEFT;
+                int miniMapAlignXFromLeft = MAP_IMAGE_PADDING;
                 if (effective_width > miniMapImage.Width) // if minimap is smaller in size than the (text + frame), minimap will be aligned to the center instead
                     miniMapAlignXFromLeft = (effective_width - miniMapImage.Width) / 2/* - miniMapAlignXFromLeft*/;
 
@@ -567,6 +575,7 @@ namespace HaCreator.MapSimulator
                     // Frames and background
                     UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, effective_width, effective_height);
 
+                    // Map name + street name
                     graphics.DrawString(
                         renderText,
                         font, new System.Drawing.SolidBrush(color_foreGround), 50, 20);
@@ -605,9 +614,45 @@ namespace HaCreator.MapSimulator
                 Texture2D texturer_miniMap = miniMapUIImage.ToTexture2D(device);
 
                 IDXObject dxObj = new DXObject(0, 0, texturer_miniMap, 0);
-                MinimapItem item = new MinimapItem(dxObj, item_pixelDot);
+                MinimapItem minimapItem = new MinimapItem(dxObj, item_pixelDot);
 
-                return item;
+                ////////////// Minimap buttons////////////////////
+                // This must be in order. 
+                // >>> If aligning from the left to the right. Items at the left must be at the top of the code
+                // >>> If aligning from the right to the left. Items at the right must be at the top of the code with its (x position - parent width).
+                // TODO: probably a wrapper class in the future, such as HorizontalAlignment and VerticalAlignment, or Grid/ StackPanel 
+                WzBinaryProperty BtMouseClickSoundProperty = (WzBinaryProperty) SoundWZFile["UI.img"]?["BtMouseClick"];
+                WzBinaryProperty BtMouseOverSoundProperty = (WzBinaryProperty)SoundWZFile["UI.img"]?["BtMouseOver"];
+
+                UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                    false, 
+                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                objUIBtMap.X = effective_width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+
+                UIObject objUIBtBig = new UIObject(BtBig, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                    false, 
+                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+
+                UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                    false, 
+                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+
+                UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                    false, 
+                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+
+                // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
+
+                minimapItem.AddUIButtons(objUIBtMin);
+                minimapItem.AddUIButtons(objUIBtMax);
+                minimapItem.AddUIButtons(objUIBtBig);
+                minimapItem.AddUIButtons(objUIBtMap);
+                //////////////////////////////////////////////////
+
+                return minimapItem;
             }
         }
 

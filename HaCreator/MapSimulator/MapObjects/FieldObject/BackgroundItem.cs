@@ -13,9 +13,9 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
     {
         private readonly int rx;
         private readonly int ry;
-        private readonly int cx;
-        private readonly int cy;
-        private BackgroundType type;
+        private int cx;
+        private int cy;
+        private readonly BackgroundType type;
         private readonly int a;
         private Color color;
         private readonly bool front;
@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         private double bgMoveShiftY = 0;
 
         // Custom property
-        private bool disabledBackground; // disabled background for images that are removed from Map.wz/bg, but entry still presist in maps
+        private readonly bool disabledBackground; // disabled background for images that are removed from Map.wz/bg, but entry still presist in maps
 
         /// <summary>
         /// 
@@ -43,8 +43,8 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, List<IDXObject> frames, bool flip, int screenMode)
             : base(frames, flip)
         {
-            LastShiftIncreaseX = Environment.TickCount;
-            LastShiftIncreaseY = Environment.TickCount;
+            this.LastShiftIncreaseX = Environment.TickCount;
+            this.LastShiftIncreaseY = Environment.TickCount;
             this.rx = rx;
             this.cx = cx;
             this.ry = ry;
@@ -57,6 +57,8 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             color = new Color(0xFF, 0xFF, 0xFF, a);
 
             this.disabledBackground = false;
+
+            CheckBGData();
         }
 
         /// <summary>
@@ -74,8 +76,8 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, IDXObject frame0, bool flip, int screenMode)
             : base(frame0, flip)
         {
-            LastShiftIncreaseX = Environment.TickCount;
-            LastShiftIncreaseY = Environment.TickCount;
+            this.LastShiftIncreaseX = Environment.TickCount;
+            this.LastShiftIncreaseY = Environment.TickCount;
             this.rx = rx;
             this.cx = cx;
             this.ry = ry;
@@ -91,6 +93,22 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 this.disabledBackground = true; // removed from Map.wz/bg, but entry still presist in maps
             else
                 this.disabledBackground = false;
+
+            CheckBGData();
+        }
+
+        /// <summary>
+        /// Input validation for the background data. 
+        /// </summary>
+        private void CheckBGData()
+        {
+            if (type != BackgroundType.Regular)
+            {
+                if (cx < 0)
+                    this.cx = 0;
+                if (cy < 0)
+                    this.cy = 0;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -195,6 +213,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             switch (type)
             {
                 default:
+                    break;
                 case BackgroundType.Regular:
                     Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, frame);
                     break;
@@ -226,20 +245,40 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             }
         }
 
+        /// <summary>
+        /// draw_layer(int a1, int punk, IUnknown *a3, int a4, int a5, int a6)
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="mapShiftX"></param>
+        /// <param name="centerX"></param>
+        /// <param name="RenderWidth"></param>
+        /// <param name="RenderObjectScaling"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int CalculateBackgroundPosX(IDXObject frame, int mapShiftX, int centerX, int RenderWidth, float RenderObjectScaling)
         {
             int width = (int) ((RenderWidth / 2) / RenderObjectScaling);
+            //int width = RenderWidth / 2;
 
-            return (rx * (mapShiftX - centerX + width) / 100) + frame.X + width;
+            return (rx * (mapShiftX - centerX + width) / 100) + frame.X + width; 
         }
 
+        /// <summary>
+        /// draw_layer(int a1, int punk, IUnknown *a3, int a4, int a5, int a6)
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="mapShiftY"></param>
+        /// <param name="centerY"></param>
+        /// <param name="RenderHeight"></param>
+        /// <param name="RenderObjectScaling"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int CalculateBackgroundPosY(IDXObject frame, int mapShiftY, int centerY, int RenderHeight, float RenderObjectScaling)
         {
             int height = (int)((RenderHeight / 2) / RenderObjectScaling);
+            //int height = RenderHeight / 2;
 
-            return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height + 95/*hack job for now*/;
+            return (ry * (mapShiftY - centerY + height) / 100) + frame.Y + height;
         }
 
         public Color Color

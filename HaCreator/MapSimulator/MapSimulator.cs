@@ -117,6 +117,9 @@ namespace HaCreator.MapSimulator
             Window.Title = titleName;
             IsFixedTimeStep = false; // dont cap fps
             IsMouseVisible = false; // draws our own custom cursor here.. 
+            Content.RootDirectory = "Content";
+
+            Window.ClientSizeChanged += Window_ClientSizeChanged;
 
             _DxDeviceManager = new GraphicsDeviceManager(this)
             {
@@ -131,11 +134,16 @@ namespace HaCreator.MapSimulator
                 PreferredBackBufferFormat = SurfaceFormat.Color,
                 PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8, 
             };
+            _DxDeviceManager.DeviceCreated += graphics_DeviceCreated;
             _DxDeviceManager.ApplyChanges();
 
         }
 
         #region Loading and unloading
+        void graphics_DeviceCreated(object sender, EventArgs e)
+        {
+        }
+
         private void InitialiseMapWidthHeight()
         {
             RenderObjectScaling = 1.0f;
@@ -227,6 +235,7 @@ namespace HaCreator.MapSimulator
         {
             WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
             WzDirectory UIWZFile = Program.WzManager["ui"];
+            WzDirectory SoundWZFile = Program.WzManager["sound"];
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -248,7 +257,7 @@ namespace HaCreator.MapSimulator
 #if DEBUG
             var watch = new System.Diagnostics.Stopwatch();
             watch.Start();
-#endif 
+#endif
 
             /////// Background and objects
             List<WzObject> usedProps = new List<WzObject>();
@@ -378,7 +387,7 @@ namespace HaCreator.MapSimulator
                     {
                         minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
                     }
-                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName);
+                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(minimapFrameProperty, mapBoard, GraphicsDevice, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, SoundWZFile);
                 }
             });
 
@@ -391,7 +400,7 @@ namespace HaCreator.MapSimulator
 #if DEBUG
             // test benchmark
             watch.Stop();
-            Debug.WriteLine($"Map loaded. Execution Time: {watch.ElapsedMilliseconds} ms");
+            Debug.WriteLine($"Map WZ files loaded. Execution Time: {watch.ElapsedMilliseconds} ms");
 #endif
             //
             spriteBatch = new SpriteBatch(GraphicsDevice);
@@ -440,11 +449,21 @@ namespace HaCreator.MapSimulator
 
             texturePool.Dispose();
         }
-        #endregion
-
+#endregion
+     
         #region Update and Drawing
+        /// <summary>
+        /// On game window size changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void Window_ClientSizeChanged(object sender, EventArgs e)
+        {
+        }
 
-        private KeyboardState oldKeyboardState = Keyboard.GetState(); 
+        private int currTickCount = Environment.TickCount;
+        private KeyboardState oldKeyboardState = Keyboard.GetState();
+        private MouseState oldMouseState;
         /// <summary>
         /// Key, and frame update handling
         /// </summary>
@@ -452,10 +471,10 @@ namespace HaCreator.MapSimulator
         protected override void Update(GameTime gameTime)
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
-            int TickCount = Environment.TickCount;
+            currTickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
             KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
-
+            MouseState newMouseState = mouseCursor.MouseState;
 
             // Allows the game to exit
 #if !WINDOWS_STOREAPP
@@ -520,20 +539,27 @@ namespace HaCreator.MapSimulator
                 this.bShowDebugMode = !this.bShowDebugMode;
             }
 
-            oldKeyboardState = Keyboard.GetState();  // set the new state as the old state for next time
+            this.oldKeyboardState = newKeyboardState;  // set the new state as the old state for next time
+            this.oldMouseState = newMouseState;  // set the new state as the old state for next time
+
             base.Update(gameTime);
         }
 
         protected override void Draw(GameTime gameTime)
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
-            int TickCount = Environment.TickCount;
-            float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
+            int TickCount = currTickCount;
+            //float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
 
-            MouseState mouseState = mouseCursor.MouseState;
+            MouseState mouseState = this.oldMouseState;
             int mouseXRelativeToMap = mouseState.X - mapShiftX;
             int mouseYRelativeToMap = mouseState.Y - mapShiftY;
             //System.Diagnostics.Debug.WriteLine("Mouse relative to map: X {0}, Y {1}", mouseXRelativeToMap, mouseYRelativeToMap);
+
+            int mapCenterX = mapBoard.CenterPoint.X;
+            int mapCenterY = mapBoard.CenterPoint.Y;
+            int shiftCenteredX = mapShiftX - mapCenterX;
+            int shiftCenteredY = mapShiftY - mapCenterY;
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
@@ -548,7 +574,7 @@ namespace HaCreator.MapSimulator
             backgrounds_back.ForEach(bg =>
             {
                 bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             });
@@ -559,7 +585,7 @@ namespace HaCreator.MapSimulator
                 foreach (BaseDXDrawableItem item in mapItem)
                 {
                     item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                        mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
@@ -568,7 +594,7 @@ namespace HaCreator.MapSimulator
             foreach (PortalItem portalItem in mapObjects_Portal)
             {
                 portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -577,7 +603,7 @@ namespace HaCreator.MapSimulator
             foreach (ReactorItem reactorItem in mapObjects_Reactors)
             {
                 reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -586,14 +612,14 @@ namespace HaCreator.MapSimulator
             foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
             {
                 mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
             foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
                 mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -602,7 +628,7 @@ namespace HaCreator.MapSimulator
             backgrounds_front.ForEach(bg =>
             {
                 bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             });
@@ -614,33 +640,36 @@ namespace HaCreator.MapSimulator
 
             //////////////////// UI related here ////////////////////
             // Tooltips
-            foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
+            if (mapObjects_tooltips.Count > 0)
             {
-                if (tooltip.TooltipInstance.CharacterToolTip != null)
+                foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
                 {
-                    Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
-                    if (tooltipRect != null) // if this is null, show it at all times
+                    if (tooltip.TooltipInstance.CharacterToolTip != null)
                     {
-                        Rectangle rect = new Rectangle(
-                            tooltipRect.X - ((mapShiftX) - mapBoard.CenterPoint.X),
-                            tooltipRect.Y - ((mapShiftY) - mapBoard.CenterPoint.Y),
-                            tooltipRect.Width, tooltipRect.Height);
-
-                        if (bShowDebugMode)
+                        Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
+                        if (tooltipRect != null) // if this is null, show it at all times
                         {
-                            DrawBorder(spriteBatch, rect, 1, Color.White); // test
-                            spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                            Rectangle rect = new Rectangle(
+                                tooltipRect.X - shiftCenteredX,
+                                tooltipRect.Y - shiftCenteredY,
+                                tooltipRect.Width, tooltipRect.Height);
+
+                            if (bShowDebugMode)
+                            {
+                                DrawBorder(spriteBatch, rect, 1, Color.White); // test
+                                spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                            }
+
+                            if (!rect.Contains(mouseState.X, mouseState.Y))
+                                continue;
                         }
-
-                        if (!rect.Contains(mouseState.X, mouseState.Y))
-                            continue;
                     }
-                }
 
-                tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
+                    tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
+                }
             }
 
             // Minimap
@@ -650,15 +679,16 @@ namespace HaCreator.MapSimulator
                         mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
+                
+                miniMap.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 3)
                 spriteBatch.DrawString(font_navigationKeysHelper, 
                     string.Format("Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.{0}[F5] for debug mode", Environment.NewLine), 
                     new Vector2(20, 10), Color.White);
-
-
-#if SIMULATOR_DEBUG_INFO
+            
+            #if SIMULATOR_DEBUG_INFO
             if (!bSaveScreenshot)
             {
                 StringBuilder sb = new StringBuilder();
@@ -667,7 +697,7 @@ namespace HaCreator.MapSimulator
                 sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
                 spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 170, 10), Color.White);
             }
-#endif
+            #endif
 
 
             // Cursor [this is in front of everything else]
@@ -677,8 +707,7 @@ namespace HaCreator.MapSimulator
 
             spriteBatch.End();
             //skeletonMeshRenderer.End();
-
-
+            
             // Save screenshot if render is activated
             DoScreenshot();
 
@@ -728,7 +757,7 @@ namespace HaCreator.MapSimulator
             sprite.Draw(texture_miniMapPixel, rectangle, color);
         }*/
         #endregion
-
+        
         #region Screenshot
         /// <summary>
         /// Creates a snapshot of the current Graphics Device back buffer data 
@@ -755,7 +784,7 @@ namespace HaCreator.MapSimulator
                     string fileName = String.Format("Maple_{0}{1}{2}_{3}{4}{5}.png",
                             dateTimeNow.Day.ToString("D2"), dateTimeNow.Month.ToString("D2"), (dateTimeNow.Year - 2000).ToString("D2"),
                              dateTimeNow.Hour.ToString("D2"), dateTimeNow.Minute.ToString("D2"), dateTimeNow.Second.ToString("D2")
-                            );
+                            ); // same naming scheme as the official client.. except that they save in JPG
 
                     using (MemoryStream stream_png = new MemoryStream()) // memorystream for png
                     {
@@ -792,7 +821,6 @@ namespace HaCreator.MapSimulator
         }
         private ImageCodecInfo GetEncoder(ImageFormat format)
         {
-
             ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
 
             foreach (ImageCodecInfo codec in codecs)
@@ -804,9 +832,8 @@ namespace HaCreator.MapSimulator
             }
             return null;
         }
-
         #endregion
-
+        
         #region Boundaries
         /// <summary>
         /// Move the camera X viewing range by a specific offset, & centering if needed.
@@ -892,7 +919,7 @@ namespace HaCreator.MapSimulator
             }
         }
         #endregion
-
+        
         #region Spine specific
         public void Start(AnimationState state, int trackIndex)
         {

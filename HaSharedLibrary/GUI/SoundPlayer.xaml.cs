@@ -25,7 +25,7 @@ namespace HaSharedLibrary.GUI
         private WzMp3Streamer currAudio;
         private WzBinaryProperty soundProp;
 
-        private DispatcherTimer timer;
+        private readonly DispatcherTimer timer;
 
         private bool isPlaying = false;
         private bool isUpdatingTimeLabel = false;
