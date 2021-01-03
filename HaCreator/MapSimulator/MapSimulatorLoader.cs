@@ -646,10 +646,8 @@ namespace HaCreator.MapSimulator
 
                 // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
 
-                minimapItem.AddUIButtons(objUIBtMin);
-                minimapItem.AddUIButtons(objUIBtMax);
-                minimapItem.AddUIButtons(objUIBtBig);
-                minimapItem.AddUIButtons(objUIBtMap);
+                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap);
+
                 //////////////////////////////////////////////////
 
                 return minimapItem;
