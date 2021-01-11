@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator
         // Boundary, borders
         private Rectangle vr_fieldBoundary;
         private const int VR_BORDER_WIDTHHEIGHT = 600; // the height or width of the VR border
+        private bool bDrawVRBorderLeftRight = false;
         private Texture2D texture_vrBoundaryRectLeft, texture_vrBoundaryRectRight, texture_vrBoundaryRectTop, texture_vrBoundaryRectBottom;
 
         // Minimap
@@ -416,11 +417,33 @@ namespace HaCreator.MapSimulator
             SetCameraMoveY(true, true, 0);
 
             ///////////// Border
-            // Left
-            texture_vrBoundaryRectLeft = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
-            texture_vrBoundaryRectRight = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
-            texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
-            texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
+            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * RenderObjectScaling);
+            if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. 
+            {
+                this.bDrawVRBorderLeftRight = true; // flag
+
+                this.texture_vrBoundaryRectLeft = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectRight = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
+            }
+
+            /*
+            DXObject leftDXVRObject = new DXObject(
+                vr_fieldBoundary.Left - VR_BORDER_WIDTHHEIGHT,
+                vr_fieldBoundary.Top,
+                texture_vrBoundaryRectLeft);
+            this.leftVRBorderDrawableItem = new BaseDXDrawableItem(leftDXVRObject, false);
+            //new BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType.Regular, 255, true, leftDXVRObject, false, (int) RenderResolution.Res_All);
+
+            // Right VR
+            DXObject rightDXVRObject = new DXObject(
+                vr_fieldBoundary.Right,
+                vr_fieldBoundary.Top,
+                texture_vrBoundaryRectRight);
+            this.rightVRBorderDrawableItem = new BaseDXDrawableItem(rightDXVRObject, false);
+            */
+            ///////////// End Border
 
             // Debug items
             System.Drawing.Bitmap bitmap_debug = new System.Drawing.Bitmap(1, 1);
@@ -757,11 +780,10 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawVRFieldBorder(SpriteBatch sprite)
         {
-            if (vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0)
+            if ((vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0) || !bDrawVRBorderLeftRight)
                 return;
 
             Color borderColor = Color.Black;
-
 
             // Draw top line
        /*     sprite.Draw(texture_vrBoundaryRectTop, 
@@ -798,6 +820,7 @@ namespace HaCreator.MapSimulator
                     VR_BORDER_WIDTHHEIGHT, 
                     vr_fieldBoundary.Height), 
                 borderColor);
+
         }
 
         /// <summary>
@@ -951,7 +974,7 @@ namespace HaCreator.MapSimulator
                  * Viewing Width = 1024 
                  * Relative viewing center = vr.Center - (Viewing Width / 2)
                  */
-                mapShiftX = ((leftRightVRDifference / 2) + (int)(vr_fieldBoundary.Left * RenderObjectScaling)) - (RenderWidth / 2);
+                this.mapShiftX = ((leftRightVRDifference / 2) + (int)(vr_fieldBoundary.Left * RenderObjectScaling)) - (RenderWidth / 2);
             }
             else
             {
@@ -961,12 +984,12 @@ namespace HaCreator.MapSimulator
 
                 if (bIsLeftKeyPressed)
                 {
-                    mapShiftX = Math.Max((int)(vr_fieldBoundary.Left * RenderObjectScaling), mapShiftX - moveOffset);
+                    this.mapShiftX = Math.Max((int)(vr_fieldBoundary.Left * RenderObjectScaling), mapShiftX - moveOffset);
 
                 }
                 else if (bIsRightKeyPressed)
                 {
-                    mapShiftX = Math.Min((int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))), mapShiftX + moveOffset);
+                    this.mapShiftX = Math.Min((int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))), mapShiftX + moveOffset);
                 } 
             }
         }
@@ -983,7 +1006,7 @@ namespace HaCreator.MapSimulator
             int topDownVRDifference = (int)((vr_fieldBoundary.Bottom - vr_fieldBoundary.Top) * RenderObjectScaling);
             if (topDownVRDifference < RenderHeight)
             {
-                mapShiftY = ((topDownVRDifference / 2) + (int)(vr_fieldBoundary.Top * RenderObjectScaling)) - (RenderHeight / 2);
+                this.mapShiftY = ((topDownVRDifference / 2) + (int)(vr_fieldBoundary.Top * RenderObjectScaling)) - (RenderHeight / 2);
             }
             else
             {
@@ -995,11 +1018,11 @@ namespace HaCreator.MapSimulator
 
                 if (bIsUpKeyPressed)
                 {
-                    mapShiftY = Math.Max((int)(vr_fieldBoundary.Top), mapShiftY - moveOffset);
+                    this.mapShiftY = Math.Max((int)(vr_fieldBoundary.Top), mapShiftY - moveOffset);
                 }
                 else if (bIsDownKeyPressed)
                 {
-                    mapShiftY = Math.Min((int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))), mapShiftY + moveOffset);
+                    this.mapShiftY = Math.Min((int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))), mapShiftY + moveOffset);
                 }
             }
         }
