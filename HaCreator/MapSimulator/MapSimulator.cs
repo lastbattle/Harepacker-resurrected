@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator
 
         // Etc
         private readonly Board mapBoard;
+        private bool bBigBangUpdate = true, bBigBang2Update = true;
 
         // Spine
         private SkeletonMeshRenderer skeletonMeshRenderer;
@@ -239,6 +240,9 @@ namespace HaCreator.MapSimulator
             WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
             WzDirectory UIWZFile = Program.WzManager["ui"];
             WzDirectory SoundWZFile = Program.WzManager["sound"];
+
+            this.bBigBangUpdate = UIWZFile["UIWindow2.img"]?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
+            this.bBigBang2Update = UIWZFile["UIWindow2.img"]?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -401,7 +405,7 @@ namespace HaCreator.MapSimulator
             while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted || 
                 !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted)
             {
-                Thread.Sleep(50);
+                Thread.Sleep(100);
             }
 
 #if DEBUG
@@ -780,7 +784,7 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawVRFieldBorder(SpriteBatch sprite)
         {
-            if ((vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0) || !bDrawVRBorderLeftRight)
+            if (bBigBang2Update || !bDrawVRBorderLeftRight || (vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0))
                 return;
 
             Color borderColor = Color.Black;
