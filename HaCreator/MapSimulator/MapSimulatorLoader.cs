@@ -504,27 +504,29 @@ namespace HaCreator.MapSimulator
         /// Draws the frame and the UI of the minimap.
         /// TODO: This whole thing needs to be dramatically simplified via further abstraction to keep it noob-proof :(
         /// </summary>
-        /// <param name="minimapFrameProperty">UI.wz/UIWindow2.img/MiniMap</param>
+        /// <param name="UIWZFile">UI.wz file directory</param>
         /// <param name="mapBoard"></param>
         /// <param name="device"></param>
         /// <param name="MapName">The map name. i.e The Hill North</param>
         /// <param name="StreetName">The street name. i.e Hidden street</param>
+        /// <param name="bBigBang">Big bang update</param>
         /// <returns></returns>
-        public static MinimapItem CreateMinimapFromProperty(WzSubProperty minimapFrameProperty, Board mapBoard, GraphicsDevice device, string MapName, string StreetName, WzDirectory SoundWZFile)
+        public static MinimapItem CreateMinimapFromProperty(WzDirectory UIWZFile, Board mapBoard, GraphicsDevice device, string MapName, string StreetName, WzDirectory SoundWZFile, bool bBigBang)
         {
             if (mapBoard.MiniMap == null)
                 return null;
+
+            WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+            if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
+            {
+                minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+            }
 
             WzSubProperty maxMapProperty = (WzSubProperty)minimapFrameProperty["MaxMap"];
             WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
             WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
 
-            WzSubProperty BtNpc = (WzSubProperty)minimapFrameProperty["BtNpc"]; // npc button
-            WzSubProperty BtMin = (WzSubProperty)minimapFrameProperty["BtMin"]; // mininise button
-            WzSubProperty BtMax = (WzSubProperty)minimapFrameProperty["BtMax"]; // maximise button
-            WzSubProperty BtBig = (WzSubProperty)minimapFrameProperty["BtBig"]; // big button
-            WzSubProperty BtMap = (WzSubProperty)minimapFrameProperty["BtMap"]; // world button
 
             WzSubProperty useFrame;
             if (mapBoard.MapInfo.zeroSideOnly || MapConstants.IsZerosTemple(mapBoard.MapInfo.id)) // zero's temple
@@ -624,29 +626,65 @@ namespace HaCreator.MapSimulator
                 WzBinaryProperty BtMouseClickSoundProperty = (WzBinaryProperty) SoundWZFile["UI.img"]?["BtMouseClick"];
                 WzBinaryProperty BtMouseOverSoundProperty = (WzBinaryProperty)SoundWZFile["UI.img"]?["BtMouseOver"];
 
-                UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
-                    false, 
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
-                objUIBtMap.X = effective_width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+                if (bBigBang)
+                {
+                    WzSubProperty BtNpc = (WzSubProperty)minimapFrameProperty["BtNpc"]; // npc button
+                    WzSubProperty BtMin = (WzSubProperty)minimapFrameProperty["BtMin"]; // mininise button
+                    WzSubProperty BtMax = (WzSubProperty)minimapFrameProperty["BtMax"]; // maximise button
+                    WzSubProperty BtBig = (WzSubProperty)minimapFrameProperty["BtBig"]; // big button
+                    WzSubProperty BtMap = (WzSubProperty)minimapFrameProperty["BtMap"]; // world button
 
-                UIObject objUIBtBig = new UIObject(BtBig, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
-                    false, 
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
-                objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                    UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMap.X = effective_width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
 
-                UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
-                    false, 
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
-                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                    UIObject objUIBtBig = new UIObject(BtBig, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
-                UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
-                    false, 
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
-                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                    UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
-                // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
+                    UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
-                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap);
+                    // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
+
+                    minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap);
+                } 
+                else
+                {
+                    WzImage BasicImg = (WzImage) UIWZFile["Basic.img"];
+
+                    WzSubProperty BtMin = (WzSubProperty)BasicImg["BtMin"]; // mininise button
+                    WzSubProperty BtMax = (WzSubProperty)BasicImg["BtMax"]; // maximise button
+                    WzSubProperty BtMap = (WzSubProperty)minimapFrameProperty["BtMap"]; // world button
+
+                    UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMap.X = effective_width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+
+                    UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMax.X = objUIBtMap.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+
+                    UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+
+                    // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
+
+                    minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, null, objUIBtMap);
+                }
 
                 //////////////////////////////////////////////////
 

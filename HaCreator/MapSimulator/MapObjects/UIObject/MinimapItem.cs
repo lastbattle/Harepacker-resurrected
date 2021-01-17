@@ -49,19 +49,22 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         {
             this.objUIBtMin = objUIBtMin;
             this.objUIBtMax = objUIBtMax;
-            this.objUIBtBig = objUIBtBig;
+            if (objUIBtBig != null)
+                this.objUIBtBig = objUIBtBig;
             this.objUIBtMap = objUIBtMap;
 
             uiButtons.Add(objUIBtMin);
             uiButtons.Add(objUIBtMax);
-            uiButtons.Add(objUIBtBig);
+            if (objUIBtBig != null)
+                uiButtons.Add(objUIBtBig);
             uiButtons.Add(objUIBtMap);
 
             objUIBtMax.SetButtonState(UIObjectState.Disabled); // start maximised
 
             objUIBtMin.ButtonClickReleased += ObjUIBtMin_ButtonClickReleased;
             objUIBtMax.ButtonClickReleased += ObjUIBtMax_ButtonClickReleased;
-            objUIBtBig.ButtonClickReleased += ObjUIBtBig_ButtonClickReleased;
+            if (objUIBtBig != null)
+                objUIBtBig.ButtonClickReleased += ObjUIBtBig_ButtonClickReleased;
             objUIBtMap.ButtonClickReleased += ObjUIBtMap_ButtonClickReleased;
         }
 
