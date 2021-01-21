@@ -359,10 +359,10 @@ namespace MapleLib.WzLib.WzProperties
                                     bmp.UnlockBits(bmpData);
                                     break;
                                 }
-                            case 513:
+                            case 513: // nexon wizet logo
                                 {
                                     bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
-                                    BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                                    BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
 
                                     int uncompressedSize = width * height * 2;
                                     byte[] decBuf = new byte[uncompressedSize];
