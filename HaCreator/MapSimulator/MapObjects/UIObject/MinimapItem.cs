@@ -20,6 +20,16 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         private readonly BaseDXDrawableItem item_pixelDot;
         private readonly List<MapObjects.UIObject.UIObject> uiButtons = new List<MapObjects.UIObject.UIObject>();
 
+        private MapObjects.UIObject.UIObject objUIBtMin;
+        private MapObjects.UIObject.UIObject objUIBtMax;
+        private MapObjects.UIObject.UIObject objUIBtBig;
+        private MapObjects.UIObject.UIObject objUIBtMap;
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="frames"></param>
+        /// <param name="item_pixelDot"></param>
         public MinimapItem(IDXObject frames, BaseDXDrawableItem item_pixelDot)
             : base(frames, false)
         {
@@ -32,9 +42,30 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         /// Add UI buttons to be rendered
         /// </summary>
         /// <param name="baseClickableUIObject"></param>
-        public void AddUIButtons(MapObjects.UIObject.UIObject baseClickableUIObject)
+        public void InitializeMinimapButtons(
+            MapObjects.UIObject.UIObject objUIBtMin,
+            MapObjects.UIObject.UIObject objUIBtMax,
+            MapObjects.UIObject.UIObject objUIBtBig, MapObjects.UIObject.UIObject objUIBtMap)
         {
-            uiButtons.Add(baseClickableUIObject);
+            this.objUIBtMin = objUIBtMin;
+            this.objUIBtMax = objUIBtMax;
+            if (objUIBtBig != null)
+                this.objUIBtBig = objUIBtBig;
+            this.objUIBtMap = objUIBtMap;
+
+            uiButtons.Add(objUIBtMin);
+            uiButtons.Add(objUIBtMax);
+            if (objUIBtBig != null)
+                uiButtons.Add(objUIBtBig);
+            uiButtons.Add(objUIBtMap);
+
+            objUIBtMax.SetButtonState(UIObjectState.Disabled); // start maximised
+
+            objUIBtMin.ButtonClickReleased += ObjUIBtMin_ButtonClickReleased;
+            objUIBtMax.ButtonClickReleased += ObjUIBtMax_ButtonClickReleased;
+            if (objUIBtBig != null)
+                objUIBtBig.ButtonClickReleased += ObjUIBtBig_ButtonClickReleased;
+            objUIBtMap.ButtonClickReleased += ObjUIBtMap_ButtonClickReleased;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -89,6 +120,45 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                 uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
             }
         }
+        #endregion
+
+        #region Events
+        /// <summary>
+        /// On 'BtMin' clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        private void ObjUIBtMin_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
+        {
+            objUIBtMin.SetButtonState(UIObjectState.Disabled);
+            objUIBtMax.SetButtonState(UIObjectState.Normal);
+        }
+
+        /// <summary>
+        /// On 'BtMax' clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        private void ObjUIBtMax_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
+        {
+            objUIBtMin.SetButtonState(UIObjectState.Normal);
+            objUIBtMax.SetButtonState(UIObjectState.Disabled);
+        }
+
+        /// <summary>
+        /// On 'BtBig' clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        private void ObjUIBtBig_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
+        {
+        }
+
+        /// <summary>
+        /// On 'BtMap' clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        private void ObjUIBtMap_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
+        {
+        }
+
         #endregion
     }
 }

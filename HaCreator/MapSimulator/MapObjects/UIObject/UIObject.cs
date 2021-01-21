@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static HaCreator.MapSimulator.MapObjects.UIObject.UIObjectButtonEvent;
 
 namespace HaCreator.MapSimulator.MapObjects.UIObject
 {
@@ -30,6 +31,13 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         private readonly BaseDXDrawableItem disabledState;
         private readonly BaseDXDrawableItem pressedState;
         private readonly BaseDXDrawableItem mouseOverState;
+
+
+        /// <summary>
+        /// On button click, and released.
+        /// </summary>
+        public event UIObjectButtonEventHandler ButtonClickReleased;
+
 
         /// <summary>
         /// Gets the current BaseDXDrawableItem based upon the current button state.
@@ -277,7 +285,15 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                 }
                 else if (mouseState.LeftButton == ButtonState.Released)
                 {
+                    UIObjectState priorState = this.currentState;
+
                     SetButtonState(UIObjectState.MouseOver);
+
+                    if (priorState == UIObjectState.Pressed) // this after setting the MouseOver state, so user-code does not get override
+                    {
+                        // Invoke clicked event
+                        ButtonClickReleased?.Invoke(this);
+                    }
                 }
                 else
                 {
@@ -297,7 +313,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// Sets the current state of the button
         /// </summary>
         /// <param name="state"></param>
-        private void SetButtonState(UIObjectState state)
+        public void SetButtonState(UIObjectState state)
         {
             this.currentState = state;
         }

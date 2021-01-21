@@ -392,6 +392,7 @@
     <Compile Include="MapSimulator\MapObjects\FieldObject\MobItem.cs" />
     <Compile Include="MapSimulator\MapObjects\FieldObject\TooltipItem.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObject.cs" />
+    <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectButtonEventHandler.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectState.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\IUIObjectEvents.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\MinimapItem.cs" />
