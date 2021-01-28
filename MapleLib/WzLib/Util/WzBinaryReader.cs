@@ -133,7 +133,7 @@ namespace MapleLib.WzLib.Util
         {
             StringBuilder retString = new StringBuilder();
             byte b = ReadByte();
-            while (b != 0)
+            while (b < 0)
             {
                 retString.Append((char)b);
                 b = ReadByte();
