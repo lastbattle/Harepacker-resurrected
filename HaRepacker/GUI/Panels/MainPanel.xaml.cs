@@ -1496,37 +1496,47 @@ namespace HaRepacker.GUI.Panels
                     textPropBox.AcceptsReturn = false;
                     textPropBox.ApplyButtonEnabled = false; // reset to disabled mode when changed
 
-                    ulong value_ = 0;
-                    if (bIsWzLongProperty)
-                    {
-                        value_ = (ulong)((WzLongProperty)obj).GetLong();
-                    }
-                    else if (bIsWzIntProperty)
-                    {
-                        value_ = (ulong)((WzIntProperty)obj).GetLong();
-                    } else if (bIsWzShortProperty)
-                    {
-                        value_ = (ulong)((WzShortProperty)obj).GetLong();
-                    }
-
                     // field limit UI
                     if (obj.Name == FIELD_LIMIT_OBJ_NAME) // fieldLimit
                     {
                         isSelectingWzMapFieldLimit = true;
 
+                        ulong value_ = 0;
+                        if (bIsWzLongProperty) // use uLong for field limit
+                        {
+                            value_ = (ulong)((WzLongProperty)obj).GetLong();
+                        }
+                        else if (bIsWzIntProperty)
+                        {
+                            value_ = (ulong)((WzIntProperty)obj).GetLong();
+                        }
+                        else if (bIsWzShortProperty)
+                        {
+                            value_ = (ulong)((WzShortProperty)obj).GetLong();
+                        }
+
                         fieldLimitPanel1.UpdateFieldLimitCheckboxes(value_);
 
                         // Set visibility
                         fieldLimitPanelHost.Visibility = Visibility.Visible;
-                    }
-                    else if (obj.Name == FIELD_TYPE_OBJ_NAME) // fieldType
+                    } 
+                    else 
                     {
-                        fieldTypePanel.SetFieldTypeIndex(value_);
-
-                        // Set visibility
-                        fieldTypePanel.Visibility = Visibility.Visible;
+                        long value_ = 0; // long for others, in the case of negative value
+                        if (bIsWzLongProperty)
+                        {
+                            value_ = ((WzLongProperty)obj).GetLong();
+                        }
+                        else if (bIsWzIntProperty)
+                        {
+                            value_ = ((WzIntProperty)obj).GetLong();
+                        }
+                        else if (bIsWzShortProperty)
+                        {
+                            value_ = ((WzShortProperty)obj).GetLong();
+                        }
+                        textPropBox.Text = value_.ToString();
                     }
-                    textPropBox.Text = value_.ToString();
                 } 
                 else if (bIsWzDoubleProperty || bIsWzFloatProperty)
                 {
