@@ -56,6 +56,7 @@ namespace HaSharedLibrary.GUI
 			//Window.Position = new Point(0, 0);
 			Window.Title = "Spine";
 			IsFixedTimeStep = false; // dont cap fps
+			Content.RootDirectory = "Content";
 
 			graphicsDeviceMgr = new GraphicsDeviceManager(this)
 			{
