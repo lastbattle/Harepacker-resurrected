@@ -170,6 +170,9 @@ namespace HaCreator.GUI
             }
             else if (WZSelect.Checked)
             {
+                if (mapBrowser.SelectedItem == null)
+                    return; // racing event
+
                 string selectedName = mapBrowser.SelectedItem;
 
                 if (selectedName.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3

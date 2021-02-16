@@ -10,6 +10,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Spine;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
@@ -634,11 +635,13 @@ namespace HaRepacker.GUI.Panels
                 selectedNodes.Add(node);
             }
 
+            string path_title = ((WzNode)DataTree.SelectedNodes[0]).Parent?.FullPath ?? "Animate";
+
             Thread thread = new Thread(() =>
             {
                 try
                 {
-                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(selectedNodes);
+                    ImageAnimationPreviewWindow previewWnd = new ImageAnimationPreviewWindow(selectedNodes, path_title);
                     previewWnd.Run();
                 }
                 catch (Exception ex)
@@ -1441,6 +1444,9 @@ namespace HaRepacker.GUI.Panels
                         textEditor.SetHighlightingDefinitionIndex(20); // json
                         textEditor.textEditor.Text = obj.ToString();
 
+
+                        string path_title = stringObj.Parent?.FullPath ?? "Animate";
+
                         Thread thread = new Thread(() =>
                         {
                             try
@@ -1448,7 +1454,7 @@ namespace HaRepacker.GUI.Panels
                                 WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
 
                                 // Create xna window
-                                SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                SpineAnimationWindow Window = new SpineAnimationWindow(item, path_title);
                                 Window.Run();
                             }
                             catch (Exception e)

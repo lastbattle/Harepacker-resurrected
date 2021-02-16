@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2018~2020, LastBattle https://github.com/lastbattle
+ * Copyright (c) 2018~2021, LastBattle https://github.com/lastbattle
  * Copyright (c) 2010~2013, haha01haha http://forum.ragezone.com/f701/release-universal-harepacker-version-892005/
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -38,7 +38,16 @@ namespace MapleLib.WzLib.Spine
     public class WzSpineAnimationItem
     {
         // Spine 
+
+        /// <summary>
+        ///  Whether the renderer will assume that colors have premultiplied alpha. 
+        ///  
+        ///  A variation of a bitmap image or alpha blending calculation in which the RGB color values are assumed 
+        ///  to be already multiplied by an alpha channel, to reduce computations during Alpha blending; 
+        ///  uses the blend operation: dst *= (1 - alpha) + src; capable of mixing alpha blending with additive blending effects
+        /// </summary>
         public bool PremultipliedAlpha { get; set; }
+
         public SkeletonData SkeletonData { get; private set; }
 
         // pre-loading
@@ -75,7 +84,7 @@ namespace MapleLib.WzLib.Spine
                 pma = ((WzImage)wzSpineAtlasPropertyNode.parent)["PMA"].ReadValue(0) > 0;
 
             this.SkeletonData = skeletonData;
-            this.PremultipliedAlpha = pma;
+            this.PremultipliedAlpha = pma; //  whether the renderer will assume that colors have premultiplied alpha. Default is true.
 
         }
     }
