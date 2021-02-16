@@ -178,8 +178,8 @@ namespace MapleLib.WzLib.WzProperties
             // Image info
             writer.WriteCompressedInt(PngProperty.Width);
             writer.WriteCompressedInt(PngProperty.Height);
-            writer.WriteCompressedInt(PngProperty.format);
-            writer.Write((byte)PngProperty.format2);
+            writer.WriteCompressedInt(PngProperty.Format);
+            writer.Write((byte)PngProperty.Format2);
             writer.Write((Int32)0);
 
             // Write image
@@ -285,6 +285,18 @@ namespace MapleLib.WzLib.WzProperties
         /// <returns></returns>
         public Bitmap GetLinkedWzCanvasBitmap()
         {
+            return GetLinkedWzImageProperty().GetBitmap();
+        }
+
+        /// <summary>
+        /// Gets the '_inlink' WzCanvasProperty of this.
+        /// 
+        /// '_inlink' is not implemented as part of WzCanvasProperty as I dont want to override existing Wz structure. 
+        /// It will be handled via HaRepackerMainPanel instead.
+        /// </summary>
+        /// <returns></returns>
+        public WzImageProperty GetLinkedWzImageProperty()
+        {
             string _inlink = ((WzStringProperty)this[InlinkPropertyName])?.Value; // could get nexon'd here. In case they place an _inlink that's not WzStringProperty
             string _outlink = ((WzStringProperty)this[OutlinkPropertyName])?.Value; // could get nexon'd here. In case they place an _outlink that's not WzStringProperty
 
@@ -300,7 +312,7 @@ namespace MapleLib.WzLib.WzProperties
                     WzImageProperty foundProperty = wzImageParent.GetFromPath(_inlink);
                     if (foundProperty != null && foundProperty is WzImageProperty property)
                     {
-                        return property.GetBitmap();
+                        return property;
                     }
                 }
             }
@@ -316,11 +328,11 @@ namespace MapleLib.WzLib.WzProperties
                     WzObject foundProperty = wzFileParent.GetObjectFromPath(_outlink);
                     if (foundProperty != null && foundProperty is WzImageProperty property)
                     {
-                        return property.GetBitmap();
+                        return property;
                     }
                 }
             }
-            return this.GetBitmap();
+            return this;
         }
 
         /// <summary>

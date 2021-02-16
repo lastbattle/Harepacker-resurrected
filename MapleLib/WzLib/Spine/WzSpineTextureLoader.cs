@@ -29,14 +29,13 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using Texture2D = Microsoft.Xna.Framework.Graphics.Texture2D;
 
 namespace MapleLib.WzLib.Spine
 {
     public class WzSpineTextureLoader : TextureLoader
     {
         public WzObject ParentNode { get; private set; }
-        private GraphicsDevice graphicsDevice;
+        private readonly GraphicsDevice graphicsDevice;
 
 
         public WzSpineTextureLoader(WzObject ParentNode, GraphicsDevice graphicsDevice)
@@ -79,29 +78,57 @@ namespace MapleLib.WzLib.Spine
 
             if (canvasProperty != null)
             {
-                Bitmap bitmap = canvasProperty.GetLinkedWzCanvasBitmap();
-                if (bitmap != null && graphicsDevice != null)
+                WzCanvasProperty linkImgProperty = (WzCanvasProperty) canvasProperty.GetLinkedWzImageProperty();
+
+                WzPngProperty pngProperty = linkImgProperty.PngProperty;
+                SurfaceFormat surfaceFormat = linkImgProperty.PngProperty.GetXNASurfaceFormat();
+
+                if (graphicsDevice != null)
                 {
-                    Texture2D tex = new Texture2D(graphicsDevice, bitmap.Width, bitmap.Height, true, SurfaceFormat.Color);
-                    BitmapData data = bitmap.LockBits(new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height), System.Drawing.Imaging.ImageLockMode.ReadOnly, bitmap.PixelFormat);
+                    Texture2D tex;
+                    tex = new Texture2D(graphicsDevice,
+                        pngProperty.Width, pngProperty.Height,
+                        false, surfaceFormat);
+                    /*switch (surfaceFormat)
+                    {
+                        case SurfaceFormat.Bgra4444:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width * 2, pngProperty.Height * 2,
+                                false, surfaceFormat);
+                            break;
+                        case SurfaceFormat.Bgra32:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width * 4, pngProperty.Height * 4,
+                                false, surfaceFormat);
+                            break;
+                        case SurfaceFormat.Bgr565:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width * 2, pngProperty.Height * 2,
+                                false, surfaceFormat);
+                            break;
+                        case SurfaceFormat.Dxt3:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width * 4, pngProperty.Height * 4,
+                                false, surfaceFormat);
+                            break;
+                        case SurfaceFormat.Dxt5:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width * 4, pngProperty.Height * 4,
+                                false, surfaceFormat);
+                            break;
+                        default:
+                            tex = new Texture2D(graphicsDevice,
+                                pngProperty.Width, pngProperty.Height,
+                                false, surfaceFormat);
+                            break;
+                    }
+                    */
+                    pngProperty.ParsePng(true, tex);
 
-                    int bufferSize = data.Height * data.Stride;
-
-                    //create data buffer 
-                    byte[] bytes = new byte[bufferSize];
-
-                    // copy bitmap data into buffer
-                    Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
-
-                    // copy our buffer to the texture
-                    tex.SetData(bytes);
-
-                    // unlock the bitmap data
-                    bitmap.UnlockBits(data);
 
                     page.rendererObject = tex;
-                    page.width = bitmap.Width;
-                    page.height = bitmap.Height;
+                    page.width = pngProperty.Width;
+                    page.height = pngProperty.Height;
                 }
             }
         }

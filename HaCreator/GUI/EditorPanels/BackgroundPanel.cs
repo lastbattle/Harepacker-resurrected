@@ -143,9 +143,11 @@ namespace HaCreator.GUI.EditorPanels
                             Thread thread = new Thread(() =>
                             {
                                 WzSpineAnimationItem item = new WzSpineAnimationItem(stringObj);
-                                
+
+                                string path_title = stringObj.Parent?.FullPath ?? "Animate";
+
                                 // Create xna window
-                                SpineAnimationWindow Window = new SpineAnimationWindow(item);
+                                SpineAnimationWindow Window = new SpineAnimationWindow(item, path_title);
                                 Window.Run();
                             });
                             thread.Start();

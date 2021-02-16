@@ -881,7 +881,7 @@ namespace HaCreator.MapSimulator
                 GraphicsDevice.GetBackBufferData(backBuffer);
 
                 //Copy to texture
-                using (Texture2D texture = new Texture2D(GraphicsDevice, RenderWidth, RenderHeight, false, SurfaceFormat.Color))
+                using (Texture2D texture = new Texture2D(GraphicsDevice, RenderWidth, RenderHeight, false, SurfaceFormat.Color  /*RGBA8888*/))
                 {
                     texture.SetData(backBuffer);
 
