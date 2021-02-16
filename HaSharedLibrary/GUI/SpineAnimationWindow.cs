@@ -44,6 +44,9 @@ namespace HaSharedLibrary.GUI
 		private SpriteFont font;
 
 
+		// 
+		private int spineSkinIndex = 0;
+
 		/// <summary>
 		/// Constructor
 		/// </summary>
@@ -69,7 +72,7 @@ namespace HaSharedLibrary.GUI
 				SupportedOrientations = DisplayOrientation.Default,
 				PreferredBackBufferWidth = 1366,
 				PreferredBackBufferHeight = 768,
-				PreferredBackBufferFormat = SurfaceFormat.Color,
+				PreferredBackBufferFormat = SurfaceFormat.Color /*RGBA8888*/ | SurfaceFormat.Bgr32 | SurfaceFormat.Dxt1 | SurfaceFormat.Dxt5 ,
 				PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
 			};
 			graphicsDeviceMgr.ApplyChanges();
@@ -111,7 +114,10 @@ namespace HaSharedLibrary.GUI
 			// Skin
 			Skin skin = wzSpineObject.spineAnimationItem.SkeletonData.Skins.FirstOrDefault();  // just set the first skin
 			if (skin != null)
+			{
 				wzSpineObject.skeleton.SetSkin(skin.Name);
+			}
+			this.spineSkinIndex = 0;
 
 			// Define mixing between animations.
 			wzSpineObject.stateData = new AnimationStateData(wzSpineObject.skeleton.Data);
@@ -201,6 +207,26 @@ namespace HaSharedLibrary.GUI
 			if (bIsRightKeyPressed)
 				wzSpineObject.skeleton.X -= MOVE_XY_POSITION;
 
+			// Swap between skins
+			if (Keyboard.GetState().IsKeyDown(Keys.PageUp))
+			{
+				if (this.spineSkinIndex != 0)
+					this.spineSkinIndex--;
+				else
+					this.spineSkinIndex = wzSpineObject.spineAnimationItem.SkeletonData.Skins.Count() - 1;
+
+				wzSpineObject.skeleton.SetSkin(wzSpineObject.spineAnimationItem.SkeletonData.Skins[this.spineSkinIndex]);
+			}
+			else if (Keyboard.GetState().IsKeyDown(Keys.PageDown))
+			{
+				if (this.spineSkinIndex + 1 < wzSpineObject.spineAnimationItem.SkeletonData.Skins.Count())
+					this.spineSkinIndex++;
+				else
+					this.spineSkinIndex = 0;
+
+				wzSpineObject.skeleton.SetSkin(wzSpineObject.spineAnimationItem.SkeletonData.Skins[this.spineSkinIndex]);
+			}
+
 			base.Update(gameTime);
 		}
 
@@ -236,7 +262,12 @@ namespace HaSharedLibrary.GUI
 			
 			spriteBatch.Begin(); 
 			if (gameTime.TotalGameTime.TotalSeconds < 3)
-				spriteBatch.DrawString(font, "Press [Left] [Right] [Up] [Down] [Shift] for navigation.", new Vector2(20, 10), Color.White);
+				spriteBatch.DrawString(font, 
+					string.Format("Press [Left] [Right] [Up] [Down] [Shift] for navigation.{0}{1}", 
+						Environment.NewLine,
+						wzSpineObject.spineAnimationItem.SkeletonData.Skins.Count() > 1 ? "[Page up] [Page down] to swap between skins." : string.Empty), 
+					new Vector2(20, 10), 
+					Color.White);
 
 			spriteBatch.End();
 
