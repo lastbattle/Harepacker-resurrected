@@ -47,7 +47,7 @@ namespace HaRepacker.GUI.Panels
 		/// Constructor
 		/// </summary>
 		/// <param name="selectedAnimationNodes"></param>
-		public ImageAnimationPreviewWindow(List<WzNode> selectedAnimationNodes)
+		public ImageAnimationPreviewWindow(List<WzNode> selectedAnimationNodes, string title_path)
         {
 			this.selectedAnimationNodes = selectedAnimationNodes;
 
@@ -56,7 +56,7 @@ namespace HaRepacker.GUI.Panels
 			//Window.AllowUserResizing = true;
 			//Window.IsBorderless = true;
 			//Window.Position = new Point(0, 0);
-			Window.Title = "Animation preview";
+			Window.Title = title_path;
 			IsFixedTimeStep = false; // dont cap fps
 			Content.RootDirectory = "Content";
 

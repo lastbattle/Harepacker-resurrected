@@ -27,6 +27,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
+using System.Linq;
 
 namespace HaSharedLibrary.GUI
 {
@@ -47,14 +48,14 @@ namespace HaSharedLibrary.GUI
 		/// Constructor
 		/// </summary>
 		/// <param name="spineAnimationItem"></param>
-		/// <param name="skeletonData"></param>
-		public SpineAnimationWindow(WzSpineAnimationItem spineAnimationItem)
+		/// <param name="title_path">The path of the spine animation to set as title</param>
+		public SpineAnimationWindow(WzSpineAnimationItem spineAnimationItem, string title_path)
 		{
 			IsMouseVisible = true;
 
 			//Window.IsBorderless = true;
 			//Window.Position = new Point(0, 0);
-			Window.Title = "Spine";
+			Window.Title = title_path;
 			IsFixedTimeStep = false; // dont cap fps
 			Content.RootDirectory = "Content";
 
@@ -102,15 +103,15 @@ namespace HaSharedLibrary.GUI
 			wzSpineObject.spineAnimationItem.LoadResources(graphicsDeviceMgr.GraphicsDevice); //  load spine resources (this must happen after window is loaded)
 			wzSpineObject.skeleton = new Skeleton(wzSpineObject.spineAnimationItem.SkeletonData);
 
-			skeletonRenderer = new SkeletonMeshRenderer(GraphicsDevice);
-			skeletonRenderer.PremultipliedAlpha = wzSpineObject.spineAnimationItem.PremultipliedAlpha;
+            skeletonRenderer = new SkeletonMeshRenderer(GraphicsDevice)
+            {
+                PremultipliedAlpha = wzSpineObject.spineAnimationItem.PremultipliedAlpha
+            };
 
 			// Skin
-			foreach (Skin skin in wzSpineObject.spineAnimationItem.SkeletonData.Skins)
-			{
-				wzSpineObject.skeleton.SetSkin(skin.Name); // just set the first skin
-				break;
-			}
+			Skin skin = wzSpineObject.spineAnimationItem.SkeletonData.Skins.FirstOrDefault();  // just set the first skin
+			if (skin != null)
+				wzSpineObject.skeleton.SetSkin(skin.Name);
 
 			// Define mixing between animations.
 			wzSpineObject.stateData = new AnimationStateData(wzSpineObject.skeleton.Data);
