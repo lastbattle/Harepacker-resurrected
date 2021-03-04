@@ -5,13 +5,17 @@ A collection of tools for MapleStory. A .wz file and level (or you call that fie
 For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/
 
 ----
-![N|Harepacker](https://i.imgur.com/sdq8wNo.png)
+![Harepacker](https://user-images.githubusercontent.com/4586194/109911770-a7d45e80-7ce5-11eb-9843-e4414bb6016f.png)
 
-![N|Image animation preview](https://i.imgur.com/kGXyVjO.png)
+![Image preview](https://user-images.githubusercontent.com/4586194/109911721-85dadc00-7ce5-11eb-9111-4e2bfdbf5551.png)
+
+![Spine image preview](https://user-images.githubusercontent.com/4586194/109911553-43b19a80-7ce5-11eb-8495-206a9c79d76f.png)
 
 ![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
 
 ![Rainbow Street Amherst](https://i.imgur.com/A1U0Hhg.jpg)
+
+![Orbis Tower](https://user-images.githubusercontent.com/4586194/104141605-9ad87480-53f2-11eb-8d58-8d676d11e22c.png)
 
 ![N|Solid](https://imgur.com/download/SrS8Lw8/) 
 
@@ -54,12 +58,13 @@ How about contributing instead? Great! Fork it, create pull request! Its all fre
  - [@Diamondo25](https://github.com/Diamondo25)
  - [@LastBattle](https://github.com/lastbattle)
  - Novak
- - [@Erick](https://github.com/ertrii)   ( https://github.com/eaxvac/Harepacker-resurrected/pull/2 ) 
- - [@RajanGrewa](https://github.com/RajanGrewal) https://github.com/eaxvac/Harepacker-resurrected/pull/8
- - [@shavitush](https://github.com/shavitush) https://github.com/eaxvac/Harepacker-resurrected/pull/5
- - [@Lapig](https://github.com/Lapig) https://github.com/lastbattle/Harepacker-resurrected/pull/13
- - [@Kagamia](https://github.com/Kagamia/) https://github.com/Kagamia/WzComparerR2
- - and many others that contributed too! 
+ - [@shavitush](https://github.com/shavitush)
+ - [@Erick](https://github.com/ertrii)
+ - [@RajanGrewa](https://github.com/RajanGrewal)
+ - [@shavitush](https://github.com/shavitush)
+ - [@Lapig](https://github.com/Lapig)
+ - [@Kagamia](https://github.com/Kagamia/)
+ - and including many others that contributed too! 
 
 ##### MapleLib2 by haha01haha01;
  - based on MapleLib by Snow;
@@ -72,7 +77,7 @@ License
 
 MIT
 ```
-Copyright (c) 2018, LastBattle https://github.com/lastbattle
+Copyright (c) 2018~2021, LastBattle https://github.com/lastbattle
 Copyright (c) 2010~2013, haha01haha http://forum.ragezone.com/f701/release-universal-harepacker-version-892005/
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
