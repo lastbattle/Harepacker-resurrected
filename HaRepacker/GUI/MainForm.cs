@@ -1121,6 +1121,8 @@ namespace HaRepacker.GUI
         {
             mainMenu.Enabled = enabled;
             MainPanel.IsEnabled = enabled;
+            button_addTab.Enabled = enabled;
+            tabControl_MainPanels.Enabled = enabled;
             AbortButton.Visible = !enabled;
         }
         private void ChangeApplicationState(bool enabled)
