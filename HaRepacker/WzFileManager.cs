@@ -84,6 +84,8 @@ namespace HaRepacker
             {
                 if (wzFiles.Contains(file)) // check again within scope
                 {
+                    file.Dispose();
+
                     ((WzNode)file.HRTag).DeleteWzNode();
                     wzFiles.Remove(file);
                 }
@@ -140,8 +142,8 @@ namespace HaRepacker
                 {
                     SortNodesRecursively(node);
                 }
-                return img;
             }
+            return img;
         }
 
         /// <summary>

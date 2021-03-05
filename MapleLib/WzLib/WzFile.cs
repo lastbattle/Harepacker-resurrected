@@ -98,6 +98,7 @@ namespace MapleLib.WzLib
             if (wzDir == null || wzDir.reader == null)
                 return;
             wzDir.reader.Close();
+            wzDir.reader = null;
             Header = null;
             path = null;
             name = null;

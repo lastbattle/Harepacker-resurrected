@@ -790,13 +790,15 @@ namespace HaRepacker.GUI
                         bool bWithRelated = false;
                         string relatedFileName = null;
 
-                        foreach (string wz in wzsWithRelatedFiles) 
+                        foreach (string wz in wzsWithRelatedFiles)
+                        {
                             if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz"))
                             {
                                 bWithRelated = true;
                                 relatedFileName = wz;
                                 break;
                             }
+                        }
                         if (bWithRelated)
                         {
                             if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)

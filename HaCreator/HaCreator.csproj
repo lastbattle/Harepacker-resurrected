@@ -742,7 +742,6 @@
     <None Include="app.config" />
     <None Include="app.manifest" />
     <None Include="GUI\HaCreator.res" />
-    <None Include="HaCreator_TemporaryKey.pfx" />
     <None Include="Resources\mapEditMenu.png" />
     <Resource Include="Images\About.png" />
     <Resource Include="Images\diagram_parallax.png" />

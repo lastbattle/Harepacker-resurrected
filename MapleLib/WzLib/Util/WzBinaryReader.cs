@@ -206,5 +206,13 @@ namespace MapleLib.WzLib.Util
         }
 
         #endregion
+
+        #region Overrides
+        public override void Close()
+        {
+            // debug here
+            base.Close();
+        }
+        #endregion
     }
 }

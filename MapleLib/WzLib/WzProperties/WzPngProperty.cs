@@ -90,6 +90,8 @@ namespace MapleLib.WzLib.WzProperties
                 png.Dispose();
                 png = null;
             }
+            //this.wzReader.Close(); // closes at WzFile
+            this.wzReader = null;
         }
         #endregion
 
@@ -229,7 +231,7 @@ namespace MapleLib.WzLib.WzProperties
                     this.wzReader.BaseStream.Position = offs;
                     int len = this.wzReader.ReadInt32() - 1;
                     if (len <= 0) // possibility an image written with the wrong wzIv 
-                        throw new Exception("The length of the image is negative. WzPngProperty.");
+                        throw new Exception("The length of the image is negative. WzPngProperty. Wrong WzIV?");
 
                     this.wzReader.BaseStream.Position += 1;
 
@@ -309,12 +311,14 @@ namespace MapleLib.WzLib.WzProperties
             try
             {
                 Bitmap bmp = null;
-                switch (format + format2)
+                Rectangle rect_ = new Rectangle(0, 0, width, height);
+
+                switch (Format)
                 {
                     case 1:
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
                             byte[] decoded = GetPixelDataBgra4444(rawBytes, width, height);
 
@@ -325,7 +329,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 2:
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
                             Marshal.Copy(rawBytes, 0, bmpData.Scan0, rawBytes.Length);
                             bmp.UnlockBits(bmpData);
@@ -337,7 +341,7 @@ namespace MapleLib.WzLib.WzProperties
                             // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
                             // you'll be remembered forever <3 
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(Point.Empty, bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
                             byte[] decoded = GetPixelDataDXT3(rawBytes, width, height);
 
@@ -348,7 +352,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format16bppArgb1555);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(Point.Empty, bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format16bppArgb1555);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format16bppArgb1555);
                             // "Npc.wz\\2570101.img\\info\\illustration2\\face\\0"
 
                             CopyBmpDataWithStride(rawBytes, bmp.Width * 2, bmpData);
@@ -359,7 +363,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 513: // nexon wizet logo
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
 
                             Marshal.Copy(rawBytes, 0, bmpData.Scan0, rawBytes.Length);
                             bmp.UnlockBits(bmpData);
@@ -368,7 +372,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 517:
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
 
                             byte[] decoded = GetPixelDataForm517(rawBytes, width, height);
 
@@ -379,7 +383,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 1026:
                         {
                             bmp = new Bitmap(this.width, this.height, PixelFormat.Format32bppArgb);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(new Point(), bmp.Size), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
                             byte[] decoded = GetPixelDataDXT3(rawBytes, this.width, this.height);
 
@@ -390,7 +394,7 @@ namespace MapleLib.WzLib.WzProperties
                     case 2050: // new
                         {
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                            BitmapData bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                            BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
                             byte[] decoded = GetPixelDataDXT5(rawBytes, Width, Height);
 
@@ -426,11 +430,7 @@ namespace MapleLib.WzLib.WzProperties
         /// <returns></returns>
         internal byte[] GetRawImage(bool saveInMemory)
         {
-            byte[] rawImageBytes;
-            if (compressedImageBytes == null)
-                rawImageBytes = GetCompressedBytes(saveInMemory);
-            else
-                rawImageBytes = compressedImageBytes;
+            byte[] rawImageBytes = GetCompressedBytes(saveInMemory);
 
             try
             {
@@ -463,94 +463,78 @@ namespace MapleLib.WzLib.WzProperties
                         zlib = new DeflateStream(dataStream, CompressionMode.Decompress);
                     }
 
-                    using (zlib)
+                    int uncompressedSize = 0;
+                    byte[] decBuf = null;
+
+                    switch (format + format2)
                     {
-                        switch (format + format2)
-                        {
-                            case 1:
-                                {
-                                    int uncompressedSize = width * height * 2;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 2:
-                                {
-                                    int uncompressedSize = width * height * 4;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 3:
-                                {
-                                    // New format 黑白缩略图
-                                    // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
-                                    // you'll be remembered forever <3 
-
-                                    int uncompressedSize = width * height * 4;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
-                                {
-                                    // "Npc.wz\\2570101.img\\info\\illustration2\\face\\0"
-
-                                    int uncompressedSize = width * height * 2;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 513: // nexon wizet logo
-                                {
-                                    int uncompressedSize = width * height * 2;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 517:
-                                {
-                                    int uncompressedSize = width * height / 128;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 1026:
-                                {
-                                    int uncompressedSize = width * height * 4;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            case 2050: // new
-                                {
-                                    int uncompressedSize = width * height;
-                                    byte[] decBuf = new byte[uncompressedSize];
-                                    zlib.Read(decBuf, 0, uncompressedSize);
-                                    zlib.Close();
-
-                                    return decBuf;
-                                }
-                            default:
-                                Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format {0} {1}", format, format2));
+                        case 1:
+                            {
+                                uncompressedSize = width * height * 2;
+                                decBuf = new byte[uncompressedSize];
                                 break;
+                            }
+                        case 2:
+                            {
+                                uncompressedSize = width * height * 4;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 3:
+                            {
+                                // New format 黑白缩略图
+                                // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
+                                // you'll be remembered forever <3 
+
+                                uncompressedSize = width * height * 4;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
+                            {
+                                // "Npc.wz\\2570101.img\\info\\illustration2\\face\\0"
+
+                                uncompressedSize = width * height * 2;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 513: // nexon wizet logo
+                            {
+                                uncompressedSize = width * height * 2;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 517:
+                            {
+                                uncompressedSize = width * height / 128;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 1026:
+                            {
+                                uncompressedSize = width * height * 4;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        case 2050: // new
+                            {
+                                uncompressedSize = width * height;
+                                decBuf = new byte[uncompressedSize];
+                                break;
+                            }
+                        default:
+                            Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, string.Format("Unknown PNG format {0} {1}", format, format2));
+                            break;
+                    }
+
+                    if (decBuf != null)
+                    {
+                        using (zlib)
+                        {
+                            zlib.Read(decBuf, 0, uncompressedSize);
+                            return decBuf;
                         }
                     }
-                    zlib.Close(); // close it otherwise, unused
                 }
             }
             catch (InvalidDataException)

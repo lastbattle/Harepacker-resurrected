@@ -1296,7 +1296,7 @@ namespace HaRepacker.GUI.Panels
         private void ShowObjectValue(WzObject obj)
         {
             mp3Player.SoundProperty = null;
-            nameBox.Text = obj is WzFile ? ((WzFile)obj).Header.Copyright : obj.Name;
+            nameBox.Text = obj is WzFile file ? file.Header.Copyright : obj.Name;
             nameBox.ApplyButtonEnabled = false;
 
             toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
