@@ -1,7 +1,4 @@
-﻿// uncomment line below to show debug values
-#define SIMULATOR_DEBUG_INFO
-
-using HaCreator.GUI.InstanceEditor;
+﻿using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -135,12 +132,12 @@ namespace HaCreator.MapSimulator
                 SupportedOrientations = DisplayOrientation.Default,
                 PreferredBackBufferWidth = Math.Max(RenderWidth, 1),
                 PreferredBackBufferHeight = Math.Max(RenderHeight, 1),
-                PreferredBackBufferFormat = SurfaceFormat.Color | SurfaceFormat.Bgr32 | SurfaceFormat.Dxt1| SurfaceFormat.Dxt5,
+                PreferredBackBufferFormat = SurfaceFormat.Color/* | SurfaceFormat.Bgr32 | SurfaceFormat.Dxt1| SurfaceFormat.Dxt5*/,
                 PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8, 
             };
             _DxDeviceManager.DeviceCreated += graphics_DeviceCreated;
             _DxDeviceManager.ApplyChanges();
-
+            
         }
 
         #region Loading and unloading
@@ -739,13 +736,13 @@ namespace HaCreator.MapSimulator
                 miniMap.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
             }
 
-            if (gameTime.TotalGameTime.TotalSeconds < 3)
+            if (gameTime.TotalGameTime.TotalSeconds < 4)
                 spriteBatch.DrawString(font_navigationKeysHelper, 
-                    string.Format("Press [Left] [Right] [Up] [Down] [Shift] [Alt+Enter] [PrintSc] for navigation.{0}[F5] for debug mode", Environment.NewLine), 
-                    new Vector2(20, 10), Color.White);
+                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot", 
+                    Environment.NewLine, Environment.NewLine, Environment.NewLine), 
+                    new Vector2(20, RenderHeight - 140), Color.White);
             
-            #if SIMULATOR_DEBUG_INFO
-            if (!bSaveScreenshot)
+            if (!bSaveScreenshot && bShowDebugMode)
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
@@ -753,8 +750,6 @@ namespace HaCreator.MapSimulator
                 sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
                 spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(RenderWidth - 170, 10), Color.White);
             }
-            #endif
-
 
             // Cursor [this is in front of everything else]
             mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
@@ -877,7 +872,9 @@ namespace HaCreator.MapSimulator
                 bSaveScreenshot = false;
 
                 //Pull the picture from the buffer 
-                int[] backBuffer = new int[RenderWidth * RenderHeight];
+                int backBufferWidth = GraphicsDevice.PresentationParameters.BackBufferWidth;
+                int backBufferHeight = GraphicsDevice.PresentationParameters.BackBufferHeight;
+                int[] backBuffer = new int[backBufferWidth * backBufferHeight];
                 GraphicsDevice.GetBackBufferData(backBuffer);
 
                 //Copy to texture

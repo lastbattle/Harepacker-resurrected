@@ -84,6 +84,8 @@ namespace HaRepacker
             {
                 if (wzFiles.Contains(file)) // check again within scope
                 {
+                    file.Dispose();
+
                     ((WzNode)file.HRTag).DeleteWzNode();
                     wzFiles.Remove(file);
                 }
@@ -125,23 +127,22 @@ namespace HaRepacker
         /// <returns></returns>
         public WzImage LoadDataWzHotfixFile(string path, WzMapleVersion encVersion, MainPanel panel)
         {
-            using (FileStream fs = File.Open(path, FileMode.Open))
+            FileStream fs = File.Open(path, FileMode.Open); // dont close this file stream until it is unloaded from memory
+
+            WzImage img = new WzImage(Path.GetFileName(path), fs, encVersion);
+            img.ParseImage(true);
+
+            WzNode node = new WzNode(img);
+
+            panel.DataTree.BeginUpdate();
+            panel.DataTree.Nodes.Add(node);
+            panel.DataTree.EndUpdate();
+
+            if (Program.ConfigurationManager.UserSettings.Sort)
             {
-                WzImage img = new WzImage(Path.GetFileName(path), fs, encVersion);
-                img.ParseImage(true);
-
-                WzNode node = new WzNode(img);
-
-                panel.DataTree.BeginUpdate();
-                panel.DataTree.Nodes.Add(node);
-                panel.DataTree.EndUpdate();
-
-                if (Program.ConfigurationManager.UserSettings.Sort)
-                {
-                    SortNodesRecursively(node);
-                }
-                return img;
+                SortNodesRecursively(node);
             }
+            return img;
         }
 
         /// <summary>

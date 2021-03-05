@@ -250,7 +250,6 @@ namespace MapleLib.WzLib.Util
                 byte firstByte = reader.ReadByte();
 
                 result = firstByte == WzImage.WzImageHeaderByte; // check the first byte. It should be 0x73 that represends a WzImage
-                reader.Close();
             }
 
             return result;
