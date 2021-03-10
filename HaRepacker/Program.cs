@@ -142,7 +142,6 @@ namespace HaRepacker
             bool loaded = _ConfigurationManager.Load();
             if (!loaded)
             {
-                Warning.Error(HaRepacker.Properties.Resources.ProgramLoadSettingsError);
                 return true;
             }
             bool firstRun = Program.ConfigurationManager.ApplicationSettings.FirstRun;

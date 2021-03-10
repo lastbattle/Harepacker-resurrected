@@ -1023,15 +1023,6 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Could not load settings file, make sure it is not in use. If it is not, delete it and try again..
-        /// </summary>
-        public static string ProgramLoadSettingsError {
-            get {
-                return ResourceManager.GetString("ProgramLoadSettingsError", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap red_x1 {
