@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using HaSharedLibrary.Util;
 using Spine;
 using System.Runtime.CompilerServices;
+using HaRepacker.Utils;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -21,11 +22,14 @@ namespace HaRepacker.GUI.Panels
 		private GraphicsDeviceManager graphicsDeviceMgr;
 
 		// Constants
-		private const int RENDER_WIDTH = 1366;
-		private const int RENDER_HEIGHT = 768;
-		private const float RENDER_SCALING = 1.0f;
+		private int RENDER_WIDTH = 1366;
+		private int RENDER_HEIGHT = 768;
 
 		private float renderAnimationScaling = 1.0f;
+		private float renderTextScaling = 1.0f;
+
+		// Res
+		private float UserScreenScaleFactor = 1.0f;
 
 		// Rendering objects
 		private readonly List<WzNode> selectedAnimationNodes;
@@ -60,6 +64,11 @@ namespace HaRepacker.GUI.Panels
 			IsFixedTimeStep = false; // dont cap fps
 			Content.RootDirectory = "Content";
 
+			// Res
+			this.UserScreenScaleFactor = (float)ScreenDPIUtil.GetScreenScaleFactor();
+			this.renderAnimationScaling *= this.UserScreenScaleFactor;
+			this.renderTextScaling *= this.UserScreenScaleFactor;
+
 			graphicsDeviceMgr = new GraphicsDeviceManager(this)
 			{
 				SynchronizeWithVerticalRetrace = true,
@@ -68,8 +77,8 @@ namespace HaRepacker.GUI.Panels
 				IsFullScreen = false,
 				PreferMultiSampling = true,
 				SupportedOrientations = DisplayOrientation.Default,
-				PreferredBackBufferWidth = RENDER_WIDTH,
-				PreferredBackBufferHeight = RENDER_HEIGHT,
+				PreferredBackBufferWidth = (int) (RENDER_WIDTH * UserScreenScaleFactor), // XNA isnt DPI aware.
+				PreferredBackBufferHeight = (int) (RENDER_HEIGHT * UserScreenScaleFactor), // XNA isnt DPI aware.
 				PreferredBackBufferFormat = SurfaceFormat.Color,
 				PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8,
 			};
@@ -271,7 +280,7 @@ namespace HaRepacker.GUI.Panels
 			/////////////////////// DRAW DEBUG TEXT ///////////////////////
 			spriteBatch.Begin(
 				SpriteSortMode.Deferred,
-				BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(RENDER_SCALING));
+				BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(renderTextScaling));
 
 			// Debug at the top right corner
 			StringBuilder sb = new StringBuilder();
