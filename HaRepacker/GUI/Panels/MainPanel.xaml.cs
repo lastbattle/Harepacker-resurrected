@@ -13,7 +13,6 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -1420,10 +1419,10 @@ namespace HaRepacker.GUI.Panels
                 {
                     System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                     if (img != null)
-                        canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
+                        canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap((System.Drawing.Bitmap)img);
                 }
                 else
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasProp.GetLinkedWzCanvasBitmap());
+                    canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap(canvasProp.GetLinkedWzCanvasBitmap());
 
                 SetImageRenderView(canvasProp);
             }
@@ -1436,7 +1435,7 @@ namespace HaRepacker.GUI.Panels
                 if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasUOL.GetLinkedWzCanvasBitmap()); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+                    canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap(canvasUOL.GetLinkedWzCanvasBitmap()); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
                     menuItem_saveImage.Visibility = Visibility.Visible; // dont show change image, as its a UOL
 
                     SetImageRenderView(canvasUOL);
