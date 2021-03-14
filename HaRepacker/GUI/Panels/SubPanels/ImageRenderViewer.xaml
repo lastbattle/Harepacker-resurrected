@@ -623,7 +623,7 @@
 
                 <!-- Image width-->
                 <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                Margin="0,80,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
+                    Margin="0,80,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock x:Name="textBlock" Text="Width: " FontSize="10" FontWeight="Bold"/>
                         <TextBlock x:Name="textBlock1" Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
@@ -651,7 +651,7 @@
                         Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
                         Margin="0,70,0,0">
 
-                <Border BorderBrush="Gray" BorderThickness="0.6">
+                <Border BorderThickness="0.6">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="15"/>
