@@ -1,7 +1,7 @@
 ### HaSuite / Harepacker resurrected
 [![Github total downloads](https://img.shields.io/github/downloads/lastbattle/Harepacker-resurrected/total.svg)]() 
-[![Github All Releases](https://img.shields.io/github/release/lastbattle/Harepacker-resurrected.svg)]()
-[![Github All Issues](https://img.shields.io/github/issues/lastbattle/Harepacker-resurrected.svg)]()
+[![Github All Releases](https://img.shields.io/github/release/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/releases)
+[![Github All Issues](https://img.shields.io/github/issues/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/issues)
 
 A collection of tools for MapleStory. A .wz file and level (or you call that field/maps) editor.
 
