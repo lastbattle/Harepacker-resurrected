@@ -55,47 +55,54 @@ namespace MapleLib
                 if (!(assemblyArchitecture == ProcessorArchitecture.X86 || assemblyArchitecture == ProcessorArchitecture.Amd64))
                 {
                     _SquishLibLoadingState = SquishLibLoadingState.WrongProcessorArchitecture;
+
+                    System.Diagnostics.Debug.WriteLine("squish.dll library not loaded. MSIL assembly detected.");
                     return false;
                 }
                 // Load library here
-                IntPtr apnglib = LoadLibrary("squish.dll");
-                if (apnglib != IntPtr.Zero)
+                IntPtr errorCode = LoadLibrary("squish.dll");
+                if (errorCode != IntPtr.Zero)
                 {
-                    IntPtr FixFlagsPtr = GetProcAddress(apnglib, "_DLLEXPORT_FixFlags");
+                    IntPtr FixFlagsPtr = GetProcAddress(errorCode, "_DLLEXPORT_FixFlags");
                     if (FixFlagsPtr != null)
                         FixFlags = (_DLLEXPORT_FixFlags)Marshal.GetDelegateForFunctionPointer(FixFlagsPtr, typeof(_DLLEXPORT_FixFlags));
 
-                    IntPtr CompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Compress");
+                    IntPtr CompressPtr = GetProcAddress(errorCode, "_DLLEXPORT_Compress");
                     if (CompressPtr != null)
                         Compress = (_DLLEXPORT_Compress)Marshal.GetDelegateForFunctionPointer(CompressPtr, typeof(_DLLEXPORT_Compress));
 
-                    IntPtr CompressMaskedPtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressMasked");
+                    IntPtr CompressMaskedPtr = GetProcAddress(errorCode, "_DLLEXPORT_CompressMasked");
                     if (CompressMaskedPtr != null)
                         CompressMasked = (_DLLEXPORT_CompressMasked)Marshal.GetDelegateForFunctionPointer(CompressMaskedPtr, typeof(_DLLEXPORT_CompressMasked));
 
-                    IntPtr DecompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Decompress");
+                    IntPtr DecompressPtr = GetProcAddress(errorCode, "_DLLEXPORT_Decompress");
                     if (DecompressPtr != null)
                         Decompress = (_DLLEXPORT_Decompress)Marshal.GetDelegateForFunctionPointer(DecompressPtr, typeof(_DLLEXPORT_Decompress));
 
-                    IntPtr StorageRequirementsPtr = GetProcAddress(apnglib, "_DLLEXPORT_GetStorageRequirements");
+                    IntPtr StorageRequirementsPtr = GetProcAddress(errorCode, "_DLLEXPORT_GetStorageRequirements");
                     if (StorageRequirementsPtr != null)
                         GetStorageRequirements = (_DLLEXPORT_GetStorageRequirements)Marshal.GetDelegateForFunctionPointer(StorageRequirementsPtr, typeof(_DLLEXPORT_GetStorageRequirements));
 
-                    IntPtr CompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressImage");
+                    IntPtr CompressImagePtr = GetProcAddress(errorCode, "_DLLEXPORT_CompressImage");
                     if (CompressImagePtr != null)
                         CompressImage = (_DLLEXPORT_CompressImage)Marshal.GetDelegateForFunctionPointer(CompressImagePtr, typeof(_DLLEXPORT_CompressImage));
 
-                    IntPtr DecompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_DecompressImage");
+                    IntPtr DecompressImagePtr = GetProcAddress(errorCode, "_DLLEXPORT_DecompressImage");
                     if (DecompressImagePtr != null)
                         DecompressImage = (_DLLEXPORT_DecompressImage)Marshal.GetDelegateForFunctionPointer(DecompressImagePtr, typeof(_DLLEXPORT_DecompressImage));
 
 
                     _SquishLibLoadingState = SquishLibLoadingState.Initialised; // flag as initialised
+
+                    System.Diagnostics.Debug.WriteLine("Loaded squish.dll library.");
+
                     return true;
                 }
                 else
                 {
                     _SquishLibLoadingState = SquishLibLoadingState.UnknownError;
+
+                    System.Diagnostics.Debug.WriteLine("Error loaded squish.dll library, code = " + errorCode);
                     return false;
                     //throw new Exception("squish.dll not found in the program directory.");
                 }
@@ -103,7 +110,7 @@ namespace MapleLib
             return false;
         }
 
-        #region Exports
+        #region Imports
         public static _DLLEXPORT_FixFlags FixFlags;
         public static _DLLEXPORT_Compress Compress;
         public static _DLLEXPORT_CompressMasked CompressMasked;

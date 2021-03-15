@@ -329,10 +329,7 @@ namespace MapleLib.WzLib.WzProperties
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
                             BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                            byte[] decoded = GetPixelDataBgra4444(rawBytes, width, height);
-
-                            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
-                            bmp.UnlockBits(bmpData);
+                            DecompressImage_PixelDataBgra4444(rawBytes, width, height, bmp, bmpData);
                             break;
                         }
                     case 2:
@@ -352,10 +349,7 @@ namespace MapleLib.WzLib.WzProperties
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
                             BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                            byte[] decoded = DecompressImageDXT3(rawBytes, width, height);
-
-                            Marshal.Copy(decoded, 0, bmpData.Scan0, width * height);
-                            bmp.UnlockBits(bmpData);
+                            DecompressImageDXT3(rawBytes, width, height, bmp, bmpData);
                             break;
                         }
                     case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
@@ -383,10 +377,7 @@ namespace MapleLib.WzLib.WzProperties
                             bmp = new Bitmap(width, height, PixelFormat.Format16bppRgb565);
                             BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format16bppRgb565);
 
-                            byte[] decoded = GetPixelDataForm517(rawBytes, width, height);
-
-                            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
-                            bmp.UnlockBits(bmpData);
+                            DecompressImage_PixelDataForm517(rawBytes, width, height, bmp, bmpData);
                             break;
                         }
                     case 1026:
@@ -394,10 +385,7 @@ namespace MapleLib.WzLib.WzProperties
                             bmp = new Bitmap(this.width, this.height, PixelFormat.Format32bppArgb);
                             BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                            byte[] decoded = DecompressImageDXT3(rawBytes, this.width, this.height);
-
-                            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
-                            bmp.UnlockBits(bmpData);
+                            DecompressImageDXT3(rawBytes, this.width, this.height, bmp, bmpData);
                             break;
                         }
                     case 2050: // new
@@ -405,10 +393,7 @@ namespace MapleLib.WzLib.WzProperties
                             bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
                             BitmapData bmpData = bmp.LockBits(rect_, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
 
-                            byte[] decoded = DecompressImageDXT5(rawBytes, Width, Height);
-
-                            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
-                            bmp.UnlockBits(bmpData);
+                            DecompressImageDXT5(rawBytes, Width, Height, bmp, bmpData);
                             break;
                         }
                     default:
@@ -572,10 +557,10 @@ namespace MapleLib.WzLib.WzProperties
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte[] GetPixelDataBgra4444(byte[] rawData, int width, int height)
+        public static void DecompressImage_PixelDataBgra4444(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
             int uncompressedSize = width * height * 2;
-            byte[] argb = new byte[uncompressedSize * 2];
+            byte[] decoded = new byte[uncompressedSize * 2];
 
             for (int i = 0; i < uncompressedSize; i++)
             {
@@ -583,25 +568,34 @@ namespace MapleLib.WzLib.WzProperties
 
                 int lo = byteAtPosition & 0x0F;
                 byte b = (byte)(lo | (lo << 4));
-                argb[i * 2] = b;
+                decoded[i * 2] = b;
 
                 int hi = byteAtPosition & 0xF0;
                 byte g = (byte)(hi | (hi >> 4));
-                argb[i * 2 + 1] = g;
+                decoded[i * 2 + 1] = g;
             }
-            return argb;
+            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+            bmp.UnlockBits(bmpData);
         }
 
+        /// <summary>
+        /// DXT3
+        /// </summary>
+        /// <param name="rawData"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <param name="bmp"></param>
+        /// <param name="bmpData"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte[] DecompressImageDXT3(byte[] rawData, int width, int height)
+        public static void DecompressImageDXT3(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
-            byte[] pixel = new byte[width * height * 4];
+            byte[] decoded = new byte[width * height * 4];
 
             if (SquishPNGWrapper.CheckAndLoadLibrary())
             {
-                SquishPNGWrapper.DecompressImage(pixel, width, height, rawData, (int)SquishPNGWrapper.FlagsEnum.kDxt3);
+                SquishPNGWrapper.DecompressImage(decoded, width, height, rawData, (int)SquishPNGWrapper.FlagsEnum.kDxt3);
             }
-            else  // otherwise decode here directly
+            else  // otherwise decode here directly, fallback.
             {
                 Color[] colorTable = new Color[4];
                 int[] colorIdxTable = new int[16];
@@ -621,7 +615,7 @@ namespace MapleLib.WzLib.WzProperties
                         {
                             for (int i = 0; i < 4; i++)
                             {
-                                SetPixel(pixel,
+                                SetPixel(decoded,
                                     x + i,
                                     y + j,
                                     width,
@@ -632,13 +626,15 @@ namespace MapleLib.WzLib.WzProperties
                     }
                 }
             }
-            return pixel;
+            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+            bmp.UnlockBits(bmpData);
         }
 
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte[] GetPixelDataForm517(byte[] rawData, int width, int height)
+        public static void DecompressImage_PixelDataForm517(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
-            byte[] pixel = new byte[width * height * 2];
+            byte[] decoded = new byte[width * height * 2];
 
             int lineIndex = 0;
             for (int j0 = 0, j1 = height / 16; j0 < j1; j0++)
@@ -651,32 +647,40 @@ namespace MapleLib.WzLib.WzProperties
                     byte b1 = rawData[idx + 1];
                     for (int k = 0; k < 16; k++)
                     {
-                        pixel[dstIndex++] = b0;
-                        pixel[dstIndex++] = b1;
+                        decoded[dstIndex++] = b0;
+                        decoded[dstIndex++] = b1;
                     }
                 }
-
                 for (int k = 1; k < 16; k++)
                 {
-                    Array.Copy(pixel, lineIndex, pixel, dstIndex, width * 2);
+                    Array.Copy(decoded, lineIndex, decoded, dstIndex, width * 2);
                     dstIndex += width * 2;
                 }
 
                 lineIndex += width * 32;
             }
-            return pixel;
+            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+            bmp.UnlockBits(bmpData);
         }
 
+        /// <summary>
+        /// DXT5
+        /// </summary>
+        /// <param name="rawData"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <param name="bmp"></param>
+        /// <param name="bmpData"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte[] DecompressImageDXT5(byte[] rawData, int width, int height)
+        public static void DecompressImageDXT5(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
-            byte[] pixel = new byte[width * height * 4];
+            byte[] decoded = new byte[width * height * 4];
 
             if (SquishPNGWrapper.CheckAndLoadLibrary())
             {
-                SquishPNGWrapper.DecompressImage(pixel, width, height, rawData, (int)SquishPNGWrapper.FlagsEnum.kDxt5);
+                SquishPNGWrapper.DecompressImage(decoded, width, height, rawData, (int)SquishPNGWrapper.FlagsEnum.kDxt5);
             }
-            else  // otherwise decode here directly
+            else  // otherwise decode here directly, fallback
             {
                 Color[] colorTable = new Color[4];
                 int[] colorIdxTable = new int[16];
@@ -698,7 +702,7 @@ namespace MapleLib.WzLib.WzProperties
                         {
                             for (int i = 0; i < 4; i++)
                             {
-                                SetPixel(pixel,
+                                SetPixel(decoded,
                                     x + i,
                                     y + j,
                                     width,
@@ -709,7 +713,8 @@ namespace MapleLib.WzLib.WzProperties
                     }
                 }
             }
-            return pixel;
+            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
+            bmp.UnlockBits(bmpData);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -789,18 +794,21 @@ namespace MapleLib.WzLib.WzProperties
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaTableDXT5(byte[] alpha, byte a0, byte a1)
         {
+            // get the two alpha values
             alpha[0] = a0;
             alpha[1] = a1;
+
+            // compare the values to build the codebook
             if (a0 > a1)
             {
-                for (int i = 2; i < 8; i++)
+                for (int i = 2; i < 8; i++) // // use 7-alpha codebook
                 {
                     alpha[i] = (byte)(((8 - i) * a0 + (i - 1) * a1 + 3) / 7);
                 }
             }
             else
             {
-                for (int i = 2; i < 6; i++)
+                for (int i = 2; i < 6; i++) // // use 5-alpha codebook
                 {
                     alpha[i] = (byte)(((6 - i) * a0 + (i - 1) * a1 + 2) / 5);
                 }
@@ -812,15 +820,18 @@ namespace MapleLib.WzLib.WzProperties
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ExpandAlphaIndexTableDXT5(int[] alphaIndex, byte[] rawData, int offset)
         {
+            // write out the indexed codebook values
             for (int i = 0; i < 16; i += 8, offset += 3)
             {
                 int flags = rawData[offset]
                     | (rawData[offset + 1] << 8)
                     | (rawData[offset + 2] << 16);
+
+                // unpack 8 3-bit values from it
                 for (int j = 0; j < 8; j++)
                 {
                     int mask = 0x07 << (3 * j);
-                    alphaIndex[i + j] = (flags & mask) >> (3 * j);
+                    alphaIndex[i + j] = (flags & mask) >> (3 * j); 
                 }
             }
         }
@@ -833,7 +844,7 @@ namespace MapleLib.WzLib.WzProperties
             format2 = 0;
             width = bmp.Width;
             height = bmp.Height;
-            byte[] bmpBytes = bmp.BitmapToBytes();
+            //byte[] bmpBytes = bmp.BitmapToBytes();
             /* if (SquishPNGWrapper.CheckAndLoadLibrary())
                         {
                             byte[] bmpBytes = bmp.BitmapToBytes();
