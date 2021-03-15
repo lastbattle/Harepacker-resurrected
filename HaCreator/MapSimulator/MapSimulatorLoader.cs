@@ -7,7 +7,6 @@ using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaCreator.Wz;
-using HaSharedLibrary.Converter;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -15,6 +14,7 @@ using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -507,11 +507,12 @@ namespace HaCreator.MapSimulator
         /// <param name="UIWZFile">UI.wz file directory</param>
         /// <param name="mapBoard"></param>
         /// <param name="device"></param>
+        /// <param name="UserScreenScaleFactor">The scale factor of the window (DPI)</param>
         /// <param name="MapName">The map name. i.e The Hill North</param>
         /// <param name="StreetName">The street name. i.e Hidden street</param>
         /// <param name="bBigBang">Big bang update</param>
         /// <returns></returns>
-        public static MinimapItem CreateMinimapFromProperty(WzDirectory UIWZFile, Board mapBoard, GraphicsDevice device, string MapName, string StreetName, WzDirectory SoundWZFile, bool bBigBang)
+        public static MinimapItem CreateMinimapFromProperty(WzDirectory UIWZFile, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, string MapName, string StreetName, WzDirectory SoundWZFile, bool bBigBang)
         {
             if (mapBoard.MiniMap == null)
                 return null;
@@ -559,7 +560,7 @@ namespace HaCreator.MapSimulator
             int effective_width = miniMapImage.Width + e.Width + w.Width;
             int effective_height = miniMapImage.Height + n.Height + s.Height;
 
-            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE))
+            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE / UserScreenScaleFactor))
             {
                 // Get the width of the 'streetName' or 'mapName'
                 System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
@@ -696,11 +697,12 @@ namespace HaCreator.MapSimulator
         /// Tooltip
         /// </summary>
         /// <param name="texturePool"></param>
+        /// <param name="UserScreenScaleFactor">The scale factor of the window (DPI)</param>
         /// <param name="farmFrameParent"></param>
         /// <param name="tooltip"></param>
         /// <param name="device"></param>
         /// <returns></returns>
-        public static TooltipItem CreateTooltipFromProperty(TexturePool texturePool, WzSubProperty farmFrameParent, ToolTipInstance tooltip, GraphicsDevice device)
+        public static TooltipItem CreateTooltipFromProperty(TexturePool texturePool, float UserScreenScaleFactor, WzSubProperty farmFrameParent, ToolTipInstance tooltip, GraphicsDevice device)
         {
             // Wz frames
             System.Drawing.Bitmap c = ((WzCanvasProperty)farmFrameParent?["c"])?.GetLinkedWzCanvasBitmap();
@@ -730,7 +732,7 @@ namespace HaCreator.MapSimulator
             const int HEIGHT_PADDING = 6;
 
             // Create
-            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE))
+            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE / UserScreenScaleFactor))
             {
                 System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
                 System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);

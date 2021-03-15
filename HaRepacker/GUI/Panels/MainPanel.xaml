@@ -70,10 +70,15 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Padding" Value="0,0,0,0"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="30"/>
+            
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Button}">
-                        <ContentPresenter x:Name="contentPresenter" Focusable="False" Margin="0" HorizontalAlignment="Right"  RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" RenderTransformOrigin="0.5,0.5" >
+                        <ContentPresenter x:Name="contentPresenter" Focusable="True" Margin="0" 
+                                          HorizontalAlignment="Center"  VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" RenderTransformOrigin="0.5,0.5" >
                             <ContentPresenter.RenderTransform>
                                 <TransformGroup>
                                     <ScaleTransform/>
@@ -109,8 +114,8 @@
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
                         </ContentPresenter>
+                        
                         <ControlTemplate.Triggers>
-
                             <Trigger Property="IsEnabled" Value="false">
                                 <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
                             </Trigger>
@@ -329,6 +334,10 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="9.5*"/>
+                    <ColumnDefinition Width="0.5*"/>
+                </Grid.ColumnDefinitions>
 
                 <!-- Text box -->
                 <sharedLib:ChangeableTextBox x:Name="nameBox" Grid.Row="0"
@@ -338,12 +347,12 @@
                                                   TextWrap="Wrap" Margin="20,0,20,0" />
 
 
-                <Grid x:Name="grid1" Grid.Row="2" Grid.RowSpan="2">
+                <Grid x:Name="grid1" Grid.Row="2" Grid.RowSpan="2" Grid.ColumnSpan="2">
                     <!-- Map.wz/../fieldLimit-->
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
                     </WindowsFormsHost>
-                    
+
                     <!-- Map.wz/../fieldType -->
                     <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
 
@@ -370,10 +379,12 @@
                 </Grid>
 
                 <!-- Context menu -->
-                <Button x:Name="button_MoreOption" Content="..."  Width="40" Height="50" FontSize="40" Style="{DynamicResource ButtonStyle_MoreOption}"
-                                VerticalAlignment="Top" HorizontalAlignment="Right"  Margin="10,0,20,10"
-                        Grid.Row="2" 
-                        Visibility="Collapsed"
+                <Button x:Name="button_MoreOption" Content="..."  
+                        Width="40" Height="40" 
+                        Style="{DynamicResource ButtonStyle_MoreOption}"
+                        Margin="0,0,0,0"
+                        Grid.Row="0"  Grid.Column="1"
+                        Visibility="Visible"
                                 Click="button_MoreOption_Click" RenderTransformOrigin="0.5,0.5">
                     <Button.RenderTransform>
                         <TransformGroup>
@@ -391,6 +402,7 @@
                             <MenuItem Header="Change Sound" x:Name="menuItem_changeSound" Click="MenuItem_changeSound_Click"/>
                             <MenuItem Header="Save Sound" x:Name="menuItem_saveSound" Click="MenuItem_saveSound_Click"/>
                             <MenuItem Header="Save Image" x:Name="menuItem_saveImage" Click="menuItem_saveImage_Click"/>
+                            <MenuItem Header="Export file" x:Name="menuItem_exportFile" Click="menuItem_ExportFile_Click"/>
                             <!--  <MenuItem Header="Save Sound">
                                         <MenuItem Header="ReadMe.txt"/>
                                         <MenuItem Header="Schedule.xls"/>

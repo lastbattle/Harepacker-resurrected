@@ -25,7 +25,8 @@
         </Grid.RowDefinitions>
 
 
-        <Image x:Name="imageLoadingGif" MaxWidth="300" Height="300" Grid.Row="0" 
+        <Image x:Name="imageLoadingGif"
+               MaxWidth="300" Height="300" Grid.Row="0"
                gif:ImageBehavior.AnimationLoaded="ImageLoadingGif_AnimationLoaded"
                gif:ImageBehavior.RepeatBehavior="Forever"
                gif:ImageBehavior.AnimatedSource="../../../Resources/loading.gif"></Image>

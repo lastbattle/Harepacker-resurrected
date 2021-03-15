@@ -315,9 +315,6 @@
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
   </data>
-  <data name="ProgramLoadSettingsError" xml:space="preserve">
-    <value>Could not load settings file, make sure it is not in use. If it is not, delete it and try again.</value>
-  </data>
   <data name="ReplaceConfirm" xml:space="preserve">
     <value>The node "{0}" already exists. Do you want it to be replaced?</value>
   </data>

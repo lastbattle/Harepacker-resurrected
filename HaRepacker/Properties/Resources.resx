@@ -266,9 +266,6 @@ Click "Yes" to download the new version.</value>
   <data name="OptionsIndentError" xml:space="preserve">
     <value>Indent must be above 0</value>
   </data>
-  <data name="ProgramLoadSettingsError" xml:space="preserve">
-    <value>Could not load settings file, make sure it is not in use. If it is not, delete it and try again.</value>
-  </data>
   <data name="SaveVersionError" xml:space="preserve">
     <value>Version must be above 0</value>
   </data>

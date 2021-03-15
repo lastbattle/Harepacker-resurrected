@@ -316,9 +316,6 @@
   <data name="OptionsIndentError" xml:space="preserve">
     <value>縮進必須大於或等於0</value>
   </data>
-  <data name="ProgramLoadSettingsError" xml:space="preserve">
-    <value>無法讀取設置檔案, 請確認它未被使用. 若還是不行, 請刪除並重試.</value>
-  </data>
   <data name="ReplaceConfirm" xml:space="preserve">
     <value>節點"{0}"已存在, 你想取代它嗎?</value>
   </data>

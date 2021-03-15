@@ -7,13 +7,13 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Spine;
 using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -30,7 +30,8 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
 using System.Reflection;
-using HaSharedLibrary.Converter;
+using System.Text.RegularExpressions;
+using System.IO;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -1088,6 +1089,44 @@ namespace HaRepacker.GUI.Panels
                     break;
             }
         }
+
+        /// <summary>
+        /// Export .json, .atlas, as file
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void menuItem_ExportFile_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(DataTree.SelectedNode.Tag is WzStringProperty))
+            {
+                return;
+            }
+            WzStringProperty stProperty = DataTree.SelectedNode.Tag as WzStringProperty;
+
+            string fileName = stProperty.Name;
+            string value = stProperty.Value;
+
+            string[] fileNameSplit = fileName.Split('.');
+            string fileType = fileNameSplit.Length > 1 ? fileNameSplit[fileNameSplit.Length - 1] : "txt";
+
+            System.Windows.Forms.SaveFileDialog saveFileDialog1 = new System.Windows.Forms.SaveFileDialog()
+            {
+                FileName = fileName,
+                Title = "Select where to save the file...",
+                Filter = fileType + " files (*."+ fileType + ")|*."+ fileType + "|All files (*.*)|*.*" 
+            }
+            ;
+            if (saveFileDialog1.ShowDialog() != System.Windows.Forms.DialogResult.OK) 
+                return;
+
+            using (System.IO.FileStream fs = (System.IO.FileStream)saveFileDialog1.OpenFile())
+            {
+                using (StreamWriter sw = new StreamWriter(fs))
+                {
+                    sw.WriteLine(value);
+                }
+            }
+        }
         #endregion
 
         #region Drag and Drop Image
@@ -1138,7 +1177,7 @@ namespace HaRepacker.GUI.Panels
                     {
                         bmp = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(files[0]);
                     }
-                    catch
+                    catch (Exception exp)
                     {
                         return;
                     }
@@ -1332,6 +1371,7 @@ namespace HaRepacker.GUI.Panels
             menuItem_saveImage.Visibility = Visibility.Collapsed;
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
+            menuItem_exportFile.Visibility = Visibility.Collapsed;
 
             // Canvas collapsed state
             canvasPropBox.Visibility = Visibility.Collapsed;
@@ -1379,10 +1419,10 @@ namespace HaRepacker.GUI.Panels
                 {
                     System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                     if (img != null)
-                        canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap((System.Drawing.Bitmap)img);
+                        canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
                 }
                 else
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasProp.GetLinkedWzCanvasBitmap());
+                    canvasPropBox.Image = canvasProp.GetLinkedWzCanvasBitmap().ToWpfBitmap();
 
                 SetImageRenderView(canvasProp);
             }
@@ -1395,7 +1435,7 @@ namespace HaRepacker.GUI.Panels
                 if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Image = BitmapToImageSource.ToWpfBitmap(canvasUOL.GetLinkedWzCanvasBitmap()); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+                    canvasPropBox.Image = canvasUOL.GetLinkedWzCanvasBitmap().ToWpfBitmap(); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
                     menuItem_saveImage.Visibility = Visibility.Visible; // dont show change image, as its a UOL
 
                     SetImageRenderView(canvasUOL);
@@ -1440,6 +1480,9 @@ namespace HaRepacker.GUI.Panels
 
                     if (stringObj.IsSpineAtlasResources) // spine related resource
                     {
+                        bAnimateMoreButton = true;
+                        menuItem_exportFile.Visibility = Visibility.Visible;
+
                         textEditor.Visibility = Visibility.Visible;
                         textEditor.SetHighlightingDefinitionIndex(20); // json
                         textEditor.textEditor.Text = obj.ToString();
@@ -1467,6 +1510,9 @@ namespace HaRepacker.GUI.Panels
                     }
                     else if (stringObj.Name.EndsWith(".json")) // Map001.wz/Back/BM3_3.img/spine/skeleton.json
                     {
+                        bAnimateMoreButton = true;
+                        menuItem_exportFile.Visibility = Visibility.Visible;
+
                         textEditor.Visibility = Visibility.Visible;
                         textEditor.SetHighlightingDefinitionIndex(20); // json
                         textEditor.textEditor.Text = obj.ToString();

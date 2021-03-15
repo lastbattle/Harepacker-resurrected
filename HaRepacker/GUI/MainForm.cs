@@ -1085,6 +1085,10 @@ namespace HaRepacker.GUI
         {
             ChangeApplicationState(false);
 
+#if DEBUG
+            var watch = new System.Diagnostics.Stopwatch();
+            watch.Start();
+#endif
             List<WzObject> objsToDump = (List<WzObject>)((object[])param)[0];
             string path = (string)((object[])param)[1];
             ProgressingWzSerializer serializer = (ProgressingWzSerializer)((object[])param)[2];
@@ -1107,6 +1111,11 @@ namespace HaRepacker.GUI
 
             }
             MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+#if DEBUG
+            // test benchmark
+            watch.Stop();
+            Debug.WriteLine($"WZ files Extracted. Execution Time: {watch.ElapsedMilliseconds} ms");
+#endif
 
             threadDone = true;
         }
@@ -1121,6 +1130,8 @@ namespace HaRepacker.GUI
         {
             mainMenu.Enabled = enabled;
             MainPanel.IsEnabled = enabled;
+            button_addTab.Enabled = enabled;
+            tabControl_MainPanels.Enabled = enabled;
             AbortButton.Visible = !enabled;
         }
         private void ChangeApplicationState(bool enabled)
