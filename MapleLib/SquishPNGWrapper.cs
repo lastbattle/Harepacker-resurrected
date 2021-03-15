@@ -30,80 +30,77 @@ namespace MapleLib
     /// </summary>
     public class SquishPNGWrapper
     {
+        private enum SquishLibLoadingState
+        {
+            Uninitialised = 0x0,
+            Initialised = 0x1,
+            WrongProcessorArchitecture = 0x2,
+            UnknownError = 0x3,
+        }
+
+        private static SquishLibLoadingState _SquishLibLoadingState = SquishLibLoadingState.Uninitialised;
+
         /// <summary>
         /// Returns true if the squish library can be used on this HaRepacker assembly
         /// </summary>
-        private static bool CanUseSquishNativeLibrary()
-        {
-            if (_bSquishLibLoaded)
-                return true; // shouldnt check again once its loaded anyway.
-
-            //similarly to find process architecture  
-            var assemblyArchitecture = Assembly.GetExecutingAssembly().GetName().ProcessorArchitecture;
-            if (!(assemblyArchitecture == ProcessorArchitecture.X86 || assemblyArchitecture == ProcessorArchitecture.Amd64))
-            {
-                return false;
-            }
-            return true;
-        }
-
-        private static bool _bSquishLibLoaded = false;
-        /// <summary>
-        /// Load library
-        /// </summary>
         public static bool CheckAndLoadLibrary()
         {
-            if (!CanUseSquishNativeLibrary())
+            if (_SquishLibLoadingState == SquishLibLoadingState.Initialised)
+                return true; // shouldnt check again once its loaded anyway.
+
+            else if (_SquishLibLoadingState == SquishLibLoadingState.Uninitialised) // not init yet
             {
-                return false;
+                //similarly to find process architecture  
+                var assemblyArchitecture = Assembly.GetExecutingAssembly().GetName().ProcessorArchitecture;
+                if (!(assemblyArchitecture == ProcessorArchitecture.X86 || assemblyArchitecture == ProcessorArchitecture.Amd64))
+                {
+                    _SquishLibLoadingState = SquishLibLoadingState.WrongProcessorArchitecture;
+                    return false;
+                }
+                // Load library here
+                IntPtr apnglib = LoadLibrary("squish.dll");
+                if (apnglib != IntPtr.Zero)
+                {
+                    IntPtr FixFlagsPtr = GetProcAddress(apnglib, "_DLLEXPORT_FixFlags");
+                    if (FixFlagsPtr != null)
+                        FixFlags = (_DLLEXPORT_FixFlags)Marshal.GetDelegateForFunctionPointer(FixFlagsPtr, typeof(_DLLEXPORT_FixFlags));
+
+                    IntPtr CompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Compress");
+                    if (CompressPtr != null)
+                        Compress = (_DLLEXPORT_Compress)Marshal.GetDelegateForFunctionPointer(CompressPtr, typeof(_DLLEXPORT_Compress));
+
+                    IntPtr CompressMaskedPtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressMasked");
+                    if (CompressMaskedPtr != null)
+                        CompressMasked = (_DLLEXPORT_CompressMasked)Marshal.GetDelegateForFunctionPointer(CompressMaskedPtr, typeof(_DLLEXPORT_CompressMasked));
+
+                    IntPtr DecompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Decompress");
+                    if (DecompressPtr != null)
+                        Decompress = (_DLLEXPORT_Decompress)Marshal.GetDelegateForFunctionPointer(DecompressPtr, typeof(_DLLEXPORT_Decompress));
+
+                    IntPtr StorageRequirementsPtr = GetProcAddress(apnglib, "_DLLEXPORT_GetStorageRequirements");
+                    if (StorageRequirementsPtr != null)
+                        GetStorageRequirements = (_DLLEXPORT_GetStorageRequirements)Marshal.GetDelegateForFunctionPointer(StorageRequirementsPtr, typeof(_DLLEXPORT_GetStorageRequirements));
+
+                    IntPtr CompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressImage");
+                    if (CompressImagePtr != null)
+                        CompressImage = (_DLLEXPORT_CompressImage)Marshal.GetDelegateForFunctionPointer(CompressImagePtr, typeof(_DLLEXPORT_CompressImage));
+
+                    IntPtr DecompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_DecompressImage");
+                    if (DecompressImagePtr != null)
+                        DecompressImage = (_DLLEXPORT_DecompressImage)Marshal.GetDelegateForFunctionPointer(DecompressImagePtr, typeof(_DLLEXPORT_DecompressImage));
+
+
+                    _SquishLibLoadingState = SquishLibLoadingState.Initialised; // flag as initialised
+                    return true;
+                }
+                else
+                {
+                    _SquishLibLoadingState = SquishLibLoadingState.UnknownError;
+                    return false;
+                    //throw new Exception("squish.dll not found in the program directory.");
+                }
             }
-
-            if (_bSquishLibLoaded)
-                return true;
-            AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-            //similarly to find process architecture  
-            var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
-            if (!(assemblyArchitecture == ProcessorArchitecture.X86 || assemblyArchitecture == ProcessorArchitecture.Amd64))
-            {
-                throw new Exception("squish.dll is only available for x86 or x64 version of harepacker assembly.");
-            }
-
-            IntPtr apnglib = LoadLibrary("squish.dll");
-            if (apnglib != IntPtr.Zero)
-            {
-                IntPtr FixFlagsPtr = GetProcAddress(apnglib, "_DLLEXPORT_FixFlags");
-                if (FixFlagsPtr != null)
-                    FixFlags = (_DLLEXPORT_FixFlags)Marshal.GetDelegateForFunctionPointer(FixFlagsPtr, typeof(_DLLEXPORT_FixFlags));
-
-                IntPtr CompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Compress");
-                if (CompressPtr != null)
-                    Compress = (_DLLEXPORT_Compress)Marshal.GetDelegateForFunctionPointer(CompressPtr, typeof(_DLLEXPORT_Compress));
-
-                IntPtr CompressMaskedPtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressMasked");
-                if (CompressMaskedPtr != null)
-                    CompressMasked = (_DLLEXPORT_CompressMasked)Marshal.GetDelegateForFunctionPointer(CompressMaskedPtr, typeof(_DLLEXPORT_CompressMasked));
-
-                IntPtr DecompressPtr = GetProcAddress(apnglib, "_DLLEXPORT_Decompress");
-                if (DecompressPtr != null)
-                    Decompress = (_DLLEXPORT_Decompress)Marshal.GetDelegateForFunctionPointer(DecompressPtr, typeof(_DLLEXPORT_Decompress));
-
-                IntPtr StorageRequirementsPtr = GetProcAddress(apnglib, "_DLLEXPORT_GetStorageRequirements");
-                if (StorageRequirementsPtr != null)
-                    GetStorageRequirements = (_DLLEXPORT_GetStorageRequirements)Marshal.GetDelegateForFunctionPointer(StorageRequirementsPtr, typeof(_DLLEXPORT_GetStorageRequirements));
-
-                IntPtr CompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_CompressImage");
-                if (CompressImagePtr != null)
-                    CompressImage = (_DLLEXPORT_CompressImage)Marshal.GetDelegateForFunctionPointer(CompressImagePtr, typeof(_DLLEXPORT_CompressImage));
-
-                IntPtr DecompressImagePtr = GetProcAddress(apnglib, "_DLLEXPORT_DecompressImage");
-                if (DecompressImagePtr != null)
-                    DecompressImage = (_DLLEXPORT_DecompressImage)Marshal.GetDelegateForFunctionPointer(DecompressImagePtr, typeof(_DLLEXPORT_DecompressImage));
-            }
-            else
-                throw new Exception("squish.dll not found in the program directory.");
-
-            _bSquishLibLoaded = true;
-            return true;
+            return false;
         }
 
         #region Exports
@@ -132,7 +129,7 @@ namespace MapleLib
         public delegate int _DLLEXPORT_GetStorageRequirements(int width, int height, int flags);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        public delegate void _DLLEXPORT_CompressImage(byte[] rgba, int width, int height, byte[] blocks, int flags);
+        public delegate void _DLLEXPORT_CompressImage(byte[] rgba_src, int width, int height, byte[] blocks, int flags);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void _DLLEXPORT_DecompressImage(byte[] rgba, int width, int height, byte[] blocks, int flags);

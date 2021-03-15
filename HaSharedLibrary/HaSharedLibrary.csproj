@@ -115,7 +115,6 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Converter\ImageConverter.cs" />
     <Compile Include="GUI\FieldTypePanel.xaml.cs">
       <DependentUpon>FieldTypePanel.xaml</DependentUpon>
     </Compile>

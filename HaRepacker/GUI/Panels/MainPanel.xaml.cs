@@ -7,6 +7,7 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Spine;
 using System;
@@ -29,7 +30,6 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
 using System.Reflection;
-using HaSharedLibrary.Converter;
 using System.Text.RegularExpressions;
 using System.IO;
 
@@ -1419,10 +1419,10 @@ namespace HaRepacker.GUI.Panels
                 {
                     System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                     if (img != null)
-                        canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap((System.Drawing.Bitmap)img);
+                        canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
                 }
                 else
-                    canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap(canvasProp.GetLinkedWzCanvasBitmap());
+                    canvasPropBox.Image = canvasProp.GetLinkedWzCanvasBitmap().ToWpfBitmap();
 
                 SetImageRenderView(canvasProp);
             }
@@ -1435,7 +1435,7 @@ namespace HaRepacker.GUI.Panels
                 if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Image = HaSharedLibrary.Converter.ImageConverter.ToWpfBitmap(canvasUOL.GetLinkedWzCanvasBitmap()); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+                    canvasPropBox.Image = canvasUOL.GetLinkedWzCanvasBitmap().ToWpfBitmap(); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
                     menuItem_saveImage.Visibility = Visibility.Visible; // dont show change image, as its a UOL
 
                     SetImageRenderView(canvasUOL);

@@ -24,6 +24,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+using MapleLib.Converters;
 using MapleLib.WzLib.Util;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -477,19 +478,19 @@ namespace MapleLib.WzLib.WzProperties
 
                     switch (format + format2)
                     {
-                        case 1:
+                        case 1: // 0x1
                             {
                                 uncompressedSize = width * height * 2;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 2:
+                        case 2: // 0x2
                             {
                                 uncompressedSize = width * height * 4;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 3:
+                        case 3: // 0x2 + 1?
                             {
                                 // New format 黑白缩略图
                                 // thank you Elem8100, http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/ 
@@ -499,33 +500,34 @@ namespace MapleLib.WzLib.WzProperties
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 257: // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
+                        case 257: // 0x100 + 1?
                             {
+                                // http://forum.ragezone.com/f702/wz-png-format-decode-code-1114978/index2.html#post9053713
                                 // "Npc.wz\\2570101.img\\info\\illustration2\\face\\0"
 
                                 uncompressedSize = width * height * 2;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 513: // nexon wizet logo
+                        case 513: // 0x200 nexon wizet logo
                             {
                                 uncompressedSize = width * height * 2;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 517:
+                        case 517: // 0x200 + 5
                             {
                                 uncompressedSize = width * height / 128;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 1026:
+                        case 1026: // 0x400 + 2?
                             {
                                 uncompressedSize = width * height * 4;
                                 decBuf = new byte[uncompressedSize];
                                 break;
                             }
-                        case 2050: // new
+                        case 2050: // 0x800 + 2? new
                             {
                                 uncompressedSize = width * height;
                                 decBuf = new byte[uncompressedSize];
@@ -638,30 +640,30 @@ namespace MapleLib.WzLib.WzProperties
         {
             byte[] pixel = new byte[width * height * 2];
 
-                int lineIndex = 0;
-                for (int j0 = 0, j1 = height / 16; j0 < j1; j0++)
+            int lineIndex = 0;
+            for (int j0 = 0, j1 = height / 16; j0 < j1; j0++)
+            {
+                var dstIndex = lineIndex;
+                for (int i0 = 0, i1 = width / 16; i0 < i1; i0++)
                 {
-                    var dstIndex = lineIndex;
-                    for (int i0 = 0, i1 = width / 16; i0 < i1; i0++)
+                    int idx = (i0 + j0 * i1) * 2;
+                    byte b0 = rawData[idx];
+                    byte b1 = rawData[idx + 1];
+                    for (int k = 0; k < 16; k++)
                     {
-                        int idx = (i0 + j0 * i1) * 2;
-                        byte b0 = rawData[idx];
-                        byte b1 = rawData[idx + 1];
-                        for (int k = 0; k < 16; k++)
-                        {
-                            pixel[dstIndex++] = b0;
-                            pixel[dstIndex++] = b1;
-                        }
+                        pixel[dstIndex++] = b0;
+                        pixel[dstIndex++] = b1;
                     }
-
-                    for (int k = 1; k < 16; k++)
-                    {
-                        Array.Copy(pixel, lineIndex, pixel, dstIndex, width * 2);
-                        dstIndex += width * 2;
-                    }
-
-                    lineIndex += width * 32;
                 }
+
+                for (int k = 1; k < 16; k++)
+                {
+                    Array.Copy(pixel, lineIndex, pixel, dstIndex, width * 2);
+                    dstIndex += width * 2;
+                }
+
+                lineIndex += width * 32;
+            }
             return pixel;
         }
 
@@ -831,9 +833,17 @@ namespace MapleLib.WzLib.WzProperties
             format2 = 0;
             width = bmp.Width;
             height = bmp.Height;
-
+            byte[] bmpBytes = bmp.BitmapToBytes();
+            /* if (SquishPNGWrapper.CheckAndLoadLibrary())
+                        {
+                            byte[] bmpBytes = bmp.BitmapToBytes();
+                            SquishPNGWrapper.CompressImage(bmpBytes, width, height, buf, (int)SquishPNGWrapper.FlagsEnum.kDxt1);
+                        }
+                        else
+                        {*/
             int curPos = 0;
             for (int i = 0; i < height; i++)
+            {
                 for (int j = 0; j < width; j++)
                 {
                     Color curPixel = bmp.GetPixel(j, i);
@@ -843,7 +853,9 @@ namespace MapleLib.WzLib.WzProperties
                     buf[curPos + 3] = curPixel.A;
                     curPos += 4;
                 }
+            }
             compressedImageBytes = Compress(buf);
+
             buf = null;
 
             if (listWzUsed)
@@ -865,35 +877,6 @@ namespace MapleLib.WzLib.WzProperties
                 }
             }
         }
-
-
-        /// <summary>
-        /// Converts System.Drawing.Bitmap to byte[]
-        /// </summary>
-        /// <param name="bitmap"></param>
-        /// <returns></returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static byte[] BitmapToBytes(System.Drawing.Bitmap bitmap)
-        {
-            BitmapData bmpdata = null;
-            try
-            {
-                bmpdata = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, bitmap.PixelFormat);
-                int numbytes = bmpdata.Stride * bitmap.Height;
-                byte[] bytedata = new byte[numbytes];
-                IntPtr ptr = bmpdata.Scan0;
-
-                Marshal.Copy(ptr, bytedata, 0, numbytes);
-
-                return bytedata;
-            }
-            finally
-            {
-                if (bmpdata != null)
-                    bitmap.UnlockBits(bmpdata);
-            }
-        }
-
         #endregion
 
         #region Cast Values

@@ -261,9 +261,9 @@ namespace squish {
 		{
 			return GetStorageRequirements(width, height, flags);
 		}
-		__declspec(dllexport) void _DLLEXPORT_CompressImage(u8 const* rgba, int width, int height, void* blocks, int flags)
+		__declspec(dllexport) void _DLLEXPORT_CompressImage(u8 const* rgba, int width, int height, void* blocks_dest, int flags)
 		{
-			CompressImage(rgba, width, height, blocks, flags);
+			CompressImage(rgba, width, height, blocks_dest, flags);
 		}
 		__declspec(dllexport) void _DLLEXPORT_DecompressImage(u8* rgba, int width, int height, void const* blocks_source, int flags)
 		{

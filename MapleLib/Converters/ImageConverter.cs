@@ -11,7 +11,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
-namespace HaSharedLibrary.Converter
+namespace MapleLib.Converters
 {
     public static class ImageConverter
     {
