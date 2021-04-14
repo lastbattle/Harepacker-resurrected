@@ -78,13 +78,13 @@ namespace HaSharedLibrary.Render.DX
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
             spineObject.state.Apply(spineObject.skeleton);
 
-            if (spineObject.skeleton.FlipX != flip || spineObject.skeleton.X != x || spineObject.skeleton.Y != y) // reduce the number of updates
-            {
+            //if (spineObject.skeleton.FlipX != flip || spineObject.skeleton.X != x || spineObject.skeleton.Y != y) // reduce the number of updates [removed, recent spine object includes the ones that does not move]
+            //{
                 spineObject.skeleton.FlipX = flip;
                 spineObject.skeleton.X = x; //x + (Width);
                 spineObject.skeleton.Y = y;//y + (Height / 2);
                 spineObject.skeleton.UpdateWorldTransform();
-            }
+            //}
 
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
 

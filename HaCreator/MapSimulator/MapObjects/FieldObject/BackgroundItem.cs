@@ -43,8 +43,10 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, List<IDXObject> frames, bool flip, int screenMode)
             : base(frames, flip)
         {
-            this.LastShiftIncreaseX = Environment.TickCount;
-            this.LastShiftIncreaseY = Environment.TickCount;
+            int CurTickCount = Environment.TickCount;
+
+            this.LastShiftIncreaseX = CurTickCount;
+            this.LastShiftIncreaseY = CurTickCount;
             this.rx = rx;
             this.cx = cx;
             this.ry = ry;
@@ -76,8 +78,10 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public BackgroundItem(int cx, int cy, int rx, int ry, BackgroundType type, int a, bool front, IDXObject frame0, bool flip, int screenMode)
             : base(frame0, flip)
         {
-            this.LastShiftIncreaseX = Environment.TickCount;
-            this.LastShiftIncreaseY = Environment.TickCount;
+            int CurTickCount = Environment.TickCount;
+
+            this.LastShiftIncreaseX = CurTickCount;
+            this.LastShiftIncreaseY = CurTickCount;
             this.rx = rx;
             this.cx = cx;
             this.ry = ry;
@@ -204,43 +208,43 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             if (((int) mapRenderResolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this
                 return;
 
-            IDXObject frame = GetCurrFrame(TickCount);
-            int X = CalculateBackgroundPosX(frame, mapShiftX, centerX, renderWidth, RenderObjectScaling);
-            int Y = CalculateBackgroundPosY(frame, mapShiftY, centerY, renderHeight, RenderObjectScaling);
-            int _cx = cx == 0 ? frame.Width : cx;
-            int _cy = cy == 0 ? frame.Height : cy;
+            IDXObject drawFrame = GetCurrFrame(TickCount);
+            int X = CalculateBackgroundPosX(drawFrame, mapShiftX, centerX, renderWidth, RenderObjectScaling);
+            int Y = CalculateBackgroundPosY(drawFrame, mapShiftY, centerY, renderHeight, RenderObjectScaling);
+            int _cx = cx == 0 ? drawFrame.Width : cx;
+            int _cy = cy == 0 ? drawFrame.Height : cy;
 
             switch (type)
             {
-                default:
-                    break;
                 case BackgroundType.Regular:
-                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, frame);
+                    Draw2D(sprite, skeletonMeshRenderer, gameTime, X, Y, drawFrame);
                     break;
                 case BackgroundType.HorizontalTiling:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, X, Y, _cx, frame);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, X, Y, _cx, drawFrame);
                     break;
                 case BackgroundType.VerticalTiling:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderHeight, X, Y, _cy, frame);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderHeight, X, Y, _cy, drawFrame);
                     break;
                 case BackgroundType.HVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X, Y, _cx, _cy, frame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X, Y, _cx, _cy, drawFrame);
                     break;
                 case BackgroundType.HorizontalMoving:
-                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, X + (int)bgMoveShiftX, Y, _cx, frame);
+                    DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, X + (int)bgMoveShiftX, Y, _cx, drawFrame);
                     IncreaseShiftX(_cx, TickCount);
                     break;
                 case BackgroundType.VerticalMoving:
-                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderHeight, X, Y + (int)bgMoveShiftY, _cy, frame);
+                    DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderHeight, X, Y + (int)bgMoveShiftY, _cy, drawFrame);
                     IncreaseShiftY(_cy, TickCount);
                     break;
                 case BackgroundType.HorizontalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X + (int)bgMoveShiftX, Y, _cx, _cy, frame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X + (int)bgMoveShiftX, Y, _cx, _cy, drawFrame);
                     IncreaseShiftX(_cx, TickCount);
                     break;
                 case BackgroundType.VerticalMovingHVTiling:
-                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X, Y + (int)bgMoveShiftY, _cx, _cy, frame);
+                    DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderWidth, renderHeight, X, Y + (int)bgMoveShiftY, _cx, _cy, drawFrame);
                     IncreaseShiftX(_cy, TickCount);
+                    break;
+                default:
                     break;
             }
         }
