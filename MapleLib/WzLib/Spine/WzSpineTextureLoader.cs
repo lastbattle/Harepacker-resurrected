@@ -76,60 +76,18 @@ namespace MapleLib.WzLib.Spine
                 canvasProperty = property;
             }
 
-            if (canvasProperty != null)
+            if (canvasProperty != null && graphicsDevice != null)
             {
-                WzCanvasProperty linkImgProperty = (WzCanvasProperty) canvasProperty.GetLinkedWzImageProperty();
-
+                WzCanvasProperty linkImgProperty = (WzCanvasProperty)canvasProperty.GetLinkedWzImageProperty();
                 WzPngProperty pngProperty = linkImgProperty.PngProperty;
-                SurfaceFormat surfaceFormat = linkImgProperty.PngProperty.GetXNASurfaceFormat();
 
-                if (graphicsDevice != null)
-                {
-                    Texture2D tex;
-                    tex = new Texture2D(graphicsDevice,
-                        pngProperty.Width, pngProperty.Height,
-                        false, surfaceFormat);
-                    /*switch (surfaceFormat)
-                    {
-                        case SurfaceFormat.Bgra4444:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width * 2, pngProperty.Height * 2,
-                                false, surfaceFormat);
-                            break;
-                        case SurfaceFormat.Bgra32:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width * 4, pngProperty.Height * 4,
-                                false, surfaceFormat);
-                            break;
-                        case SurfaceFormat.Bgr565:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width * 2, pngProperty.Height * 2,
-                                false, surfaceFormat);
-                            break;
-                        case SurfaceFormat.Dxt3:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width * 4, pngProperty.Height * 4,
-                                false, surfaceFormat);
-                            break;
-                        case SurfaceFormat.Dxt5:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width * 4, pngProperty.Height * 4,
-                                false, surfaceFormat);
-                            break;
-                        default:
-                            tex = new Texture2D(graphicsDevice,
-                                pngProperty.Width, pngProperty.Height,
-                                false, surfaceFormat);
-                            break;
-                    }
-                    */
-                    pngProperty.ParsePng(true, tex);
+                Texture2D tex = new Texture2D(graphicsDevice, pngProperty.Width, pngProperty.Height, false, linkImgProperty.PngProperty.GetXNASurfaceFormat());
 
+                pngProperty.ParsePng(true, tex);
 
-                    page.rendererObject = tex;
-                    page.width = pngProperty.Width;
-                    page.height = pngProperty.Height;
-                }
+                page.rendererObject = tex;
+                page.width = pngProperty.Width;
+                page.height = pngProperty.Height;
             }
         }
 
