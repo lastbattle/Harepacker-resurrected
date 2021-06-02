@@ -43,7 +43,8 @@ namespace HaSharedLibrary.SharpApng
             int size = Marshal.SizeOf(source[0]) * source.Length;
             IntPtr pnt = Marshal.AllocHGlobal(size);
             Marshal.Copy(toMarshal, 0, pnt, source.Length);
-            Marshal.Copy(new byte[] { 0 }, 0, new IntPtr(pnt.ToInt32() + size), 1);
+            IntPtr dest = Environment.Is64BitProcess ? new IntPtr(pnt.ToInt64() + size) : new IntPtr(pnt.ToInt32() + size);
+            Marshal.Copy(new byte[] { 0 }, 0, dest, 1);
             return pnt;
         }
 
