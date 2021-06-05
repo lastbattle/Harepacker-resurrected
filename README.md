@@ -1,8 +1,11 @@
 ### HaSuite / Harepacker resurrected
-A collection of tools for MapleStory. A .wz file and level (or you call that field/ maps) editor.
+[![Github total downloads](https://img.shields.io/github/downloads/lastbattle/Harepacker-resurrected/total.svg)]() 
+[![Github All Releases](https://img.shields.io/github/release/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/releases)
+[![Github All Issues](https://img.shields.io/github/issues/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/issues)
 
->> A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite)
-For more information: http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/
+A collection of tools for MapleStory. A .wz file and level (or you call that field/maps) editor.
+
+>> A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite) | [Ragezone](http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/)
 
 ----
 ![Harepacker](https://user-images.githubusercontent.com/4586194/109911770-a7d45e80-7ce5-11eb-9843-e4414bb6016f.png)
