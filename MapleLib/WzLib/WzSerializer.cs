@@ -761,42 +761,45 @@ namespace MapleLib.WzLib.Serialization
 
         private void ExportRecursion(WzObject currObj, string outPath)
         {
-            if (currObj is WzFile)
-                ExportRecursion(((WzFile)currObj).WzDirectory, outPath);
-            else if (currObj is WzDirectory)
+            if (currObj is WzFile wzFile)
             {
-                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
+                ExportRecursion(wzFile.WzDirectory, outPath);
+            }
+            else if (currObj is WzDirectory directoryProperty)
+            {
+                outPath += EscapeInvalidFilePathNames(currObj.Name) + @"\";
                 if (!Directory.Exists(outPath))
                     Directory.CreateDirectory(outPath);
-                foreach (WzDirectory subdir in ((WzDirectory)currObj).WzDirectories)
+
+                foreach (WzDirectory subdir in directoryProperty.WzDirectories)
                 {
                     ExportRecursion(subdir, outPath + subdir.Name + @"\");
                 }
-                foreach (WzImage subimg in ((WzDirectory)currObj).WzImages)
+                foreach (WzImage subimg in directoryProperty.WzImages)
                 {
                     ExportRecursion(subimg, outPath + subimg.Name + @"\");
                 }
             }
-            else if (currObj is WzCanvasProperty)
+            else if (currObj is WzCanvasProperty canvasProperty)
             {
-                Bitmap bmp = ((WzCanvasProperty)currObj).PngProperty.GetImage(false);
+                Bitmap bmp = canvasProperty.GetLinkedWzCanvasBitmap();
 
                 string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".png";
 
                 bmp.Save(path, ImageFormat.Png);
                 //curr++;
             }
-            else if (currObj is WzBinaryProperty)
+            else if (currObj is WzBinaryProperty binProperty)
             {
-                string path = outPath + ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".mp3";
-                ((WzBinaryProperty)currObj).SaveToFile(path);
-            }
-            else if (currObj is WzImage)
-            {
-                WzImage wzImage = ((WzImage)currObj);
+                string path = outPath + EscapeInvalidFilePathNames(currObj.Name) + ".mp3";
 
-                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + @"\";
+                binProperty.SaveToFile(path);
+            }
+            else if (currObj is WzImage wzImage)
+            {
+                outPath += EscapeInvalidFilePathNames(currObj.Name) + @"\";
                 if (!Directory.Exists(outPath))
+
                     Directory.CreateDirectory(outPath);
 
                 bool parse = wzImage.Parsed || wzImage.Changed;
@@ -814,16 +817,24 @@ namespace MapleLib.WzLib.Serialization
                 }
                 curr++;
             }
-            else if (currObj is IPropertyContainer)
+            else if (currObj is IPropertyContainer container)
             {
-                outPath += ProgressingWzSerializer.EscapeInvalidFilePathNames(currObj.Name) + ".";
-                foreach (WzImageProperty subprop in ((IPropertyContainer)currObj).WzProperties)
+                outPath += EscapeInvalidFilePathNames(currObj.Name) + ".";
+
+                foreach (WzImageProperty subprop in container.WzProperties)
                 {
                     ExportRecursion(subprop, outPath);
                 }
             }
-            else if (currObj is WzUOLProperty)
-                ExportRecursion(((WzUOLProperty)currObj).LinkValue, outPath);
+            else if (currObj is WzUOLProperty property)
+            {
+                WzObject linkValue = property.LinkValue;
+
+                if (linkValue is WzCanvasProperty canvas)
+                {
+                    ExportRecursion(canvas, outPath);
+                }
+            }
         }
     }
 
