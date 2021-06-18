@@ -1091,22 +1091,22 @@ namespace HaRepacker.GUI
 #endif
             List<WzObject> objsToDump = (List<WzObject>)((object[])param)[0];
             string path = (string)((object[])param)[1];
-            ProgressingWzSerializer serializer = (ProgressingWzSerializer)((object[])param)[2];
+            ProgressingWzSerializer serializers = (ProgressingWzSerializer)((object[])param)[2];
 
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
-            if (serializer is IWzObjectSerializer)
+            if (serializers is IWzObjectSerializer serializer)
             {
                 UpdateProgressBar(MainPanel.mainProgressBar, objsToDump.Count, true, true);
                 foreach (WzObject obj in objsToDump)
                 {
-                    ((IWzObjectSerializer)serializer).SerializeObject(obj, path);
+                    serializer.SerializeObject(obj, path);
                     UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
                 }
             }
-            else if (serializer is WzNewXmlSerializer)
+            else if (serializers is WzNewXmlSerializer serializer_)
             {
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, true, true);
-                ((WzNewXmlSerializer)serializer).ExportCombinedXml(objsToDump, path);
+                serializer_.ExportCombinedXml(objsToDump, path);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
 
             }
