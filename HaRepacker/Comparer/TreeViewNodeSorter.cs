@@ -7,7 +7,7 @@ namespace HaRepacker.Comparer
 {
     public class TreeViewNodeSorter : IComparer
     {
-        private TreeNode startNode;
+        private readonly TreeNode startNode;
 
         /// <summary>
         /// Constructor

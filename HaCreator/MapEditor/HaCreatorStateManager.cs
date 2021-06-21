@@ -349,7 +349,7 @@ namespace HaCreator.MapEditor
 
         #region Tab Events
         /// <summary>
-        /// Context menu for editing map info
+        /// Context menu for editing map info (right clicking)
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -361,10 +361,12 @@ namespace HaCreator.MapEditor
 
             System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem)item.Tag;
             TabItemContainer container = (TabItemContainer)tabItem.Tag;
+
             Board selectedBoard = container.Board;
             lock (selectedBoard.ParentControl)
             {
-                new InfoEditor(selectedBoard, selectedBoard.MapInfo, multiBoard).ShowDialog();
+                InfoEditor infoEditor = new InfoEditor(selectedBoard, selectedBoard.MapInfo, multiBoard, tabItem);
+                infoEditor.ShowDialog();
                 if (selectedBoard.ParentControl.SelectedBoard == selectedBoard)
                     selectedBoard.ParentControl.AdjustScrollBars();
             }

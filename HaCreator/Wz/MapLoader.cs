@@ -1000,7 +1000,7 @@ namespace HaCreator.Wz
 
                 System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem
                 {
-                    Header = string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName) // Header of the tab
+                    Header = GetFormattedMapNameForTabItem(mapId, streetName, mapName)
                 };
                 newTabPage.MouseRightButtonUp += (sender, e) =>
                 {
@@ -1022,6 +1022,18 @@ namespace HaCreator.Wz
                     item.Tag = newTabPage;
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets the formatted text of the TabItem (mapid, street name, mapName)
+        /// </summary>
+        /// <param name="mapId"></param>
+        /// <param name="streetName"></param>
+        /// <param name="mapName"></param>
+        /// <returns></returns>
+        public static string GetFormattedMapNameForTabItem(int mapId, string streetName, string mapName)
+        {
+            return string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName); // Header of the tab
         }
 
         public static void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
