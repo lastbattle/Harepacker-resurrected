@@ -39,10 +39,12 @@
             // 
             // mapNamesBox
             // 
+            this.mapNamesBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.mapNamesBox.FormattingEnabled = true;
-            this.mapNamesBox.Location = new System.Drawing.Point(0, 3);
+            this.mapNamesBox.ItemHeight = 23;
+            this.mapNamesBox.Location = new System.Drawing.Point(0, 0);
             this.mapNamesBox.Name = "mapNamesBox";
-            this.mapNamesBox.Size = new System.Drawing.Size(436, 459);
+            this.mapNamesBox.Size = new System.Drawing.Size(616, 501);
             this.mapNamesBox.TabIndex = 19;
             this.mapNamesBox.SelectedIndexChanged += new System.EventHandler(this.mapNamesBox_SelectedIndexChanged);
             // 
@@ -52,9 +54,10 @@
             this.panel1.Controls.Add(this.mapNotExist);
             this.panel1.Controls.Add(this.linkLabel);
             this.panel1.Controls.Add(this.minimapBox);
-            this.panel1.Location = new System.Drawing.Point(442, 3);
+            this.panel1.Dock = System.Windows.Forms.DockStyle.Right;
+            this.panel1.Location = new System.Drawing.Point(616, 0);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(349, 455);
+            this.panel1.Size = new System.Drawing.Size(349, 501);
             this.panel1.TabIndex = 18;
             // 
             // mapNotExist
@@ -63,7 +66,7 @@
             this.mapNotExist.ForeColor = System.Drawing.Color.Red;
             this.mapNotExist.Location = new System.Drawing.Point(65, 96);
             this.mapNotExist.Name = "mapNotExist";
-            this.mapNotExist.Size = new System.Drawing.Size(147, 13);
+            this.mapNotExist.Size = new System.Drawing.Size(218, 23);
             this.mapNotExist.TabIndex = 19;
             this.mapNotExist.Text = "Map does not actually exist";
             this.mapNotExist.Visible = false;
@@ -74,16 +77,17 @@
             this.linkLabel.ForeColor = System.Drawing.Color.Red;
             this.linkLabel.Location = new System.Drawing.Point(96, 96);
             this.linkLabel.Name = "linkLabel";
-            this.linkLabel.Size = new System.Drawing.Size(76, 13);
+            this.linkLabel.Size = new System.Drawing.Size(110, 23);
             this.linkLabel.TabIndex = 18;
             this.linkLabel.Text = "Map is linked";
             this.linkLabel.Visible = false;
             // 
             // minimapBox
             // 
+            this.minimapBox.Dock = System.Windows.Forms.DockStyle.Fill;
             this.minimapBox.Location = new System.Drawing.Point(0, 0);
             this.minimapBox.Name = "minimapBox";
-            this.minimapBox.Size = new System.Drawing.Size(347, 450);
+            this.minimapBox.Size = new System.Drawing.Size(349, 501);
             this.minimapBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
             this.minimapBox.TabIndex = 6;
             this.minimapBox.TabStop = false;
@@ -95,7 +99,7 @@
             this.Controls.Add(this.panel1);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "MapBrowser";
-            this.Size = new System.Drawing.Size(794, 468);
+            this.Size = new System.Drawing.Size(965, 501);
             this.panel1.ResumeLayout(false);
             this.panel1.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.minimapBox)).EndInit();
