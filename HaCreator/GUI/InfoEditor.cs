@@ -20,6 +20,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.GUI.InstanceEditor;
 using MapleLib.WzLib.WzStructure.Data.MapStructure;
+using HaCreator.Wz;
 
 namespace HaCreator.GUI
 {
@@ -28,14 +29,16 @@ namespace HaCreator.GUI
         public MapInfo info;
         private readonly MultiBoard multiBoard;
         private readonly Board board;
+        private readonly System.Windows.Controls.TabItem tabItem;
 
-        public InfoEditor(Board board, MapInfo info, MultiBoard multiBoard)
+        public InfoEditor(Board board, MapInfo info, MultiBoard multiBoard, System.Windows.Controls.TabItem tabItem)
         {
             InitializeComponent();
 
             this.board = board;
             this.info = info;
             this.multiBoard = multiBoard;
+            this.tabItem = tabItem;
 
             timeLimitEnable.Tag = timeLimit;
             lvLimitEnable.Tag = lvLimit;
@@ -313,7 +316,9 @@ namespace HaCreator.GUI
                     info.strCategoryName = categoryBox.Text;
 
                     // We do, however, need to change the tab's name/info
-                    ((TabItemContainer)board.TabPage.Tag).Text = info.strMapName;
+                    ((TabItemContainer)tabItem.Tag).Text = info.strMapName;
+
+                    tabItem.Header = MapLoader.GetFormattedMapNameForTabItem(info.id, info.strStreetName, info.strMapName);
                 }
                 info.returnMap = cannotReturnCBX.Checked ? info.id : (int)returnBox.Value;
                 info.forcedReturn = returnHereCBX.Checked ? 999999999 : (int)forcedRet.Value;

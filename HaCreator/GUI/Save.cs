@@ -21,7 +21,7 @@ namespace HaCreator.GUI
 {
     public partial class Save : Form
     {
-        private Board board;
+        private readonly Board board;
 
         public Save(Board board)
         {

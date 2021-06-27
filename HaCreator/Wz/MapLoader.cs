@@ -784,33 +784,41 @@ namespace HaCreator.Wz
         public static System.Windows.Controls.ContextMenu CreateStandardMapMenu(System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             System.Windows.Controls.ContextMenu menu = new System.Windows.Controls.ContextMenu();
-            
-            System.Windows.Controls.MenuItem menuItem1 = new System.Windows.Controls.MenuItem();
-            menuItem1.Header = "Edit map info...";
+
+            System.Windows.Controls.MenuItem menuItem1 = new System.Windows.Controls.MenuItem
+            {
+                Header = "Edit map info..."
+            };
             menuItem1.Click += rightClickHandler[0];
             menuItem1.Icon = new System.Windows.Controls.Image
             {
                 Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
             };
 
-            System.Windows.Controls.MenuItem menuItem2 = new System.Windows.Controls.MenuItem();
-            menuItem2.Header = "Add VR";
+            System.Windows.Controls.MenuItem menuItem2 = new System.Windows.Controls.MenuItem
+            {
+                Header = "Add VR"
+            };
             menuItem2.Click += rightClickHandler[1];
             menuItem2.Icon = new System.Windows.Controls.Image
             {
                 Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
             };
 
-            System.Windows.Controls.MenuItem menuItem3 = new System.Windows.Controls.MenuItem();
-            menuItem3.Header = "Add Minimap";
+            System.Windows.Controls.MenuItem menuItem3 = new System.Windows.Controls.MenuItem
+            {
+                Header = "Add Minimap"
+            };
             menuItem3.Click += rightClickHandler[2];
             menuItem3.Icon = new System.Windows.Controls.Image
             {
                 Source = BitmapHelper.Convert(Properties.Resources.mapEditMenu, System.Drawing.Imaging.ImageFormat.Png)
             };
 
-            System.Windows.Controls.MenuItem menuItem4 = new System.Windows.Controls.MenuItem();
-            menuItem4.Header = "Close";
+            System.Windows.Controls.MenuItem menuItem4 = new System.Windows.Controls.MenuItem
+            {
+                Header = "Close"
+            };
             menuItem4.Click += rightClickHandler[3];
             menuItem4.Icon = new System.Windows.Controls.Image
             {
@@ -1000,7 +1008,7 @@ namespace HaCreator.Wz
 
                 System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem
                 {
-                    Header = string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName) // Header of the tab
+                    Header = GetFormattedMapNameForTabItem(mapId, streetName, mapName)
                 };
                 newTabPage.MouseRightButtonUp += (sender, e) =>
                 {
@@ -1021,7 +1029,22 @@ namespace HaCreator.Wz
                 {
                     item.Tag = newTabPage;
                 }
+
+
+                multiBoard.HaCreatorStateManager.UpdateEditorPanelVisibility();
             }
+        }
+
+        /// <summary>
+        /// Gets the formatted text of the TabItem (mapid, street name, mapName)
+        /// </summary>
+        /// <param name="mapId"></param>
+        /// <param name="streetName"></param>
+        /// <param name="mapName"></param>
+        /// <returns></returns>
+        public static string GetFormattedMapNameForTabItem(int mapId, string streetName, string mapName)
+        {
+            return string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName); // Header of the tab
         }
 
         public static void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
