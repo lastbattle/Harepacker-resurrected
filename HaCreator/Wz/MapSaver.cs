@@ -36,7 +36,7 @@ namespace HaCreator.Wz
 
         private void CreateImage()
         {
-            string name = "";
+            string name;
             switch (board.MapInfo.mapType)
             {
                 case MapType.RegularMap:
@@ -49,8 +49,10 @@ namespace HaCreator.Wz
                 default:
                     throw new Exception("Unknown map type");
             }
-            this.image = new WzImage(name + ".img");
-            this.image.Parsed = true;
+            this.image = new WzImage(name + ".img")
+            {
+                Parsed = true
+            };
         }
 
         private void InsertImage()

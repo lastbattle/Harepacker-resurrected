@@ -309,16 +309,23 @@ namespace HaCreator.MapEditor
 #else
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(1.0f));
 #endif
-            lock (this)
+
+            if (selectedBoard != null) // No map selected to draw on
             {
-                selectedBoard.RenderBoard(sprite);
-                if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                lock (this)
                 {
-                    DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
-                }
-                if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
-                {
-                    DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                    if (selectedBoard != null) // check again
+                    {
+                        selectedBoard.RenderBoard(sprite);
+                        if (selectedBoard.MapSize.X < _CurrentDXWindowSize.Width)
+                        {
+                            DrawLine(sprite, new Vector2(MapSize.X, 0), new Vector2(MapSize.X, _CurrentDXWindowSize.Height), Color.Black);
+                        }
+                        if (selectedBoard.MapSize.Y < _CurrentDXWindowSize.Height)
+                        {
+                            DrawLine(sprite, new Vector2(0, MapSize.Y), new Vector2(_CurrentDXWindowSize.Width, MapSize.Y), Color.Black);
+                        }
+                    }
                 }
             }
 #if FPS_TEST
@@ -672,6 +679,9 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         private void DxContainer_MouseDown(object sender, System.Windows.Forms.MouseEventArgs e)
         {
+            if (selectedBoard == null)
+                return;
+
             // If the mouse has not been moved while we were in focus (e.g. when clicking on the editor while another window focused), this event will be sent without a mousemove event preceding it.
             // We will move it to its correct position by invoking the move event handler manually.
             if (selectedBoard.Mouse.X != e.X || selectedBoard.Mouse.Y != e.Y)
@@ -700,6 +710,9 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         private void DxContainer_MouseUp(object sender, System.Windows.Forms.MouseEventArgs e)
         {
+            if (selectedBoard == null)
+                return;
+
             selectedBoard.Mouse.IsDown = false;
             if (e.Button == System.Windows.Forms.MouseButtons.Left && LeftMouseUp != null)
             {
@@ -720,6 +733,9 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         public void DxContainer_KeyDown(object sender, System.Windows.Forms.KeyEventArgs e)
         {
+            if (selectedBoard == null)
+                return;
+
             lock (this)
             {
                 if (ShortcutKeyPressed != null)
@@ -750,6 +766,9 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         private void DxContainer_MouseMove(object sender, System.Windows.Forms.MouseEventArgs e)
         {
+            if (selectedBoard == null)
+                return;
+
             lock (this)
             {
                 Point realPosition = new Point(e.X, e.Y);

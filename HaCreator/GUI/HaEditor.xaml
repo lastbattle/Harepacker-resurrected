@@ -48,7 +48,8 @@
         <!-- Side panel-->
         <ScrollViewer Grid.Row="1" Grid.Column="1"
                       HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Visible">
+                      VerticalScrollBarVisibility="Visible"
+                      x:Name="editorPanel">
             <StackPanel Orientation="Vertical">
                 
                 <Expander Header="Tile"

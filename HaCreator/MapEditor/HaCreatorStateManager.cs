@@ -50,9 +50,10 @@ namespace HaCreator.MapEditor
         private readonly InputHandler input;
         private TilePanel tilePanel;
         private ObjPanel objPanel;
+        private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
 
-        public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input,
+        public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input, System.Windows.Controls.ScrollViewer editorPanel,
             SystemWinCtl.TextBlock textblock_CursorX, SystemWinCtl.TextBlock textblock_CursorY, SystemWinCtl.TextBlock textblock_RCursorX, SystemWinCtl.TextBlock textblock_RCursorY, SystemWinCtl.TextBlock textblock_selectedItem)
         {
             this.multiBoard = multiBoard;
@@ -61,6 +62,7 @@ namespace HaCreator.MapEditor
             this.ribbon = ribbon;
             this.tabs = tabs;
             this.input = input;
+            this.editorPanel = editorPanel;
 
             // Status bar
             this.textblock_CursorX = textblock_CursorX;
@@ -442,18 +444,18 @@ namespace HaCreator.MapEditor
         /// <param name="e"></param>
         private void CloseMapTab(object sender, EventArgs e)
         {
-            if (tabs.Items.Count <= 1) // at least 1 tabs for now
+            if (tabs.Items.Count <= 0) // at least 1 tabs for now
             {
                 return;
             }
             if (MessageBox.Show("Are you sure you want to close this map?", "Close", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
-            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender; 
+            System.Windows.Controls.MenuItem item = (System.Windows.Controls.MenuItem)sender;
             if (item == null)
                 return;
 
-            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem) item.Tag;
+            System.Windows.Controls.TabItem tabItem = (System.Windows.Controls.TabItem)item.Tag;
             TabItemContainer container = (TabItemContainer)tabItem.Tag;
             Board selectedBoard = container.Board;
             lock (selectedBoard.ParentControl)
@@ -463,10 +465,23 @@ namespace HaCreator.MapEditor
 
                 selectedBoard.Dispose();
             }
+
+            UpdateEditorPanelVisibility();
+        }
+
+        /// <summary>
+        /// If there's no more tabs, disable the ability for the user to select any new map objects  to be added
+        /// </summary>
+        public void UpdateEditorPanelVisibility()
+        {
+            editorPanel.IsEnabled = tabs.Items.Count > 0; // at least 1 tabs for now
         }
 
         private void Tabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
+            if (multiBoard.SelectedBoard == null)
+                return;
+
             lock (multiBoard)
             {
                 MultiBoard_ReturnToSelectionState();
@@ -482,11 +497,12 @@ namespace HaCreator.MapEditor
                     ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
                     ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
                     ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+
+                    ParseVisibleEditedTypes();
                 } else
                 {
                     multiBoard.SelectedBoard = null;
                 }
-                ParseVisibleEditedTypes();
                 multiBoard.Focus();
             }
         }
