@@ -41,6 +41,7 @@ namespace HaCreator.Wz
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",
+            @"D:\Nexon\Maple",
             @"C:\Program Files\WIZET\MapleStory",
             @"C:\MapleStory",
             @"C:\Program Files (x86)\Wizet\MapleStorySEA"
