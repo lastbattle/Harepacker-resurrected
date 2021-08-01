@@ -968,6 +968,68 @@ namespace HaRepacker.GUI.Panels
             }
         }
 
+        private void FixLinkForOldMS(WzCanvasProperty selectedWzCanvas, WzNode parentCanvasNode)
+        {
+            WzImageProperty linkedTarget = selectedWzCanvas.GetLinkedWzImageProperty();
+            if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
+            {
+                selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
+                WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
+
+                childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
+
+            }
+            if (selectedWzCanvas.HaveOutlinkProperty()) // if its an outlink property, remove that before updating base image.
+            {
+                selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
+                WzNode childOutlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.OutlinkPropertyName);
+
+                childOutlinkNode.DeleteWzNode(); // Delete '_outlink' node
+            }
+
+            selectedWzCanvas.PngProperty.SetImage(linkedTarget.GetBitmap());
+
+            // Updates
+            selectedWzCanvas.ParentImage.Changed = true;
+            canvasPropBox.Image = linkedTarget.GetBitmap().ToWpfBitmap();
+        }
+
+        private void CheckImageNodeRecursively(WzNode node)
+        {
+            if (node.Tag is WzImage img)
+            {
+                if (!img.Parsed)
+                {
+                    img.ParseImage();
+                }
+                node.Reparse();
+            }
+
+            if (node.Tag is WzCanvasProperty property)
+            {
+                FixLinkForOldMS(property, node);
+            }
+            else
+            {
+                foreach (WzNode child in node.Nodes)
+                    CheckImageNodeRecursively(child);
+            }
+            WzNode hash = WzNode.GetChildNode(node, "_hash");
+            if (hash != null) { hash.Remove(); }
+        }
+        public void FixLinkForOldMS_Click()
+        {
+            // handle multiple nodes...
+            int nodeCount = DataTree.SelectedNodes.Count;
+            DateTime t0 = DateTime.Now;
+            foreach (WzNode node in DataTree.SelectedNodes)
+            {
+                CheckImageNodeRecursively(node);
+            }
+            double ms = (DateTime.Now - t0).TotalMilliseconds;
+            MessageBox.Show("Done.\r\nElapsed time: " + ms + " ms (avg: " + (ms / nodeCount) + ")");
+        }
+
         /// <summary>
         /// 
         /// </summary>
