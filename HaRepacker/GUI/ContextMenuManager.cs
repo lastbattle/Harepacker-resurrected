@@ -57,6 +57,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
         private ToolStripMenuItem Rename;
+        private ToolStripMenuItem FixLink;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
         private ToolStripMenuItem ExportAnimationSubMenu;
@@ -324,6 +325,12 @@ namespace HaRepacker
                     haRepackerMainPanel.AddWzVectorPropertyToSelectedIndex(nodes[0]);
                 }));
 
+            FixLink = new ToolStripMenuItem("Cleanup For Old Ver.", null, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    haRepackerMainPanel.FixLinkForOldMS_Click();
+                }));
+
             AddConvexSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddVector);
             AddDirsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddDirectory, AddImage);
             AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
@@ -383,6 +390,7 @@ namespace HaRepacker
                 toolStripmenuItems.Add(Reload);
             }
 
+            toolStripmenuItems.Add(FixLink);
             toolStripmenuItems.Add(ExpandAllChildNode);
             toolStripmenuItems.Add(CollapseAllChildNode);
             toolStripmenuItems.Add(SortAllChildNode);
