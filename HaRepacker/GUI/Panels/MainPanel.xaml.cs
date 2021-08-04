@@ -968,6 +968,7 @@ namespace HaRepacker.GUI.Panels
             }
         }
 
+
         private void FixLinkForOldMS(WzCanvasProperty selectedWzCanvas, WzNode parentCanvasNode)
         {
             WzImageProperty linkedTarget = selectedWzCanvas.GetLinkedWzImageProperty();
@@ -977,7 +978,6 @@ namespace HaRepacker.GUI.Panels
                 WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
 
                 childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
-
             }
             if (selectedWzCanvas.HaveOutlinkProperty()) // if its an outlink property, remove that before updating base image.
             {
@@ -991,7 +991,6 @@ namespace HaRepacker.GUI.Panels
 
             // Updates
             selectedWzCanvas.ParentImage.Changed = true;
-            canvasPropBox.Image = linkedTarget.GetBitmap().ToWpfBitmap();
         }
 
         private void CheckImageNodeRecursively(WzNode node)
@@ -1017,6 +1016,11 @@ namespace HaRepacker.GUI.Panels
             WzNode hash = WzNode.GetChildNode(node, "_hash");
             if (hash != null) { hash.Remove(); }
         }
+
+
+        /// <summary>
+        /// Fix the '_inlink' and '_outlink' image property for compatibility to old MapleStory ver.
+        /// </summary>
         public void FixLinkForOldMS_Click()
         {
             // handle multiple nodes...
@@ -1026,6 +1030,15 @@ namespace HaRepacker.GUI.Panels
             {
                 CheckImageNodeRecursively(node);
             }
+
+            // Check for updates to the changed canvas image that the user is currently selecting
+            if (DataTree.SelectedNode.Tag is WzCanvasProperty) // only allow button click if its an image property
+            {
+                System.Drawing.Image img = ((WzCanvasProperty) (DataTree.SelectedNode.Tag)).GetLinkedWzCanvasBitmap();
+                if (img != null)
+                    canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
+            }
+
             double ms = (DateTime.Now - t0).TotalMilliseconds;
             MessageBox.Show("Done.\r\nElapsed time: " + ms + " ms (avg: " + (ms / nodeCount) + ")");
         }

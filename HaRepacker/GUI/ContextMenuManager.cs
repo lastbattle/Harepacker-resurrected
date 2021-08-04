@@ -325,7 +325,7 @@ namespace HaRepacker
                     haRepackerMainPanel.AddWzVectorPropertyToSelectedIndex(nodes[0]);
                 }));
 
-            FixLink = new ToolStripMenuItem("Cleanup For Old Ver.", null, new EventHandler(
+            FixLink = new ToolStripMenuItem("Fix linked image for old MapleStory ver.", null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     haRepackerMainPanel.FixLinkForOldMS_Click();
