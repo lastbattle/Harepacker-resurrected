@@ -211,11 +211,14 @@ namespace MapleLib.WzLib
 
             if (mapleStoryPatchVersion == -1)
             {
-                // this step is actually not needed if we actually know the maplestory patch version (the client .exe), but since we dont..
+                // Attempt to get version from MapleStory.exe first
+                short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path);
+
+                // this step is actually not needed if we know the maplestory patch version (the client .exe), but since we dont..
                 // we'll need a bruteforce way around it. 
                 const short MAX_PATCH_VERSION = 10000; // wont be reached for the forseeable future.
 
-                for (int j = 0; j < MAX_PATCH_VERSION; j++)
+                for (int j = maplestoryVerDetectedFromClient; j < MAX_PATCH_VERSION; j++)
                 {
                     this.mapleStoryPatchVersion = (short)j;
                     this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
@@ -283,6 +286,7 @@ namespace MapleLib.WzLib
                         else // if there's no image in the WZ file (new KMST Base.wz), test the directory instead
                         {
                             // coincidentally in msea v194 Map001.wz, the hash matches exactly using mapleStoryPatchVersion of 113, and it fails to decrypt later on (probably 1 in a million chance? o_O).
+                            // damn, technical debt accumulating here
                             if (mapleStoryPatchVersion == 113)
                             {
                                 // hack for now
@@ -316,6 +320,39 @@ namespace MapleLib.WzLib
                 this.wzDir = directory;
             }
             return WzFileParseStatus.Success;
+        }
+        
+        /// <summary>
+        /// Attempts to get the MapleStory patch version number from MapleStory.exe
+        /// </summary>
+        /// <returns>0 if the exe could not be found, or version number be detected</returns>
+        private static short GetMapleStoryVerFromExe(string wzFilePath)
+        {
+            // https://github.com/lastbattle/Harepacker-resurrected/commit/63e2d72ac006f0a45fc324a2c33c23f0a4a988fa#r56759414
+            // <3 mechpaul
+            //System.Diagnostics.FileVersionInfo.FileVersion
+
+            const string MAPLESTORY_EXE_NAME = "MapleStory.exe";
+            FileInfo wzFileInfo = new FileInfo(wzFilePath);
+            if (!wzFileInfo.Exists)
+                return 0;
+
+            System.IO.DirectoryInfo currentDirectory = wzFileInfo.Directory;
+            for (int i = 0; i < 5; i++)  // just attempt 5 layers here
+            {
+                FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly);
+                if (msExeFileInfos.Length > 0 && msExeFileInfos[0].Exists)
+                {
+                    FileInfo msExeFileInfo = msExeFileInfos[0];
+                    var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(currentDirectory.FullName, msExeFileInfo.FullName));
+
+                    var windowsVer = versionInfo.FileMajorPart;
+                    var msVersion = versionInfo.FileMinorPart;
+                    return (short) msVersion;
+                }
+                currentDirectory = currentDirectory.Parent; // check the parent folder on the next run
+            }
+            return 0;
         }
 
         /// <summary>
