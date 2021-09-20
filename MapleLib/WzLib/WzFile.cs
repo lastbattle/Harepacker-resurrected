@@ -330,9 +330,9 @@ namespace MapleLib.WzLib
         {
             // https://github.com/lastbattle/Harepacker-resurrected/commit/63e2d72ac006f0a45fc324a2c33c23f0a4a988fa#r56759414
             // <3 mechpaul
-            //System.Diagnostics.FileVersionInfo.FileVersion
-
             const string MAPLESTORY_EXE_NAME = "MapleStory.exe";
+            const string MAPLESTORYT_EXE_NAME = "MapleStoryT.exe";
+
             FileInfo wzFileInfo = new FileInfo(wzFilePath);
             if (!wzFileInfo.Exists)
                 return 0;
@@ -341,9 +341,20 @@ namespace MapleLib.WzLib
             for (int i = 0; i < 5; i++)  // just attempt 5 layers here
             {
                 FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly);
+                FileInfo[] msTExeFileInfos = currentDirectory.GetFiles(MAPLESTORYT_EXE_NAME, SearchOption.TopDirectoryOnly);
+
+                FileInfo msExeFileInfo = null;
                 if (msExeFileInfos.Length > 0 && msExeFileInfos[0].Exists)
                 {
-                    FileInfo msExeFileInfo = msExeFileInfos[0];
+                    msExeFileInfo = msExeFileInfos[0];
+                } 
+                else if (msTExeFileInfos.Length > 0 && msTExeFileInfos[0].Exists)
+                {
+                    msExeFileInfo = msTExeFileInfos[0];
+                }
+
+                if (msExeFileInfo != null)
+                {
                     var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(currentDirectory.FullName, msExeFileInfo.FullName));
 
                     var windowsVer = versionInfo.FileMajorPart;
