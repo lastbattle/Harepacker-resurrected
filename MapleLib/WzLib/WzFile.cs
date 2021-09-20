@@ -293,9 +293,10 @@ namespace MapleLib.WzLib
                             {
                                 this.wzDir = testDirectory;
                                 bCloseTestDirectory = false;
+
+                                return WzFileParseStatus.Success;
                             }
                         }
-                        return WzFileParseStatus.Success;
                     }
                     finally
                     {
