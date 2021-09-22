@@ -9,8 +9,10 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 
+/// <summary>
+/// The code was modified from https://github.com/angelsl/wz2nx
+/// </summary>
 namespace MapleLib.WzLib.Nx
 {
 	internal static class Extension
