@@ -105,6 +105,7 @@ namespace HaRepacker.GUI
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.button_addTab = new System.Windows.Forms.Button();
+            this.nXForamtToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -397,7 +398,8 @@ namespace HaRepacker.GUI
             this.exportFilesToXMLToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.xMLToolStripMenuItem,
             this.rawDataToolStripMenuItem,
-            this.imgToolStripMenuItem});
+            this.imgToolStripMenuItem,
+            this.nXForamtToolStripMenuItem});
             this.exportFilesToXMLToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.folder_go;
             this.exportFilesToXMLToolStripMenuItem.Name = "exportFilesToXMLToolStripMenuItem";
             resources.ApplyResources(this.exportFilesToXMLToolStripMenuItem, "exportFilesToXMLToolStripMenuItem");
@@ -627,6 +629,12 @@ namespace HaRepacker.GUI
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.Button_addTab_Click);
             // 
+            // nXForamtToolStripMenuItem
+            // 
+            this.nXForamtToolStripMenuItem.Name = "nXForamtToolStripMenuItem";
+            resources.ApplyResources(this.nXForamtToolStripMenuItem, "nXForamtToolStripMenuItem");
+            this.nXForamtToolStripMenuItem.Click += new System.EventHandler(this.nXForamtToolStripMenuItem_Click);
+            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -722,6 +730,7 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator9;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator8;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator7;
+        private System.Windows.Forms.ToolStripMenuItem nXForamtToolStripMenuItem;
     }
 }
 

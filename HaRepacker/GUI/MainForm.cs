@@ -31,6 +31,7 @@ using System.Timers;
 using static MapleLib.Configuration.UserSettings;
 using HaSharedLibrary;
 using MapleLib.MapleCryptoLib;
+using MapleLib.WzLib.Nx;
 
 namespace HaRepacker.GUI
 {
@@ -1014,7 +1015,7 @@ namespace HaRepacker.GUI
 
             string[] wzFilesToDump = (string[])((object[])param)[0];
             string baseDir = (string)((object[])param)[1];
-            WzMapleVersion version = GetWzMapleVersionByWzEncryptionBoxSelection( ((int[])param)[2]);
+            WzMapleVersion version = GetWzMapleVersionByWzEncryptionBoxSelection((int)(((object[])param)[2]));
             IWzFileSerializer serializer = (IWzFileSerializer)((object[])param)[3];
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, wzFilesToDump.Length, true, true);
@@ -1900,6 +1901,32 @@ namespace HaRepacker.GUI
             MapleLib.Helpers.ErrorLogger.SaveToFile("WzImport_Errors.txt");
 
             threadDone = true;
+        }
+
+        private void nXForamtToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            OpenFileDialog dialog = new OpenFileDialog()
+            {
+                Title = HaRepacker.Properties.Resources.SelectWz,
+                Filter = string.Format("{0}|*.wz", HaRepacker.Properties.Resources.WzFilter),
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() != DialogResult.OK)
+                return;
+
+            string outPath = GetOutputDirectory();
+            if (outPath == string.Empty)
+            {
+                MessageBox.Show(Properties.Resources.MainWzExportError, Properties.Resources.Warning, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            WzToNxSerializer serializer = new WzToNxSerializer();
+            threadDone = false;
+            runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
+            runningThread.Start((object)new object[] { dialog.FileNames, outPath, encryptionBox.SelectedIndex, serializer });
+            new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
     }
 }
