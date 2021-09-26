@@ -26,6 +26,7 @@ using MapleLib.MapleCryptoLib;
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using MapleLib.ClientLib;
 
 namespace MapleLib.WzLib
 {
@@ -43,6 +44,7 @@ namespace MapleLib.WzLib
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
+        internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
         internal byte[] WzIv;
         #endregion
 
@@ -88,6 +90,12 @@ namespace MapleLib.WzLib
         public string FilePath { get { return path; } }
 
         public WzMapleVersion MapleVersion { get { return maplepLocalVersion; } set { maplepLocalVersion = value; } }
+
+        /// <summary>
+        /// The detected MapleStory locale version from 'MapleStory.exe' client.
+        /// KMST, GMS, EMS, MSEA, CMS, TWMS, etc.
+        /// </summary>
+        public MapleStoryLocalisation MapleLocaleVersion { get { return mapleLocaleVersion; } private set { } }
 
         public override WzObject Parent { get { return null; } internal set { } }
 
@@ -212,7 +220,7 @@ namespace MapleLib.WzLib
             if (mapleStoryPatchVersion == -1)
             {
                 // Attempt to get version from MapleStory.exe first
-                short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path);
+                short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path, out this.mapleLocaleVersion);
 
                 // this step is actually not needed if we know the maplestory patch version (the client .exe), but since we dont..
                 // we'll need a bruteforce way around it. 
@@ -326,7 +334,7 @@ namespace MapleLib.WzLib
         /// Attempts to get the MapleStory patch version number from MapleStory.exe
         /// </summary>
         /// <returns>0 if the exe could not be found, or version number be detected</returns>
-        private static short GetMapleStoryVerFromExe(string wzFilePath)
+        private static short GetMapleStoryVerFromExe(string wzFilePath, out MapleStoryLocalisation mapleLocaleVersion)
         {
             // https://github.com/lastbattle/Harepacker-resurrected/commit/63e2d72ac006f0a45fc324a2c33c23f0a4a988fa#r56759414
             // <3 mechpaul
@@ -335,10 +343,13 @@ namespace MapleLib.WzLib
 
             FileInfo wzFileInfo = new FileInfo(wzFilePath);
             if (!wzFileInfo.Exists)
+            {
+                mapleLocaleVersion = MapleStoryLocalisation.Not_Known; // set
                 return 0;
+            }
 
             System.IO.DirectoryInfo currentDirectory = wzFileInfo.Directory;
-            for (int i = 0; i < 5; i++)  // just attempt 5 layers here
+            for (int i = 0; i < 5; i++)  // just attempt 5 directories here
             {
                 FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly);
                 FileInfo[] msTExeFileInfos = currentDirectory.GetFiles(MAPLESTORYT_EXE_NAME, SearchOption.TopDirectoryOnly);
@@ -357,12 +368,22 @@ namespace MapleLib.WzLib
                 {
                     var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(currentDirectory.FullName, msExeFileInfo.FullName));
 
-                    var windowsVer = versionInfo.FileMajorPart;
+                    int locale = versionInfo.FileMajorPart;
+                    MapleStoryLocalisation localeVersion = MapleStoryLocalisation.Not_Known;
+                    if (Enum.IsDefined(typeof(MapleStoryLocalisation), locale))
+                    {
+                        localeVersion = (MapleStoryLocalisation)locale;
+                    }
                     var msVersion = versionInfo.FileMinorPart;
+                    var msMinorPatchVersion = versionInfo.FileBuildPart;
+
+                    mapleLocaleVersion = localeVersion; // set
                     return (short) msVersion;
                 }
                 currentDirectory = currentDirectory.Parent; // check the parent folder on the next run
             }
+
+            mapleLocaleVersion = MapleStoryLocalisation.Not_Known; // set
             return 0;
         }
 
