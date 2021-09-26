@@ -325,8 +325,13 @@ namespace MapleLib.WzLib.WzProperties
                     if (!(currentWzObj is WzDirectory))  // keep looping if its not a WzImage
                         continue;
                     WzFile wzFileParent = ((WzDirectory)currentWzObj).wzFile;
-                    Match match = Regex.Match(wzFileParent.Name, @"^([A-Za-z]+)([0-9]*).wz");
 
+                    // TODO
+                    // Given the way it is structured, it might possibility also point to a different WZ file (i.e NPC.wz instead of Mob.wz).
+                    // Mob001.wz/8800103.img/8800103.png has an outlink to "Mob/8800141.img/8800141.png"
+                    // https://github.com/lastbattle/Harepacker-resurrected/pull/142
+
+                    Match match = Regex.Match(wzFileParent.Name, @"^([A-Za-z]+)([0-9]*).wz");
                     string prefixWz = match.Groups[1].Value + "/"; // remove ended numbers and .wz from wzfile name 
 
                     WzObject foundProperty;
