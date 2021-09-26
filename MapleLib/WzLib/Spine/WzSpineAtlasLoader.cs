@@ -102,8 +102,14 @@ namespace MapleLib.WzLib.Spine
                     // try read binary based 
                     foreach (WzImageProperty property in childProperties)
                     {
+                        WzImageProperty linkedProperty = property;
+                        
+                        // Derefenerce UOL prop
+                        while ((linkedProperty is WzUOLProperty))
+                            linkedProperty = (linkedProperty as WzUOLProperty).LinkValue as WzImageProperty;
+
                         // should be called binaryproperty actually
-                        if (property is WzBinaryProperty soundProp)
+                        if (linkedProperty is WzBinaryProperty soundProp)
                         {
                             using (MemoryStream ms = new MemoryStream(soundProp.GetBytes(false)))
                             {
@@ -111,7 +117,8 @@ namespace MapleLib.WzLib.Spine
                                 data = skeletonBinary.ReadSkeletonData(ms);
                                 return true;
                             }
-                        }
+                        } 
+                      
                     }
                 }
             }
