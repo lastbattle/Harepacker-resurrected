@@ -19,6 +19,7 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System;
 using System.Drawing;
+using System.Text.RegularExpressions;
 
 namespace MapleLib.WzLib.WzProperties
 {
@@ -323,9 +324,22 @@ namespace MapleLib.WzLib.WzProperties
                 {
                     if (!(currentWzObj is WzDirectory))  // keep looping if its not a WzImage
                         continue;
-
                     WzFile wzFileParent = ((WzDirectory)currentWzObj).wzFile;
-                    WzObject foundProperty = wzFileParent.GetObjectFromPath(_outlink);
+                    Match match = Regex.Match(wzFileParent.Name, @"^([A-Za-z]+)([0-9]*).wz");
+
+                    string prefixWz = match.Groups[1].Value + "/"; // remove ended numbers and .wz from wzfile name 
+
+                    WzObject foundProperty;
+
+                    if (_outlink.StartsWith(prefixWz))
+                    {
+                        // fixed root path
+                        string realpath = _outlink.Replace(prefixWz, WzFileParent.Name.Replace(".wz", "") + "/");
+                        foundProperty = wzFileParent.GetObjectFromPath(realpath);
+                    } else
+                    {
+                        foundProperty = wzFileParent.GetObjectFromPath(_outlink);
+                    }
                     if (foundProperty != null && foundProperty is WzImageProperty property)
                     {
                         return property;
