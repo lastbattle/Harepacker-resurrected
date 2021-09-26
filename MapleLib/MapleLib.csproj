@@ -99,6 +99,9 @@
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="LZ4, Version=1.0.15.93, Culture=neutral, PublicKeyToken=62e1b5ec1eec9bdd, processorArchitecture=MSIL">
+      <HintPath>..\packages\lz4net.1.0.15.93\lib\net4-client\LZ4.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.Win32.Registry, Version=5.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>..\packages\Microsoft.Win32.Registry.5.0.0\lib\net461\Microsoft.Win32.Registry.dll</HintPath>
     </Reference>
@@ -204,6 +207,7 @@
     <Compile Include="PacketLib\HexTool.cs" />
     <Compile Include="SquishPNGWrapper.cs" />
     <Compile Include="WzDataReader.cs" />
+    <Compile Include="WzLib\Nx\WzToNxSerializer.cs" />
     <Compile Include="WzLib\Spine\WzSpineAnimationItem.cs" />
     <Compile Include="WzLib\Spine\WzSpineAtlasLoader.cs" />
     <Compile Include="WzLib\Spine\WzSpineObject.cs" />
