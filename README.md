@@ -55,20 +55,6 @@ How about contributing instead? Great! Fork it, create pull request! Its all fre
 
 ##### Third party libraries
 
-##### Credits
- - [@haha01haha](https://github.com/hadeutscher)
- - Koolk
- - [@Diamondo25](https://github.com/Diamondo25)
- - [@LastBattle](https://github.com/lastbattle)
- - Novak
- - [@shavitush](https://github.com/shavitush)
- - [@Erick](https://github.com/ertrii)
- - [@RajanGrewa](https://github.com/RajanGrewal)
- - [@shavitush](https://github.com/shavitush)
- - [@Lapig](https://github.com/Lapig)
- - [@Kagamia](https://github.com/Kagamia/)
- - and including many others that contributed too! 
-
 ##### MapleLib2 by haha01haha01;
  - based on MapleLib by Snow;
  - based on WzLib by JonyLeeson;
