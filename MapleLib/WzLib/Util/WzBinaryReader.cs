@@ -161,6 +161,15 @@ namespace MapleLib.WzLib.Util
             return sb;
         }
 
+        /// <summary>
+        /// The amount of bytes available remaining in the stream
+        /// </summary>
+        /// <returns></returns>
+        public long Available()
+        {
+            return BaseStream.Length - BaseStream.Position;
+        }
+
         public uint ReadOffset()
         {
             uint offset = (uint)BaseStream.Position;

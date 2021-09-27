@@ -23,24 +23,26 @@ namespace HaCreator.Wz
     public class WzFileManager
     {
         #region Constants
-        public static readonly string[] MOB_WZ_FILES = { 
+        public static readonly string[] MOB_WZ_FILES = {
             "Mob", 
             "Mob001", 
             "Mob2" };
-        public static readonly string[] MAP_WZ_FILES = { 
+        public static readonly string[] MAP_WZ_FILES = {
             "Map", 
             "Map001",
             "Map002", //kms now stores main map key here
             "Map2" 
         };
-        public static readonly string[] SOUND_WZ_FILES = { 
+        public static readonly string[] SOUND_WZ_FILES = {
             "Sound", 
             "Sound001",
-            "Sound2"
+            "Sound2",
+            "Sound002"
         };
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",
+            @"D:\Nexon\Maple",
             @"C:\Program Files\WIZET\MapleStory",
             @"C:\MapleStory",
             @"C:\Program Files (x86)\Wizet\MapleStorySEA"
@@ -53,7 +55,7 @@ namespace HaCreator.Wz
         public Dictionary<WzFile, bool> wzFilesUpdated = new Dictionary<WzFile, bool>(); // flag for the list of WZ files changed to be saved later via Repack 
         public HashSet<WzImage> updatedImages = new HashSet<WzImage>();
         public Dictionary<string, WzMainDirectory> wzDirs = new Dictionary<string, WzMainDirectory>();
-        private WzMapleVersion version;
+        private readonly WzMapleVersion version;
 
         public WzFileManager(string directory, WzMapleVersion version)
         {

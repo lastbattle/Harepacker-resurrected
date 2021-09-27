@@ -36,6 +36,9 @@ namespace MapleLib.WzLib
             set { ident = value; }
         }
 
+        /// <summary>
+        /// see: DEFAULT_WZ_HEADER_COPYRIGHT
+        /// </summary>
         public string Copyright
         {
             get { return copyright; }

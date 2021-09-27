@@ -10,13 +10,6 @@ using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using XNA = Microsoft.Xna.Framework;
 
@@ -24,9 +17,9 @@ namespace HaCreator.GUI
 {
     public partial class New : Form
     {
-        private MultiBoard multiBoard;
-        private System.Windows.Controls.TabControl Tabs;
-        private System.Windows.RoutedEventHandler[] rightClickHandler;
+        private readonly MultiBoard multiBoard;
+        private readonly System.Windows.Controls.TabControl Tabs;
+        private readonly System.Windows.RoutedEventHandler[] rightClickHandler;
 
         public New(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
         {

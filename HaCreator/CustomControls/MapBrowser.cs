@@ -6,13 +6,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
-using System.Data;
 using System.Linq;
-using System.Text;
 using System.Windows.Forms;
-using System.Collections;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Threading;
@@ -29,6 +25,8 @@ namespace HaCreator.CustomControls
         public MapBrowser()
         {
             InitializeComponent();
+
+            this.minimapBox.SizeMode = PictureBoxSizeMode.Zoom;
         }
 
         public bool LoadAvailable
@@ -188,7 +186,7 @@ namespace HaCreator.CustomControls
             {
                 linkLabel.Visible = false;
                 mapNotExist.Visible = false;
-                minimapBox.Image = (Image)new Bitmap(1, 1);
+                minimapBox.Image = new Bitmap(1, 1);
                 load = mapNamesBox.SelectedItem != null;
             }
             else
@@ -212,7 +210,7 @@ namespace HaCreator.CustomControls
                         {
                             linkLabel.Visible = true;
                             mapNotExist.Visible = false;
-                            minimapBox.Image = (Image)new Bitmap(1, 1);
+                            minimapBox.Image = new Bitmap(1, 1);
                             load = false;
                         }
                         else
@@ -223,11 +221,11 @@ namespace HaCreator.CustomControls
                             WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
-                                minimapBox.Image = (Image)minimap.GetLinkedWzCanvasBitmap();
+                                minimapBox.Image = minimap.GetLinkedWzCanvasBitmap();
                             }
                             else
                             {
-                                minimapBox.Image = (Image)new Bitmap(1, 1);
+                                minimapBox.Image = new Bitmap(1, 1);
                             }
                             load = true;
                         }

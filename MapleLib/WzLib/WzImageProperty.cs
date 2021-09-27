@@ -274,5 +274,23 @@ namespace MapleLib.WzLib
         }
         #endregion
 
+        #region Custom Members
+        /// <summary>
+        /// Gets the linked WzImageProperty via WzUOLProperty
+        /// </summary>
+        /// <returns></returns>
+        public WzImageProperty GetLinkedWzImageProperty()
+        {
+            WzImageProperty thisWzImage = this;
+            while ((thisWzImage is WzUOLProperty))
+            {
+                if ((thisWzImage as WzUOLProperty).LinkValue is WzImageProperty newWzImage)
+                    thisWzImage = newWzImage;
+                else // broken link
+                    return this;
+            }
+            return thisWzImage;
+        }
+        #endregion
     }
 }

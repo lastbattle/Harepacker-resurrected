@@ -26,6 +26,7 @@ using MapleLib.MapleCryptoLib;
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using MapleLib.ClientLib;
 
 namespace MapleLib.WzLib
 {
@@ -39,10 +40,11 @@ namespace MapleLib.WzLib
         internal WzDirectory wzDir;
         internal WzHeader header;
         internal string name = "";
-        internal short version = 0;
+        internal short wzVersionHeader = 0;
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
+        internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
         internal byte[] WzIv;
         #endregion
 
@@ -88,6 +90,12 @@ namespace MapleLib.WzLib
         public string FilePath { get { return path; } }
 
         public WzMapleVersion MapleVersion { get { return maplepLocalVersion; } set { maplepLocalVersion = value; } }
+
+        /// <summary>
+        /// The detected MapleStory locale version from 'MapleStory.exe' client.
+        /// KMST, GMS, EMS, MSEA, CMS, TWMS, etc.
+        /// </summary>
+        public MapleStoryLocalisation MapleLocaleVersion { get { return mapleLocaleVersion; } private set { } }
 
         public override WzObject Parent { get { return null; } internal set { } }
 
@@ -141,9 +149,10 @@ namespace MapleLib.WzLib
 
             if (version == WzMapleVersion.GETFROMZLZ)
             {
-                FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll"));
-                this.WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
-                zlzStream.Close();
+                using (FileStream zlzStream = File.OpenRead(Path.Combine(Path.GetDirectoryName(filePath), "ZLZ.dll")))
+                {
+                    this.WzIv = Util.WzKeyGenerator.GetIvFromZlz(zlzStream);
+                }
             }
             else
                 this.WzIv = WzTool.GetIvByMapleVersion(version);
@@ -203,19 +212,24 @@ namespace MapleLib.WzLib
             this.Header.FStart = reader.ReadUInt32();
             this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
 
-            reader.ReadBytes(1);
-            reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
+            byte unk1 = reader.ReadByte();
+            byte[] unk2 = reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
             reader.Header = this.Header;
-            this.version = reader.ReadInt16();
+            this.wzVersionHeader = reader.ReadInt16();
 
             if (mapleStoryPatchVersion == -1)
             {
+                // Attempt to get version from MapleStory.exe first
+                short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path, out this.mapleLocaleVersion);
+
+                // this step is actually not needed if we know the maplestory patch version (the client .exe), but since we dont..
+                // we'll need a bruteforce way around it. 
                 const short MAX_PATCH_VERSION = 10000; // wont be reached for the forseeable future.
 
-                for (int j = 0; j < MAX_PATCH_VERSION; j++)
+                for (int j = maplestoryVerDetectedFromClient; j < MAX_PATCH_VERSION; j++)
                 {
                     this.mapleStoryPatchVersion = (short)j;
-                    this.versionHash = CheckAndGetVersionHash(version, mapleStoryPatchVersion);
+                    this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
                     if (this.versionHash == 0) // ugly hack, but that's the only way if the version number isnt known (nexon stores this in the .exe)
                         continue;
 
@@ -235,53 +249,71 @@ namespace MapleLib.WzLib
                         continue;
                     }
 
+                    // test the image and see if its correct by parsing it 
+                    bool bCloseTestDirectory = true;
                     try
                     {
-                        List<WzImage> childImages = testDirectory.GetChildImages();
-                        if (childImages.Count == 0) // coincidentally in msea v194 Map001.wz, the hash matches exactly using mapleStoryPatchVersion of 113, and it fails to decrypt later on (probably 1 in a million chance).
+                        WzImage testImage = testDirectory.WzImages.FirstOrDefault();
+                        if (testImage != null)
                         {
-                            reader.BaseStream.Position = position; // reset
-                            continue;
-                        }
-                        WzImage testImage = childImages[0];
-
-                        try
-                        {
-                            reader.BaseStream.Position = testImage.Offset;
-                            byte checkByte = reader.ReadByte();
-                            reader.BaseStream.Position = position;
-
-                            switch (checkByte)
+                            try
                             {
-                                case 0x73:
-                                case 0x1b:
-                                    {
-                                        WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                                        directory.ParseDirectory(lazyParse);
-                                        this.wzDir = directory;
-                                        return WzFileParseStatus.Success;
-                                    }
-                                case 0x30:
-                                case 0x6C: // idk
-                                case 0xBC: // Map002.wz? KMST?
-                                default:
-                                    {
-                                        Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature, 
-                                            string.Format("[WzFile.cs] New Wz image header found. checkByte = {0}. File Name = {1}", checkByte, Name));
-                                        // log or something
-                                        break;
-                                    }
+                                reader.BaseStream.Position = testImage.Offset;
+                                byte checkByte = reader.ReadByte();
+                                reader.BaseStream.Position = position;
+
+                                switch (checkByte)
+                                {
+                                    case 0x73:
+                                    case 0x1b:
+                                        {
+                                            WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
+                                            directory.ParseDirectory(lazyParse);
+                                            this.wzDir = directory;
+
+                                            return WzFileParseStatus.Success;
+                                        }
+                                    case 0x30:
+                                    case 0x6C: // idk
+                                    case 0xBC: // Map002.wz? KMST?
+                                    default:
+                                        {
+                                            Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature,
+                                                string.Format("[WzFile.cs] New Wz image header found. checkByte = {0}. File Name = {1}", checkByte, Name));
+                                            // log or something
+                                            break;
+                                        }
+                                }
+                                reader.BaseStream.Position = position; // reset
                             }
-                            reader.BaseStream.Position = position; // reset
-                        }
-                        catch
+                            catch
+                            {
+                                reader.BaseStream.Position = position; // reset
+                            }
+                        } 
+                        else // if there's no image in the WZ file (new KMST Base.wz), test the directory instead
                         {
-                            reader.BaseStream.Position = position; // reset
+                            // coincidentally in msea v194 Map001.wz, the hash matches exactly using mapleStoryPatchVersion of 113, and it fails to decrypt later on (probably 1 in a million chance? o_O).
+                            // damn, technical debt accumulating here
+                            if (mapleStoryPatchVersion == 113)
+                            {
+                                // hack for now
+                                reader.BaseStream.Position = position; // reset
+                                continue;
+                            }
+                            else
+                            {
+                                this.wzDir = testDirectory;
+                                bCloseTestDirectory = false;
+
+                                return WzFileParseStatus.Success;
+                            }
                         }
                     }
                     finally
                     {
-                        testDirectory.Dispose();
+                        if (bCloseTestDirectory)
+                            testDirectory.Dispose();
                     }
                 }
                 //parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
@@ -289,13 +321,80 @@ namespace MapleLib.WzLib
             }
             else
             {
-                this.versionHash = CheckAndGetVersionHash(version, mapleStoryPatchVersion);
+                this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
                 reader.Hash = this.versionHash;
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
             }
             return WzFileParseStatus.Success;
+        }
+        
+        /// <summary>
+        /// Attempts to get the MapleStory patch version number from MapleStory.exe
+        /// </summary>
+        /// <returns>0 if the exe could not be found, or version number be detected</returns>
+        private static short GetMapleStoryVerFromExe(string wzFilePath, out MapleStoryLocalisation mapleLocaleVersion)
+        {
+            // https://github.com/lastbattle/Harepacker-resurrected/commit/63e2d72ac006f0a45fc324a2c33c23f0a4a988fa#r56759414
+            // <3 mechpaul
+            const string MAPLESTORY_EXE_NAME = "MapleStory.exe";
+            const string MAPLESTORYT_EXE_NAME = "MapleStoryT.exe";
+            const string MAPLESTORYADMIN_EXE_NAME = "MapleStoryA.exe";
+
+            FileInfo wzFileInfo = new FileInfo(wzFilePath);
+            if (!wzFileInfo.Exists)
+            {
+                mapleLocaleVersion = MapleStoryLocalisation.Not_Known; // set
+                return 0;
+            }
+
+            System.IO.DirectoryInfo currentDirectory = wzFileInfo.Directory;
+            for (int i = 0; i < 4; i++)  // just attempt 4 directories here
+            {
+                FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly); // case insensitive 
+                FileInfo[] msTExeFileInfos = currentDirectory.GetFiles(MAPLESTORYT_EXE_NAME, SearchOption.TopDirectoryOnly);  // case insensitive 
+                FileInfo[] msAdminExeFileInfos = currentDirectory.GetFiles(MAPLESTORYADMIN_EXE_NAME, SearchOption.TopDirectoryOnly);  // case insensitive 
+
+                List<FileInfo> exeFileInfo = new List<FileInfo>();
+                if (msTExeFileInfos.Length > 0 && msTExeFileInfos[0].Exists) // prioritize MapleStoryT.exe first
+                {
+                    exeFileInfo.Add(msTExeFileInfos[0]);
+                }
+                if (msAdminExeFileInfos.Length > 0 && msAdminExeFileInfos[0].Exists)
+                {
+                    exeFileInfo.Add(msAdminExeFileInfos[0]);
+                }
+                if (msExeFileInfos.Length > 0 && msExeFileInfos[0].Exists)
+                {
+                    exeFileInfo.Add(msExeFileInfos[0]);
+                } 
+ 
+                foreach (FileInfo msExeFileInfo in exeFileInfo) 
+                {
+                    var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(currentDirectory.FullName, msExeFileInfo.FullName));
+
+                    if ((versionInfo.FileMajorPart == 1 && versionInfo.FileMinorPart == 0 && versionInfo.FileBuildPart == 0) 
+                        || (versionInfo.FileMajorPart == 0 && versionInfo.FileMinorPart == 0 && versionInfo.FileBuildPart == 0)) // older client uses 1.0.0.1 
+                        continue;
+
+                    int locale = versionInfo.FileMajorPart;
+                    MapleStoryLocalisation localeVersion = MapleStoryLocalisation.Not_Known;
+                    if (Enum.IsDefined(typeof(MapleStoryLocalisation), locale))
+                    {
+                        localeVersion = (MapleStoryLocalisation)locale;
+                    }
+                    var msVersion = versionInfo.FileMinorPart;
+                    var msMinorPatchVersion = versionInfo.FileBuildPart;
+
+                    mapleLocaleVersion = localeVersion; // set
+                    return (short)msVersion;
+                }
+                currentDirectory = currentDirectory.Parent; // check the parent folder on the next run
+            }
+
+            mapleLocaleVersion = MapleStoryLocalisation.Not_Known; // set
+            return 0;
         }
 
         /// <summary>
@@ -343,7 +442,7 @@ namespace MapleLib.WzLib
                 b = (versionHash >> 16) & 0xFF,
                 c = (versionHash >> 8) & 0xFF,
                 d = versionHash & 0xFF;
-            version = (byte)~(a ^ b ^ c ^ d);
+            wzVersionHeader = (byte)~(a ^ b ^ c ^ d);
         }
 
         /// <summary>
@@ -376,11 +475,12 @@ namespace MapleLib.WzLib
             }
 
             WzTool.StringCache.Clear();
-            uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
 
             using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
             {
                 wzWriter.Hash = versionHash;
+
+                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
                 Header.FSize = totalLen - Header.FStart;
                 for (int i = 0; i < 4; i++)
                 {
@@ -395,7 +495,7 @@ namespace MapleLib.WzLib
                 {
                     wzWriter.Write(new byte[(int)extraHeaderLength]);
                 }
-                wzWriter.Write(version);
+                wzWriter.Write(wzVersionHeader);
                 wzWriter.Header = Header;
                 wzDir.SaveDirectory(wzWriter);
                 wzWriter.StringCache.Clear();
