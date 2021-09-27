@@ -340,6 +340,7 @@ namespace MapleLib.WzLib
             // <3 mechpaul
             const string MAPLESTORY_EXE_NAME = "MapleStory.exe";
             const string MAPLESTORYT_EXE_NAME = "MapleStoryT.exe";
+            const string MAPLESTORYADMIN_EXE_NAME = "MapleStoryA.exe";
 
             FileInfo wzFileInfo = new FileInfo(wzFilePath);
             if (!wzFileInfo.Exists)
@@ -349,24 +350,33 @@ namespace MapleLib.WzLib
             }
 
             System.IO.DirectoryInfo currentDirectory = wzFileInfo.Directory;
-            for (int i = 0; i < 5; i++)  // just attempt 5 directories here
+            for (int i = 0; i < 4; i++)  // just attempt 4 directories here
             {
-                FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly);
-                FileInfo[] msTExeFileInfos = currentDirectory.GetFiles(MAPLESTORYT_EXE_NAME, SearchOption.TopDirectoryOnly);
+                FileInfo[] msExeFileInfos = currentDirectory.GetFiles(MAPLESTORY_EXE_NAME, SearchOption.TopDirectoryOnly); // case insensitive 
+                FileInfo[] msTExeFileInfos = currentDirectory.GetFiles(MAPLESTORYT_EXE_NAME, SearchOption.TopDirectoryOnly);  // case insensitive 
+                FileInfo[] msAdminExeFileInfos = currentDirectory.GetFiles(MAPLESTORYADMIN_EXE_NAME, SearchOption.TopDirectoryOnly);  // case insensitive 
 
-                FileInfo msExeFileInfo = null;
+                List<FileInfo> exeFileInfo = new List<FileInfo>();
+                if (msTExeFileInfos.Length > 0 && msTExeFileInfos[0].Exists) // prioritize MapleStoryT.exe first
+                {
+                    exeFileInfo.Add(msTExeFileInfos[0]);
+                }
+                if (msAdminExeFileInfos.Length > 0 && msAdminExeFileInfos[0].Exists)
+                {
+                    exeFileInfo.Add(msAdminExeFileInfos[0]);
+                }
                 if (msExeFileInfos.Length > 0 && msExeFileInfos[0].Exists)
                 {
-                    msExeFileInfo = msExeFileInfos[0];
+                    exeFileInfo.Add(msExeFileInfos[0]);
                 } 
-                else if (msTExeFileInfos.Length > 0 && msTExeFileInfos[0].Exists)
-                {
-                    msExeFileInfo = msTExeFileInfos[0];
-                }
-
-                if (msExeFileInfo != null)
+ 
+                foreach (FileInfo msExeFileInfo in exeFileInfo) 
                 {
                     var versionInfo = FileVersionInfo.GetVersionInfo(Path.Combine(currentDirectory.FullName, msExeFileInfo.FullName));
+
+                    if ((versionInfo.FileMajorPart == 1 && versionInfo.FileMinorPart == 0 && versionInfo.FileBuildPart == 0) 
+                        || (versionInfo.FileMajorPart == 0 && versionInfo.FileMinorPart == 0 && versionInfo.FileBuildPart == 0)) // older client uses 1.0.0.1 
+                        continue;
 
                     int locale = versionInfo.FileMajorPart;
                     MapleStoryLocalisation localeVersion = MapleStoryLocalisation.Not_Known;
@@ -378,7 +388,7 @@ namespace MapleLib.WzLib
                     var msMinorPatchVersion = versionInfo.FileBuildPart;
 
                     mapleLocaleVersion = localeVersion; // set
-                    return (short) msVersion;
+                    return (short)msVersion;
                 }
                 currentDirectory = currentDirectory.Parent; // check the parent folder on the next run
             }
