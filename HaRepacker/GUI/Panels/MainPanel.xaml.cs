@@ -1308,6 +1308,12 @@ namespace HaRepacker.GUI.Panels
             if (!Warning.Warn(Properties.Resources.MainConfirmCopy) || bPasteTaskActive)
                 return;
 
+            foreach (WzObject obj in clipboard)
+            {
+                //this causes minor weirdness with png's in copied nodes but otherwise memory is not free'd 
+                obj.Dispose();
+            }
+
             clipboard.Clear();
 
             foreach (WzNode node in DataTree.SelectedNodes)
