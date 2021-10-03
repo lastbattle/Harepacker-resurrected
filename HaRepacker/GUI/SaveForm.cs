@@ -166,8 +166,14 @@ namespace HaRepacker.GUI
                     {
                         wzf.SaveToDisk(dialog.FileName + "$tmp", wzMapleVersionSelected);
                         wzNode.DeleteWzNode();
-                        File.Delete(dialog.FileName);
-                        File.Move(dialog.FileName + "$tmp", dialog.FileName);
+                        try
+                        {
+                            File.Delete(dialog.FileName);
+                            File.Move(dialog.FileName + "$tmp", dialog.FileName);
+                        }catch(IOException ex)
+                        {
+                            MessageBox.Show("Handle error overwriting WZ file", HaRepacker.Properties.Resources.Error);
+                        }
                     }
                     else
                     {

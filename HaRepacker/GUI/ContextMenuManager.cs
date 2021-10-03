@@ -385,6 +385,7 @@ namespace HaRepacker
             else if (Tag is WzFile)
             {
                 toolStripmenuItems.Add(AddDirsSubMenu);
+                toolStripmenuItems.Add(Rename);
                 toolStripmenuItems.Add(SaveFile);
                 toolStripmenuItems.Add(Unload);
                 toolStripmenuItems.Add(Reload);
