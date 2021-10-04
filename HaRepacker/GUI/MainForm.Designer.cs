@@ -35,6 +35,7 @@ namespace HaRepacker.GUI
             this.fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.newToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripMenuItem_newWzFormat = new System.Windows.Forms.ToolStripMenuItem();
             this.saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator5 = new System.Windows.Forms.ToolStripSeparator();
             this.copyToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -75,6 +76,7 @@ namespace HaRepacker.GUI
             this.xMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.rawDataToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.imgToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.nXForamtToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportDataToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.privateServerToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -105,12 +107,12 @@ namespace HaRepacker.GUI
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.button_addTab = new System.Windows.Forms.Button();
-            this.nXForamtToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.mainMenu.SuspendLayout();
             this.SuspendLayout();
             // 
             // mainMenu
             // 
+            this.mainMenu.GripMargin = new System.Windows.Forms.Padding(2, 2, 0, 2);
             this.mainMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.mainMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileToolStripMenuItem,
@@ -128,6 +130,7 @@ namespace HaRepacker.GUI
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.newToolStripMenuItem,
             this.openToolStripMenuItem,
+            this.toolStripMenuItem_newWzFormat,
             this.saveToolStripMenuItem,
             this.toolStripSeparator5,
             this.copyToolStripMenuItem,
@@ -151,6 +154,13 @@ namespace HaRepacker.GUI
             this.openToolStripMenuItem.Name = "openToolStripMenuItem";
             resources.ApplyResources(this.openToolStripMenuItem, "openToolStripMenuItem");
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
+            // 
+            // toolStripMenuItem_newWzFormat
+            // 
+            this.toolStripMenuItem_newWzFormat.Image = global::HaRepacker.Properties.Resources.folder;
+            this.toolStripMenuItem_newWzFormat.Name = "toolStripMenuItem_newWzFormat";
+            resources.ApplyResources(this.toolStripMenuItem_newWzFormat, "toolStripMenuItem_newWzFormat");
+            this.toolStripMenuItem_newWzFormat.Click += new System.EventHandler(this.toolStripMenuItem_newWzFormat_Click);
             // 
             // saveToolStripMenuItem
             // 
@@ -422,6 +432,12 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.imgToolStripMenuItem, "imgToolStripMenuItem");
             this.imgToolStripMenuItem.Click += new System.EventHandler(this.imgToolStripMenuItem_Click);
             // 
+            // nXForamtToolStripMenuItem
+            // 
+            this.nXForamtToolStripMenuItem.Name = "nXForamtToolStripMenuItem";
+            resources.ApplyResources(this.nXForamtToolStripMenuItem, "nXForamtToolStripMenuItem");
+            this.nXForamtToolStripMenuItem.Click += new System.EventHandler(this.nXForamtToolStripMenuItem_Click);
+            // 
             // exportDataToolStripMenuItem
             // 
             this.exportDataToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -629,12 +645,6 @@ namespace HaRepacker.GUI
             this.button_addTab.UseVisualStyleBackColor = true;
             this.button_addTab.Click += new System.EventHandler(this.Button_addTab_Click);
             // 
-            // nXForamtToolStripMenuItem
-            // 
-            this.nXForamtToolStripMenuItem.Name = "nXForamtToolStripMenuItem";
-            resources.ApplyResources(this.nXForamtToolStripMenuItem, "nXForamtToolStripMenuItem");
-            this.nXForamtToolStripMenuItem.Click += new System.EventHandler(this.nXForamtToolStripMenuItem_Click);
-            // 
             // MainForm
             // 
             resources.ApplyResources(this, "$this");
@@ -731,6 +741,7 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator8;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator7;
         private System.Windows.Forms.ToolStripMenuItem nXForamtToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_newWzFormat;
     }
 }
 
