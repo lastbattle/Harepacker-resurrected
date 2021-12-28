@@ -438,6 +438,9 @@ namespace HaRepacker.GUI
                     case Keys.O: // Open new WZ file
                         openToolStripMenuItem_Click(null, null);
                         break;
+                    case Keys.I: // Open new Wz format
+                        toolStripMenuItem_newWzFormat_Click(null, null);
+                        break;
                     case Keys.N: // New
                         newToolStripMenuItem_Click(null, null);
                         break;
@@ -714,7 +717,7 @@ namespace HaRepacker.GUI
 
         #region Toolstrip Menu items
         /// <summary>
-        /// Open file
+        /// Open WZ file
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -819,6 +822,86 @@ namespace HaRepacker.GUI
                 MainPanel.OnSetPanelLoading();
 
                 // Try opening one, to see if the user is having the right priviledge
+
+                // Load all original WZ files 
+                await Task.Run(() =>
+                {
+                    List<WzFile> loadedWzFiles = new List<WzFile>();
+                    ParallelLoopResult loop = Parallel.ForEach(wzfilePathsToLoad, filePath =>
+                    {
+                        WzFile f = Program.WzFileManager.LoadWzFile(filePath, MapleVersionEncryptionSelected);
+                        if (f == null)
+                        {
+                            // error should be thrown 
+                        }
+                        else
+                        {
+                            lock (loadedWzFiles)
+                            {
+                                loadedWzFiles.Add(f);
+                            }
+                        }
+                    });
+                    while (!loop.IsCompleted)
+                    {
+                        Thread.Sleep(100); //?
+                    }
+
+                    foreach (WzFile wzFile in loadedWzFiles) // add later, once everything is loaded to memory
+                    {
+                        Program.WzFileManager.AddLoadedWzFileToMainPanel(wzFile, MainPanel, currentDispatcher);
+                    }
+                }); // load complete
+
+                // Hide panel splash sdcreen
+                MainPanel.OnSetPanelLoadingCompleted();
+            }
+        }
+
+        /// <summary>
+        /// Open new WZ file (KMST) 
+        /// with the split format
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void toolStripMenuItem_newWzFormat_Click(object sender, EventArgs e)
+        {
+            Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+
+            WzMapleVersion MapleVersionEncryptionSelected = GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex);
+
+            // Load WZ file
+            using (FolderBrowserDialog fbd = new FolderBrowserDialog()
+            {
+                Description = "Select the WZ folder (Base, Mob, Character, etc)",
+                ShowNewFolderButton = true,
+            })
+            {
+                DialogResult result = fbd.ShowDialog();
+                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                    return;
+
+                string[] iniFilesPath = Directory.GetFiles(fbd.SelectedPath, "*.ini", SearchOption.AllDirectories);
+
+                // Search for all '.ini' file, and for each .ini found, proceed to parse all items in the sub directory
+                // merge all parsed directory as a single WZ
+
+                List<string> wzfilePathsToLoad = new List<string>();
+                foreach (string iniFilePath in iniFilesPath)
+                {
+                    string directoryName = Path.GetDirectoryName(iniFilePath);
+                    string[] wzFilesPath = Directory.GetFiles(directoryName, "*.wz", SearchOption.TopDirectoryOnly);
+
+                    foreach (string wzFilePath in wzFilesPath) 
+                    {
+                        wzfilePathsToLoad.Add(wzFilePath);
+                        Debug.WriteLine(wzFilePath);
+                    }
+                }
+
+                // Show splash screen
+                MainPanel.OnSetPanelLoading();
+
 
                 // Load all original WZ files 
                 await Task.Run(() =>
