@@ -233,6 +233,7 @@ namespace MapleLib.WzLib
                 fsize = reader.ReadCompressedInt();
                 checksum = reader.ReadCompressedInt();
                 offset = reader.ReadOffset();
+
                 if (type == 3)
                 {
                     WzDirectory subDir = new WzDirectory(reader, fname, hash, WzIv, wzFile)
@@ -259,6 +260,17 @@ namespace MapleLib.WzLib
 
                     if (lazyParse)
                         break;
+                }
+            }
+
+            // Offsets are calculated manually
+            if (this.wzFile != null && this.wzFile.b64BitClient) // This only applies for 64-bit client based WZ files.
+            {
+                long startOffset = reader.BaseStream.Position;
+                foreach (WzImage image in WzImages)
+                {
+                    image.Offset = (uint)startOffset;
+                    startOffset += image.BlockSize; // TODO: Test saving the wz after it is changed. This may break
                 }
             }
 
