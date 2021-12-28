@@ -45,7 +45,7 @@ namespace MapleLib.WzLib
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
-        internal bool b64BitClient = false; // KMS update after Q4 2021
+        internal bool b64BitClient = false; // KMS update after Q4 2021, ver 1.2.357
         internal byte[] WzIv;
         #endregion
 
@@ -159,7 +159,7 @@ namespace MapleLib.WzLib
                 this.WzIv = WzTool.GetIvByMapleVersion(version);
 
             string[] filePathSplit = Regex.Split(filePath, @"\\");
-            this.b64BitClient = filePathSplit.Contains("Data"); // TODO: Find a better way of identifying 64-bit client/ WZ from the WZ files instead. This might break if it isnt installed in the right path.
+            this.b64BitClient = filePathSplit.Contains("Data"); // TODO: Find a better way of identifying 64-bit client/ WZ from the WZ files instead. This might break if it isnt installed in the right path, esp. private servers
         }
 
         /// <summary>
@@ -217,7 +217,6 @@ namespace MapleLib.WzLib
             this.Header.FSize = reader.ReadUInt64();
             this.Header.FStart = reader.ReadUInt32();
             this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
-
 
             byte unk1 = reader.ReadByte();
             byte[] unk2 = reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
@@ -418,6 +417,8 @@ namespace MapleLib.WzLib
                     return (short)msVersion;
                 }
                 currentDirectory = currentDirectory.Parent; // check the parent folder on the next run
+                if (currentDirectory == null)
+                    break;
             }
 
             mapleLocaleVersion = MapleStoryLocalisation.Not_Known; // set
