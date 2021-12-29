@@ -138,10 +138,10 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;encryptionBox.ZOrder" xml:space="preserve">
-    <value>4</value>
+    <value>5</value>
   </data>
   <data name="saveButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>1, 76</value>
+    <value>1, 93</value>
   </data>
   <data name="saveButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>263, 27</value>
@@ -162,7 +162,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;saveButton.ZOrder" xml:space="preserve">
-    <value>3</value>
+    <value>4</value>
   </data>
   <data name="versionBox.Location" type="System.Drawing.Point, System.Drawing">
     <value>75, 39</value>
@@ -186,7 +186,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;versionBox.ZOrder" xml:space="preserve">
-    <value>2</value>
+    <value>3</value>
   </data>
   <data name="label1.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -213,7 +213,7 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;label1.ZOrder" xml:space="preserve">
-    <value>1</value>
+    <value>2</value>
   </data>
   <data name="label2.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -240,6 +240,33 @@
     <value>$this</value>
   </data>
   <data name="&gt;&gt;label2.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="checkBox_64BitFile.AutoSize" type="System.Boolean, mscorlib">
+    <value>True</value>
+  </data>
+  <data name="checkBox_64BitFile.Location" type="System.Drawing.Point, System.Drawing">
+    <value>75, 70</value>
+  </data>
+  <data name="checkBox_64BitFile.Size" type="System.Drawing.Size, System.Drawing">
+    <value>166, 17</value>
+  </data>
+  <data name="checkBox_64BitFile.TabIndex" type="System.Int32, mscorlib">
+    <value>6</value>
+  </data>
+  <data name="checkBox_64BitFile.Text" xml:space="preserve">
+    <value>Save as 64-bit client WZ file</value>
+  </data>
+  <data name="&gt;&gt;checkBox_64BitFile.Name" xml:space="preserve">
+    <value>checkBox_64BitFile</value>
+  </data>
+  <data name="&gt;&gt;checkBox_64BitFile.Type" xml:space="preserve">
+    <value>System.Windows.Forms.CheckBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
+  <data name="&gt;&gt;checkBox_64BitFile.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;checkBox_64BitFile.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
   <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
@@ -249,7 +276,7 @@
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>265, 104</value>
+    <value>265, 121</value>
   </data>
   <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>

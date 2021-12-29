@@ -75,6 +75,7 @@ namespace HaRepacker.GUI
                 {
                     encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
                     versionBox.Value = wzf.Version;
+                    checkBox_64BitFile.Checked = wzf.Is64BitWZFile;
                 }
                 else
                 { // Data.wz uses BMS encryption... no sepcific version indicated
@@ -150,6 +151,7 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
 
+                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked;
                 WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
                 if (this.IsRegularWzFile)
                 {
@@ -164,7 +166,7 @@ namespace HaRepacker.GUI
 
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
                     {
-                        wzf.SaveToDisk(dialog.FileName + "$tmp", wzMapleVersionSelected);
+                        wzf.SaveToDisk(dialog.FileName + "$tmp", bSaveAs64BitWzFile, wzMapleVersionSelected);
                         wzNode.DeleteWzNode();
                         try
                         {
@@ -177,7 +179,7 @@ namespace HaRepacker.GUI
                     }
                     else
                     {
-                        wzf.SaveToDisk(dialog.FileName, wzMapleVersionSelected);
+                        wzf.SaveToDisk(dialog.FileName, bSaveAs64BitWzFile, wzMapleVersionSelected);
                         wzNode.DeleteWzNode();
                     }
 

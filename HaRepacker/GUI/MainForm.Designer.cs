@@ -112,7 +112,6 @@ namespace HaRepacker.GUI
             // 
             // mainMenu
             // 
-            this.mainMenu.GripMargin = new System.Windows.Forms.Padding(2, 2, 0, 2);
             this.mainMenu.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.mainMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.fileToolStripMenuItem,
