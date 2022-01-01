@@ -204,10 +204,10 @@ namespace MapleLib.WzLib.Util
             switch (ReadByte())
             {
                 case 0:
-                case 0x73:
+                case WzImage.WzImageHeaderByte_WithoutOffset:
                     return ReadString();
                 case 1:
-                case 0x1B:
+                case WzImage.WzImageHeaderByte_WithOffset:
                     return ReadStringAtOffset(offset + ReadInt32());
                 default:
                     return "";

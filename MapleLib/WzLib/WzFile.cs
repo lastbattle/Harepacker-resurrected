@@ -224,10 +224,12 @@ namespace MapleLib.WzLib
             this.Header.Ident = reader.ReadString(4);
             this.Header.FSize = reader.ReadUInt64();
             this.Header.FStart = reader.ReadUInt32();
-            this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
 
+            //this.Header.Copyright = reader.ReadNullTerminatedString();
+            this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
             byte unk1 = reader.ReadByte();
             byte[] unk2 = reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
+
             reader.Header = this.Header;
 
             this.wzVersionHeader = 0; 
@@ -258,8 +260,8 @@ namespace MapleLib.WzLib
                 if (!this.b64BitClient)
                 {
                     this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
+                    reader.Hash = this.versionHash;
                 }
-                reader.Hash = this.versionHash;
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
@@ -276,9 +278,9 @@ namespace MapleLib.WzLib
                 this.versionHash = CheckAndGetVersionHash(useWzVersionHeader, mapleStoryPatchVersion);
                 if (this.versionHash == 0) // ugly hack, but that's the only way if the version number isnt known (nexon stores this in the .exe)
                     return false;
+                reader.Hash = this.versionHash;
             }
 
-            reader.Hash = this.versionHash;
             long fallbackOffsetPosition = reader.BaseStream.Position; // save position to rollback to, if should parsing fail from here
             WzDirectory testDirectory;
             try
@@ -309,8 +311,8 @@ namespace MapleLib.WzLib
 
                         switch (checkByte)
                         {
-                            case 0x73:
-                            case 0x1b:
+                            case WzImage.WzImageHeaderByte_WithoutOffset: // 0x73
+                            case WzImage.WzImageHeaderByte_WithOffset:
                                 {
                                     WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                                     directory.ParseDirectory(lazyParse);
@@ -511,10 +513,8 @@ namespace MapleLib.WzLib
 
             WzTool.StringCache.Clear();
 
-            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
+            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv, versionHash))
             {
-                wzWriter.Hash = versionHash;
-
                 uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
                 Header.FSize = totalLen - Header.FStart;
                 for (int i = 0; i < 4; i++)

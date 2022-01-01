@@ -130,7 +130,7 @@ namespace MapleLib.WzLib.WzProperties
             }
             return ret;
         }
-        public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
+        public override void WriteValue(WzBinaryWriter writer)
         {
             bool bIsLuaProperty = false;
             if (properties.Count == 1 && properties[0] is WzLuaProperty)
@@ -138,7 +138,7 @@ namespace MapleLib.WzLib.WzProperties
                 bIsLuaProperty = true;
             }
             if (!bIsLuaProperty)
-                writer.WriteStringValue("Property", 0x73, 0x1B);
+                writer.WriteStringValue("Property", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);
 
             WzImageProperty.WritePropertyList(writer, properties);
         }

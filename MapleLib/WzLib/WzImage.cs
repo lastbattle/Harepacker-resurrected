@@ -31,7 +31,8 @@ namespace MapleLib.WzLib
     {
         //TODO: nest wzproperties in a wzsubproperty inside of WzImage
 
-        public const int WzImageHeaderByte = 0x73;
+        public const int WzImageHeaderByte_WithoutOffset = 0x73;
+        public const int WzImageHeaderByte_WithOffset = 0x1B;
 
         #region Fields
         internal bool parsed = false;
@@ -355,7 +356,7 @@ namespace MapleLib.WzLib
                             }
                             return false; // unhandled for now, if it isnt an .lua image
                         }
-                    case WzImageHeaderByte:
+                    case WzImageHeaderByte_WithoutOffset:
                         {
                             string prop = reader.ReadString();
                             ushort val = reader.ReadUInt16();

@@ -249,7 +249,7 @@ namespace MapleLib.WzLib.Util
             {
                 byte firstByte = reader.ReadByte();
 
-                result = firstByte == WzImage.WzImageHeaderByte; // check the first byte. It should be 0x73 that represends a WzImage
+                result = firstByte == WzImage.WzImageHeaderByte_WithoutOffset; // check the first byte. It should be 0x73 that represends a WzImage
             }
 
             return result;
