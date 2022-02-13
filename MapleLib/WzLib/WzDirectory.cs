@@ -263,18 +263,6 @@ namespace MapleLib.WzLib
                 }
             }
 
-            // Offsets are calculated manually as a work-around, until I've figured out how
-            // the new offsets are calculated for 64-bit based WZ file.. 
-            if (this.wzFile != null && this.wzFile.b64BitClient) 
-            {
-                long startOffset = reader.BaseStream.Position;
-                foreach (WzImage image in WzImages)
-                {
-                    image.Offset = (uint)startOffset;
-                    startOffset += image.BlockSize;
-                }
-            }
-
             foreach (WzDirectory subdir in subDirs)
             {
                 if (subdir.Checksum != 0)
@@ -290,7 +278,7 @@ namespace MapleLib.WzLib
         /// </summary>
         /// <param name="wzWriter"></param>
         /// <param name="fs"></param>
-		internal void SaveImages(BinaryWriter wzWriter, FileStream fs)
+        internal void SaveImages(BinaryWriter wzWriter, FileStream fs)
         {
             // List<string> wzImageNameTracking = new List<string>(); // Check for duplicate WZ image name that could cause errors later on.
 
@@ -336,7 +324,7 @@ namespace MapleLib.WzLib
         /// <param name="bIsWzUserKeyDefault">Uses the default MapleStory UserKey or a custom key.</param>
         /// <param name="prevOpenedStream">The previously opened file stream</param>
         /// <returns></returns>
-		internal int GenerateDataFile(byte[] useIv, bool bIsWzUserKeyDefault, FileStream prevOpenedStream)
+        internal int GenerateDataFile(byte[] useIv, bool bIsWzUserKeyDefault, FileStream prevOpenedStream)
         {
             bool useCustomIv = useIv != null; // whole shit gonna be re-written if its a custom IV specified
 

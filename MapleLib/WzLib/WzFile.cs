@@ -40,7 +40,8 @@ namespace MapleLib.WzLib
         internal WzDirectory wzDir;
         internal WzHeader header;
         internal string name = "";
-        internal short wzVersionHeader = 0;
+        internal ushort wzVersionHeader = 0;
+        internal const ushort wzVersionHeader64bit = 777;
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
@@ -127,7 +128,7 @@ namespace MapleLib.WzLib
         /// </summary>
         /// <param name="gameVersion"></param>
         /// <param name="version"></param>
-		public WzFile(short gameVersion, WzMapleVersion version)
+        public WzFile(short gameVersion, WzMapleVersion version)
         {
             wzDir = new WzDirectory();
             this.Header = WzHeader.GetDefault();
@@ -232,12 +233,20 @@ namespace MapleLib.WzLib
 
             reader.Header = this.Header;
 
-            this.wzVersionHeader = 0; 
-            if (!this.b64BitClient)
-                this.wzVersionHeader = reader.ReadInt16();
+            Check64BitClient(reader);  // update b64BitClient flag
+
+            // the value of wzVersionHeader is less important. It is used for reading/writing from/to WzFile Header, and calculating the versionHash.
+            // it can be any number if the client is 64-bit. Assigning 777 is just for convenience when calculating the versionHash.
+            this.wzVersionHeader = b64BitClient ? wzVersionHeader64bit : reader.ReadUInt16();
 
             if (mapleStoryPatchVersion == -1)
             {
+                // for 64-bit client, return immediately if version 777 works correctly.
+                if (b64BitClient && TryDecodeWithWZVersionNumber(reader, wzVersionHeader, wzVersionHeader64bit, lazyParse))
+                {
+                    return WzFileParseStatus.Success;
+                }
+
                 // Attempt to get version from MapleStory.exe first
                 short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path, out this.mapleLocaleVersion);
 
@@ -248,39 +257,77 @@ namespace MapleLib.WzLib
                 for (int j = maplestoryVerDetectedFromClient; j < MAX_PATCH_VERSION; j++)
                 {
                    if (TryDecodeWithWZVersionNumber(reader, wzVersionHeader, j, lazyParse))
-                    {
-                        return WzFileParseStatus.Success;
-                    }
+                   {
+                       return WzFileParseStatus.Success;
+                   }
                 }
                 //parseErrorMessage = "Error with game version hash : The specified game version is incorrect and WzLib was unable to determine the version itself";
                 return WzFileParseStatus.Error_Game_Ver_Hash;
             }
             else
             {
-                if (!this.b64BitClient)
-                {
-                    this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
-                    reader.Hash = this.versionHash;
-                }
+                this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
+                reader.Hash = this.versionHash;
+
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
             }
             return WzFileParseStatus.Success;
         }
-        
+
+        /// <summary>
+        /// encVer detecting:
+        /// Since KMST1132 (GMSv230, 2022/02/09), wz removed the 2-byte encVer at 0x3C, and use a fixed encVer 777.
+        /// Here we try to read the first 2 bytes from data part (0x3C) and guess if it looks like an encVer.
+        ///
+        /// Credit: WzComparerR2 project
+        /// </summary>
+        private void Check64BitClient(WzBinaryReader reader)
+        {
+            if (this.Header.FSize >= 2)
+            {
+                this.wzVersionHeader = reader.ReadUInt16();
+                if (this.wzVersionHeader > 0xff)
+                {
+                    b64BitClient = true;
+                }
+                else if (this.wzVersionHeader == 0x80)
+                {
+                    // there's an exceptional case that the first field of data part is a compressed int which determines the property count,
+                    // if the value greater than 127 and also to be a multiple of 256, the first 5 bytes will become to
+                    // 80 00 xx xx xx
+                    // so we additional check the int value, at most time the child node count in a WzFile won't greater than 65536 (0xFFFF).
+                    if (this.Header.FSize >= 5)
+                    {
+                        reader.BaseStream.Position = this.header.FStart; // go back to 0x3C
+                        int propCount = reader.ReadCompressedInt();
+                        if (propCount > 0 && (propCount & 0xFF) == 0 && propCount <= 0xFFFF)
+                        {
+                            b64BitClient = true;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Obviously, if data part have only 1 byte, encVer must be deleted.
+                b64BitClient = true;
+            }
+
+            // reset position
+            reader.BaseStream.Position = this.Header.FStart;
+        }
+
         private bool TryDecodeWithWZVersionNumber(WzBinaryReader reader, int useWzVersionHeader, int useMapleStoryPatchVersion, bool lazyParse)
         {
             this.mapleStoryPatchVersion = (short)useMapleStoryPatchVersion;
+            
+            this.versionHash = CheckAndGetVersionHash(useWzVersionHeader, mapleStoryPatchVersion);
+            if (this.versionHash == 0) // ugly hack, but that's the only way if the version number isnt known (nexon stores this in the .exe)
+                return false;
 
-            if (!this.b64BitClient)
-            {
-                this.versionHash = CheckAndGetVersionHash(useWzVersionHeader, mapleStoryPatchVersion);
-                if (this.versionHash == 0) // ugly hack, but that's the only way if the version number isnt known (nexon stores this in the .exe)
-                    return false;
-                reader.Hash = this.versionHash;
-            }
-
+            reader.Hash = this.versionHash;
             long fallbackOffsetPosition = reader.BaseStream.Position; // save position to rollback to, if should parsing fail from here
             WzDirectory testDirectory;
             try
@@ -451,12 +498,15 @@ namespace MapleLib.WzLib
             {
                 VersionHash = (32 * VersionHash) + (int)VersionNumberStr[i] + 1;
             }
+            if (wzVersionHeader == wzVersionHeader64bit)
+                return (uint)VersionHash; // always 59192
+
             int a = (VersionHash >> 24) & 0xFF;
             int b = (VersionHash >> 16) & 0xFF;
             int c = (VersionHash >> 8) & 0xFF;
             int d = VersionHash & 0xFF;
             int DecryptedVersionNumber = (0xff ^ a ^ b ^ c ^ d);
-            
+
             if (wzVersionHeader == DecryptedVersionNumber)
                 return (uint)VersionHash;
             return 0; // invalid
@@ -515,7 +565,9 @@ namespace MapleLib.WzLib
 
             using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv, versionHash))
             {
-                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + 2));
+                wzWriter.Hash = versionHash;
+
+                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + (b64BitClient ? 0 : 2u)));
                 Header.FSize = totalLen - Header.FStart;
                 for (int i = 0; i < 4; i++)
                 {
