@@ -193,10 +193,10 @@ namespace MapleLib.WzLib
             switch (reader.ReadByte())
             {
                 case 0x01:
-                case 0x1B:
+                case WzImage.WzImageHeaderByte_WithOffset:
                     return ExtractMore(reader, offset, endOfBlock, name, reader.ReadStringAtOffset(offset + reader.ReadInt32()), parent, imgParent);
                 case 0x00:
-                case 0x73:
+                case WzImage.WzImageHeaderByte_WithoutOffset:
                     return ExtractMore(reader, offset, endOfBlock, name, "", parent, imgParent);
                 default:
                     throw new System.Exception("Invalid byte read at ParseExtendedProp");

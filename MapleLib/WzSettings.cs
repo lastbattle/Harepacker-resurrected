@@ -15,9 +15,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using MapleLib.WzLib.WzProperties;
 using System.Reflection;
 using MapleLib.WzLib.WzStructure;
@@ -272,13 +269,13 @@ namespace MapleLib.WzLib
                 string tempFile = Path.GetTempFileName();
                 string settingsPath = wzFile.FilePath;
 
-                wzFile.SaveToDisk(tempFile);
+                wzFile.SaveToDisk(tempFile, null);
                 wzFile.Dispose();
                 File.Delete(settingsPath);
                 File.Move(tempFile, settingsPath);
             }
             else
-                wzFile.SaveToDisk(wzPath);
+                wzFile.SaveToDisk(wzPath, null);
         }
     }
 }

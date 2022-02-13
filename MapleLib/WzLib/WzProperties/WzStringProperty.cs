@@ -59,7 +59,7 @@ namespace MapleLib.WzLib.WzProperties
 		/// The name of the property
 		/// </summary>
 		public override string Name { get { return name; } set { name = value; } }
-		public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
+		public override void WriteValue(WzBinaryWriter writer)
 		{
 			writer.Write((byte)8);
 			writer.WriteStringValue(Value, 0, 1);

@@ -130,11 +130,13 @@ namespace MapleLib.WzLib.WzProperties
 			}
 			return ret;
 		}
-		public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
+		public override void WriteValue(WzBinaryWriter writer)
 		{
             List<WzExtended> extendedProps = new List<WzExtended>(properties.Count);
-            foreach (WzImageProperty prop in properties) if (prop is WzExtended) extendedProps.Add((WzExtended)prop);
-			writer.WriteStringValue("Shape2D#Convex2D", 0x73, 0x1B);
+            foreach (WzImageProperty prop in properties) 
+				if (prop is WzExtended) 
+					extendedProps.Add((WzExtended)prop);
+			writer.WriteStringValue("Shape2D#Convex2D", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);
             writer.WriteCompressedInt(extendedProps.Count);
 
 			foreach (WzImageProperty imgProperty in properties) 

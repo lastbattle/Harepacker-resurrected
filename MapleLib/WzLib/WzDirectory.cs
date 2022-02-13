@@ -232,7 +232,7 @@ namespace MapleLib.WzLib
                 reader.BaseStream.Position = rememberPos;
                 fsize = reader.ReadCompressedInt();
                 checksum = reader.ReadCompressedInt();
-                offset = reader.ReadOffset();
+                offset = reader.ReadOffset(); // IWzArchive::Getposition(pArchive)
 
                 if (type == 3)
                 {

@@ -15,9 +15,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using MapleLib.MapleCryptoLib;
 
 namespace MapleLib.WzLib.Util
@@ -29,7 +27,7 @@ namespace MapleLib.WzLib.Util
 	{
 		#region Properties
 		public WzMutableKey WzKey { get; set; }
-		public uint Hash { get; set; }
+		public uint Hash { get;  }
 		public Hashtable StringCache { get; set; }
 		public WzHeader Header { get; set; }
 		public bool LeaveOpen { get; internal set; }
@@ -37,7 +35,15 @@ namespace MapleLib.WzLib.Util
 
 		#region Constructors
 		public WzBinaryWriter(Stream output, byte[] WzIv)
-			: this(output, WzIv, false) { }
+			: this(output, WzIv, false)
+		{
+			this.Hash = 0;
+		}
+
+		public WzBinaryWriter(Stream output, byte[] WzIv, uint Hash)
+			: this(output, WzIv, false) {
+			this.Hash = Hash;
+		}
 
 		public WzBinaryWriter(Stream output, byte[] WzIv, bool leaveOpen)
 			: base(output)
@@ -49,6 +55,12 @@ namespace MapleLib.WzLib.Util
 		#endregion
 
 		#region Methods
+		/// <summary>
+		/// ?InternalSerializeString@@YAHPAGPAUIWzArchive@@EE@Z
+		/// </summary>
+		/// <param name="s"></param>
+		/// <param name="withoutOffset"></param>
+		/// <param name="withOffset"></param>
 		public void WriteStringValue(string s, int withoutOffset, int withOffset)
 		{
 			if (s.Length > 4 && StringCache.ContainsKey(s))
@@ -102,6 +114,7 @@ namespace MapleLib.WzLib.Util
 					if (value[i] > sbyte.MaxValue)
 					{
 						unicode = true;
+						break;
 					}
 				}
 
@@ -224,7 +237,7 @@ namespace MapleLib.WzLib.Util
 		{
 			uint encOffset = (uint)BaseStream.Position;
 			encOffset = (encOffset - Header.FStart) ^ 0xFFFFFFFF;
-			encOffset *= Hash;
+			encOffset *= Hash; // could this be removed? 
 			encOffset -= MapleCryptoConstants.WZ_OffsetConstant;
 			encOffset = RotateLeft(encOffset, (byte)(encOffset & 0x1F));
 			uint writeOffset = encOffset ^ (value - (Header.FStart * 2));

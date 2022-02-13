@@ -105,9 +105,9 @@ namespace MapleLib.WzLib.WzProperties
 		/// </summary>
 		public override WzPropertyType PropertyType { get { return WzPropertyType.UOL; } }
 
-		public override void WriteValue(MapleLib.WzLib.Util.WzBinaryWriter writer)
+		public override void WriteValue(WzBinaryWriter writer)
 		{
-			writer.WriteStringValue("UOL", 0x73, 0x1B);
+			writer.WriteStringValue("UOL", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);
 			writer.Write((byte)0);
 			writer.WriteStringValue(Value, 0, 1);
 		}

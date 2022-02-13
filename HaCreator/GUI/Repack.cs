@@ -242,7 +242,7 @@ namespace HaCreator.GUI
 
                 try
                 {
-                    wzf.SaveToDisk(tmpFile);
+                    wzf.SaveToDisk(tmpFile, null);
                     wzf.Dispose();
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder

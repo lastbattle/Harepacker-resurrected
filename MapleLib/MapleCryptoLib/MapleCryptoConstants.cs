@@ -86,11 +86,13 @@ namespace MapleLib.MapleCryptoLib
         };
 
 		/// <summary>
+		/// ?s_BasicKey@CAESCipher@@2PAEA
 		/// IV used to create the WzKey for GMS
 		/// </summary>
 		public static byte[] WZ_GMSIV = new byte[4] { 0x4D, 0x23, 0xC7, 0x2B };
 
 		/// <summary>
+		/// ?s_BasicKey@CAESCipher@@2PAEA
 		/// IV used to create the WzKey for the latest version of GMS, MSEA, or KMS
 		/// </summary>
 		public static byte[] WZ_MSEAIV = new byte[4] { 0xB9, 0x7D, 0x63, 0xE9 };

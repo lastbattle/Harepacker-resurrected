@@ -99,6 +99,8 @@ namespace MapleLib.WzLib
         /// </summary>
         public MapleStoryLocalisation MapleLocaleVersion { get { return mapleLocaleVersion; } private set { } }
 
+        public bool Is64BitWZFile { get { return b64BitClient; } private set { } }
+
         public override WzObject Parent { get { return null; } internal set { } }
 
         public override WzFile WzFileParent { get { return this; } }
@@ -107,8 +109,14 @@ namespace MapleLib.WzLib
         {
             if (wzDir == null || wzDir.reader == null)
                 return;
-            wzDir.reader.Close();
-            wzDir.reader = null;
+            try
+            {
+                wzDir.reader.Close();
+            }
+            finally
+            {
+                wzDir.reader = null;
+            }
             Header = null;
             path = null;
             name = null;
@@ -217,10 +225,12 @@ namespace MapleLib.WzLib
             this.Header.Ident = reader.ReadString(4);
             this.Header.FSize = reader.ReadUInt64();
             this.Header.FStart = reader.ReadUInt32();
-            this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
 
+            //this.Header.Copyright = reader.ReadNullTerminatedString();
+            this.Header.Copyright = reader.ReadString((int)(Header.FStart - 17U));
             byte unk1 = reader.ReadByte();
             byte[] unk2 = reader.ReadBytes((int)(Header.FStart - (ulong)reader.BaseStream.Position));
+
             reader.Header = this.Header;
 
             Check64BitClient(reader);  // update b64BitClient flag
@@ -258,6 +268,7 @@ namespace MapleLib.WzLib
             {
                 this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
                 reader.Hash = this.versionHash;
+
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
@@ -347,8 +358,8 @@ namespace MapleLib.WzLib
 
                         switch (checkByte)
                         {
-                            case 0x73:
-                            case 0x1b:
+                            case WzImage.WzImageHeaderByte_WithoutOffset: // 0x73
+                            case WzImage.WzImageHeaderByte_WithOffset:
                                 {
                                     WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                                     directory.ParseDirectory(lazyParse);
@@ -483,12 +494,10 @@ namespace MapleLib.WzLib
             int VersionHash = 0;
             string VersionNumberStr = VersionNumber.ToString();
 
-            int l = VersionNumberStr.Length;
-            for (int i = 0; i < l; i++)
+            for (int i = 0; i < VersionNumberStr.Length; i++)
             {
                 VersionHash = (32 * VersionHash) + (int)VersionNumberStr[i] + 1;
             }
-
             if (wzVersionHeader == wzVersionHeader64bit)
                 return (uint)VersionHash; // always 59192
 
@@ -525,7 +534,9 @@ namespace MapleLib.WzLib
         /// Saves a wz file to the disk, AKA repacking.
         /// </summary>
         /// <param name="path">Path to the output wz file</param>
-        public void SaveToDisk(string path, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
+        /// <param name="bSaveAs64BitWzFile">Save as WZ file for the 64-bit client</param>
+        /// <param name="savingToPreferredWzVer"></param>
+        public void SaveToDisk(string path, bool? bSaveAs64BitWzFile, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
             // WZ IV
             if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
@@ -552,7 +563,7 @@ namespace MapleLib.WzLib
 
             WzTool.StringCache.Clear();
 
-            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
+            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv, versionHash))
             {
                 wzWriter.Hash = versionHash;
 
@@ -571,7 +582,12 @@ namespace MapleLib.WzLib
                 {
                     wzWriter.Write(new byte[(int)extraHeaderLength]);
                 }
-                if (!b64BitClient)
+
+                if (bSaveAs64BitWzFile != null)
+                {
+                    if (bSaveAs64BitWzFile == false)
+                        wzWriter.Write(wzVersionHeader);
+                } else if (!b64BitClient)
                     wzWriter.Write(wzVersionHeader);
 
                 wzWriter.Header = Header;
