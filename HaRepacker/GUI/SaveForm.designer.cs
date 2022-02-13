@@ -75,6 +75,7 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.checkBox_64BitFile, "checkBox_64BitFile");
             this.checkBox_64BitFile.Name = "checkBox_64BitFile";
             this.checkBox_64BitFile.UseVisualStyleBackColor = true;
+            this.checkBox_64BitFile.CheckedChanged += new System.EventHandler(this.checkBox_64BitFile_CheckedChanged);
             // 
             // SaveForm
             // 

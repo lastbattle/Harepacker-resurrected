@@ -27,7 +27,7 @@ namespace MapleLib.WzLib.Util
 	{
 		#region Properties
 		public WzMutableKey WzKey { get; set; }
-		public uint Hash { get;  }
+		public uint Hash { get; set; }
 		public Hashtable StringCache { get; set; }
 		public WzHeader Header { get; set; }
 		public bool LeaveOpen { get; internal set; }
@@ -59,8 +59,8 @@ namespace MapleLib.WzLib.Util
 		/// ?InternalSerializeString@@YAHPAGPAUIWzArchive@@EE@Z
 		/// </summary>
 		/// <param name="s"></param>
-		/// <param name="withoutOffset"></param>
-		/// <param name="withOffset"></param>
+		/// <param name="withoutOffset">0x73</param>
+		/// <param name="withOffset">0x1B</param>
 		public void WriteStringValue(string s, int withoutOffset, int withOffset)
 		{
 			if (s.Length > 4 && StringCache.ContainsKey(s))

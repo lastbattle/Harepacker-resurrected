@@ -7,7 +7,6 @@
 using System;
 using System.Windows.Forms;
 using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
 using System.IO;
 using MapleLib.WzLib.Util;
 using System.Diagnostics;
@@ -75,7 +74,9 @@ namespace HaRepacker.GUI
                 {
                     encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
                     versionBox.Value = wzf.Version;
-                    checkBox_64BitFile.Checked = wzf.Is64BitWZFile;
+
+                    checkBox_64BitFile.Checked = wzf.Is64BitWzFile;
+                    versionBox.Enabled = wzf.Is64BitWzFile ? false : true; // disable checkbox if its checked as 64-bit, since the version will always be 777
                 }
                 else
                 { // Data.wz uses BMS encryption... no sepcific version indicated
@@ -136,7 +137,7 @@ namespace HaRepacker.GUI
         {
             if (versionBox.Value < 0)
             {
-                Warning.Error(HaRepacker.Properties.Resources.SaveVersionError);
+                Warning.Error(Properties.Resources.SaveVersionError);
                 return;
             }
 
@@ -148,7 +149,7 @@ namespace HaRepacker.GUI
                 HaRepacker.Properties.Resources.WzFilter)
             })
             {
-                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
                 bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked;
@@ -244,6 +245,20 @@ namespace HaRepacker.GUI
             {
                 PrepareAllImgs(subdir);
             }
+        }
+
+        /// <summary>
+        /// On checkBox_64BitFile checked changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void checkBox_64BitFile_CheckedChanged(object sender, EventArgs e)
+        {
+            if (bIsLoading)
+                return;
+
+            CheckBox checkbox_64 = (CheckBox)sender;
+            versionBox.Enabled = checkbox_64.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
         }
     }
 }
