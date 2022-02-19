@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace MapleLib.ClientLib
+﻿namespace MapleLib.ClientLib
 {
     /// <summary>
     /// The localisation number for each regional MapleStory version.
@@ -13,7 +7,10 @@ namespace MapleLib.ClientLib
     {
         MapleStoryKorea = 1, 
         MapleStoryKoreaTespia = 2,
+        Unknown3 = 3,
+        Unknown4 = 4,
         MapleStoryTespia = 5,
+        Unknown6 = 6,
         MapleStorySEA = 7,
         MapleStoryGlobal = 8,
         MapleStoryEurope = 9,

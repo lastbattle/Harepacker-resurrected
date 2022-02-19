@@ -576,7 +576,7 @@ namespace MapleLib.WzLib
             {
                 wzWriter.Hash = versionHash;
 
-                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + (bSaveAs64BitWZ ? 0 : 2u)));
+                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + (bSaveAs64BitWZ && !this.b64BitClient_withVerHeader ? 0 : 2u)));
                 Header.FSize = totalLen - Header.FStart;
                 for (int i = 0; i < 4; i++)
                 {
@@ -591,7 +591,7 @@ namespace MapleLib.WzLib
                 {
                     wzWriter.Write(new byte[(int)extraHeaderLength]);
                 }
-                if (!bSaveAs64BitWZ)
+                if (!bSaveAs64BitWZ || this.b64BitClient_withVerHeader)
                     wzWriter.Write(wzVersionHeader);
 
                 wzWriter.Header = Header;
