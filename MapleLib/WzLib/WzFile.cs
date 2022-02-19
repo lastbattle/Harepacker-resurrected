@@ -41,12 +41,15 @@ namespace MapleLib.WzLib
         internal WzHeader header;
         internal string name = "";
         internal ushort wzVersionHeader = 0;
-        internal const ushort wzVersionHeader64bit = 777;
+        internal const ushort wzVersionHeader64bit_start = 777;
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
+
         internal bool b64BitClient = false; // KMS update after Q4 2021, ver 1.2.357
+        private bool b64BitClient_withVerHeader = false; // 
+
         internal byte[] WzIv;
         #endregion
 
@@ -229,16 +232,22 @@ namespace MapleLib.WzLib
 
             // the value of wzVersionHeader is less important. It is used for reading/writing from/to WzFile Header, and calculating the versionHash.
             // it can be any number if the client is 64-bit. Assigning 777 is just for convenience when calculating the versionHash.
-            this.wzVersionHeader = b64BitClient ? wzVersionHeader64bit : reader.ReadUInt16();
+            this.wzVersionHeader = b64BitClient && !b64BitClient_withVerHeader ? wzVersionHeader64bit_start : reader.ReadUInt16();
 
             if (mapleStoryPatchVersion == -1)
             {
                 // for 64-bit client, return immediately if version 777 works correctly.
-                if (b64BitClient && TryDecodeWithWZVersionNumber(reader, wzVersionHeader, wzVersionHeader64bit, lazyParse))
+                // -- the latest KMS update seems to have changed it to 778? 779?
+                if (b64BitClient) 
                 {
-                    return WzFileParseStatus.Success;
+                    for (ushort maplestoryVerToDecode = wzVersionHeader64bit_start; maplestoryVerToDecode < wzVersionHeader64bit_start + 10; maplestoryVerToDecode++)
+                    {
+                        if (TryDecodeWithWZVersionNumber(reader, wzVersionHeader, maplestoryVerToDecode, lazyParse))
+                        {
+                            return WzFileParseStatus.Success;
+                        }
+                    }
                 }
-
                 // Attempt to get version from MapleStory.exe first
                 short maplestoryVerDetectedFromClient = GetMapleStoryVerFromExe(this.path, out this.mapleLocaleVersion);
 
@@ -298,6 +307,12 @@ namespace MapleLib.WzLib
                             b64BitClient = true;
                         }
                     }
+                } else if (this.wzVersionHeader == 0x21) // or 33
+                {
+                    b64BitClient = true;
+                    // but read the header
+                    // the latest KMS seems to include this back in again.. damn 
+                    this.b64BitClient_withVerHeader = true; // ugly hack, but until i've found a better way without breaking compatibility of old WZs.
                 }
             }
             else
@@ -491,7 +506,7 @@ namespace MapleLib.WzLib
                 VersionHash = (32 * VersionHash) + (int)VersionNumberStr[i] + 1;
             }
 
-            if (wzVersionHeader == wzVersionHeader64bit)
+            if (wzVersionHeader == wzVersionHeader64bit_start)
                 return (uint)VersionHash; // always 59192
 
             int a = (VersionHash >> 24) & 0xFF;
