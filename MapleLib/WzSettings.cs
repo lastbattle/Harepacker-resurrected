@@ -269,13 +269,13 @@ namespace MapleLib.WzLib
                 string tempFile = Path.GetTempFileName();
                 string settingsPath = wzFile.FilePath;
 
-                wzFile.SaveToDisk(tempFile, null);
+                wzFile.SaveToDisk(tempFile, false);
                 wzFile.Dispose();
                 File.Delete(settingsPath);
                 File.Move(tempFile, settingsPath);
             }
             else
-                wzFile.SaveToDisk(wzPath, null);
+                wzFile.SaveToDisk(wzPath, false);
         }
     }
 }
