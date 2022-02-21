@@ -54,13 +54,13 @@ namespace HaCreator.CustomControls
 
                 imageViewer.Image = fallbackBmp; // fallback in case its null
                 imageViewer.Width = fallbackBmp.Width + 8;
-                imageViewer.Height = fallbackBmp.Height + 8 + ((Text) ? 12 : 0);
+                imageViewer.Height = fallbackBmp.Height + 8 + ((Text) ? 16 : 0);
             }
             else
             {
                 imageViewer.Image = new Bitmap(bitmap); // Copying the bitmap for thread safety
                 imageViewer.Width = bitmap.Width + 8;
-                imageViewer.Height = bitmap.Height + 8 + ((Text) ? 12 : 0);
+                imageViewer.Height = bitmap.Height + 8 + ((Text) ? 16 : 0);
             }
             imageViewer.IsText = Text;
             imageViewer.Name = name;
