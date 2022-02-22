@@ -77,6 +77,24 @@ namespace MapleLib.WzLib.WzStructure
             return value.HasValue ? SetInt(value.Value) : null;
         }
 
+        #region Vector
+        public static WzVectorProperty GetVector(WzImageProperty source)
+        {
+            return (WzVectorProperty)source;
+        }
+
+        /// <summary>
+        /// Sets vector
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        public static WzVectorProperty SetVector(float x, float y)
+        {
+            return new WzVectorProperty("", x, y);
+        }
+        #endregion
+
         #region Long
         public static long GetLong(WzImageProperty source)
         {

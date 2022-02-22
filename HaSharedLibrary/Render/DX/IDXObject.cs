@@ -11,10 +11,10 @@ namespace HaSharedLibrary.Render.DX
     public interface IDXObject
     {
         void DrawObject(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, bool flip);
+            int mapShiftX, int mapShiftY, bool flip, ReflectionDrawableBoundary drawReflectionInfo);
 
         void DrawBackground(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime, 
-            int x, int y, Color color, bool flip);
+            int x, int y, Color color, bool flip, ReflectionDrawableBoundary drawReflectionInfo);
 
         /// <summary>
         /// The delay of the current frame

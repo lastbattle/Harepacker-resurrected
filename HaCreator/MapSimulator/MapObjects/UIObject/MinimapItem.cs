@@ -1,4 +1,5 @@
 ﻿using HaCreator.MapSimulator.MapObjects.UIObject;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -70,6 +71,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
             int RenderWidth, int RenderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
@@ -79,6 +81,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             // Draw the main drame
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 0, 0, centerX, centerY,
+                drawReflectionInfo,
                 RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                 TickCount);
 
@@ -87,6 +90,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
             item_pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
                 -Position.X, -Position.Y, minimapPosX, minimapPosY,
+                drawReflectionInfo,
                 RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                 TickCount);
 
@@ -108,6 +112,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                     drawRelativeX,
                     drawRelativeY,
                     centerX, centerY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
             }
         }

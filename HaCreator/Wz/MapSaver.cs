@@ -457,7 +457,7 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
-                if (bgInst.screenMode != (int) RenderResolution.Res_All) // 0
+                if (bgInst.screenMode != (int)RenderResolution.Res_All) // 0
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 
                 if (bgInst.SpineAni != null) // dont put anything if null
@@ -751,6 +751,7 @@ namespace HaCreator.Wz
             WzSubProperty areaParent = new WzSubProperty();
             WzSubProperty buffParent = new WzSubProperty();
             WzSubProperty swimParent = new WzSubProperty();
+
             foreach (BoardItem item in board.BoardItems.MiscItems)
             {
                 if (item is Clock)
@@ -837,6 +838,90 @@ namespace HaCreator.Wz
             }
         }
 
+        public void SaveMirrorFieldData()
+        {
+            if (board.BoardItems.MirrorFieldDatas.Count == 0)
+                return;
+
+            WzSubProperty mirrorFieldDataParent = new WzSubProperty();
+
+            int i = 0;
+            foreach (MirrorFieldDataType dataType in Enum.GetValues(typeof(MirrorFieldDataType))) // initial holder data, only run once
+            {
+                if (dataType == MirrorFieldDataType.NULL)
+                    continue;
+                WzSubProperty holderProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0">
+                holderProp.Name = i.ToString(); // "0"
+
+                // Subproperty of holderProp
+                WzSubProperty InfoProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0"><imgdir name="info">
+                InfoProp.Name = "info"; // unused for now
+                holderProp.AddProperty(InfoProp);
+
+                WzSubProperty dataTypeProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0"><imgdir name="mob">
+                dataTypeProp.Name = dataType.ToString(); // unused for now
+                holderProp.AddProperty(dataTypeProp);
+
+                // add to parent
+                mirrorFieldDataParent.AddProperty(holderProp);
+
+                i++;
+            }
+
+            // dumpppp
+            foreach (BoardItem item in board.BoardItems.MirrorFieldDatas)
+            {
+                if (item is MirrorFieldData)
+                {
+                    MirrorFieldData mirrorFieldData = (MirrorFieldData)item;
+                    string forTargetObject = mirrorFieldData.MirrorFieldDataType.ToString(); // <imgdir name="MirrorFieldData"><imgdir name="0">< imgdir name="info"/><imgdir name="mob" >
+
+                    WzImageProperty containsWzSubPropertyForTargetObj = mirrorFieldDataParent.WzProperties.FirstOrDefault(wzImg =>
+                    {
+                        return wzImg.WzProperties.FirstOrDefault(x => x.Name == forTargetObject) != null; // mob, user
+                        });
+
+                    if (containsWzSubPropertyForTargetObj != null)
+                    {
+                        WzImageProperty targetObjectWzProperty = containsWzSubPropertyForTargetObj[forTargetObject];
+
+                        WzSubProperty itemProp = new WzSubProperty(); // <imgdir name="0">
+                        itemProp.Name = targetObjectWzProperty.WzProperties.Count.ToString(); // "0"
+
+                        Microsoft.Xna.Framework.Rectangle rect = mirrorFieldData.Rectangle;
+                        /*
+                            int width = rb.X.Value - lt.X.Value;
+                            int height = rb.Y.Value - lt.Y.Value;
+                            Rectangle rectangle = new Rectangle(
+                                lt.X.Value - offset.X.Value,
+                                lt.Y.Value - offset.Y.Value,
+                                width,
+                                height);*/
+
+                        itemProp["lt"] = InfoTool.SetVector(rect.X, rect.Y);
+                        itemProp["rb"] = InfoTool.SetVector(rect.X + rect.Width, rect.Y + rect.Height);
+                        itemProp["offset"] = InfoTool.SetVector(mirrorFieldData.Offset.X, mirrorFieldData.Offset.Y);
+                        itemProp["gradient"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Gradient);
+                        itemProp["alpha"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Alpha);
+                        itemProp["objectForOverlay"] = InfoTool.SetString(mirrorFieldData.ReflectionInfo.ObjectForOverlay);
+                        itemProp["reflection"] = InfoTool.SetBool(mirrorFieldData.ReflectionInfo.Reflection);
+                        itemProp["alphaTest"] = InfoTool.SetOptionalBool(mirrorFieldData.ReflectionInfo.AlphaTest);
+
+                        targetObjectWzProperty.WzProperties.Add(itemProp);
+                    }
+                    else
+                    {
+                        throw new Exception("Error saving mirror field data. Missing MirrorFieldDataType of " + forTargetObject);
+                    }
+                }
+            }
+
+            if (mirrorFieldDataParent.WzProperties.Count > 0)
+            {
+                image["MirrorFieldData"] = mirrorFieldDataParent;
+            }
+        }
+
         /// <summary>
         /// Saves the additional unsupported properties read from the map image.
         /// </summary>
@@ -863,6 +948,7 @@ namespace HaCreator.Wz
             SaveFootholds();
             SaveLife();
             SaveMisc();
+            SaveMirrorFieldData();
             SaveAdditionals();
             InsertImage();
         }
@@ -987,7 +1073,7 @@ namespace HaCreator.Wz
                         continue;
                     }*/
 
-                    FootholdAnchor contAnchor = FindOptimalContinuationAnchor((tileInst.BoundItemsList[1].Y + tileInst.BoundItemsList[nitems - 2].Y) / 2,
+                        FootholdAnchor contAnchor = FindOptimalContinuationAnchor((tileInst.BoundItemsList[1].Y + tileInst.BoundItemsList[nitems - 2].Y) / 2,
                         tileInst.BoundItemsList[1].X, tileInst.BoundItemsList[nitems - 2].X, tileInst.LayerNumber);
                     if (contAnchor == null)
                     {
@@ -1120,7 +1206,7 @@ namespace HaCreator.Wz
 
         public void UpdateMapLists()
         {
-            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] = 
+            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] =
                 new Tuple<string, string>(board.MapInfo.strStreetName, board.MapInfo.strMapName);
         }
     }

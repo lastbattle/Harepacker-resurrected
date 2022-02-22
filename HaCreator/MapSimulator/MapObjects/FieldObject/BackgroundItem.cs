@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.Render.DX;
+﻿using HaSharedLibrary.Render;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -178,7 +179,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Draw2D(SpriteBatch sprite, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int x, int y, IDXObject frame)
         {
-            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, Color, flip);
+            frame.DrawBackground(sprite, skeletonRenderer, gameTime, x, y, Color, flip, null);
         }
 
         private int LastShiftIncreaseX = 0;
@@ -201,14 +202,15 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, int centerX, int centerY, 
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
             int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             if (((int) mapRenderResolution & screenMode) != screenMode || disabledBackground) // dont draw if the screenMode isnt for this
                 return;
 
-            IDXObject drawFrame = GetCurrFrame(TickCount);
+            IDXObject drawFrame = GetCurrentFrame(TickCount);
             int X = CalculateBackgroundPosX(drawFrame, mapShiftX, centerX, renderWidth, RenderObjectScaling);
             int Y = CalculateBackgroundPosY(drawFrame, mapShiftY, centerY, renderHeight, RenderObjectScaling);
             int _cx = cx == 0 ? drawFrame.Width : cx;
