@@ -44,15 +44,17 @@
             this.stateInput.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.stateInput.FormattingEnabled = true;
             this.stateInput.IntegralHeight = false;
-            this.stateInput.ItemHeight = 13;
-            this.stateInput.Location = new System.Drawing.Point(67, 53);
+            this.stateInput.ItemHeight = 23;
+            this.stateInput.Location = new System.Drawing.Point(116, 59);
+            this.stateInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.stateInput.Name = "stateInput";
-            this.stateInput.Size = new System.Drawing.Size(118, 21);
+            this.stateInput.Size = new System.Drawing.Size(317, 31);
             this.stateInput.TabIndex = 1;
             // 
             // idInput
             // 
-            this.idInput.Location = new System.Drawing.Point(67, 12);
+            this.idInput.Location = new System.Drawing.Point(116, 22);
+            this.idInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.idInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -64,33 +66,36 @@
             0,
             -2147483648});
             this.idInput.Name = "idInput";
-            this.idInput.Size = new System.Drawing.Size(118, 22);
+            this.idInput.Size = new System.Drawing.Size(317, 29);
             this.idInput.TabIndex = 0;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(9, 16);
+            this.label1.Location = new System.Drawing.Point(11, 24);
+            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(54, 13);
+            this.label1.Size = new System.Drawing.Size(81, 23);
             this.label1.TabIndex = 3;
             this.label1.Text = "Quest ID:";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(9, 53);
+            this.label2.Location = new System.Drawing.Point(14, 59);
+            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(36, 13);
+            this.label2.Size = new System.Drawing.Size(52, 23);
             this.label2.TabIndex = 4;
             this.label2.Text = "State:";
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(1, 111);
+            this.okButton.Location = new System.Drawing.Point(2, 137);
+            this.okButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(95, 30);
+            this.okButton.Size = new System.Drawing.Size(216, 69);
             this.okButton.TabIndex = 2;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -98,18 +103,19 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(98, 111);
+            this.cancelButton.Location = new System.Drawing.Point(226, 137);
+            this.cancelButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(95, 30);
+            this.cancelButton.Size = new System.Drawing.Size(216, 69);
             this.cancelButton.TabIndex = 3;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
             // ObjQuestInput
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(194, 142);
+            this.ClientSize = new System.Drawing.Size(446, 209);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.label2);
@@ -117,7 +123,7 @@
             this.Controls.Add(this.idInput);
             this.Controls.Add(this.stateInput);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
-            this.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.Margin = new System.Windows.Forms.Padding(6, 8, 6, 8);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "ObjQuestInput";

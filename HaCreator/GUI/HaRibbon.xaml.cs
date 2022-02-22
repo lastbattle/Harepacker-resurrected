@@ -222,7 +222,7 @@ namespace HaCreator.GUI
         private void ViewBoxes_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             if (ViewToggled != null)
-                ViewToggled.Invoke(tilesCheck.IsChecked, objsCheck.IsChecked, npcsCheck.IsChecked, mobsCheck.IsChecked, reactCheck.IsChecked, portalCheck.IsChecked, fhCheck.IsChecked, ropeCheck.IsChecked, chairCheck.IsChecked, tooltipCheck.IsChecked, bgCheck.IsChecked, miscCheck.IsChecked);
+                ViewToggled.Invoke(tilesCheck.IsChecked, objsCheck.IsChecked, npcsCheck.IsChecked, mobsCheck.IsChecked, reactCheck.IsChecked, portalCheck.IsChecked, fhCheck.IsChecked, ropeCheck.IsChecked, chairCheck.IsChecked, tooltipCheck.IsChecked, bgCheck.IsChecked, miscCheck.IsChecked, mirrorFieldDataCheck.IsChecked);
         }
 
         private void Minimap_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -494,7 +494,7 @@ namespace HaCreator.GUI
 #endregion
 
         public delegate void EmptyEvent();
-        public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc);
+        public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc, bool? mirrorField);
         public delegate void ToggleEvent(bool pressed);
         public delegate void LayerViewChangedEvent(int layer, int platform, bool allLayers, bool allPlats);
 
@@ -524,7 +524,7 @@ namespace HaCreator.GUI
         public event EmptyEvent ShowMapPropertiesClicked;
         public event EventHandler<System.Windows.Forms.KeyEventArgs> RibbonKeyDown;
 
-        public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)
+        public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc, bool? mirrorField)
         {
             tilesCheck.IsChecked = tiles;
             objsCheck.IsChecked = objs;
@@ -538,6 +538,7 @@ namespace HaCreator.GUI
             tooltipCheck.IsChecked = tooltips;
             bgCheck.IsChecked = backgrounds;
             miscCheck.IsChecked = misc;
+            mirrorFieldDataCheck.IsChecked = mirrorField;
         }
 
         public void SetEnabled(bool enabled)
@@ -566,7 +567,7 @@ namespace HaCreator.GUI
         
         private void ChangeAllCheckboxes(bool? state)
         {
-            foreach (CheckBox cb in new CheckBox[] { tilesCheck, objsCheck, npcsCheck, mobsCheck, reactCheck, portalCheck, fhCheck, ropeCheck, chairCheck, tooltipCheck, bgCheck, miscCheck })
+            foreach (CheckBox cb in new CheckBox[] { tilesCheck, objsCheck, npcsCheck, mobsCheck, reactCheck, portalCheck, fhCheck, ropeCheck, chairCheck, tooltipCheck, bgCheck, miscCheck, mirrorFieldDataCheck })
             {
                 cb.IsChecked = state;
             }

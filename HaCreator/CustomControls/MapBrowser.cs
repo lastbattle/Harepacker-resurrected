@@ -19,7 +19,7 @@ namespace HaCreator.CustomControls
 {
     public partial class MapBrowser : UserControl
     {
-        private bool load = false;
+        private bool loadMapAvailable = false;
         private readonly List<string> maps = new List<string>();
 
         public MapBrowser()
@@ -33,7 +33,7 @@ namespace HaCreator.CustomControls
         {
             get
             {
-                return load;
+                return loadMapAvailable;
             }
         }
 
@@ -187,7 +187,7 @@ namespace HaCreator.CustomControls
                 linkLabel.Visible = false;
                 mapNotExist.Visible = false;
                 minimapBox.Image = new Bitmap(1, 1);
-                load = mapNamesBox.SelectedItem != null;
+                loadMapAvailable = mapNamesBox.SelectedItem != null;
             }
             else
             {
@@ -200,7 +200,7 @@ namespace HaCreator.CustomControls
                     linkLabel.Visible = false;
                     mapNotExist.Visible = true;
                     minimapBox.Image = (Image)new Bitmap(1, 1);
-                    load = false;
+                    loadMapAvailable = false;
                 }
                 else
                 {
@@ -211,13 +211,13 @@ namespace HaCreator.CustomControls
                             linkLabel.Visible = true;
                             mapNotExist.Visible = false;
                             minimapBox.Image = new Bitmap(1, 1);
-                            load = false;
+                            loadMapAvailable = false;
                         }
                         else
                         {
                             linkLabel.Visible = false;
                             mapNotExist.Visible = false;
-                            load = true;
+                            loadMapAvailable = true;
                             WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
@@ -227,7 +227,7 @@ namespace HaCreator.CustomControls
                             {
                                 minimapBox.Image = new Bitmap(1, 1);
                             }
-                            load = true;
+                            loadMapAvailable = true;
                         }
                     }
                 }
