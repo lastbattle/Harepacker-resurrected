@@ -133,6 +133,11 @@ namespace HaCreator.GUI
             loadButton.Enabled = true;
         }
 
+        /// <summary>
+        /// Load map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void LoadButton_Click(object sender, EventArgs e)
         {
             //Hide();
@@ -210,6 +215,8 @@ namespace HaCreator.GUI
 
         private void MapBrowser_SelectionChanged()
         {
+            bool bLoadAvailable = mapBrowser.LoadAvailable;
+
             loadButton.Enabled = mapBrowser.LoadAvailable;
         }
 
