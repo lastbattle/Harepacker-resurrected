@@ -15,6 +15,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
+using System.Drawing;
 using MapleLib.WzLib.WzProperties;
 
 namespace MapleLib.WzLib.WzStructure
@@ -100,7 +101,47 @@ namespace MapleLib.WzLib.WzStructure
         }
         #endregion
 
+        #region Rectangle
+        /// <summary>
+        /// Gets System.Drawing.Rectangle from "lt" and "rb"
+        /// </summary>
+        /// <param name="parentSource"></param>
+        /// <returns></returns>
+        public static Rectangle GetLtRbRectangle(this WzImageProperty parentSource)
+        {
+            WzVectorProperty lt = InfoTool.GetOptionalVector(parentSource["lt"]);
+            WzVectorProperty rb = InfoTool.GetOptionalVector(parentSource["rb"]);
+
+            int width = rb.X.Value - lt.X.Value;
+            int height = rb.Y.Value - lt.Y.Value;
+
+            Rectangle rectangle = new Rectangle(
+                lt.X.Value,
+                lt.Y.Value,
+                width,
+                height);
+            return rectangle;
+        }
+
+        /// <summary>
+        /// Sets the "lt" and "rb" value in a WzImageProperty parentSource
+        /// derived from Rectangle
+        /// </summary>
+        /// <param name="parentSource"></param>
+        /// <param name="rect"></param>
+        public static void SetLtRbRectangle(this WzImageProperty parentSource, Rectangle rect)
+        {
+            parentSource["lt"] = InfoTool.SetVector(rect.X, rect.Y);
+            parentSource["rb"] = InfoTool.SetVector(rect.X + rect.Width, rect.Y + rect.Height);
+        }
+        #endregion
+
         #region Vector
+        /// <summary>
+        /// Gets the vector value of the WzImageProperty
+        /// </summary>
+        /// <param name="source"></param>
+        /// <returns></returns>
         public static WzVectorProperty GetVector(this WzImageProperty source)
         {
             return (WzVectorProperty)source;
