@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30907.101
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32203.90
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib", "MapleLib\MapleLib.csproj", "{28AAB36D-942E-4476-A000-0E9DE380F390}"
 EndProject
@@ -25,6 +25,10 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "squishpng", "squish-1.11\vs9\squishpng\squishpng.vcxproj", "{3BC7CF47-F1C8-4BDA-BE30-92F17B21D2C7}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "squishtest", "squish-1.11\vs9\squishtest\squishtest.vcxproj", "{77A3F26C-A1D6-4535-9E37-7D3DF34E4B4B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Test", "Test", "{55DA028C-3222-448E-A01C-BBB5A42F586D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_WzFile", "UnitTest_WzFile\UnitTest_WzFile.csproj", "{82A30B11-2700-4F40-B05B-9BE5DEAD522B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -174,6 +178,22 @@ Global
 		{77A3F26C-A1D6-4535-9E37-7D3DF34E4B4B}.Release|x64.Build.0 = Release|x64
 		{77A3F26C-A1D6-4535-9E37-7D3DF34E4B4B}.Release|x86.ActiveCfg = Release|Win32
 		{77A3F26C-A1D6-4535-9E37-7D3DF34E4B4B}.Release|x86.Build.0 = Release|Win32
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|Win32.Build.0 = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|x64.Build.0 = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Debug|x86.Build.0 = Debug|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|Win32.ActiveCfg = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|Win32.Build.0 = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|x64.ActiveCfg = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|x64.Build.0 = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|x86.ActiveCfg = Release|Any CPU
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -188,6 +208,7 @@ Global
 		{6A8518C3-D81A-4428-BD7F-C37933088AC1} = {BF308906-0C4D-496F-A030-FA6D3CF89563}
 		{3BC7CF47-F1C8-4BDA-BE30-92F17B21D2C7} = {BF308906-0C4D-496F-A030-FA6D3CF89563}
 		{77A3F26C-A1D6-4535-9E37-7D3DF34E4B4B} = {BF308906-0C4D-496F-A030-FA6D3CF89563}
+		{82A30B11-2700-4F40-B05B-9BE5DEAD522B} = {55DA028C-3222-448E-A01C-BBB5A42F586D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {3544F28D-545F-4E21-B8A8-A86A825F53B5}
