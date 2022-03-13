@@ -15,9 +15,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using MapleLib.MapleCryptoLib;
+using MapleLib.PacketLib;
 
 namespace MapleLib.WzLib.Util
 {
@@ -216,12 +218,28 @@ namespace MapleLib.WzLib.Util
 
         #endregion
 
-        #region Overrides
+        #region Debugging Methods
+        /// <summary>
+        /// Prints the next numberOfBytes in the stream in the system debug console.
+        /// </summary>
+        /// <param name="numberOfBytes"></param>
+        public void PrintHexBytes(int numberOfBytes)
+        {
+#if DEBUG // only debug
+            string hex = HexTool.ToString(ReadBytes(numberOfBytes));
+            Debug.WriteLine(hex);
+
+            this.BaseStream.Position -= numberOfBytes;
+#endif
+        }
+#endregion
+
+#region Overrides
         public override void Close()
         {
             // debug here
             base.Close();
         }
-        #endregion
+#endregion
     }
 }

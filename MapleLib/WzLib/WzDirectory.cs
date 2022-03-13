@@ -180,8 +180,8 @@ namespace MapleLib.WzLib
         /// </summary>
         internal void ParseDirectory(bool lazyParse = false)
         {
-            //Debug.WriteLine(HexTool.ToString( reader.ReadBytes(20)));
-            //reader.BaseStream.Position = reader.BaseStream.Position - 20;
+            //reader.PrintHexBytes(20);
+
             long available = reader.Available();
             if (available == 0)
                 return;
