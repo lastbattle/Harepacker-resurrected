@@ -19,6 +19,7 @@ namespace HaCreator.MapEditor.Instance.Misc
 {
     public enum MirrorFieldDataType
     {
+        info,
         mob,
         user,
         npc,
