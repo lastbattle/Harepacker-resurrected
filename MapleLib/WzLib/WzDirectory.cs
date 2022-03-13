@@ -197,6 +197,7 @@ namespace MapleLib.WzLib
                 int fsize;
                 int checksum;
                 uint offset;
+                int unk_GMS230 = 0;
 
                 long rememberPos = 0;
                 switch (type)
@@ -213,8 +214,16 @@ namespace MapleLib.WzLib
                             int stringOffset = reader.ReadInt32();
                             rememberPos = reader.BaseStream.Position;
                             reader.BaseStream.Position = reader.Header.FStart + stringOffset;
+
+                            if (this.wzFile.Is64BitWzFile)
+                            {
+                                unk_GMS230 = reader.ReadByte(); // something added in GMS v230/ SEA v212
+                                // TODO: the saving part too. 
+                            }
                             type = reader.ReadByte();
                             fname = reader.ReadString();
+
+                            //Console.WriteLine("EntryCount: {0}, Unk: {1}, type: {2}, fname: {3}", entryCount, unk_GMS230, type, fname);
                             break;
                         }
                     case 3:

@@ -41,14 +41,14 @@ namespace MapleLib.WzLib
         internal WzHeader header;
         internal string name = "";
         internal ushort wzVersionHeader = 0;
-        internal const ushort wzVersionHeader64bit_start = 777;
+        internal const ushort wzVersionHeader64bit_start = 770; // 777 for KMS, GMS v230 uses 778.. wut
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
 
         internal bool b64BitClient = false; // KMS update after Q4 2021, ver 1.2.357
-        private bool b64BitClient_withVerHeader = false; // 
+        internal bool b64BitClient_withVerHeader = false; // 
 
         internal byte[] WzIv;
         #endregion
@@ -240,7 +240,7 @@ namespace MapleLib.WzLib
                 // -- the latest KMS update seems to have changed it to 778? 779?
                 if (b64BitClient) 
                 {
-                    for (ushort maplestoryVerToDecode = wzVersionHeader64bit_start; maplestoryVerToDecode < wzVersionHeader64bit_start + 10; maplestoryVerToDecode++)
+                    for (ushort maplestoryVerToDecode = wzVersionHeader64bit_start; maplestoryVerToDecode < wzVersionHeader64bit_start + 20; maplestoryVerToDecode++)
                     {
                         if (TryDecodeWithWZVersionNumber(reader, wzVersionHeader, maplestoryVerToDecode, lazyParse))
                         {
