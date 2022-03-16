@@ -43,18 +43,16 @@
             // 
             // pathLabel
             // 
-            this.pathLabel.Location = new System.Drawing.Point(0, 2);
-            this.pathLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.pathLabel.Location = new System.Drawing.Point(0, 12);
             this.pathLabel.Name = "pathLabel";
-            this.pathLabel.Size = new System.Drawing.Size(444, 82);
+            this.pathLabel.Size = new System.Drawing.Size(179, 16);
             this.pathLabel.TabIndex = 0;
             this.pathLabel.Text = "label1";
             this.pathLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // xInput
             // 
-            this.xInput.Location = new System.Drawing.Point(121, 88);
-            this.xInput.Margin = new System.Windows.Forms.Padding(4);
+            this.xInput.Location = new System.Drawing.Point(79, 34);
             this.xInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -66,33 +64,30 @@
             0,
             -2147483648});
             this.xInput.Name = "xInput";
-            this.xInput.Size = new System.Drawing.Size(75, 29);
+            this.xInput.Size = new System.Drawing.Size(50, 22);
             this.xInput.TabIndex = 0;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(93, 90);
-            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label1.Location = new System.Drawing.Point(63, 37);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(20, 23);
+            this.label1.Size = new System.Drawing.Size(13, 13);
             this.label1.TabIndex = 2;
             this.label1.Text = "X";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(224, 90);
-            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label2.Location = new System.Drawing.Point(63, 63);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(19, 23);
+            this.label2.Size = new System.Drawing.Size(12, 13);
             this.label2.TabIndex = 4;
             this.label2.Text = "Y";
             // 
             // yInput
             // 
-            this.yInput.Location = new System.Drawing.Point(251, 88);
-            this.yInput.Margin = new System.Windows.Forms.Padding(4);
+            this.yInput.Location = new System.Drawing.Point(79, 60);
             this.yInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -104,16 +99,15 @@
             0,
             -2147483648});
             this.yInput.Name = "yInput";
-            this.yInput.Size = new System.Drawing.Size(75, 29);
+            this.yInput.Size = new System.Drawing.Size(50, 22);
             this.yInput.TabIndex = 1;
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(4, 192);
-            this.okButton.Margin = new System.Windows.Forms.Padding(4);
+            this.okButton.Location = new System.Drawing.Point(12, 128);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(216, 69);
+            this.okButton.Size = new System.Drawing.Size(76, 28);
             this.okButton.TabIndex = 5;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -121,10 +115,9 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(228, 192);
-            this.cancelButton.Margin = new System.Windows.Forms.Padding(4);
+            this.cancelButton.Location = new System.Drawing.Point(94, 128);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(216, 69);
+            this.cancelButton.Size = new System.Drawing.Size(73, 28);
             this.cancelButton.TabIndex = 6;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -132,28 +125,26 @@
             // ladderBox
             // 
             this.ladderBox.AutoSize = true;
-            this.ladderBox.Location = new System.Drawing.Point(68, 129);
-            this.ladderBox.Margin = new System.Windows.Forms.Padding(4);
+            this.ladderBox.Location = new System.Drawing.Point(45, 86);
             this.ladderBox.Name = "ladderBox";
-            this.ladderBox.Size = new System.Drawing.Size(88, 27);
+            this.ladderBox.Size = new System.Drawing.Size(61, 17);
             this.ladderBox.TabIndex = 3;
             this.ladderBox.Text = "Ladder";
             // 
             // ufBox
             // 
             this.ufBox.AutoSize = true;
-            this.ufBox.Location = new System.Drawing.Point(68, 160);
-            this.ufBox.Margin = new System.Windows.Forms.Padding(4);
+            this.ufBox.Location = new System.Drawing.Point(45, 107);
             this.ufBox.Name = "ufBox";
-            this.ufBox.Size = new System.Drawing.Size(156, 27);
+            this.ufBox.Size = new System.Drawing.Size(109, 17);
             this.ufBox.TabIndex = 4;
             this.ufBox.Text = "Upper Foothold";
             // 
             // RopeInstanceEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(446, 264);
+            this.ClientSize = new System.Drawing.Size(179, 167);
             this.Controls.Add(this.ufBox);
             this.Controls.Add(this.ladderBox);
             this.Controls.Add(this.cancelButton);
@@ -164,7 +155,6 @@
             this.Controls.Add(this.xInput);
             this.Controls.Add(this.pathLabel);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
-            this.Margin = new System.Windows.Forms.Padding(6);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "RopeInstanceEditor";

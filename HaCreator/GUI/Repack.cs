@@ -135,7 +135,7 @@ namespace HaCreator.GUI
             });
 
             // Test for write access
-            string rootDir = Path.Combine(Program.WzManager.BaseDir, Program.APP_NAME);
+            string rootDir = Path.Combine("D:\\Maple360\\Maplesto\\Maple", Program.APP_NAME);
             string testDir = Path.Combine(rootDir, "Test");
 
             bool bSaveFileInHaCreatorDirectory = false;
@@ -217,6 +217,8 @@ namespace HaCreator.GUI
                 });
                 string orgFile = wzf.FilePath;
 
+                Console.WriteLine("Saving " + wzf.Name + "...");
+                Console.WriteLine("Saving inside " + orgFile + "...");
                 string tmpFile;
                 if (!bSaveFileInHaCreatorDirectory)
                     tmpFile = orgFile + "$tmp";
@@ -242,7 +244,7 @@ namespace HaCreator.GUI
 
                 try
                 {
-                    wzf.SaveToDisk(tmpFile, null);
+                    wzf.SaveToDisk(tmpFile);
                     wzf.Dispose();
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder

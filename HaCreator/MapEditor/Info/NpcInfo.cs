@@ -15,11 +15,14 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using HaCreator.GUI;
 
 namespace HaCreator.MapEditor.Info
 {
+
     public class NpcInfo : MapleExtractableInfo
     {
+       
         private readonly string id;
         private readonly string name;
 
@@ -63,16 +66,39 @@ namespace HaCreator.MapEditor.Info
 
         public static NpcInfo Get(string id)
         {
-            WzImage npcImage = (WzImage)Program.WzManager["npc"][id + ".img"];
-            if (npcImage == null)
+          
+
+            WzImage npcImage;
+            if (Initialization.isClient64())
+            {
+                foreach (String npc in WzFileManager.NPC_WZ_FILES_64)
+                {
+                    npcImage = (WzImage)Program.WzManager[npc][id + ".img"];
+                    if (npcImage != null)
+                    {
+                        if (!npcImage.Parsed)
+                            npcImage.ParseImage();
+                        if (npcImage.HCTag == null) ;
+                        npcImage.HCTag = NpcInfo.Load(npcImage);
+                        NpcInfo result = (NpcInfo)npcImage.HCTag;
+                        result.ParseImageIfNeeded();
+                        return result;
+                    }
+                }
                 return null;
-            if (!npcImage.Parsed)
-                npcImage.ParseImage();
-            if (npcImage.HCTag == null)
-                npcImage.HCTag = NpcInfo.Load(npcImage);
-            NpcInfo result = (NpcInfo)npcImage.HCTag;
-            result.ParseImageIfNeeded();
-            return result;
+            } else
+            {
+                npcImage = (WzImage)Program.WzManager["npc"][id + ".img"];
+                if (npcImage == null)
+                    return null;
+                if (!npcImage.Parsed)
+                    npcImage.ParseImage();
+                if (npcImage.HCTag == null)
+                    npcImage.HCTag = NpcInfo.Load(npcImage);
+                NpcInfo result = (NpcInfo)npcImage.HCTag;
+                result.ParseImageIfNeeded();
+                return result;
+            }
         }
 
         private static NpcInfo Load(WzImage parentObject)
@@ -111,15 +137,41 @@ namespace HaCreator.MapEditor.Info
         public WzImage LinkedWzImage
         {
             get {
-                if (_LinkedWzImage == null)
+                WzImage npcLink;
+                if(Initialization.isClient64())
                 {
-                    WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-                    if (link != null)
-                        _LinkedWzImage = (WzImage)Program.WzManager["npc"][link.Value + ".img"];
-                    else
-                        _LinkedWzImage = (WzImage)Program.WzManager["npc"][id + ".img"]; // default
+                    foreach (String npc in WzFileManager.NPC_WZ_FILES_64)
+                    {
+                        npcLink = (WzImage)Program.WzManager[npc][id + ".img"];
+                        if (npcLink != null)
+                        {
+                            if (_LinkedWzImage == null)
+                            {
+                                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                                if (link != null)
+                                    _LinkedWzImage = (WzImage)Program.WzManager[npc][link.Value + ".img"];
+                                else
+                                    _LinkedWzImage = (WzImage)Program.WzManager[npc][id + ".img"]; // default
+                            }
+                            return _LinkedWzImage;
+
+                        }
+                    }
                 }
-                return _LinkedWzImage; 
+                else
+                {
+                    if (_LinkedWzImage == null)
+                    {
+                        WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                        if (link != null)
+                            _LinkedWzImage = (WzImage)Program.WzManager["npc"][link.Value + ".img"];
+                        else
+                            _LinkedWzImage = (WzImage)Program.WzManager["npc"][id + ".img"]; // default
+                    }
+                    return _LinkedWzImage;
+                }
+                Console.Write("Error Code LinkedWzImage");
+                return null;
             }
             set { this._LinkedWzImage = value; }
         }

@@ -29,7 +29,7 @@ namespace HaCreator.MapEditor.Instance.Shapes
         private MapleLine cd;
         private MapleLine da;
 
-        protected XNA.Rectangle rect;
+        private XNA.Rectangle rect;
         public XNA.Rectangle Rectangle
         {
             get { return this.rect; }

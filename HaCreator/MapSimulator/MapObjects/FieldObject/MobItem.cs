@@ -1,5 +1,4 @@
 ﻿using HaCreator.MapEditor.Instance;
-using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -29,23 +28,13 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             this.mobInstance = mobInstance;
         }
 
-        #region Custom Members
-        public MobInstance MobInstance
-        {
-            get { return this.mobInstance; }
-            private set { }
-        }
-        #endregion
-
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
             int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
-                drawReflectionInfo,
                 renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                 TickCount);
         }

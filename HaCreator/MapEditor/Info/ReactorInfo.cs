@@ -85,9 +85,9 @@ namespace HaCreator.MapEditor.Info
             get {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                 if (link != null)
-                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
+                    _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][link.Value + ".img"];
                 else
-                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][id + ".img"];
+                    _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][id + ".img"];
                 return _LinkedWzImage; 
             }
             set { this._LinkedWzImage = value; }

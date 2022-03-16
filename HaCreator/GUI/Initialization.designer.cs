@@ -38,6 +38,8 @@
             this.pathBox = new System.Windows.Forms.ComboBox();
             this.button2 = new System.Windows.Forms.Button();
             this.button_checkMapErrors = new System.Windows.Forms.Button();
+            this.ClientTypeBox = new System.Windows.Forms.ComboBox();
+            this.label4 = new System.Windows.Forms.Label();
             this.SuspendLayout();
             // 
             // button1
@@ -63,6 +65,7 @@
             this.versionBox.Name = "versionBox";
             this.versionBox.Size = new System.Drawing.Size(284, 21);
             this.versionBox.TabIndex = 3;
+            this.versionBox.SelectedIndexChanged += new System.EventHandler(this.versionBox_SelectedIndexChanged);
             // 
             // toolStripProgressBar1
             // 
@@ -123,11 +126,39 @@
             this.button_checkMapErrors.UseVisualStyleBackColor = true;
             this.button_checkMapErrors.Click += new System.EventHandler(this.debugButton_Click);
             // 
+            // ClientTypeBox
+            // 
+            this.ClientTypeBox.BackColor = System.Drawing.SystemColors.Window;
+            this.ClientTypeBox.Cursor = System.Windows.Forms.Cursors.Default;
+            this.ClientTypeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.ClientTypeBox.FormattingEnabled = true;
+            this.ClientTypeBox.Items.AddRange(new object[] {
+            "32 bit",
+            "64 bit"});
+            this.ClientTypeBox.Location = new System.Drawing.Point(365, 11);
+            this.ClientTypeBox.Name = "ClientTypeBox";
+            this.ClientTypeBox.Size = new System.Drawing.Size(54, 21);
+            this.ClientTypeBox.TabIndex = 16;
+            this.ClientTypeBox.Tag = "";
+            this.ClientTypeBox.SelectedIndexChanged += new System.EventHandler(this.comboBox1_SelectedIndexChanged);
+            // 
+            // label4
+            // 
+            this.label4.AutoSize = true;
+            this.label4.Location = new System.Drawing.Point(362, 35);
+            this.label4.Name = "label4";
+            this.label4.Size = new System.Drawing.Size(63, 13);
+            this.label4.TabIndex = 18;
+            this.label4.Text = "Client Type";
+            this.label4.Click += new System.EventHandler(this.label4_Click);
+            // 
             // Initialization
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(360, 131);
+            this.ClientSize = new System.Drawing.Size(425, 125);
+            this.Controls.Add(this.label4);
+            this.Controls.Add(this.ClientTypeBox);
             this.Controls.Add(this.button_checkMapErrors);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);
@@ -137,13 +168,14 @@
             this.Controls.Add(this.textBox2);
             this.Controls.Add(this.button1);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.ForeColor = System.Drawing.SystemColors.ControlText;
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
             this.MaximizeBox = false;
             this.Name = "Initialization";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "HaCreator";
+            this.Text = "SoulyPacker";
             this.Load += new System.EventHandler(this.Initialization_Load);
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Initialization_KeyDown);
             this.ResumeLayout(false);
@@ -162,6 +194,8 @@
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button button_checkMapErrors;
+        private System.Windows.Forms.ComboBox ClientTypeBox;
+        private System.Windows.Forms.Label label4;
     }
 }
 

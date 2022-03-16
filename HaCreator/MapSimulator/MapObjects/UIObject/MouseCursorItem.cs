@@ -1,5 +1,4 @@
-﻿using HaSharedLibrary.Render;
-using HaSharedLibrary.Render.DX;
+﻿using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -83,7 +82,6 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         /// <param name="TickCount"></param>
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
             int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
@@ -94,7 +92,6 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             {
                 base.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -MousePos.X, -MousePos.Y, centerX, centerY,
-                    drawReflectionInfo,
                     renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -102,7 +99,6 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             {
                 cursorItemPressedState.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -MousePos.X, -MousePos.Y, centerX, centerY,
-                    drawReflectionInfo,
                     renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }

@@ -16,12 +16,10 @@ namespace HaCreator.MapEditor.Instance.Misc
 {
     public class BuffZone : MiscRectangle, ISerializable
     {
-        #region Fields
         private int itemID;
         private int interval;
         private int duration;
         private string zoneName;
-        #endregion
 
         public BuffZone(Board board, XNA.Rectangle rect, int itemID, int interval, int duration, string zoneName)
             : base(board, rect)
