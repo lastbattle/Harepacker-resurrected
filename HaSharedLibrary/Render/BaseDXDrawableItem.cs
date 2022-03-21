@@ -14,7 +14,7 @@ namespace HaSharedLibrary.Render.DX
     /// <summary>
     /// The Base class for image or animated objects
     /// </summary>
-    public class BaseDXDrawableItem : IBaseDXDrawableItem
+    public class BaseDXDrawableItem
     {
         // multiple frame
         private readonly List<IDXObject> frames;
@@ -85,7 +85,7 @@ namespace HaSharedLibrary.Render.DX
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected IDXObject GetCurrentFrame(int TickCount)
+        protected IDXObject GetCurrFrame(int TickCount)
         {
             if (notAnimated)
                 return frame0;
@@ -110,13 +110,11 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="mapShiftY"></param>
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
-        /// <param name="drawReflectionInfo">The reflection info to draw for this object. Null if none.</param>
         /// <param name="width"></param>
         /// <param name="height"></param>
         /// <param name="TickCount">Ticks since system startup</param>
         public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
-            ReflectionDrawableBoundary drawReflectionInfo,
             int width, int height, float RenderObjectScaling, RenderResolution mapRenderResolution,
             int TickCount)
         {
@@ -127,15 +125,13 @@ namespace HaSharedLibrary.Render.DX
             if (notAnimated)
                 drawFrame = frame0;
             else
-                drawFrame = GetCurrentFrame(TickCount);
+                drawFrame = GetCurrFrame(TickCount);
 
             if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, width, height))
             {
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
-                    flip,
-                    drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
-                    );
+                    flip);
 
                 this._LastFrameDrawn = drawFrame; // set the last frame drawn
             }

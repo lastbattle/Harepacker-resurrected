@@ -61,7 +61,6 @@ namespace MapleLib.WzLib.WzStructure
 
         //Optional
         //public int link = -1;
-        public int? VRTop = null, VRBottom = null, VRLeft = null, VRRight = null;
         public int? timeLimit = null;
         public int? lvLimit = null;
         public FieldType? fieldType = null;
@@ -89,7 +88,6 @@ namespace MapleLib.WzLib.WzStructure
         public int? protectItem = null; //ID, item protecting from cold
         public int? createMobInterval = null; //used for massacre pqs
         public int? fixedMobCapacity = null; //mob capacity to target (used for massacre pqs)
-        public MapleBool mirror_Bottom = null; // Mirror Bottom (Reflection for objects near VRBottom of the field, arcane river maps)
 
         //Unknown optional
         public int? moveLimit = null;
@@ -196,16 +194,9 @@ namespace MapleLib.WzLib.WzStructure
                         fieldLimit = fl;
                         break;
                     case "VRTop":
-                        VRTop = InfoTool.GetOptionalInt(prop, 0);
-                        break;
                     case "VRBottom":
-                        VRBottom = InfoTool.GetOptionalInt(prop, 0);
-                        break;
                     case "VRLeft":
-                        VRLeft = InfoTool.GetOptionalInt(prop, 0);
-                        break;
                     case "VRRight":
-                        VRRight = InfoTool.GetOptionalInt(prop, 0);
                         break;
                     case "link":
                         //link = InfoTool.GetInt(prop);
@@ -366,9 +357,6 @@ namespace MapleLib.WzLib.WzStructure
                     case "zeroSideOnly":
                         zeroSideOnly = InfoTool.GetBool(prop);
                         break;
-                    case "mirror_Bottom":
-                        mirror_Bottom = InfoTool.GetBool(prop);
-                        break;
                     case "AmbientBGM":
                     case "AmbientBGMv":
                     case "areaCtrl":
@@ -461,6 +449,7 @@ namespace MapleLib.WzLib.WzStructure
                     case "bonusExpPerUserHPRate":
                     case "barrierArc":
                     case "noBackOverlapped":
+                    case "mirror_Bottom":
                     case "partyBonusR":
                     case "specialSound":
                     case "inFieldsetForcedReturn":
@@ -536,13 +525,8 @@ namespace MapleLib.WzLib.WzStructure
                     case "spiritSavior":
                     case "standAlonePermitUpgrade": //  993059600.img
                     case "limitHeadAlarmField": // 993180000.img
-                        {
-                            WzImageProperty cloneProperty = prop.DeepClone();
-                            //cloneProperty.Parent = prop.Parent;
-
-                            unsupportedInfoProperties.Add(cloneProperty);
-                            break;
-                        }
+                        unsupportedInfoProperties.Add(prop);
+                        break;
                     default:
                         ErrorLogger.Log(ErrorLevel.MissingFeature, string.Format("[MapInfo] Unknown field info/ property: '{0}'. {1}. Please fix it at MapInfo.cs", prop.Name, loggerSuffix));
                         additionalProps.Add(prop.DeepClone());
@@ -590,12 +574,6 @@ namespace MapleLib.WzLib.WzStructure
             info["fieldLimit"] = InfoTool.SetInt((int)fieldLimit);
             info["timeLimit"] = InfoTool.SetOptionalInt(timeLimit);
             info["lvLimit"] = InfoTool.SetOptionalInt(lvLimit);
-
-            info["VRTop"] = InfoTool.SetOptionalInt(VRTop);
-            info["VRBottom"] = InfoTool.SetOptionalInt(VRBottom);
-            info["VRLeft"] = InfoTool.SetOptionalInt(VRLeft);
-            info["VRRight"] = InfoTool.SetOptionalInt(VRRight);
-
             info["onFirstUserEnter"] = InfoTool.SetOptionalString(onFirstUserEnter);
             info["onUserEnter"] = InfoTool.SetOptionalString(onUserEnter);
             info["fly"] = InfoTool.SetOptionalBool(fly);
@@ -609,7 +587,6 @@ namespace MapleLib.WzLib.WzStructure
             info["entrustedShop"] = InfoTool.SetOptionalBool(entrustedShop);
             info["effect"] = InfoTool.SetOptionalString(effect);
             info["lvForceMove"] = InfoTool.SetOptionalInt(lvForceMove);
-            info["mirror_Bottom"] = InfoTool.SetOptionalBool(mirror_Bottom);
 
             // Time mob
             if (timeMob != null)

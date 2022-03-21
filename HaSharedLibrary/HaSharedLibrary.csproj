@@ -137,8 +137,6 @@
     <Compile Include="Render\DX\DXObject.cs" />
     <Compile Include="Render\DX\DXSpineObject.cs" />
     <Compile Include="Render\DX\IDXObject.cs" />
-    <Compile Include="Render\IBaseDXDrawableItem.cs" />
-    <Compile Include="Render\ReflectionDrawableBoundary.cs" />
     <Compile Include="Render\RenderResolution.cs" />
     <Compile Include="SharpApng\SharpApng.cs" />
     <Compile Include="SharpApng\SharpApngBasicWrapper.cs" />

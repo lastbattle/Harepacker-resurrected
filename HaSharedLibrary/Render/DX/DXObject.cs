@@ -23,9 +23,6 @@ namespace HaSharedLibrary.Render.DX
 
         private object _Tag;
 
-        // the color to use for reflection object
-        private static Color _REFLECTION_OPACITY_COLOR = new Color(255, 255, 255, 255 / 4); // who knows the real value, just a guesstimate. 'alpha' in the wz states 255 
-
         public DXObject(int x, int y, Texture2D texture, int delay = 0)
         {
             this._x = x;
@@ -53,39 +50,13 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="mapShiftX"></param>
         /// <param name="mapShiftY"></param>
         /// <param name="flip"></param>
-        /// <param name="drawReflectionInfo">Draws a reflection of the map object below it. Null if none</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawObject(Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
+            int mapShiftX, int mapShiftY, bool flip)
         {
-            int drawX = X - mapShiftX;
-            int drawY = Y - mapShiftY;
-
             spriteBatch.Draw(texture, 
-                new Rectangle(drawX, drawY, texture.Width, texture.Height), 
-                null, // src rectangle
-                Color.White, // color
-                0f, // angle
-                new Vector2(0f, 0f), // origin
-                flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, // flip
-                0f // layer depth
-             );
-
-            if (drawReflectionInfo != null && drawReflectionInfo.Reflection)
-            {
-                const float reflectionAngle = 0f; // using flip instead of angle
-                // TODO gradient in an optimized way.. hm
-
-                spriteBatch.Draw(texture,
-                    new Rectangle(drawX, drawY, texture.Width, texture.Height),
-                    null, // src rectangle
-                    _REFLECTION_OPACITY_COLOR, 
-                    reflectionAngle,
-                    new Vector2(0, -texture.Height), // origin
-                    flip ? SpriteEffects.FlipHorizontally | SpriteEffects.FlipVertically : SpriteEffects.None | SpriteEffects.FlipVertically, 
-                    0f // layer depth
-                );
-            }
+                new Rectangle(X - mapShiftX, Y - mapShiftY, texture.Width, texture.Height), 
+                null, Color.White, 0f, new Vector2(0f, 0f), flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
         }
 
         /// <summary>
@@ -98,10 +69,9 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="y"></param>
         /// <param name="color"></param>
         /// <param name="flip"></param>
-        /// <param name="drawReflectionInfo">Draws a reflection of the map object below it. Null if none</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawBackground(Microsoft.Xna.Framework.Graphics.SpriteBatch sprite, SkeletonMeshRenderer meshRenderer, GameTime gameTime,
-            int x, int y, Color color, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
+            int x, int y, Color color, bool flip)
         {
             sprite.Draw(texture, new 
                 Rectangle(x, y, texture.Width, texture.Height), 

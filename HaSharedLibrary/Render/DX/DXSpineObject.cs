@@ -42,10 +42,9 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="mapShiftX"></param>
         /// <param name="mapShiftY"></param>
         /// <param name="flip"></param>
-        /// <param name="drawReflection">Draws a reflection of the map object below it. (NOT SUPPORTED FOR SPINE YET)</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawObject(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int mapShiftX, int mapShiftY, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
+            int mapShiftX, int mapShiftY, bool flip)
         {
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
             spineObject.state.Apply(spineObject.skeleton);
@@ -72,10 +71,9 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="y"></param>
         /// <param name="color"></param>
         /// <param name="flip"></param>
-        /// <param name="drawReflection">Draws a reflection of the map object below it. (NOT SUPPORTED FOR SPINE YET)</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawBackground(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
-            int x, int y, Color color, bool flip, ReflectionDrawableBoundary drawReflectionInfo)
+            int x, int y, Color color, bool flip)
         {
             spineObject.state.Update(gameTime.ElapsedGameTime.Milliseconds / 1000f);
             spineObject.state.Apply(spineObject.skeleton);
@@ -94,7 +92,6 @@ namespace HaSharedLibrary.Render.DX
             skeletonMeshRenderer.Draw(spineObject.skeleton);
             skeletonMeshRenderer.End();
         }
-
 
         public int Delay
         {
