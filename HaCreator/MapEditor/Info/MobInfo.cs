@@ -10,7 +10,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using System.Drawing;
-using HaCreator.GUI;
 
 namespace HaCreator.MapEditor.Info
 {
@@ -58,50 +57,25 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            if (Initialization.isClient64())
+            foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
             {
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES_64)
+                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
+                if (mobImage == null)
+                    continue;
+
+                if (!mobImage.Parsed)
                 {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
-
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
+                    mobImage.ParseImage();
                 }
-                return null;
-            } else
-            {
-
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
+                if (mobImage.HCTag == null)
                 {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
-
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
+                    mobImage.HCTag = MobInfo.Load(mobImage);
                 }
-                return null;
+                MobInfo result = (MobInfo)mobImage.HCTag;
+                result.ParseImageIfNeeded();
+                return result;
             }
+            return null;
         }
 
         private static MobInfo Load(WzImage parentObject)

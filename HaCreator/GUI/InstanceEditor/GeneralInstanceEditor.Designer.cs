@@ -44,16 +44,18 @@
             // 
             // pathLabel
             // 
-            this.pathLabel.Location = new System.Drawing.Point(0, 12);
+            this.pathLabel.Location = new System.Drawing.Point(0, 1);
+            this.pathLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.pathLabel.Name = "pathLabel";
-            this.pathLabel.Size = new System.Drawing.Size(179, 37);
+            this.pathLabel.Size = new System.Drawing.Size(268, 73);
             this.pathLabel.TabIndex = 0;
             this.pathLabel.Text = "label1";
             this.pathLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // xInput
             // 
-            this.xInput.Location = new System.Drawing.Point(79, 52);
+            this.xInput.Location = new System.Drawing.Point(118, 78);
+            this.xInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.xInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -65,30 +67,33 @@
             0,
             -2147483648});
             this.xInput.Name = "xInput";
-            this.xInput.Size = new System.Drawing.Size(50, 22);
+            this.xInput.Size = new System.Drawing.Size(75, 29);
             this.xInput.TabIndex = 0;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(63, 55);
+            this.label1.Location = new System.Drawing.Point(94, 82);
+            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(13, 13);
+            this.label1.Size = new System.Drawing.Size(20, 23);
             this.label1.TabIndex = 2;
             this.label1.Text = "X";
             // 
             // label2
             // 
             this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(63, 81);
+            this.label2.Location = new System.Drawing.Point(94, 122);
+            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(12, 13);
+            this.label2.Size = new System.Drawing.Size(19, 23);
             this.label2.TabIndex = 4;
             this.label2.Text = "Y";
             // 
             // yInput
             // 
-            this.yInput.Location = new System.Drawing.Point(79, 78);
+            this.yInput.Location = new System.Drawing.Point(118, 117);
+            this.yInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.yInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
@@ -100,36 +105,39 @@
             0,
             -2147483648});
             this.yInput.Name = "yInput";
-            this.yInput.Size = new System.Drawing.Size(50, 22);
+            this.yInput.Size = new System.Drawing.Size(75, 29);
             this.yInput.TabIndex = 1;
             // 
             // label3
             // 
             this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(63, 107);
+            this.label3.Location = new System.Drawing.Point(94, 160);
+            this.label3.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
             this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(13, 13);
+            this.label3.Size = new System.Drawing.Size(20, 23);
             this.label3.TabIndex = 6;
             this.label3.Text = "Z";
             // 
             // zInput
             // 
-            this.zInput.Location = new System.Drawing.Point(79, 104);
+            this.zInput.Location = new System.Drawing.Point(118, 156);
+            this.zInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.zInput.Maximum = new decimal(new int[] {
             2147483647,
             0,
             0,
             0});
             this.zInput.Name = "zInput";
-            this.zInput.Size = new System.Drawing.Size(50, 22);
+            this.zInput.Size = new System.Drawing.Size(75, 29);
             this.zInput.TabIndex = 2;
             // 
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(12, 130);
+            this.okButton.Location = new System.Drawing.Point(18, 195);
+            this.okButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(76, 28);
+            this.okButton.Size = new System.Drawing.Size(114, 42);
             this.okButton.TabIndex = 3;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
@@ -137,18 +145,19 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(94, 130);
+            this.cancelButton.Location = new System.Drawing.Point(141, 195);
+            this.cancelButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(73, 28);
+            this.cancelButton.Size = new System.Drawing.Size(110, 42);
             this.cancelButton.TabIndex = 4;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
             // 
             // GeneralInstanceEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(179, 166);
+            this.ClientSize = new System.Drawing.Size(268, 249);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.label3);
@@ -159,6 +168,7 @@
             this.Controls.Add(this.xInput);
             this.Controls.Add(this.pathLabel);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            this.Margin = new System.Windows.Forms.Padding(6, 6, 6, 6);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "GeneralInstanceEditor";

@@ -1,13 +1,12 @@
-﻿using HaCreator.GUI.InstanceEditor;
-using HaCreator.MapEditor;
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.Objects;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaRepacker.Utils;
 using HaSharedLibrary;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -23,7 +22,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -74,6 +72,10 @@ namespace HaCreator.MapSimulator
         private const int VR_BORDER_WIDTHHEIGHT = 600; // the height or width of the VR border
         private bool bDrawVRBorderLeftRight = false;
         private Texture2D texture_vrBoundaryRectLeft, texture_vrBoundaryRectRight, texture_vrBoundaryRectTop, texture_vrBoundaryRectBottom;
+
+        // Mirror bottom boundaries (Reflections in Arcane river maps)
+        private Rectangle rect_mirrorBottom;
+        private ReflectionDrawableBoundary mirrorBottomReflection;
 
         // Minimap
         private MinimapItem miniMap;
@@ -247,9 +249,9 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
-            WzDirectory MapWzFile = Program.WzManager["map_003"]; // Map.wz
-            WzDirectory UIWZFile = Program.WzManager["ui_002"];
-            WzDirectory SoundWZFile = Program.WzManager["sound_000"];
+            WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
+            WzDirectory UIWZFile = Program.WzManager["ui"];
+            WzDirectory SoundWZFile = Program.WzManager["sound"];
 
             this.bBigBangUpdate = UIWZFile["UIWindow2.img"]?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
             this.bBigBang2Update = UIWZFile["UIWindow2.img"]?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
@@ -437,6 +439,20 @@ namespace HaCreator.MapSimulator
                 this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
             }
 
+            // mirror bottom boundaries
+            //rect_mirrorBottom
+            if (mapBoard.MapInfo.mirror_Bottom)
+            {
+                if (mapBoard.MapInfo.VRLeft != null && mapBoard.MapInfo.VRRight != null)
+                {
+                    int vr_width = (int)mapBoard.MapInfo.VRRight - (int)mapBoard.MapInfo.VRLeft;
+                    const int obj_mirrorBottom_height = 200;
+
+                    rect_mirrorBottom = new Rectangle((int)mapBoard.MapInfo.VRLeft, (int)mapBoard.MapInfo.VRBottom - obj_mirrorBottom_height, vr_width, obj_mirrorBottom_height);
+
+                    mirrorBottomReflection = new ReflectionDrawableBoundary(128, 255, "mirror", true, false);
+                }
+            }
             /*
             DXObject leftDXVRObject = new DXObject(
                 vr_fieldBoundary.Left - VR_BORDER_WIDTHHEIGHT,
@@ -523,7 +539,11 @@ namespace HaCreator.MapSimulator
             backgrounds_back.Clear();
 
             texturePool.Dispose();
-        }
+
+            // clear prior mirror bottom boundary
+            rect_mirrorBottom = new Rectangle();
+            mirrorBottomReflection = null; 
+    }
 #endregion
      
         #region Update and Drawing
@@ -650,6 +670,7 @@ namespace HaCreator.MapSimulator
             {
                 bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             });
@@ -661,6 +682,7 @@ namespace HaCreator.MapSimulator
                 {
                     item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                        null,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
@@ -670,6 +692,7 @@ namespace HaCreator.MapSimulator
             {
                 portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -679,6 +702,7 @@ namespace HaCreator.MapSimulator
             {
                 reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -686,15 +710,35 @@ namespace HaCreator.MapSimulator
             // Life (NPC + Mobs)
             foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
             {
+                ReflectionDrawableBoundary mirrorFieldData = null;
+                if (mirrorBottomReflection != null)
+                {
+                    if (rect_mirrorBottom.Contains(new Point(mapMob.MobInstance.X, mapMob.MobInstance.Y)))
+                        mirrorFieldData = mirrorBottomReflection;
+                }
+                if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapMob.MobInstance.X, mapMob.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
+
                 mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
             foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
+                ReflectionDrawableBoundary mirrorFieldData = null;
+                if (mirrorBottomReflection != null)
+                {
+                    if (rect_mirrorBottom.Contains(new Point(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y)))
+                        mirrorFieldData = mirrorBottomReflection;
+                }
+                if (mirrorFieldData == null)  // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
+
                 mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -704,6 +748,7 @@ namespace HaCreator.MapSimulator
             {
                 bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             });
@@ -744,6 +789,7 @@ namespace HaCreator.MapSimulator
 
                     tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                        null,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 }
@@ -754,6 +800,7 @@ namespace HaCreator.MapSimulator
             {
                 miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                        null,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 
@@ -779,6 +826,7 @@ namespace HaCreator.MapSimulator
             // Cursor [this is in front of everything else]
             mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                 0, 0, 0, 0, // pos determined in the class
+                null,
                 RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
 
             spriteBatch.End();

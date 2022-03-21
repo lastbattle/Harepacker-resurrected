@@ -5,21 +5,18 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
-using System.Collections;
+using System.Threading;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
-using System.Windows.Forms;
 using HaCreator.Collections;
 using HaCreator.MapEditor.UndoRedo;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance.Shapes;
-using System.Threading;
 using HaSharedLibrary.Util;
-using System.Collections.ObjectModel;
 
 namespace HaCreator.MapEditor
 {
@@ -143,7 +140,9 @@ namespace HaCreator.MapEditor
                         System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(mapSize.X, mapSize.Y);
                         System.Drawing.Graphics processor = System.Drawing.Graphics.FromImage(bmp);
                         foreach (BoardItem item in BoardItems.TileObjs)
+                        {
                             processor.DrawImage(item.Image, new System.Drawing.Point(item.X + centerPoint.X - item.Origin.X, item.Y + centerPoint.Y - item.Origin.Y));
+                        }
                         bmp = CropImage(bmp, new System.Drawing.Rectangle(MinimapRectangle.X + centerPoint.X, MinimapRectangle.Y + centerPoint.Y, MinimapRectangle.Width, MinimapRectangle.Height));
                         MiniMap = ResizeImage(bmp, (float)_mag);
                         MinimapPosition = new System.Drawing.Point(MinimapRectangle.X, MinimapRectangle.Y);
@@ -166,8 +165,10 @@ namespace HaCreator.MapEditor
             SelectionInfo sel = GetUserSelectionInfo();
 
             // Render the object lists
-            for (int i = 0; i < boardItems.AllItemLists.Length; i++)
-                RenderList(boardItems.AllItemLists[i], sprite, xShift, yShift, sel);
+            foreach (IMapleList list in boardItems.AllItemLists)
+            {
+                RenderList(list, sprite, xShift, yShift, sel);
+            }
 
             // Render the user's selection square
             if (mouse.MultiSelectOngoing)

@@ -36,17 +36,20 @@
             // pnList
             // 
             this.pnList.FormattingEnabled = true;
-            this.pnList.Location = new System.Drawing.Point(12, 12);
+            this.pnList.ItemHeight = 23;
+            this.pnList.Location = new System.Drawing.Point(1, 1);
+            this.pnList.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.pnList.Name = "pnList";
-            this.pnList.Size = new System.Drawing.Size(108, 108);
+            this.pnList.Size = new System.Drawing.Size(433, 280);
             this.pnList.TabIndex = 0;
             // 
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(70, 126);
+            this.cancelButton.Location = new System.Drawing.Point(218, 299);
+            this.cancelButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(50, 27);
+            this.cancelButton.Size = new System.Drawing.Size(216, 69);
             this.cancelButton.TabIndex = 2;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
@@ -54,23 +57,25 @@
             // okButton
             // 
             this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(12, 126);
+            this.okButton.Location = new System.Drawing.Point(1, 299);
+            this.okButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(52, 27);
+            this.okButton.Size = new System.Drawing.Size(216, 69);
             this.okButton.TabIndex = 1;
             this.okButton.Text = "OK";
             this.okButton.Click += new System.EventHandler(this.okButton_Click);
             // 
             // TnSelector
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(133, 165);
+            this.ClientSize = new System.Drawing.Size(435, 369);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.pnList);
             this.DoubleBuffered = true;
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            this.Margin = new System.Windows.Forms.Padding(6, 6, 6, 6);
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "TnSelector";

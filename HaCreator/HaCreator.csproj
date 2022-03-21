@@ -237,6 +237,12 @@
     <Compile Include="GUI\InstanceEditor\MassZmEditor.Designer.cs">
       <DependentUpon>MassZmEditor.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\InstanceEditor\MirrorFieldDataEditor.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\MirrorFieldDataEditor.Designer.cs">
+      <DependentUpon>MirrorFieldDataEditor.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\InstanceEditor\TileInstanceEditor.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -340,6 +346,7 @@
     <Compile Include="MapEditor\Instance\Misc\Clock.cs" />
     <Compile Include="MapEditor\Instance\Misc\Healer.cs" />
     <Compile Include="MapEditor\Instance\Misc\INamedMisc.cs" />
+    <Compile Include="MapEditor\Instance\Misc\MirrorFieldData.cs" />
     <Compile Include="MapEditor\Instance\Misc\MiscLine.cs" />
     <Compile Include="MapEditor\Instance\Misc\MiscDot.cs" />
     <Compile Include="MapEditor\Instance\Misc\MiscRectangle.cs" />
@@ -606,6 +613,9 @@
     <EmbeddedResource Include="GUI\InstanceEditor\MassZmEditor.resx">
       <DependentUpon>MassZmEditor.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\MirrorFieldDataEditor.resx">
+      <DependentUpon>MirrorFieldDataEditor.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\TileInstanceEditor.resx">
       <DependentUpon>TileInstanceEditor.cs</DependentUpon>
     </EmbeddedResource>
@@ -841,7 +851,7 @@
       <Version>2.0.0</Version>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json">
-      <Version>12.0.3</Version>
+      <Version>13.0.1</Version>
     </PackageReference>
     <PackageReference Include="SharpDX">
       <Version>4.2.0</Version>
