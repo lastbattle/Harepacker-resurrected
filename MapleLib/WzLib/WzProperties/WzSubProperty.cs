@@ -152,7 +152,8 @@ namespace MapleLib.WzLib.WzProperties
             {
                 if (img1 == null)
                     return 0;
-                else if (img1.GetType() == typeof(WzCanvasProperty))
+                else if (img1.GetType() == typeof(WzCanvasProperty) ||  // frames
+                    img1.GetType() == typeof(WzSubProperty)) // footholds
                 {
                     int nodeId1, nodeId2;
                     if (int.TryParse(img1.Name, out nodeId1) && int.TryParse(img2.Name, out nodeId2))
