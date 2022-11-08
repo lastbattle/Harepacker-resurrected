@@ -1,4 +1,4 @@
-namespace HaCreator.GUI.InstanceEditor
+﻿namespace HaCreator.GUI.InstanceEditor
 {
     partial class MirrorFieldEditor
     {

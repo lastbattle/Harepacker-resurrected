@@ -1,4 +1,4 @@
-/* Copyright (C) 2022 LastBattle
+﻿/* Copyright (C) 2022 LastBattle
 * https://github.com/lastbattle/Harepacker-resurrected
 * 
 * This Source Code Form is subject to the terms of the Mozilla Public

@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace MapleLib.WzLib.WzStructure.Data
 {
@@ -10,6 +6,7 @@ namespace MapleLib.WzLib.WzStructure.Data
     public enum ItemTypes
     {
         None = 0x0,
+
         Tiles = 0x1,
         Objects = 0x2,
         Mobs = 0x4,
@@ -22,6 +19,7 @@ namespace MapleLib.WzLib.WzStructure.Data
         ToolTips = 0x200,
         Backgrounds = 0x400,
         Misc = 0x800,
+        MirrorFieldData = 0x1000,
 
         All = 0xFFF
     }

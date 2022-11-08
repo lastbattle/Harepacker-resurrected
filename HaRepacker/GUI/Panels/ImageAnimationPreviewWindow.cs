@@ -259,6 +259,7 @@ namespace HaRepacker.GUI.Panels
 			// Animation
 			dxDrawableItem.Draw(spriteBatch, null, gameTime,
 						mapShiftX, mapShiftY, 0, 0,
+						null,
 						RENDER_WIDTH, RENDER_HEIGHT, renderAnimationScaling, RenderResolution.Res_All,
 						TickCount);
 			if (dxDrawableItem.LastFrameDrawn != null)

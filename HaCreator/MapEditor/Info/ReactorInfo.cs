@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using MapleLib.WzLib;
@@ -84,10 +85,21 @@ namespace HaCreator.MapEditor.Info
         {
             get {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-                if (link != null)
-                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
-                else
-                    _LinkedWzImage = (WzImage)Program.WzManager["reactor"][id + ".img"];
+
+                if (Initialization.isClient64())
+                {
+                    if (link != null)
+                        _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][link.Value + ".img"];
+                    else
+                        _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][id + ".img"];
+                } else
+                {
+                    if (link != null)
+                        _LinkedWzImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
+                    else
+                        _LinkedWzImage = (WzImage)Program.WzManager["reactor"][id + ".img"];
+                }
+               
                 return _LinkedWzImage; 
             }
             set { this._LinkedWzImage = value; }
