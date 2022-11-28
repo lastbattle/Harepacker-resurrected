@@ -64,7 +64,6 @@
             this.versionBox.Name = "versionBox";
             this.versionBox.Size = new System.Drawing.Size(237, 21);
             this.versionBox.TabIndex = 3;
-            this.versionBox.SelectedIndexChanged += new System.EventHandler(this.versionBox_SelectedIndexChanged_1);
             // 
             // toolStripProgressBar1
             // 
@@ -135,7 +134,6 @@
             this.ClientTypeBox.Name = "ClientTypeBox";
             this.ClientTypeBox.Size = new System.Drawing.Size(54, 21);
             this.ClientTypeBox.TabIndex = 16;
-            this.ClientTypeBox.SelectedIndexChanged += new System.EventHandler(this.comboBox1_SelectedIndexChanged_1);
             // 
             // Initialization
             // 

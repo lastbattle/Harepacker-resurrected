@@ -152,7 +152,7 @@ namespace HaCreator.Wz
 
             if (Initialization.isClient64())
             {
-                baseDir = Initialization.getMainWzDirectory();
+                baseDir = Initialization.GetMainWzDirectory();
 
                 // Load NPC Data
                 foreach (String npc in NPC_WZ_FILES_64)
@@ -286,7 +286,7 @@ namespace HaCreator.Wz
 
             if (Initialization.isClient64())
             {
-                baseDir = Initialization.getMainWzDirectory();
+                baseDir = Initialization.GetMainWzDirectory();
 
                 // Load NPC Data
                 foreach (String npc in NPC_WZ_FILES_64)

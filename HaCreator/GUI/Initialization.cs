@@ -5,9 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
-using System.Drawing;
 using System.Windows.Forms;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using MapleLib.WzLib;
@@ -31,6 +29,11 @@ namespace HaCreator.GUI
             InitializeComponent();
         }
 
+        public static bool isClient64()
+        {
+            return client64;
+        }
+
         private bool IsPathCommon(string path)
         {
             foreach (string commonPath in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
@@ -46,7 +49,7 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
-            setMainWzDirectory(wzPath + "\\Data\\");
+            SetMainWzDirectory(wzPath + "\\Data\\");
             DirectoryInfo di = new DirectoryInfo(wzPath + "\\Data");
 
             if (wzPath == "Select MapleStory Folder")
@@ -106,11 +109,11 @@ namespace HaCreator.GUI
 
             if (ClientTypeBox.SelectedIndex == 0)
             {
-                setClient64(false);
+                SetClientSelection64(false);
             }
             else
             {
-                setClient64(true);
+                SetClientSelection64(true);
             }
 
 
@@ -336,7 +339,11 @@ namespace HaCreator.GUI
             }
         }
 
-
+        /// <summary>
+        /// On loading initialization.cs
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Initialization_Load(object sender, EventArgs e)
         {
             versionBox.SelectedIndex = 0;
@@ -369,6 +376,9 @@ namespace HaCreator.GUI
             {
                 pathBox.SelectedIndex = ApplicationSettings.MapleFolderIndex;
             }
+
+            // set default client type box 32-bit, 64-bit
+            ClientTypeBox.SelectedIndex = ApplicationSettings.WzClientSelectionIndex;
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -389,7 +399,7 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// Check map errors
+        /// Debug button for check map errors
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -507,49 +517,21 @@ namespace HaCreator.GUI
                 Close();
             }
         }
-        private void versionBox_SelectedIndexChanged(object sender, EventArgs e)
-        {
 
-        }
-
-        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
-        {
-
-        }
-
-        private void label4_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        public static bool isClient64()
-        {
-            return client64;
-        }
-
-        public static void setClient64(bool isClient64)
+        public static void SetClientSelection64(bool isClient64)
         {
             client64 = isClient64;
+            ApplicationSettings.WzClientSelectionIndex = isClient64 ? 1 : 0;
         }
 
-        public static string getMainWzDirectory()
+        public static string GetMainWzDirectory()
         {
             return mainWzDirectory;
         }
 
-        public static void setMainWzDirectory(string directory)
+        public static void SetMainWzDirectory(string directory)
         {
             mainWzDirectory = directory;
-        }
-
-        private void versionBox_SelectedIndexChanged_1(object sender, EventArgs e)
-        {
-
-        }
-
-        private void comboBox1_SelectedIndexChanged_1(object sender, EventArgs e)
-        {
-
         }
     }
 }
