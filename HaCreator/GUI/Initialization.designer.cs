@@ -38,6 +38,7 @@
             this.pathBox = new System.Windows.Forms.ComboBox();
             this.button2 = new System.Windows.Forms.Button();
             this.button_checkMapErrors = new System.Windows.Forms.Button();
+            this.ClientTypeBox = new System.Windows.Forms.ComboBox();
             this.SuspendLayout();
             // 
             // button1
@@ -61,8 +62,9 @@
             "Auto-Detect"});
             this.versionBox.Location = new System.Drawing.Point(74, 38);
             this.versionBox.Name = "versionBox";
-            this.versionBox.Size = new System.Drawing.Size(284, 21);
+            this.versionBox.Size = new System.Drawing.Size(237, 21);
             this.versionBox.TabIndex = 3;
+            this.versionBox.SelectedIndexChanged += new System.EventHandler(this.versionBox_SelectedIndexChanged_1);
             // 
             // toolStripProgressBar1
             // 
@@ -106,9 +108,9 @@
             // button2
             // 
             this.button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button2.Location = new System.Drawing.Point(315, 10);
+            this.button2.Location = new System.Drawing.Point(315, 11);
             this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(42, 21);
+            this.button2.Size = new System.Drawing.Size(54, 21);
             this.button2.TabIndex = 14;
             this.button2.Text = "...";
             this.button2.Click += new System.EventHandler(this.button2_Click);
@@ -117,17 +119,31 @@
             // 
             this.button_checkMapErrors.Location = new System.Drawing.Point(197, 65);
             this.button_checkMapErrors.Name = "button_checkMapErrors";
-            this.button_checkMapErrors.Size = new System.Drawing.Size(160, 28);
+            this.button_checkMapErrors.Size = new System.Drawing.Size(172, 28);
             this.button_checkMapErrors.TabIndex = 15;
             this.button_checkMapErrors.Text = "Check map errors";
             this.button_checkMapErrors.UseVisualStyleBackColor = true;
             this.button_checkMapErrors.Click += new System.EventHandler(this.debugButton_Click);
             // 
+            // ClientTypeBox
+            // 
+            this.ClientTypeBox.FormattingEnabled = true;
+            this.ClientTypeBox.Items.AddRange(new object[] {
+            "32 bit",
+            "64 bit"});
+            this.ClientTypeBox.Location = new System.Drawing.Point(315, 38);
+            this.ClientTypeBox.Name = "ClientTypeBox";
+            this.ClientTypeBox.Size = new System.Drawing.Size(54, 21);
+            this.ClientTypeBox.TabIndex = 16;
+            this.ClientTypeBox.SelectedIndexChanged += new System.EventHandler(this.comboBox1_SelectedIndexChanged_1);
+            // 
             // Initialization
             // 
+            this.AccessibleRole = System.Windows.Forms.AccessibleRole.ScrollBar;
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(360, 131);
+            this.ClientSize = new System.Drawing.Size(372, 133);
+            this.Controls.Add(this.ClientTypeBox);
             this.Controls.Add(this.button_checkMapErrors);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);
@@ -162,6 +178,7 @@
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button button_checkMapErrors;
+        private System.Windows.Forms.ComboBox ClientTypeBox;
     }
 }
 

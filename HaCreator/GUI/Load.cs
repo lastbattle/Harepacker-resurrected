@@ -182,24 +182,44 @@ namespace HaCreator.GUI
 
                 if (selectedName.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
                 {
-                    mapImage = (WzImage)Program.WzManager["ui"][selectedName + ".img"];
+                    if (Initialization.isClient64()) {
+                        mapImage = (WzImage)Program.WzManager["ui_000"][selectedName + ".img"];
+                    }
+                    else
+                    {
+                        mapImage = (WzImage)Program.WzManager["ui"][selectedName + ".img"];
+                    }
                     mapName = streetName = categoryName = selectedName;
                 }
                 else if (mapBrowser.SelectedItem == "CashShopPreview")
                 {
-                    mapImage = (WzImage)Program.WzManager["ui"]["CashShopPreview.img"];
+                    if (Initialization.isClient64())
+                    {
+                        mapImage = (WzImage)Program.WzManager["ui_000"]["CashShopPreview.img"];
+                    }
+                    else
+                    {
+                        mapImage = (WzImage)Program.WzManager["ui"]["CashShopPreview.img"];
+                    }
                     mapName = streetName = categoryName = "CashShopPreview";
                 }
                 else
                 {
                     string mapid_str = mapBrowser.SelectedItem.Substring(0, 9);
                     int.TryParse(mapid_str, out mapid);
-
-                    string mapcat = "Map" + mapid_str.Substring(0, 1);
-
-                    WzDirectory directory = Program.WzManager.FindMapWz(mapcat);
-                    mapImage = (WzImage)directory[mapid_str + ".img"];
-
+                    string mapcat;
+                    WzDirectory directory;
+                    if (Initialization.isClient64())
+                    {
+                        Console.WriteLine("mapid_str -> " + mapid_str);
+                        mapcat = mapid_str.Substring(0, 1);
+                        mapImage = Program.WzManager.FindMapImage(mapid_str, mapcat);
+                    } else
+                    {
+                        mapcat = "Map" + mapid_str.Substring(0, 1);
+                        directory = Program.WzManager.FindMapWz(mapcat);
+                        mapImage = (WzImage)directory[mapid_str + ".img"];
+                    }
                     strMapProp = WzInfoTools.GetMapStringProp(mapid_str);
                     mapName = WzInfoTools.GetMapName(strMapProp);
                     streetName = WzInfoTools.GetMapStreetName(strMapProp);

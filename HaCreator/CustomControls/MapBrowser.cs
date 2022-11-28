@@ -14,6 +14,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
+using HaCreator.GUI;
 
 namespace HaCreator.CustomControls
 {
@@ -68,7 +69,15 @@ namespace HaCreator.CustomControls
             for (int i = 0; i < 20; i++) // Not exceeding 20 logins yet.
             {
                 string imageName = "MapLogin" + (i == 0 ? "" : i.ToString()) + ".img";
-                WzObject mapLogin = Program.WzManager["ui"][imageName];
+                WzObject mapLogin;
+                if (Initialization.isClient64())
+                {
+                    mapLogin = Program.WzManager["ui_000"][imageName];
+                }
+                else
+                {
+                    mapLogin = Program.WzManager["ui"][imageName];
+                }
                 if (mapLogin == null)
                     break;
                 mapLogins.Add(imageName);
@@ -192,7 +201,11 @@ namespace HaCreator.CustomControls
             else
             {
                 string mapid = (selectedName).Substring(0, 9);
-                string mapcat = "Map" + mapid.Substring(0, 1);
+                string mapcat;
+                if (Initialization.isClient64())
+                    mapcat = mapid.Substring(0, 1);
+                else
+                    mapcat = "Map" + mapid.Substring(0, 1);
 
                 WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
