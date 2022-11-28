@@ -29,7 +29,13 @@ namespace MapleLib.WzLib
     {
         //TODO: nest wzproperties in a wzsubproperty inside of WzImage
 
+        /// <summary>
+        /// bExistID_0x73
+        /// </summary>
         public const int WzImageHeaderByte_WithoutOffset = 0x73;
+        /// <summary>
+        /// bNewID_0x1b
+        /// </summary>
         public const int WzImageHeaderByte_WithOffset = 0x1B;
 
         #region Fields
@@ -81,6 +87,14 @@ namespace MapleLib.WzLib
             this.blockStart = (int)reader.BaseStream.Position;
             this.checksum = 0;
         }
+
+        /// <summary>
+        /// WzImage Constructor
+        /// </summary>
+        /// <param name="name"></param>
+        /// <param name="reader"></param>
+        /// <param name="checksum"></param>
+        /// <param name="unk_GMS230"></param>
         internal WzImage(string name, WzBinaryReader reader, int checksum)
         {
             this.name = name;

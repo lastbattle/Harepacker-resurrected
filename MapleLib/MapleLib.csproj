@@ -275,6 +275,7 @@
     <Compile Include="WzLib\WzStructure\Data\PortalType.cs" />
     <Compile Include="WzLib\WzStructure\Data\FieldLimitType.cs" />
     <Compile Include="WzLib\WzStructure\Data\QuestState.cs" />
+    <Compile Include="WzLib\WzStructure\Enums\WzDirectoryType.cs" />
     <Compile Include="WzLib\WzStructure\Foothold.cs" />
     <Compile Include="WzLib\WzStructure\InfoTool.cs" />
     <Compile Include="WzLib\WzStructure\MapInfo.cs" />
