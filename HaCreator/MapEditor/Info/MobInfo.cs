@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using MapleLib.WzLib;
@@ -57,25 +58,49 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
+            if (Initialization.isClient64())
             {
-                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                if (mobImage == null)
-                    continue;
+                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES_64)
+                {
+                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
+                    if (mobImage == null)
+                        continue;
 
-                if (!mobImage.Parsed)
-                {
-                    mobImage.ParseImage();
+                    if (!mobImage.Parsed)
+                    {
+                        mobImage.ParseImage();
+                    }
+                    if (mobImage.HCTag == null)
+                    {
+                        mobImage.HCTag = MobInfo.Load(mobImage);
+                    }
+                    MobInfo result = (MobInfo)mobImage.HCTag;
+                    result.ParseImageIfNeeded();
+                    return result;
                 }
-                if (mobImage.HCTag == null)
+                return null;
+            } else
+            {
+                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
                 {
-                    mobImage.HCTag = MobInfo.Load(mobImage);
+                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
+                    if (mobImage == null)
+                        continue;
+
+                    if (!mobImage.Parsed)
+                    {
+                        mobImage.ParseImage();
+                    }
+                    if (mobImage.HCTag == null)
+                    {
+                        mobImage.HCTag = MobInfo.Load(mobImage);
+                    }
+                    MobInfo result = (MobInfo)mobImage.HCTag;
+                    result.ParseImageIfNeeded();
+                    return result;
                 }
-                MobInfo result = (MobInfo)mobImage.HCTag;
-                result.ParseImageIfNeeded();
-                return result;
+                return null;
             }
-            return null;
         }
 
         private static MobInfo Load(WzImage parentObject)

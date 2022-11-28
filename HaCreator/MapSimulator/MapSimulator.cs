@@ -1,4 +1,5 @@
-﻿using HaCreator.MapEditor;
+﻿using HaCreator.GUI;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -249,9 +250,22 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
-            WzDirectory MapWzFile = Program.WzManager["map"]; // Map.wz
-            WzDirectory UIWZFile = Program.WzManager["ui"];
-            WzDirectory SoundWZFile = Program.WzManager["sound"];
+            WzDirectory MapWzFile;
+            WzDirectory UIWZFile;
+            WzDirectory SoundWZFile;
+            if (Initialization.isClient64())
+            {
+                 MapWzFile = Program.WzManager["map_003"]; // Map.wz
+                 UIWZFile = Program.WzManager["ui_002"]; // NEED FIX?
+                 SoundWZFile = Program.WzManager["sound_000"];  // NEED FIX?
+            }
+            else
+            {
+                 MapWzFile = Program.WzManager["map"]; // Map.wz
+                 UIWZFile = Program.WzManager["ui"];
+                 SoundWZFile = Program.WzManager["sound"];
+            }
+           
 
             this.bBigBangUpdate = UIWZFile["UIWindow2.img"]?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
             this.bBigBang2Update = UIWZFile["UIWindow2.img"]?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
