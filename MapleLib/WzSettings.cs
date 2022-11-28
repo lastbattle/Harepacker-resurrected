@@ -19,263 +19,321 @@ using MapleLib.WzLib.WzProperties;
 using System.Reflection;
 using MapleLib.WzLib.WzStructure;
 using System.IO;
+using Newtonsoft.Json.Linq;
+using System.Drawing;
+using System.Collections;
+using Newtonsoft.Json;
+using Spine;
+using System.Security.Principal;
+using Microsoft.Xna.Framework.Media;
+using System.Windows.Controls;
 
 namespace MapleLib.WzLib
 {
     public class WzSettingsManager
     {
-        string wzPath;
-        Type userSettingsType;
-        Type appSettingsType;
-        Type xnaColorType = null;
+        private readonly string settingFilePath;
 
+        private readonly Type userSettingsType;
+        private readonly Type appSettingsType;
+
+        private const string USER_SETTING_JSON = "UserSettings";
+        private const string APP_SETTING_JSON = "ApplicationSettings";
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="wzPath"></param>
+        /// <param name="userSettingsType"></param>
+        /// <param name="appSettingsType"></param>
         public WzSettingsManager(string wzPath, Type userSettingsType, Type appSettingsType)
         {
-            this.wzPath = wzPath;
+            this.settingFilePath = wzPath;
             this.userSettingsType = userSettingsType;
             this.appSettingsType = appSettingsType;
         }
 
-        public WzSettingsManager(string wzPath, Type userSettingsType, Type appSettingsType, Type xnaColorType)
-            : this(wzPath, userSettingsType, appSettingsType)
-        {
-            this.xnaColorType = xnaColorType;
-        }
-
-        private void ExtractSettingsImage(WzImage settingsImage, Type settingsHolderType)
-        {
-            if (!settingsImage.Parsed) settingsImage.ParseImage();
-            foreach (FieldInfo fieldInfo in settingsHolderType.GetFields(BindingFlags.Public | BindingFlags.Static))
-            {
-                string settingName = fieldInfo.Name;
-                WzImageProperty settingProp = settingsImage[settingName];
-                byte[] argb;
-                if (settingProp == null)
-                    SaveField(settingsImage, fieldInfo);
-                else if (fieldInfo.FieldType.BaseType != null && fieldInfo.FieldType.BaseType.FullName == "System.Enum")
-                    fieldInfo.SetValue(null, InfoTool.GetInt(settingProp));
-                else switch (fieldInfo.FieldType.FullName)
-                    {
-                        //case "Microsoft.Xna.Framework.Graphics.Color":
-                        case "Microsoft.Xna.Framework.Color":
-                            if (xnaColorType == null) throw new InvalidDataException("XNA color detected, but XNA type activator is null");
-                            argb = BitConverter.GetBytes((uint)((WzDoubleProperty)settingProp).Value);
-                            fieldInfo.SetValue(null, Activator.CreateInstance(xnaColorType, argb[0], argb[1], argb[2], argb[3]));
-                            break;
-                        case "System.Drawing.Color":
-                            argb = BitConverter.GetBytes((uint)((WzDoubleProperty)settingProp).Value);
-                            fieldInfo.SetValue(null, System.Drawing.Color.FromArgb(argb[3], argb[2], argb[1], argb[0]));
-                            break;
-                        case "System.Int32":
-                            fieldInfo.SetValue(null, InfoTool.GetInt(settingProp));
-                            break;
-                        case "System.Double":
-                            fieldInfo.SetValue(null, ((WzDoubleProperty)settingProp).Value);
-                            break;
-                        case "System.Boolean":
-                            fieldInfo.SetValue(null, InfoTool.GetBool(settingProp));
-                            //bool a = (bool)fieldInfo.GetValue(null);
-                            break;
-                        case "System.Single":
-                            fieldInfo.SetValue(null, ((WzFloatProperty)settingProp).Value);
-                            break;
-                        /*case "WzMapleVersion":
-                            fieldInfo.SetValue(null, (WzMapleVersion)InfoTool.GetInt(settingProp));
-                            break;
-                        case "ItemTypes":
-                            fieldInfo.SetValue(null, (ItemTypes)InfoTool.GetInt(settingProp));
-                            break;*/
-                        case "System.Drawing.Size":
-                            fieldInfo.SetValue(null, new System.Drawing.Size(((WzVectorProperty)settingProp).X.Value, ((WzVectorProperty)settingProp).Y.Value));
-                            break;
-                        case "System.String":
-                            fieldInfo.SetValue(null, InfoTool.GetString(settingProp));
-                            break;
-                        case "System.Drawing.Bitmap":
-                            fieldInfo.SetValue(null, ((WzCanvasProperty)settingProp).PngProperty.GetImage(false));
-                            break;
-                        default:
-                            throw new Exception("unrecognized setting type");
-                    }
-            }
-        }
-
-        private void CreateWzProp(IPropertyContainer parent, WzPropertyType propType, string propName, object value)
-        {
-            WzImageProperty addedProp;
-            switch (propType)
-            {
-                case WzPropertyType.Float:
-                    addedProp = new WzFloatProperty(propName);
-                    break;
-                case WzPropertyType.Canvas:
-                    addedProp = new WzCanvasProperty(propName);
-                    ((WzCanvasProperty)addedProp).PngProperty = new WzPngProperty();
-                    break;
-                case WzPropertyType.Int:
-                    addedProp = new WzIntProperty(propName);
-                    break;
-                case WzPropertyType.Double:
-                    addedProp = new WzDoubleProperty(propName);
-                    break;
-                /*case WzPropertyType.Sound:
-                    addedProp = new WzSoundProperty(propName);
-                    break;*/
-                case WzPropertyType.String:
-                    addedProp = new WzStringProperty(propName);
-                    break;
-                case WzPropertyType.Short:
-                    addedProp = new WzShortProperty(propName);
-                    break;
-                case WzPropertyType.Vector:
-                    addedProp = new WzVectorProperty(propName);
-                    ((WzVectorProperty)addedProp).X = new WzIntProperty("X");
-                    ((WzVectorProperty)addedProp).Y = new WzIntProperty("Y");
-                    break;
-                case WzPropertyType.Lua: // probably dont allow the user to create custom Lua for now.. 
-                    {
-                        addedProp = new WzLuaProperty(propName, new byte[] { });
-                        break;
-                    }
-                default:
-                    throw new NotSupportedException("Not supported type");
-            }
-            addedProp.SetValue(value);
-            parent.AddProperty(addedProp);
-        }
-
-        private void SetWzProperty(WzImage parentImage, string propName, WzPropertyType propType, object value)
-        {
-            WzImageProperty property = parentImage[propName];
-            if (property != null)
-            {
-                if (property.PropertyType == propType)
-                    property.SetValue(value);
-                else
-                {
-                    property.Remove();
-                    CreateWzProp(parentImage, propType, propName, value);
-                }
-            }
-            else
-                CreateWzProp(parentImage, propType, propName, value);
-        }
-
-        private void SaveSettingsImage(WzImage settingsImage, Type settingsHolderType)
-        {
-            if (!settingsImage.Parsed) settingsImage.ParseImage();
-            foreach (FieldInfo fieldInfo in settingsHolderType.GetFields(BindingFlags.Public | BindingFlags.Static))
-            {
-                SaveField(settingsImage, fieldInfo);
-            }
-            settingsImage.Changed = true;
-        }
-
-        private void SaveField(WzImage settingsImage, FieldInfo fieldInfo)
-        {
-            string settingName = fieldInfo.Name;
-            if (fieldInfo.FieldType.BaseType != null && fieldInfo.FieldType.BaseType.FullName == "System.Enum")
-                SetWzProperty(settingsImage, settingName, WzPropertyType.Int, fieldInfo.GetValue(null));
-            else switch (fieldInfo.FieldType.FullName)
-                {
-                    //case "Microsoft.Xna.Framework.Graphics.Color":
-                    case "Microsoft.Xna.Framework.Color":
-                        object xnaColor = fieldInfo.GetValue(null);
-                        //for some odd reason .NET requires casting the result to uint before it can be
-                        //casted to double
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Double, (double)(uint)xnaColor.GetType().GetProperty("PackedValue").GetValue(xnaColor, null));
-                        break;
-                    case "System.Drawing.Color":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Double, (double)((System.Drawing.Color)fieldInfo.GetValue(null)).ToArgb());
-                        break;
-                    case "System.Int32":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Int, fieldInfo.GetValue(null));
-                        break;
-                    case "System.Double":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Double, fieldInfo.GetValue(null));
-                        break;
-                    case "Single":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Float, fieldInfo.GetValue(null));
-                        break;
-                    case "System.Drawing.Size":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Vector, fieldInfo.GetValue(null));
-                        break;
-                    case "System.String":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.String, fieldInfo.GetValue(null));
-                        break;
-                    case "System.Drawing.Bitmap":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Canvas, fieldInfo.GetValue(null));
-                        break;
-                    case "System.Boolean":
-                        SetWzProperty(settingsImage, settingName, WzPropertyType.Int, (bool)fieldInfo.GetValue(null) ? 1 : 0);
-                        break;
-                }
-        }
-
+        #region Loading
         /// <summary>
         /// Load UserSettings and ApplicationSettings
         /// </summary>
         public void LoadSettings()
         {
-            if (File.Exists(wzPath))
+            if (File.Exists(settingFilePath))
             {
-                using (WzFile wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC))
-                {
-                    try
-                    {
-                        WzFileParseStatus parseStatus = wzFile.ParseWzFile();
+                string strJsonConfig = File.ReadAllText(settingFilePath);
 
-                        ExtractSettingsImage((WzImage)wzFile["UserSettings.img"], userSettingsType);
-                        ExtractSettingsImage((WzImage)wzFile["ApplicationSettings.img"], appSettingsType);
-                    }
-                    catch
-                    {
-                        throw;
-                    }
+                try
+                {
+                    JObject mainJson = (JObject)JsonConvert.DeserializeObject(strJsonConfig);
+
+                    LoadSettingsJson((JObject) mainJson[USER_SETTING_JSON], userSettingsType);
+                    LoadSettingsJson((JObject) mainJson[APP_SETTING_JSON], appSettingsType);
+                }
+                catch { 
+                    // its fine if loading isnt possible
+                    // fallback to default
+                }
+            } else
+            {
+                // do nothing, default setting is in the value as specified in WzSettings.cs
+            }
+        }
+
+        /// <summary>
+        /// Load settings json
+        /// </summary>
+        /// <param name="json"></param>
+        /// <param name="settingsHolderType"></param>
+        private void LoadSettingsJson(JObject json, Type settingsHolderType)
+        {
+            foreach (FieldInfo fieldInfo in settingsHolderType.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                string fieldName = fieldInfo.Name;
+                JObject jsonHoldingObject = (JObject)json[fieldName];
+
+                LoadField(fieldInfo, jsonHoldingObject);
+            }
+        }
+
+        /// <summary>
+        /// Loads the individual field into object
+        /// </summary>
+        /// <param name="fieldInfo"></param>
+        /// <param name="jsonHoldingObject"></param>
+        /// <exception cref="Exception"></exception>
+        private void LoadField(FieldInfo fieldInfo, JObject jsonHoldingObject)
+        {
+            if (jsonHoldingObject == null)
+            {
+                // does nothing to this field if json does not contain anything
+                // fallback to default as specified in WzSettings.json
+            }
+            else if (fieldInfo.FieldType.BaseType != null && fieldInfo.FieldType.BaseType.FullName == "System.Enum")
+                fieldInfo.SetValue(null, (int)jsonHoldingObject["value"]);
+            else
+            {
+                string fieldType = (string)jsonHoldingObject["type"];
+
+                switch (fieldType)
+                {
+                    case "Microsoft.Xna.Framework.Color":
+                        {
+                            uint value = (uint)jsonHoldingObject["value"];
+                            Microsoft.Xna.Framework.Color xnaColor = new Microsoft.Xna.Framework.Color(value);
+ 
+                            fieldInfo.SetValue(null, xnaColor);
+                            break;
+                        }
+                    case "System.Drawing.Color":
+                        {
+                            int value = (int)jsonHoldingObject["value"];
+                            System.Drawing.Color color = System.Drawing.Color.FromArgb(value);
+
+                            fieldInfo.SetValue(null, color);
+                            break;
+                        }
+                    case "System.Int32":
+                        {
+                            int value = (int)jsonHoldingObject["value"];
+
+                            fieldInfo.SetValue(null, value);
+                            break;
+                        }
+                    case "System.Double":
+                        {
+                            double value = (double)jsonHoldingObject["value"];
+
+                            fieldInfo.SetValue(null, value);
+                            break;
+                        }
+                    case "System.Single":
+                        {
+                            float value = (float)jsonHoldingObject["value"];
+
+                            fieldInfo.SetValue(null, value);
+                            break;
+                        }
+                    case "System.Drawing.Size":
+                        {
+                            int valueHeight = (int)jsonHoldingObject["valueHeight"];
+                            int valueWidth = (int)jsonHoldingObject["valueWidth"];
+
+                            System.Drawing.Size size = new System.Drawing.Size(valueHeight, valueWidth);
+
+                            fieldInfo.SetValue(null, size);
+                            break;
+                        }
+                    case "System.String":
+                        {
+                            string value = (string)jsonHoldingObject["value"];
+
+                            fieldInfo.SetValue(null, value);
+                            break;
+                        }
+                    case "System.Drawing.Bitmap":
+                        {
+                            string base64Image = (string)jsonHoldingObject["value"];
+                            byte[] byteImage = System.Convert.FromBase64String(base64Image);
+
+                            Bitmap bmp;
+                            using (var ms = new MemoryStream(byteImage))
+                            {
+                                bmp = new Bitmap(ms);
+                            }
+                            fieldInfo.SetValue(null, bmp);
+                            break;
+                        }
+                    case "System.Boolean":
+                        {
+                            bool value = (bool)jsonHoldingObject["value"];
+
+                            fieldInfo.SetValue(null, value);
+                            break;
+                        }
+                    default:
+                        {
+                            throw new Exception("Unsupported data type for WzSettings.");
+                        }
                 }
             }
         }
+        #endregion
 
-        public void Save()
+        #region Saving
+        public void SaveSettings()
         {
-            bool settingsExist = File.Exists(wzPath);
-            WzFile wzFile;
-            if (settingsExist)
-            {
-                wzFile = new WzFile(wzPath, 1337, WzMapleVersion.CLASSIC);
+            JObject userSettingJson = SaveSettingsJson(userSettingsType);
+            JObject appSettingJson = SaveSettingsJson(appSettingsType);
 
-                WzFileParseStatus parseStatus = wzFile.ParseWzFile();
-            }
-            else
-            {
-                wzFile = new WzFile(1337, WzMapleVersion.CLASSIC);
-                wzFile.Header.Copyright = "Wz settings file generated by MapleLib's WzSettings module created by haha01haha01";
-                wzFile.Header.RecalculateFileStart();
-                WzImage US = new WzImage("UserSettings.img") { 
-                    Changed = true, 
-                    Parsed = true 
-                };
-                WzImage AS = new WzImage("ApplicationSettings.img") { 
-                    Changed = true, 
-                    Parsed = true 
-                };
-                wzFile.WzDirectory.WzImages.Add(US);
-                wzFile.WzDirectory.WzImages.Add(AS);
-            }
-            SaveSettingsImage((WzImage)wzFile["UserSettings.img"], userSettingsType);
-            SaveSettingsImage((WzImage)wzFile["ApplicationSettings.img"], appSettingsType);
-            if (settingsExist)
-            {
-                string tempFile = Path.GetTempFileName();
-                string settingsPath = wzFile.FilePath;
+            JObject mainJson = new JObject();
+            mainJson.Add(USER_SETTING_JSON, userSettingJson);
+            mainJson.Add(APP_SETTING_JSON, appSettingJson);
 
-                wzFile.SaveToDisk(tempFile, false);
-                wzFile.Dispose();
-                File.Delete(settingsPath);
-                File.Move(tempFile, settingsPath);
+            bool settingsExist = File.Exists(settingFilePath);
+            if (settingsExist)
+                File.Delete(settingFilePath);
+
+            using (StreamWriter file = File.CreateText(settingFilePath))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                serializer.Serialize(file, mainJson);
             }
-            else
-                wzFile.SaveToDisk(wzPath, false);
         }
+
+        /// <summary>
+        /// Saves the settings image to json
+        /// </summary>
+        /// <param name="settingsHolderType"></param>
+        private JObject SaveSettingsJson(Type settingsHolderType)
+        {
+            JObject jObjHolder = new JObject();
+
+            foreach (FieldInfo fieldInfo in settingsHolderType.GetFields(BindingFlags.Public | BindingFlags.Static))
+            {
+                SaveField(fieldInfo, jObjHolder);
+            }
+            return jObjHolder;
+        }
+
+        /// <summary>
+        /// Saves the individual field into json object
+        /// </summary>
+        /// <param name="fieldInfo"></param>
+        /// <param name="jObjHolder"></param>
+        /// <exception cref="Exception"></exception>
+        private void SaveField(FieldInfo fieldInfo, JObject jObjHolder)
+        {
+            string settingName = fieldInfo.Name;
+
+            JObject fieldJsonObject = new JObject();
+            jObjHolder.Add(settingName, fieldJsonObject);
+
+            fieldJsonObject.Add("type", fieldInfo.FieldType.FullName); // i.e System.Int
+
+            if (fieldInfo.FieldType.BaseType != null && fieldInfo.FieldType.BaseType.FullName == "System.Enum")
+            {
+                fieldJsonObject.Add("value", (int) fieldInfo.GetValue(null));
+            }
+            else
+                switch (fieldInfo.FieldType.FullName)
+                {
+                    //case "Microsoft.Xna.Framework.Graphics.Color":
+                    case "Microsoft.Xna.Framework.Color":
+                        {
+                            Microsoft.Xna.Framework.Color xnaColor = (Microsoft.Xna.Framework.Color) fieldInfo.GetValue(null);
+                            uint uValue = xnaColor.PackedValue;
+
+                            fieldJsonObject.Add("value", uValue);
+                            break;
+                        }
+                    case "System.Drawing.Color":
+                        {
+                            int argbColor = ((System.Drawing.Color)fieldInfo.GetValue(null)).ToArgb();
+
+                            fieldJsonObject.Add("value", (int)argbColor);
+                            break;
+                        }
+                    case "System.Int32":
+                        {
+                            int intVal = (int)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("value", intVal);
+                            break;
+                        }
+                    case "System.Double":
+                        {
+                            double dValue = (double)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("value", dValue);
+                            break;
+                        }
+                    case "System.Single":
+                        {
+                            float fValue = (float)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("value", fValue);
+                            break;
+                        }
+                    case "System.Drawing.Size":
+                        {
+                            System.Drawing.Size size = (System.Drawing.Size)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("valueHeight", size.Height);
+                            fieldJsonObject.Add("valueWidth", size.Width);
+                            break;
+                        }
+                    case "System.String":
+                        {
+                            string strValue = (string)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("value", strValue);;
+                            break;
+                        }
+                    case "System.Drawing.Bitmap":
+                        {
+                            System.Drawing.Bitmap bitmap = (System.Drawing.Bitmap) fieldInfo.GetValue(null);
+
+                            ImageConverter converter = new ImageConverter();
+                            byte[] byteImage = (byte[])converter.ConvertTo(bitmap, typeof(byte[]));
+                            string base64Image = Convert.ToBase64String(byteImage, 0, byteImage.Length,Base64FormattingOptions.None);
+
+                            fieldJsonObject.Add("value", base64Image);
+                            break;
+                        }
+                    case "System.Boolean":
+                        {
+                            bool bValue = (bool)fieldInfo.GetValue(null);
+
+                            fieldJsonObject.Add("value", bValue);
+                            break;
+                        }
+                    default:
+                        {
+                            throw new Exception("Unsupported data type for WzSettings.");
+                        }
+                }
+        }
+        #endregion
     }
 }

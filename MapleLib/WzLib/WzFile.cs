@@ -139,6 +139,7 @@ namespace MapleLib.WzLib
         /// Open a wz file from a file on the disk
         /// </summary>
         /// <param name="filePath">Path to the wz file</param>
+        /// <param name="version"></param>
         public WzFile(string filePath, WzMapleVersion version) : this(filePath, -1, version)
         {
         }
@@ -147,6 +148,8 @@ namespace MapleLib.WzLib
         /// Open a wz file from a file on the disk
         /// </summary>
         /// <param name="filePath">Path to the wz file</param>
+        /// <param name="gameVersion"></param>
+        /// <param name="version"></param>
         public WzFile(string filePath, short gameVersion, WzMapleVersion version)
         {
             name = Path.GetFileName(filePath);

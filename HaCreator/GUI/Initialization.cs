@@ -44,7 +44,12 @@ namespace HaCreator.GUI
             return false;
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        /// <summary>
+        /// Initialise
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_initialise_Click(object sender, EventArgs e)
         {
             ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
@@ -218,7 +223,6 @@ namespace HaCreator.GUI
                 {
                     Program.WzManager.LoadWzFile("reactor");
                     Program.WzManager.ExtractReactorFile();
-
                 }
 
                 // Load sound
@@ -510,7 +514,7 @@ namespace HaCreator.GUI
         {
             if (e.KeyCode == Keys.Enter)
             {
-                button1_Click(null, null);
+                button_initialise_Click(null, null);
             }
             else if (e.KeyCode == Keys.Escape)
             {
