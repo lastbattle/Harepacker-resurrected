@@ -6,17 +6,8 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure;
-using HaCreator.MapEditor.Instance;
-using HaCreator.MapEditor.UndoRedo;
 using HaCreator.MapEditor.Instance.Misc;
 
 namespace HaCreator.GUI.InstanceEditor

@@ -789,16 +789,17 @@ namespace HaCreator.Wz
                     foreach (WzImageProperty prop_ in prop.WzProperties) // mob, user
                     {
                         MirrorFieldDataType targetObjectReflectionType = MirrorFieldDataType.NULL;
-                        if (!Enum.TryParse(prop_.Name, out targetObjectReflectionType) || targetObjectReflectionType == MirrorFieldDataType.NULL)
+                        if (!Enum.TryParse(prop_.Name, out targetObjectReflectionType))
                         {
                             string error = string.Format("New MirrorFieldData type object detected. prop name = '{0}", prop_.Name);
                             ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                         }
+                        if (targetObjectReflectionType == MirrorFieldDataType.NULL || targetObjectReflectionType == MirrorFieldDataType.info)
+                            continue;
 
                         foreach (WzImageProperty prop_items in prop_.WzProperties)
                         {
-                            WzVectorProperty lt = InfoTool.GetVector(prop_items["lt"]);
-                            WzVectorProperty rb = InfoTool.GetVector(prop_items["rb"]);
+                            System.Drawing.Rectangle rectBoundary = InfoTool.GetLtRbRectangle(prop_items);
                             WzVectorProperty offset = InfoTool.GetVector(prop_items["offset"]);
                             ushort gradient = (ushort)InfoTool.GetOptionalInt(prop_items["gradient"], 0);
                             ushort alpha = (ushort)InfoTool.GetOptionalInt(prop_items["alpha"], 0);
@@ -806,13 +807,11 @@ namespace HaCreator.Wz
                             bool reflection = InfoTool.GetOptionalBool(prop_items["reflection"]);
                             bool alphaTest = InfoTool.GetOptionalBool(prop_items["alphaTest"]);
 
-                            int width = rb.X.Value - lt.X.Value;
-                            int height = rb.Y.Value - lt.Y.Value;
                             Rectangle rectangle = new Rectangle(
-                                lt.X.Value - offset.X.Value,
-                                lt.Y.Value - offset.Y.Value,
-                                width,
-                                height);
+                                rectBoundary.X - offset.X.Value,
+                                rectBoundary.Y - offset.Y.Value,
+                                rectBoundary.Width,
+                                rectBoundary.Height);
 
                             ReflectionDrawableBoundary reflectionInfo = new ReflectionDrawableBoundary(gradient, alpha, objectForOverlay, reflection, alphaTest);
 

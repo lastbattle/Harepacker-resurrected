@@ -41,14 +41,14 @@ namespace MapleLib.WzLib
         internal WzHeader header;
         internal string name = "";
         internal ushort wzVersionHeader = 0;
-        internal const ushort wzVersionHeader64bit_start = 777;
+        internal const ushort wzVersionHeader64bit_start = 770; // 777 for KMS, GMS v230 uses 778.. wut
         internal uint versionHash = 0;
         internal short mapleStoryPatchVersion = 0;
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
 
         internal bool b64BitClient = false; // KMS update after Q4 2021, ver 1.2.357
-        private bool b64BitClient_withVerHeader = false; // 
+        internal bool b64BitClient_withVerHeader = false; // 
 
         internal byte[] WzIv;
         #endregion
@@ -240,7 +240,7 @@ namespace MapleLib.WzLib
                 // -- the latest KMS update seems to have changed it to 778? 779?
                 if (b64BitClient) 
                 {
-                    for (ushort maplestoryVerToDecode = wzVersionHeader64bit_start; maplestoryVerToDecode < wzVersionHeader64bit_start + 10; maplestoryVerToDecode++)
+                    for (ushort maplestoryVerToDecode = wzVersionHeader64bit_start; maplestoryVerToDecode < wzVersionHeader64bit_start + 20; maplestoryVerToDecode++)
                     {
                         if (TryDecodeWithWZVersionNumber(reader, wzVersionHeader, maplestoryVerToDecode, lazyParse))
                         {
@@ -364,13 +364,37 @@ namespace MapleLib.WzLib
 
                         switch (checkByte)
                         {
-                            case 0x73:
-                            case 0x1b:
+  /*                          case 0x4: // gms v230
+                            case 0xC1:
+                            case 0xC2:
+                            case 73:
+                            case 34:
+                            case 99:
+                            case 66:
+                            case 93:
+                            case 140:
+                            case 32:
+                            case 141:
+                            case 6:
+                            case 96:
                                 {
+                                    // temp fix, TODO: figure out what is this opcode
+                                    reader.PrintHexBytes(50); // test
+
+                                    // 80 EA 00 00 00 04 F7 9B 9D 9C 9D 9E 81 D9 DC D5 80 1C C7 5D 00 80 6E 95 D2 30 3F 4B ED 5A 04 F8 99 9D 9D 9F 80 C6 DD D6 80 66 FD A6 00 80 32 2E 95 56 
                                     WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                                     directory.ParseDirectory(lazyParse);
                                     this.wzDir = directory;
 
+                                    return true;
+                                }*/
+                            case 0x73:
+                            case 0x1b:
+                                {
+                                    WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
+
+                                    directory.ParseDirectory(lazyParse);
+                                    this.wzDir = directory;
                                     return true;
                                 }
                             case 0x30:
@@ -378,8 +402,10 @@ namespace MapleLib.WzLib
                             case 0xBC: // Map002.wz? KMST?
                             default:
                                 {
-                                    Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature,
-                                        string.Format("[WzFile.cs] New Wz image header found. checkByte = {0}. File Name = {1}", checkByte, Name));
+                                    string printError = string.Format("[WzFile.cs] New Wz image header found. checkByte = {0}. File Name = {1}", checkByte, Name);
+
+                                    Helpers.ErrorLogger.Log(Helpers.ErrorLevel.MissingFeature,printError);
+                                    Debug.WriteLine(printError);
                                     // log or something
                                     break;
                                 }

@@ -20,6 +20,8 @@ using MapleLib.WzLib.Util;
 using System;
 using System.Diagnostics;
 using MapleLib.PacketLib;
+using MapleLib.WzLib.WzStructure.Enums;
+using MapleLib.WzLib.WzProperties;
 
 namespace MapleLib.WzLib
 {
@@ -55,7 +57,7 @@ namespace MapleLib.WzLib
         /// </summary>
         public override WzObjectType ObjectType { get { return WzObjectType.Directory; } }
 
-        public override /*I*/WzFile WzFileParent
+        public override WzFile WzFileParent
         {
             get { return wzFile; }
         }
@@ -180,8 +182,7 @@ namespace MapleLib.WzLib
         /// </summary>
         internal void ParseDirectory(bool lazyParse = false)
         {
-            //Debug.WriteLine(HexTool.ToString( reader.ReadBytes(20)));
-            //reader.BaseStream.Position = reader.BaseStream.Position - 20;
+            //reader.PrintHexBytes(20);
             long available = reader.Available();
             if (available == 0)
                 return;
@@ -192,7 +193,7 @@ namespace MapleLib.WzLib
 
             for (int i = 0; i < entryCount; i++)
             {
-                byte type = reader.ReadByte();
+                byte type = reader.ReadByte(); // see WzBinaryWriter.WriteWzObjectValue
                 string fname = null;
                 int fsize;
                 int checksum;
@@ -201,24 +202,27 @@ namespace MapleLib.WzLib
                 long rememberPos = 0;
                 switch (type)
                 {
-                    case 1:  //01 XX 00 00 00 00 00 OFFSET (4 bytes) 
+                    case (byte) WzDirectoryType.UnknownType_1:  //01 XX 00 00 00 00 00 OFFSET (4 bytes) 
                         {
                             int unknown = reader.ReadInt32();
                             reader.ReadInt16();
                             uint offs = reader.ReadOffset();
                             continue;
                         }
-                    case 2:
+                    case (byte) WzDirectoryType.RetrieveStringFromOffset_2:
                         {
                             int stringOffset = reader.ReadInt32();
                             rememberPos = reader.BaseStream.Position;
                             reader.BaseStream.Position = reader.Header.FStart + stringOffset;
+
                             type = reader.ReadByte();
                             fname = reader.ReadString();
+
+                            Console.WriteLine("EntryCount: {0}, type: {1}, fname: {2}", entryCount, type, fname);
                             break;
                         }
-                    case 3:
-                    case 4:
+                    case (byte) WzDirectoryType.WzDirectory_3:
+                    case (byte) WzDirectoryType.WzImage_4:
                         {
                             fname = reader.ReadString();
                             rememberPos = reader.BaseStream.Position;
@@ -234,7 +238,7 @@ namespace MapleLib.WzLib
                 checksum = reader.ReadCompressedInt();
                 offset = reader.ReadOffset(); // IWzArchive::Getposition(pArchive)
 
-                if (type == 3)
+                if (type == (byte) WzDirectoryType.WzDirectory_3)
                 {
                     WzDirectory subDir = new WzDirectory(reader, fname, hash, WzIv, wzFile)
                     {
@@ -292,7 +296,7 @@ namespace MapleLib.WzLib
                 //wzImageNameTracking.Add(img.Name);
 
                 // Write 
-                if (img.bIsImageChanged)
+                if (img.Changed)
                 {
                     fs.Position = img.tempFileStart;
 
@@ -416,14 +420,18 @@ namespace MapleLib.WzLib
             writer.WriteCompressedInt(entryCount);
             foreach (WzImage img in images)
             {
-                writer.WriteWzObjectValue(img.name, 4);
+                if (!writer.WriteWzObjectValue(img.name, WzDirectoryType.WzImage_4))  // true if written as an offset
+                {
+                }
                 writer.WriteCompressedInt(img.BlockSize);
                 writer.WriteCompressedInt(img.Checksum);
                 writer.WriteOffset(img.Offset);
             }
             foreach (WzDirectory dir in subDirs)
             {
-                writer.WriteWzObjectValue(dir.name, 3);
+                if (!writer.WriteWzObjectValue(dir.name, WzDirectoryType.WzDirectory_3)) // true if written as an offset
+                {
+                }
                 writer.WriteCompressedInt(dir.BlockSize);
                 writer.WriteCompressedInt(dir.Checksum);
                 writer.WriteOffset(dir.Offset);

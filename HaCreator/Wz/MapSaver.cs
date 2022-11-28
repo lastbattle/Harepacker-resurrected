@@ -848,8 +848,9 @@ namespace HaCreator.Wz
             int i = 0;
             foreach (MirrorFieldDataType dataType in Enum.GetValues(typeof(MirrorFieldDataType))) // initial holder data, only run once
             {
-                if (dataType == MirrorFieldDataType.NULL)
+                if (dataType == MirrorFieldDataType.NULL || dataType == MirrorFieldDataType.info)
                     continue;
+
                 WzSubProperty holderProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0">
                 holderProp.Name = i.ToString(); // "0"
 
@@ -898,8 +899,10 @@ namespace HaCreator.Wz
                                 width,
                                 height);*/
 
-                        itemProp["lt"] = InfoTool.SetVector(rect.X, rect.Y);
-                        itemProp["rb"] = InfoTool.SetVector(rect.X + rect.Width, rect.Y + rect.Height);
+                        InfoTool.SetLtRbRectangle(itemProp, 
+                            new System.Drawing.Rectangle(rect.X, rect.Y, rect.Width, rect.Height) // convert Microsoft.Xna.Framework.Rectangle to System.Drawing.Rectangle
+                            );
+
                         itemProp["offset"] = InfoTool.SetVector(mirrorFieldData.Offset.X, mirrorFieldData.Offset.Y);
                         itemProp["gradient"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Gradient);
                         itemProp["alpha"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Alpha);

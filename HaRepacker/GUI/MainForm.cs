@@ -1100,6 +1100,7 @@ namespace HaRepacker.GUI
             string baseDir = (string)((object[])param)[1];
             WzMapleVersion version = GetWzMapleVersionByWzEncryptionBoxSelection((int)(((object[])param)[2]));
             IWzFileSerializer serializer = (IWzFileSerializer)((object[])param)[3];
+
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, wzFilesToDump.Length, true, true);
 
@@ -1124,6 +1125,10 @@ namespace HaRepacker.GUI
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
             MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+
+            // Reset progress bar to 0
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, true, true);
 
             threadDone = true;
         }
@@ -1162,7 +1167,11 @@ namespace HaRepacker.GUI
             }
            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
 
-           threadDone = true;
+            // Reset progress bar to 0
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, true, true);
+
+            threadDone = true;
         }
 
         private void RunWzObjExtraction(object param)
@@ -1170,7 +1179,7 @@ namespace HaRepacker.GUI
             ChangeApplicationState(false);
 
 #if DEBUG
-            var watch = new System.Diagnostics.Stopwatch();
+            var watch = new Stopwatch();
             watch.Start();
 #endif
             List<WzObject> objsToDump = (List<WzObject>)((object[])param)[0];
@@ -1178,6 +1187,7 @@ namespace HaRepacker.GUI
             ProgressingWzSerializer serializers = (ProgressingWzSerializer)((object[])param)[2];
 
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
+
             if (serializers is IWzObjectSerializer serializer)
             {
                 UpdateProgressBar(MainPanel.mainProgressBar, objsToDump.Count, true, true);
@@ -1200,6 +1210,10 @@ namespace HaRepacker.GUI
             watch.Stop();
             Debug.WriteLine($"WZ files Extracted. Execution Time: {watch.ElapsedMilliseconds} ms");
 #endif
+
+            // Reset progress bar to 0
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, true, true);
 
             threadDone = true;
         }
@@ -1244,36 +1258,36 @@ namespace HaRepacker.GUI
             WzClassicXmlSerializer serializer = new WzClassicXmlSerializer(
                 Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType, false);
+
             threadDone = false;
             new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start((object)new object[] { dialog.FileNames, folderDialog.SelectedPath, encryptionBox.SelectedIndex, serializer });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
-        private delegate void UpdateProgressBarDelegate(ToolStripProgressBar pbar, int value, bool max, bool absolute); //max for .Maximum, !max for .Value
-        private void UpdateProgressBarCallback(System.Windows.Controls.ProgressBar pbar, int value, bool max, bool absolute)
-        {
-            if (max)
-            {
-                if (absolute)
-                    pbar.Maximum = value;
-                else pbar.Maximum += value;
-            }
-            else
-            {
-                if (absolute)
-                    pbar.Value = value;
-                else pbar.Value += value;
-            }
-        }
-        private void UpdateProgressBar(System.Windows.Controls.ProgressBar pbar, int value, bool max, bool absolute)
+        /// <summary>
+        /// Updates the progress bar
+        /// </summary>
+        /// <param name="pbar"></param>
+        /// <param name="value"></param>
+        /// <param name="setMaxValue"></param>
+        /// <param name="absolute"></param>
+        private void UpdateProgressBar(System.Windows.Controls.ProgressBar pbar, int value, bool setMaxValue, bool absolute)
         {
             pbar.Dispatcher.Invoke(() =>
             {
-                UpdateProgressBarCallback(pbar, value, max, absolute);
+                if (setMaxValue)
+                {
+                    if (absolute)
+                        pbar.Maximum = value;
+                    else pbar.Maximum += value;
+                }
+                else
+                {
+                    if (absolute)
+                        pbar.Value = value;
+                    else pbar.Value += value;
+                }
             });
-            /*   if (pbar.ProgressBar.InvokeRequired)
-                   pbar.ProgressBar.Invoke(new UpdateProgressBarDelegate(UpdateProgressBarCallback), new object[] { pbar, value, max, absolute });
-               else UpdateProgressBarCallback(pbar, value, max, absolute);*/
         }
 
 
@@ -1287,9 +1301,14 @@ namespace HaRepacker.GUI
                 UpdateProgressBar(MainPanel.secondaryProgressBar, Math.Min(total, serializer.Current), false, true);
                 Thread.Sleep(500);
             }
-            UpdateProgressBar(MainPanel.mainProgressBar, 0, true, true);
+            UpdateProgressBar(MainPanel.mainProgressBar, 1, true, true);
+            UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
+
+            UpdateProgressBar(MainPanel.secondaryProgressBar, 1, true, true);
             UpdateProgressBar(MainPanel.secondaryProgressBar, 0, false, true);
+
             ChangeApplicationState(true);
+
             threadDone = false;
         }
 
@@ -1405,6 +1424,7 @@ namespace HaRepacker.GUI
 
             WzPngMp3Serializer serializer = new WzPngMp3Serializer();
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzObjExtraction));
             runningThread.Start((object)new object[] { objs, outPath, serializer });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
@@ -1464,6 +1484,7 @@ namespace HaRepacker.GUI
             }
             WzJsonBsonSerializer serializer = new WzJsonBsonSerializer(Program.ConfigurationManager.UserSettings.Indentation, Program.ConfigurationManager.UserSettings.LineBreakType, bIncludeBase64BinData, isJson);
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
             runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
 
@@ -1501,6 +1522,7 @@ namespace HaRepacker.GUI
                 Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType, false);
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
             runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
 
@@ -1538,8 +1560,10 @@ namespace HaRepacker.GUI
                 Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType, true);
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzImgDirsExtraction));
             runningThread.Start((object)new object[] { dirs, imgs, outPath, serializer });
+
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
@@ -1568,8 +1592,10 @@ namespace HaRepacker.GUI
                 Program.ConfigurationManager.UserSettings.Indentation,
                 Program.ConfigurationManager.UserSettings.LineBreakType);
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzObjExtraction));
             runningThread.Start((object)new object[] { objs, dialog.FileName, serializer });
+
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
@@ -2007,6 +2033,7 @@ namespace HaRepacker.GUI
 
             WzToNxSerializer serializer = new WzToNxSerializer();
             threadDone = false;
+
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
             runningThread.Start((object)new object[] { dialog.FileNames, outPath, encryptionBox.SelectedIndex, serializer });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);

@@ -69,15 +69,17 @@ namespace HaCreator.CustomControls
             for (int i = 0; i < 20; i++) // Not exceeding 20 logins yet.
             {
                 string imageName = "MapLogin" + (i == 0 ? "" : i.ToString()) + ".img";
+
                 WzObject mapLogin;
                 if (Initialization.isClient64())
                 {
-                    mapLogin = Program.WzManager["ui_000"][imageName];
+                    mapLogin = Program.WzManager["ui_000"]?[imageName];
                 }
                 else
                 {
-                    mapLogin = Program.WzManager["ui"][imageName];
+                    mapLogin = Program.WzManager["ui"]?[imageName];
                 }
+
                 if (mapLogin == null)
                     break;
                 mapLogins.Add(imageName);
