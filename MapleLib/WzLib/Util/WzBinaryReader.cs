@@ -40,6 +40,23 @@ namespace MapleLib.WzLib.Util
         #endregion
 
         #region Methods
+        /// <summary>
+        /// Sets the base stream position to the header FStart + offset
+        /// </summary>
+        /// <param name="offset"></param>
+        public void SetOffsetFromFStartToPosition(int offset)
+        {
+            BaseStream.Position = Header.FStart + offset;
+        }
+
+        public void RollbackStreamPosition(int byOffset)
+        {
+            if (BaseStream.Position < byOffset)
+                throw new Exception("Cant rollback stream position below 0");
+
+            BaseStream.Position -= byOffset;
+        }
+
         public string ReadStringAtOffset(long Offset)
         {
             return ReadStringAtOffset(Offset, false);

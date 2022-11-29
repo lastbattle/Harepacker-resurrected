@@ -29,7 +29,7 @@
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Initialization));
-            this.button1 = new System.Windows.Forms.Button();
+            this.button_initialise = new System.Windows.Forms.Button();
             this.versionBox = new System.Windows.Forms.ComboBox();
             this.toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
             this.label2 = new System.Windows.Forms.Label();
@@ -41,15 +41,15 @@
             this.ClientTypeBox = new System.Windows.Forms.ComboBox();
             this.SuspendLayout();
             // 
-            // button1
+            // button_initialise
             // 
-            this.button1.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button1.Location = new System.Drawing.Point(5, 65);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(186, 28);
-            this.button1.TabIndex = 1;
-            this.button1.Text = "Initialize";
-            this.button1.Click += new System.EventHandler(this.button1_Click);
+            this.button_initialise.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            this.button_initialise.Location = new System.Drawing.Point(5, 65);
+            this.button_initialise.Name = "button_initialise";
+            this.button_initialise.Size = new System.Drawing.Size(186, 28);
+            this.button_initialise.TabIndex = 1;
+            this.button_initialise.Text = "Initialize";
+            this.button_initialise.Click += new System.EventHandler(this.button_initialise_Click);
             // 
             // versionBox
             // 
@@ -64,7 +64,6 @@
             this.versionBox.Name = "versionBox";
             this.versionBox.Size = new System.Drawing.Size(237, 21);
             this.versionBox.TabIndex = 3;
-            this.versionBox.SelectedIndexChanged += new System.EventHandler(this.versionBox_SelectedIndexChanged_1);
             // 
             // toolStripProgressBar1
             // 
@@ -127,6 +126,7 @@
             // 
             // ClientTypeBox
             // 
+            this.ClientTypeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.ClientTypeBox.FormattingEnabled = true;
             this.ClientTypeBox.Items.AddRange(new object[] {
             "32 bit",
@@ -135,7 +135,6 @@
             this.ClientTypeBox.Name = "ClientTypeBox";
             this.ClientTypeBox.Size = new System.Drawing.Size(54, 21);
             this.ClientTypeBox.TabIndex = 16;
-            this.ClientTypeBox.SelectedIndexChanged += new System.EventHandler(this.comboBox1_SelectedIndexChanged_1);
             // 
             // Initialization
             // 
@@ -151,7 +150,7 @@
             this.Controls.Add(this.label2);
             this.Controls.Add(this.versionBox);
             this.Controls.Add(this.textBox2);
-            this.Controls.Add(this.button1);
+            this.Controls.Add(this.button_initialise);
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
@@ -169,7 +168,7 @@
 
         #endregion
 
-        private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Button button_initialise;
         private System.Windows.Forms.ComboBox versionBox;
         private System.Windows.Forms.ToolStripProgressBar toolStripProgressBar1;
         private System.Windows.Forms.Label label2;

@@ -44,7 +44,7 @@ namespace HaCreator
 
         public static string GetLocalSettingsPath()
         {
-            return Path.Combine(GetLocalSettingsFolder(), "Settings.wz");
+            return Path.Combine(GetLocalSettingsFolder(), "Settings.json");
         }
 
         /// <summary>
@@ -73,7 +73,7 @@ namespace HaCreator
 
             Properties.Resources.Culture = CultureInfo.CurrentCulture;
             InfoManager = new WzInformationManager();
-            SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings), typeof(Microsoft.Xna.Framework.Color));
+            SettingsManager = new WzSettingsManager(GetLocalSettingsPath(), typeof(UserSettings), typeof(ApplicationSettings));
             SettingsManager.LoadSettings();
            
             MultiBoard.RecalculateSettings();
@@ -88,7 +88,7 @@ namespace HaCreator
             // Shutdown
             if (initForm.editor != null)
                 initForm.editor.hcsm.backupMan.ClearBackups();
-            SettingsManager.Save();
+            SettingsManager.SaveSettings();
             if (Restarting)
             {
                 Application.Restart();

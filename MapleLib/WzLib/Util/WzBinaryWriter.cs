@@ -14,9 +14,11 @@
  * You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
+using System;
 using System.Collections;
 using System.IO;
 using MapleLib.MapleCryptoLib;
+using MapleLib.WzLib.WzStructure.Enums;
 
 namespace MapleLib.WzLib.Util
 {
@@ -59,10 +61,12 @@ namespace MapleLib.WzLib.Util
 		/// ?InternalSerializeString@@YAHPAGPAUIWzArchive@@EE@Z
 		/// </summary>
 		/// <param name="s"></param>
-		/// <param name="withoutOffset">0x73</param>
-		/// <param name="withOffset">0x1B</param>
+		/// <param name="withoutOffset">bExistID_0x73   0x73</param>
+		/// <param name="withOffset">bNewID_0x1b  0x1B</param>
 		public void WriteStringValue(string s, int withoutOffset, int withOffset)
 		{
+			// if length is > 4 and the string cache contains the string
+			// writes the offset instead
 			if (s.Length > 4 && StringCache.ContainsKey(s))
 			{
 				Write((byte)withOffset);
@@ -80,24 +84,37 @@ namespace MapleLib.WzLib.Util
 			}
 		}
 
-		public void WriteWzObjectValue(string s, byte type)
+		/// <summary>
+		/// Writes the Wz object value
+		/// </summary>
+		/// <param name="stringObjectValue"></param>
+		/// <param name="type"></param>
+		/// <param name="unk_GMS230"></param>
+		/// <returns>true if the Wz object value is written as an offset in the Wz file, else if not</returns>
+		public bool WriteWzObjectValue(string stringObjectValue, WzDirectoryType type)
 		{
-			string storeName = string.Format("{0}_{1}", type, s);
-			if (s.Length > 4 && StringCache.ContainsKey(storeName))
+			string storeName = string.Format("{0}_{1}", (byte) type, stringObjectValue);
+
+			// if length is > 4 and the string cache contains the string
+			// writes the offset instead
+			if (stringObjectValue.Length > 4 && StringCache.ContainsKey(storeName))
 			{
-				Write((byte)2);
+				Write((byte)WzDirectoryType.RetrieveStringFromOffset_2); // 2
 				Write((int)StringCache[storeName]);
+
+				return true;
 			}
 			else
 			{
 				int sOffset = (int)(this.BaseStream.Position - Header.FStart);
-				Write(type);
-				Write(s);
+				Write((byte)type);
+				Write(stringObjectValue);
 				if (!StringCache.ContainsKey(storeName))
 				{
 					StringCache[storeName] = sOffset;
 				}
 			}
+			return false;
 		}
 
 		public override void Write(string value)

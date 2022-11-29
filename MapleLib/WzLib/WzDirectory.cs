@@ -230,6 +230,7 @@ namespace MapleLib.WzLib
                         }
                     default:
                         {
+                            reader.PrintHexBytes(20);
                             throw new Exception("[WzDirectory] Unknown directory. type = " + type);
                         }
                 }

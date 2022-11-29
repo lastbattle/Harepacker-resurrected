@@ -192,11 +192,14 @@ namespace HaCreator.CustomControls
                 selectedName == "MapLogin1" ||
                 selectedName == "MapLogin2" ||
                 selectedName == "MapLogin3" ||
+                selectedName == "MapLogin4" ||
+                selectedName == "MapLogin5" ||
                 selectedName == "CashShopPreview" ||
                 selectedName == null)
             {
-                linkLabel.Visible = false;
-                mapNotExist.Visible = false;
+                panel_linkWarning.Visible = false;
+                panel_mapExistWarning.Visible = false;
+
                 minimapBox.Image = new Bitmap(1, 1);
                 loadMapAvailable = mapNamesBox.SelectedItem != null;
             }
@@ -212,8 +215,9 @@ namespace HaCreator.CustomControls
                 WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
                 if (mapImage == null)
                 {
-                    linkLabel.Visible = false;
-                    mapNotExist.Visible = true;
+                    panel_linkWarning.Visible = false;
+                    panel_mapExistWarning.Visible = true;
+
                     minimapBox.Image = (Image)new Bitmap(1, 1);
                     loadMapAvailable = false;
                 }
@@ -223,15 +227,18 @@ namespace HaCreator.CustomControls
                     {
                         if (mapImage["info"]["link"] != null)
                         {
-                            linkLabel.Visible = true;
-                            mapNotExist.Visible = false;
+                            panel_linkWarning.Visible = true;
+                            panel_mapExistWarning.Visible = false;
+                            label_linkMapId.Text = mapImage["info"]["link"].ToString();
+
                             minimapBox.Image = new Bitmap(1, 1);
                             loadMapAvailable = false;
                         }
                         else
                         {
-                            linkLabel.Visible = false;
-                            mapNotExist.Visible = false;
+                            panel_linkWarning.Visible = false;
+                            panel_mapExistWarning.Visible = false;
+
                             loadMapAvailable = true;
                             WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
                             if (minimap != null)
