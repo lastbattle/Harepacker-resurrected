@@ -49,7 +49,7 @@ namespace MapleLib.WzLib
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
 
-        internal bool wz_withEncryptVersionHeader = true;  // KMS update after Q4 2021, ver 1.2.357
+        internal bool wz_withEncryptVersionHeader = true;  // KMS update after Q4 2021, ver 1.2.357 does not contain any wz enc header information
 
         internal byte[] WzIv;
         #endregion
@@ -363,30 +363,6 @@ namespace MapleLib.WzLib
 
                         switch (checkByte)
                         {
-  /*                          case 0x4: // gms v230
-                            case 0xC1:
-                            case 0xC2:
-                            case 73:
-                            case 34:
-                            case 99:
-                            case 66:
-                            case 93:
-                            case 140:
-                            case 32:
-                            case 141:
-                            case 6:
-                            case 96:
-                                {
-                                    // temp fix, TODO: figure out what is this opcode
-                                    reader.PrintHexBytes(50); // test
-
-                                    // 80 EA 00 00 00 04 F7 9B 9D 9C 9D 9E 81 D9 DC D5 80 1C C7 5D 00 80 6E 95 D2 30 3F 4B ED 5A 04 F8 99 9D 9D 9F 80 C6 DD D6 80 66 FD A6 00 80 32 2E 95 56 
-                                    WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                                    directory.ParseDirectory(lazyParse);
-                                    this.wzDir = directory;
-
-                                    return true;
-                                }*/
                             case 0x73:
                             case 0x1b:
                                 {

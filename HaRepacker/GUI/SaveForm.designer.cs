@@ -33,10 +33,10 @@ namespace HaRepacker.GUI
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SaveForm));
             this.encryptionBox = new System.Windows.Forms.ComboBox();
             this.saveButton = new System.Windows.Forms.Button();
-            this.versionBox = new HaRepacker.GUI.Input.IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.label2 = new System.Windows.Forms.Label();
             this.checkBox_64BitFile = new System.Windows.Forms.CheckBox();
+            this.versionBox = new HaRepacker.GUI.Input.IntegerInput();
             this.SuspendLayout();
             // 
             // encryptionBox
@@ -54,12 +54,6 @@ namespace HaRepacker.GUI
             this.saveButton.UseVisualStyleBackColor = true;
             this.saveButton.Click += new System.EventHandler(this.SaveButton_Click);
             // 
-            // versionBox
-            // 
-            resources.ApplyResources(this.versionBox, "versionBox");
-            this.versionBox.Name = "versionBox";
-            this.versionBox.Value = 0;
-            // 
             // label1
             // 
             resources.ApplyResources(this.label1, "label1");
@@ -76,6 +70,12 @@ namespace HaRepacker.GUI
             this.checkBox_64BitFile.Name = "checkBox_64BitFile";
             this.checkBox_64BitFile.UseVisualStyleBackColor = true;
             this.checkBox_64BitFile.CheckedChanged += new System.EventHandler(this.checkBox_64BitFile_CheckedChanged);
+            // 
+            // versionBox
+            // 
+            resources.ApplyResources(this.versionBox, "versionBox");
+            this.versionBox.Name = "versionBox";
+            this.versionBox.Value = 0;
             // 
             // SaveForm
             // 
