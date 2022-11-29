@@ -53,7 +53,14 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="app.config" />
     <None Include="packages.config" />
+    <None Include="WzFiles\TamingMob_000_GMS_237.wz">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="WzFiles\TamingMob_000_SEA218.wz">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Include="WzFiles\TamingMob_SEA_212.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
