@@ -310,7 +310,7 @@ namespace MapleLib.WzLib.WzStructure
                         fs = InfoTool.GetFloat(prop);
                         break;
                     case "protectItem":
-                        protectItem = InfoTool.GetInt(prop);
+                        protectItem = InfoTool.GetInt(prop); // could also be a WzSubProperty in later versions.  "Map002.wz\\Map\\Map2\\211000200.img\\info\\protectItem"
                         break;
                     case "createMobInterval":
                         createMobInterval = InfoTool.GetInt(prop);

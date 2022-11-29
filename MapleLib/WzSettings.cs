@@ -15,18 +15,11 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
-using MapleLib.WzLib.WzProperties;
 using System.Reflection;
-using MapleLib.WzLib.WzStructure;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using System.Drawing;
-using System.Collections;
 using Newtonsoft.Json;
-using Spine;
-using System.Security.Principal;
-using Microsoft.Xna.Framework.Media;
-using System.Windows.Controls;
 
 namespace MapleLib.WzLib
 {
