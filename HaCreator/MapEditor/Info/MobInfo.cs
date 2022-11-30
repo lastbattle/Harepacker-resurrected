@@ -58,49 +58,27 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            if (Initialization.isClient64())
-            {
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES_64)
-                {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
+            var mobWzFiles = Initialization.isClient64() ? WzFileManager.MOB_WZ_FILES_64 : WzFileManager.MOB_WZ_FILES;
 
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
-                }
-                return null;
-            } else
+            foreach (string mobWzFile in mobWzFiles)
             {
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
-                {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
+                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
+                if (mobImage == null)
+                    continue;
 
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
+                if (!mobImage.Parsed)
+                {
+                    mobImage.ParseImage();
                 }
-                return null;
+                if (mobImage.HCTag == null)
+                {
+                    mobImage.HCTag = MobInfo.Load(mobImage);
+                }
+                MobInfo result = (MobInfo)mobImage.HCTag;
+                result.ParseImageIfNeeded();
+                return result;
             }
+            return null;
         }
 
         private static MobInfo Load(WzImage parentObject)
@@ -111,7 +89,7 @@ namespace HaCreator.MapEditor.Info
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) 
+            if (Image == null)
                 ParseImage();
 
             return new MobInstance(this, board, x, y, UserSettings.Mobrx0Offset, UserSettings.Mobrx1Offset, 20, null, UserSettings.defaultMobTime, flip, false, null, null);
@@ -119,7 +97,7 @@ namespace HaCreator.MapEditor.Info
 
         public BoardItem CreateInstance(Board board, int x, int y, int rx0Shift, int rx1Shift, int yShift, string limitedname, int? mobTime, MapleBool flip, MapleBool hide, int? info, int? team)
         {
-            if (Image == null) 
+            if (Image == null)
                 ParseImage();
 
             return new MobInstance(this, board, x, y, rx0Shift, rx1Shift, yShift, limitedname, mobTime, flip, hide, info, team);
@@ -142,14 +120,15 @@ namespace HaCreator.MapEditor.Info
         /// </summary>
         public WzImage LinkedWzImage
         {
-            get {
+            get
+            {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                 if (link != null)
                     _LinkedWzImage = Program.WzManager.FindMobImage(link.Value);
                 else
                     _LinkedWzImage = Program.WzManager.FindMobImage(id); // default
 
-                return _LinkedWzImage; 
+                return _LinkedWzImage;
             }
             set { this._LinkedWzImage = value; }
         }

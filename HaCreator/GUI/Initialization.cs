@@ -80,24 +80,24 @@ namespace HaCreator.GUI
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
             }
             WzMapleVersion fileVersion;
-           /* short version = -1;
-            if (versionBox.SelectedIndex != 3)
-            {
-                string testFile = File.Exists(Path.Combine(wzPath, "Data.wz")) ? "Data.wz" : "Item.wz";
-                try
-                {
-                    fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, testFile), out version);
-                }
-                catch (Exception ex)
-                {
-                    HaRepackerLib.Warning.Error("Error initializing " + testFile + " (" + ex.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
-                    return;
-                }
-            }
-            else
-            {*/
-                fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-          //  }
+            /* short version = -1;
+             if (versionBox.SelectedIndex != 3)
+             {
+                 string testFile = File.Exists(Path.Combine(wzPath, "Data.wz")) ? "Data.wz" : "Item.wz";
+                 try
+                 {
+                     fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, testFile), out version);
+                 }
+                 catch (Exception ex)
+                 {
+                     HaRepackerLib.Warning.Error("Error initializing " + testFile + " (" + ex.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
+                     return;
+                 }
+             }
+             else
+             {*/
+            fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
+            //  }
 
             InitializeWzFiles(wzPath, fileVersion);
 
@@ -167,31 +167,17 @@ namespace HaCreator.GUI
                 Program.WzManager.ExtractStringWzMaps();
 
                 // Mob WZ
-                if (isClient64())
+                var mobWzFiles = isClient64() ? WzFileManager.MOB_WZ_FILES_64 : WzFileManager.MOB_WZ_FILES;
+                foreach (string mobWZFile in mobWzFiles)
                 {
-                    foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES_64)
+                    textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
+                    Application.DoEvents();
+                    if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
                     {
-                        textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
-                        Application.DoEvents();
-                        if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
-                        {
-                            // mob is a little special... gonna load all 3 wz first
-                        }
+                        // mob is a little special... gonna load all 3 wz first
                     }
                 }
-                else
-                {
-                    foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
-                    {
-                        textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
-                        Application.DoEvents();
-                        if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
-                        {
-                            // mob is a little special... gonna load all 3 wz first
-                        }
-                    }
-                }
-               
+
                 Program.WzManager.ExtractMobFile();
 
 
@@ -226,25 +212,13 @@ namespace HaCreator.GUI
                 }
 
                 // Load sound
-
-                if (isClient64())
+                var soundWzFiles = isClient64() ? WzFileManager.SOUND_WZ_FILES_64 : WzFileManager.SOUND_WZ_FILES;
+                foreach (string soundWzFile in soundWzFiles)
                 {
-                    foreach (string soundWzFile in WzFileManager.SOUND_WZ_FILES_64)
-                    {
-                        textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
-                        Application.DoEvents();
-                        Program.WzManager.LoadWzFile(soundWzFile.ToLower());
-                        Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
-                    }
-                } else
-                {
-                    foreach (string soundWzFile in WzFileManager.SOUND_WZ_FILES)
-                    {
-                        textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
-                        Application.DoEvents();
-                        Program.WzManager.LoadWzFile(soundWzFile.ToLower());
-                        Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
-                    }
+                    textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
+                    Application.DoEvents();
+                    Program.WzManager.LoadWzFile(soundWzFile.ToLower());
+                    Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
                 }
 
 
@@ -299,33 +273,17 @@ namespace HaCreator.GUI
                 }
                 Program.WzManager.ExtractBackgroundSets();
 
-                if (isClient64())
+                var mapWzFiles = isClient64() ? WzFileManager.MAP_WZ_FILES_64 : WzFileManager.MAP_WZ_FILES;
+                foreach (string mapwzFile in mapWzFiles)
                 {
-                    foreach (string mapwzFile in WzFileManager.MAP_WZ_FILES_64)
+                    if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
                     {
-                        if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
-                        {
-                            textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
-                            Application.DoEvents();
-                            Program.WzManager.ExtractBackgroundSets();
-                            Program.WzManager.ExtractObjSets();
-                        }
+                        textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
+                        Application.DoEvents();
+                        Program.WzManager.ExtractBackgroundSets();
+                        Program.WzManager.ExtractObjSets();
                     }
                 }
-                else
-                {
-                    foreach (string mapwzFile in WzFileManager.MAP_WZ_FILES)
-                    {
-                        if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
-                        {
-                            textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
-                            Application.DoEvents();
-                            Program.WzManager.ExtractBackgroundSets();
-                            Program.WzManager.ExtractObjSets();
-                        }
-                    }
-                }
-               
 
                 textBox2.Text = "Initializing UI.wz...";
                 Application.DoEvents();
@@ -390,7 +348,7 @@ namespace HaCreator.GUI
             using (FolderBrowserDialog mapleSelect = new FolderBrowserDialog()
             {
                 ShowNewFolderButton = true,
-             //   RootFolder = Environment.SpecialFolder.ProgramFilesX86,
+                //   RootFolder = Environment.SpecialFolder.ProgramFilesX86,
                 Description = "Select the MapleStory folder."
             })
             {
@@ -420,11 +378,11 @@ namespace HaCreator.GUI
 
             MultiBoard mb = new MultiBoard();
             Board mapBoard = new Board(
-                new Microsoft.Xna.Framework.Point(), 
-                new Microsoft.Xna.Framework.Point(), 
-                mb, 
-                null, 
-                MapleLib.WzLib.WzStructure.Data.ItemTypes.None, 
+                new Microsoft.Xna.Framework.Point(),
+                new Microsoft.Xna.Framework.Point(),
+                mb,
+                null,
+                MapleLib.WzLib.WzStructure.Data.ItemTypes.None,
                 MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
@@ -485,7 +443,7 @@ namespace HaCreator.GUI
                 {
                     string error = string.Format("Exception occured loading {0}{1}{2}{3}{4}", mapcat, Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
-                } 
+                }
                 finally
                 {
                     mapBoard.Dispose();
