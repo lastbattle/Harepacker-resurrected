@@ -90,12 +90,8 @@ namespace HaCreator.GUI
 
             long mapid = (long) numericUpDown1.Value; // should be int, but anyway in case the future version uses more than 2.1b
             string mapId_str = mapid.ToString();
-            string mapId_PaddingZeros = mapId_str.PadLeft(9, '0') + ".img"; // 100000000.img.xml
-            string mapcat = "Map" + mapId_PaddingZeros.Substring(0, 1);
 
-            WzDirectory directory = Program.WzManager.FindMapWz(mapcat);
-            WzImage mapImage = (WzImage)directory[mapId_PaddingZeros];
-
+            WzImage mapImage = Program.WzManager.FindMapImage(mapId_str);
             if (mapImage == null)
             {
                 MessageBox.Show("Map is null.");

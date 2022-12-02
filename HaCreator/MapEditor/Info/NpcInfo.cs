@@ -31,8 +31,8 @@ namespace HaCreator.MapEditor.Info
         {
             this.id = id;
             this.name = name;
-            if(image!=null && image.Width==1 && image.Height==1)
-                image = global::HaCreator.Properties.Resources.placeholder; 
+            if (image != null && image.Width == 1 && image.Height == 1)
+                image = global::HaCreator.Properties.Resources.placeholder;
         }
 
         private void ExtractPNGFromImage(WzImage image)
@@ -41,7 +41,7 @@ namespace HaCreator.MapEditor.Info
             if (npcImage != null)
             {
                 Image = npcImage.GetLinkedWzCanvasBitmap();
-                if(Image.Width==1 && Image.Height == 1)
+                if (Image.Width == 1 && Image.Height == 1)
                 {
                     Image = global::HaCreator.Properties.Resources.placeholder;
                 }
@@ -64,38 +64,17 @@ namespace HaCreator.MapEditor.Info
 
         public static NpcInfo Get(string id)
         {
-            WzImage npcImage;
-            if (Initialization.isClient64())
-            {
-                foreach (String npc in WzFileManager.NPC_WZ_FILES_64)
-                {
-                    npcImage = (WzImage)Program.WzManager[npc][id + ".img"];
-                    if (npcImage != null)
-                    {
-                        if (!npcImage.Parsed)
-                            npcImage.ParseImage();
-                        if (npcImage.HCTag == null)
-                            npcImage.HCTag = NpcInfo.Load(npcImage);
-                        NpcInfo result = (NpcInfo)npcImage.HCTag;
-                        result.ParseImageIfNeeded();
-                        return result;
-                    }
-                }
+            WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", id + ".img");
+            if (npcImage == null)
                 return null;
-            } else
-            {
-                npcImage = (WzImage)Program.WzManager["npc"][id + ".img"];
-                if (npcImage == null)
-                    return null;
-                if (!npcImage.Parsed)
-                    npcImage.ParseImage();
-                if (npcImage.HCTag == null)
-                    npcImage.HCTag = NpcInfo.Load(npcImage);
-                NpcInfo result = (NpcInfo)npcImage.HCTag;
-                result.ParseImageIfNeeded();
-                return result;
-            }
-            
+
+            if (!npcImage.Parsed)
+                npcImage.ParseImage();
+            if (npcImage.HCTag == null)
+                npcImage.HCTag = NpcInfo.Load(npcImage);
+            NpcInfo result = (NpcInfo)npcImage.HCTag;
+            result.ParseImageIfNeeded();
+            return result;
         }
 
         private static NpcInfo Load(WzImage parentObject)
@@ -125,7 +104,7 @@ namespace HaCreator.MapEditor.Info
         public string Name
         {
             get { return name; }
-            private set {  }
+            private set { }
         }
 
         /// <summary>
@@ -134,42 +113,20 @@ namespace HaCreator.MapEditor.Info
         public WzImage LinkedWzImage
         {
             get {
-                WzImage npcLink;
-                if (Initialization.isClient64())
+                if (_LinkedWzImage == null)
                 {
-                    foreach (String npc in WzFileManager.NPC_WZ_FILES_64)
-                    {
-                        npcLink = (WzImage)Program.WzManager[npc][id + ".img"];
-                        if (npcLink != null)
-                        {
-                            if (_LinkedWzImage == null)
-                            {
-                                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-                                if (link != null)
-                                    _LinkedWzImage = (WzImage)Program.WzManager[npc][link.Value + ".img"];
-                                else
-                                    _LinkedWzImage = (WzImage)Program.WzManager[npc][id + ".img"]; // default
-                            }
-                            return _LinkedWzImage;
-
-                        }
-                    }
-                } else
-                {
-                    if (_LinkedWzImage == null)
-                    {
-                        WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-                        if (link != null)
-                            _LinkedWzImage = (WzImage)Program.WzManager["npc"][link.Value + ".img"];
-                        else
-                            _LinkedWzImage = (WzImage)Program.WzManager["npc"][id + ".img"]; // default
-                    }
-                    return _LinkedWzImage;
+                    WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                    if (link != null)
+                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", link.Value + ".img");
+                    else
+                        _LinkedWzImage = (WzImage) Program.WzManager.FindWzImageByName("npc", id + ".img"); // default
                 }
-                Console.Write("Error Code LinkedWzImage");
-                return null;
+                return _LinkedWzImage;
             }
-            set { this._LinkedWzImage = value; }
+
+            set { 
+                this._LinkedWzImage = value; 
+            }
         }
     }
 }

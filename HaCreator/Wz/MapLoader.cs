@@ -570,50 +570,54 @@ namespace HaCreator.Wz
                 return;
             }
 
-            WzImage tooltipsStringImage = (WzImage)Program.WzManager.String["ToolTipHelp.img"];
-            if (!tooltipsStringImage.Parsed)
+            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
+            foreach (string stringWzFileName in stringWzFiles)
             {
-                tooltipsStringImage.ParseImage();
-            }
+                WzImage tooltipsStringImage = (WzImage)Program.WzManager[stringWzFileName]?["ToolTipHelp.img"];
+                if (tooltipsStringImage == null)
+                    continue; // not in this wz file.
 
-            WzSubProperty tooltipStrings = (WzSubProperty)tooltipsStringImage["Mapobject"][mapBoard.MapInfo.id.ToString()];
-            if (tooltipStrings == null)
-            {
-                return;
-            }
+                if (!tooltipsStringImage.Parsed)
+                    tooltipsStringImage.ParseImage();
 
-            for (int i = 0; true; i++)
-            {
-                string num = i.ToString();
-                WzSubProperty tooltipString = (WzSubProperty)tooltipStrings[num];
-                WzSubProperty tooltipProp = (WzSubProperty)tooltipsParent[num];
-                WzSubProperty tooltipChar = (WzSubProperty)tooltipsParent[num + "char"];
+                WzSubProperty tooltipStrings = (WzSubProperty)tooltipsStringImage["Mapobject"][mapBoard.MapInfo.id.ToString()];
+                if (tooltipStrings == null)
+                    return;
 
-                if (tooltipString == null && tooltipProp == null)
-                    break;
-                if (tooltipString == null ^ tooltipProp == null)
-                    continue;
-
-                string title = InfoTool.GetOptionalString(tooltipString["Title"]);
-                string desc = InfoTool.GetOptionalString(tooltipString["Desc"]);
-                int x1 = InfoTool.GetInt(tooltipProp["x1"]);
-                int x2 = InfoTool.GetInt(tooltipProp["x2"]);
-                int y1 = InfoTool.GetInt(tooltipProp["y1"]);
-                int y2 = InfoTool.GetInt(tooltipProp["y2"]);
-                Microsoft.Xna.Framework.Rectangle tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
-                ToolTipInstance tt = new ToolTipInstance(mapBoard, tooltipPos, title, desc, i);
-                mapBoard.BoardItems.ToolTips.Add(tt);
-                if (tooltipChar != null)
+                for (int i = 0; true; i++)
                 {
-                    x1 = InfoTool.GetInt(tooltipChar["x1"]);
-                    x2 = InfoTool.GetInt(tooltipChar["x2"]);
-                    y1 = InfoTool.GetInt(tooltipChar["y1"]);
-                    y2 = InfoTool.GetInt(tooltipChar["y2"]);
-                    tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
+                    string num = i.ToString();
+                    WzSubProperty tooltipString = (WzSubProperty)tooltipStrings[num];
+                    WzSubProperty tooltipProp = (WzSubProperty)tooltipsParent[num];
+                    WzSubProperty tooltipChar = (WzSubProperty)tooltipsParent[num + "char"];
 
-                    ToolTipChar ttc = new ToolTipChar(mapBoard, tooltipPos, tt);
-                    mapBoard.BoardItems.CharacterToolTips.Add(ttc);
+                    if (tooltipString == null && tooltipProp == null)
+                        break;
+                    if (tooltipString == null ^ tooltipProp == null)
+                        continue;
+
+                    string title = InfoTool.GetOptionalString(tooltipString["Title"]);
+                    string desc = InfoTool.GetOptionalString(tooltipString["Desc"]);
+                    int x1 = InfoTool.GetInt(tooltipProp["x1"]);
+                    int x2 = InfoTool.GetInt(tooltipProp["x2"]);
+                    int y1 = InfoTool.GetInt(tooltipProp["y1"]);
+                    int y2 = InfoTool.GetInt(tooltipProp["y2"]);
+                    Microsoft.Xna.Framework.Rectangle tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
+                    ToolTipInstance tt = new ToolTipInstance(mapBoard, tooltipPos, title, desc, i);
+                    mapBoard.BoardItems.ToolTips.Add(tt);
+                    if (tooltipChar != null)
+                    {
+                        x1 = InfoTool.GetInt(tooltipChar["x1"]);
+                        x2 = InfoTool.GetInt(tooltipChar["x2"]);
+                        y1 = InfoTool.GetInt(tooltipChar["y1"]);
+                        y2 = InfoTool.GetInt(tooltipChar["y2"]);
+                        tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
+
+                        ToolTipChar ttc = new ToolTipChar(mapBoard, tooltipPos, tt);
+                        mapBoard.BoardItems.CharacterToolTips.Add(ttc);
+                    }
                 }
+                break; // just needs to be loaded once among all WZ files
             }
         }
 

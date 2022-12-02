@@ -103,6 +103,9 @@ namespace MapleLib.WzLib
         /// </summary>
         public MapleStoryLocalisation MapleLocaleVersion { get { return mapleLocaleVersion; } private set { } }
 
+        /// <summary>
+        ///  Since KMST1132 / GMSv230 around 2022/02/09, wz removed the 2-byte encVer at position 0x3C, and use a fixed encVer 777.
+        /// </summary>
         public bool Is64BitWzFile { get { return !wz_withEncryptVersionHeader; } private set { } }
 
         public override WzObject Parent { get { return null; } internal set { } }
@@ -268,6 +271,7 @@ namespace MapleLib.WzLib
             {
                 this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
                 reader.Hash = this.versionHash;
+
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
@@ -545,7 +549,7 @@ namespace MapleLib.WzLib
         /// <param name="path">Path to the output wz file</param>
         /// <param name="override_saveAs64BitWZ"></param>
         /// <param name="savingToPreferredWzVer"></param>
-        public void SaveToDisk(string path, bool? override_saveAs64BitWZ, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
+        public void SaveToDisk(string path, bool? override_saveAs64BitWZ = null, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
             // WZ IV
             if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
@@ -560,6 +564,10 @@ namespace MapleLib.WzLib
             bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
             // Save WZ as 64-bit wz format
             bool bWZ_withEncryptVersionHeader = this.wz_withEncryptVersionHeader;
+            if (override_saveAs64BitWZ != null)
+            {
+                bWZ_withEncryptVersionHeader = (bool)override_saveAs64BitWZ;
+            }
 
             CreateWZVersionHash();
             wzDir.SetVersionHash(versionHash);
@@ -889,8 +897,10 @@ namespace MapleLib.WzLib
 
         internal bool StringMatch(string strWildCard, string strCompare)
         {
-            if (strWildCard.Length == 0) return strCompare.Length == 0;
-            if (strCompare.Length == 0) return false;
+            if (strWildCard.Length == 0) 
+                return strCompare.Length == 0;
+            if (strCompare.Length == 0) 
+                return false;
             if (strWildCard[0] == '*' && strWildCard.Length > 1)
                 for (int index = 0; index < strCompare.Length; index++)
                 {

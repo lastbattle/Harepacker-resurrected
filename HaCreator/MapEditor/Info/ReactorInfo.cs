@@ -9,6 +9,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using System.Collections.Generic;
 using System.Drawing;
 
 namespace HaCreator.MapEditor.Info
@@ -86,18 +87,17 @@ namespace HaCreator.MapEditor.Info
             get {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
 
-                if (Initialization.isClient64())
+                List<string> reactorWzFiles = Program.WzManager.GetWzFileNameListFromBase("reactor");
+                foreach (string reactorWzFileName in reactorWzFiles)
                 {
+                    WzObject reactorImage = Program.WzManager[reactorWzFileName]?[id + ".img"];
+                    if (reactorImage == null)  
+                        continue;
+
                     if (link != null)
-                        _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][link.Value + ".img"];
+                        _LinkedWzImage = (WzImage) Program.WzManager[reactorWzFileName][link.Value + ".img"];
                     else
-                        _LinkedWzImage = (WzImage)Program.WzManager["reactor_000"][id + ".img"];
-                } else
-                {
-                    if (link != null)
-                        _LinkedWzImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
-                    else
-                        _LinkedWzImage = (WzImage)Program.WzManager["reactor"][id + ".img"];
+                        _LinkedWzImage = (WzImage) reactorImage[id + ".img"];
                 }
                
                 return _LinkedWzImage; 

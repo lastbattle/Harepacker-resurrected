@@ -22,16 +22,17 @@ namespace HaCreator.GUI
     {
         public HaEditor editor = null;
         public static bool client64;
-        public static string mainWzDirectory;
+        public static bool IsClient64()
+        {
+            return client64;
+        }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public Initialization()
         {
             InitializeComponent();
-        }
-
-        public static bool isClient64()
-        {
-            return client64;
         }
 
         private bool IsPathCommon(string path)
@@ -54,7 +55,7 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
-            SetMainWzDirectory(wzPath + "\\Data\\");
+
             DirectoryInfo di = new DirectoryInfo(wzPath + "\\Data");
 
             if (wzPath == "Select MapleStory Folder")
@@ -134,171 +135,141 @@ namespace HaCreator.GUI
 
             Program.WzManager = new WzFileManager(wzPath, fileVersion);
 
+            // for old maplestory with only Data.wz
             if (Program.WzManager.HasDataFile) //currently always false
             {
-                textBox2.Text = "Initializing Data.wz...";
-                Application.DoEvents();
+                UpdateUI_CurrentLoadingWzFile("Data.wz");
+
                 Program.WzManager.LoadDataWzFile("data");
+
                 Program.WzManager.ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
-                foreach (string mobWZFile in WzFileManager.MOB_WZ_FILES)
-                {
-                }
+
                 Program.WzManager.ExtractMobFile();
                 Program.WzManager.ExtractNpcFile();
                 Program.WzManager.ExtractReactorFile();
-                Program.WzManager.ExtractSoundFile("sound");
+                Program.WzManager.ExtractSoundFile();
                 Program.WzManager.ExtractMapMarks();
                 Program.WzManager.ExtractPortals();
                 Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
                 Program.WzManager.ExtractBackgroundSets();
             }
-            else
+            else // for versions beyond v30x
             {
-                textBox2.Text = "Initializing String.wz...";
-                Application.DoEvents();
+                // String.wz
+                List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
+                foreach (string stringWzFileName in stringWzFiles)
+                {
+                    UpdateUI_CurrentLoadingWzFile(stringWzFileName);
 
-                if (isClient64())
-                    Program.WzManager.LoadWzFile("string_000");
-                else
-                    Program.WzManager.LoadWzFile("string");
-
+                    Program.WzManager.LoadWzFile(stringWzFileName);
+                }
                 Program.WzManager.ExtractStringWzMaps();
 
                 // Mob WZ
-                var mobWzFiles = isClient64() ? WzFileManager.MOB_WZ_FILES_64 : WzFileManager.MOB_WZ_FILES;
+                List<string> mobWzFiles = Program.WzManager.GetWzFileNameListFromBase("mob");
                 foreach (string mobWZFile in mobWzFiles)
                 {
-                    textBox2.Text = string.Format("Initializing {0}.wz...", mobWZFile);
-                    Application.DoEvents();
-                    if (Program.WzManager.LoadWzFile(mobWZFile.ToLower()))
-                    {
-                        // mob is a little special... gonna load all 3 wz first
-                    }
-                }
+                    UpdateUI_CurrentLoadingWzFile(mobWZFile);
 
+                    Program.WzManager.LoadWzFile(mobWZFile);
+                }
                 Program.WzManager.ExtractMobFile();
 
 
                 // Load Npc
-                textBox2.Text = "Initializing Npc.wz...";
-                Application.DoEvents();
-                if (isClient64())
+                List<string> npcWzFiles = Program.WzManager.GetWzFileNameListFromBase("npc");
+                foreach (string npc in npcWzFiles)
                 {
-                    foreach (String npc in WzFileManager.NPC_WZ_FILES_64)
-                    {
-                        Program.WzManager.LoadWzFile(npc);
-                    }
-                }
-                else
-                {
-                    Program.WzManager.LoadWzFile("npc");
+                    UpdateUI_CurrentLoadingWzFile(npc);
+
+                    Program.WzManager.LoadWzFile(npc);
                 }
                 Program.WzManager.ExtractNpcFile();
 
                 // Load reactor
-                textBox2.Text = "Initializing Reactor.wz...";
-                Application.DoEvents();
-                if (isClient64())
+                List<string> reactorWzFiles = Program.WzManager.GetWzFileNameListFromBase("reactor");
+                foreach (string reactor in reactorWzFiles)
                 {
-                    Program.WzManager.LoadWzFile("reactor_000");
-                    Program.WzManager.ExtractReactorFile64();
+                    UpdateUI_CurrentLoadingWzFile(reactor);
+
+                    Program.WzManager.LoadWzFile(reactor);
                 }
-                else
-                {
-                    Program.WzManager.LoadWzFile("reactor");
-                    Program.WzManager.ExtractReactorFile();
-                }
+                Program.WzManager.ExtractReactorFile();
 
                 // Load sound
-                var soundWzFiles = isClient64() ? WzFileManager.SOUND_WZ_FILES_64 : WzFileManager.SOUND_WZ_FILES;
-                foreach (string soundWzFile in soundWzFiles)
+                List<string> soundWzFiles = Program.WzManager.GetWzFileNameListFromBase("sound");
+                foreach (string soundWzFileName in soundWzFiles)
                 {
-                    textBox2.Text = string.Format("Initializing {0}.wz...", soundWzFile);
-                    Application.DoEvents();
-                    Program.WzManager.LoadWzFile(soundWzFile.ToLower());
-                    Program.WzManager.ExtractSoundFile(soundWzFile.ToLower());
+                    UpdateUI_CurrentLoadingWzFile(soundWzFileName);
+
+                    Program.WzManager.LoadWzFile(soundWzFileName);
+                    Program.WzManager.ExtractSoundFile();
                 }
 
 
-                textBox2.Text = "Initializing Map.wz...";
-                Application.DoEvents();
-                if (isClient64())
+                // Load maps
+                List<string> mapWzFiles = Program.WzManager.GetWzFileNameListFromBase("map");
+                foreach (string mapWzFileName in mapWzFiles)
                 {
-                    foreach (String map in WzFileManager.MAP_WZ_FILES_64)
+                    UpdateUI_CurrentLoadingWzFile(mapWzFileName);
+
+                    Program.WzManager.LoadWzFile(mapWzFileName);
+                }
+                for (int i_map = 0; i_map <= 9; i_map++)
+                {
+                    List<string> map_iWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\map\\map" + i_map);
+                    foreach (string map_iWzFileName in map_iWzFiles)
                     {
-                        Program.WzManager.LoadWzFile(map);
-                    }
-                    Program.WzManager.LoadWzFile("tile_000");
-                    Program.WzManager.LoadWzFile("map0_000");
-                    Program.WzManager.LoadWzFile("map1_000");
-                    Program.WzManager.LoadWzFile("map2_000");
-                    Program.WzManager.LoadWzFile("map3_000");
-                    Program.WzManager.LoadWzFile("map4_000");
-                    Program.WzManager.LoadWzFile("map5_000");
-                    Program.WzManager.LoadWzFile("map6_000");
-                    Program.WzManager.LoadWzFile("map9_000");
-                    Program.WzManager.LoadWzFile("map9_001");
-                    Program.WzManager.ExtractMapMarks64();
-                    Program.WzManager.ExtractPortals64();
-                    Program.WzManager.ExtractTileSets64();
-                }
-                else
-                {
-                    Program.WzManager.LoadWzFile("map");
-                    Program.WzManager.ExtractMapMarks();
-                    Program.WzManager.ExtractPortals();
-                    Program.WzManager.ExtractTileSets();
-                }
+                        UpdateUI_CurrentLoadingWzFile(map_iWzFileName);
 
-
-                // Load Obj
-                if (isClient64())
-                {
-                    foreach (String obj in WzFileManager.OBJ_WZ_FILES_64)
-                    {
-                        Program.WzManager.LoadWzFile(obj);
+                        Program.WzManager.LoadWzFile(map_iWzFileName);
                     }
                 }
+                List<string> tileWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\tile"); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                foreach (string tileWzFileNames in tileWzFiles)
+                {
+                    UpdateUI_CurrentLoadingWzFile(tileWzFileNames);
+
+                    Program.WzManager.LoadWzFile(tileWzFileNames);
+                }
+                List<string> objWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\obj"); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                foreach (string objWzFileName in objWzFiles)
+                {
+                    UpdateUI_CurrentLoadingWzFile(objWzFileName);
+
+                    Program.WzManager.LoadWzFile(objWzFileName);
+                }
+                List<string> backWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\back"); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                foreach (string backWzFileName in backWzFiles)
+                {
+                    UpdateUI_CurrentLoadingWzFile(backWzFileName);
+
+                    Program.WzManager.LoadWzFile(backWzFileName);
+                }
+                Program.WzManager.ExtractMapMarks();
+                Program.WzManager.ExtractPortals();
+                Program.WzManager.ExtractTileSets();
                 Program.WzManager.ExtractObjSets();
-
-                // Load Back
-                if (isClient64())
-                {
-                    foreach (String back in WzFileManager.BACK_WZ_FILES_64)
-                    {
-                        Program.WzManager.LoadWzFile(back);
-                    }
-                }
                 Program.WzManager.ExtractBackgroundSets();
 
-                var mapWzFiles = isClient64() ? WzFileManager.MAP_WZ_FILES_64 : WzFileManager.MAP_WZ_FILES;
-                foreach (string mapwzFile in mapWzFiles)
-                {
-                    if (Program.WzManager.LoadWzFile(mapwzFile.ToLower()))
-                    {
-                        textBox2.Text = string.Format("Initializing {0}.wz...", mapwzFile);
-                        Application.DoEvents();
-                        Program.WzManager.ExtractBackgroundSets();
-                        Program.WzManager.ExtractObjSets();
-                    }
-                }
 
-                textBox2.Text = "Initializing UI.wz...";
-                Application.DoEvents();
-                if (isClient64())
+                // UI.wz
+                List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
+                foreach (string uiWzFileNames in uiWzFiles)
                 {
-                    foreach (String ui in WzFileManager.UI_WZ_FILES_64)
-                    {
-                        Program.WzManager.LoadWzFile(ui);
-                    }
-                }
-                else
-                {
-                    Program.WzManager.LoadWzFile("ui");
+                    UpdateUI_CurrentLoadingWzFile(uiWzFileNames);
+
+                    Program.WzManager.LoadWzFile(uiWzFileNames);
                 }
             }
+        }
+
+        private void UpdateUI_CurrentLoadingWzFile(string fileName)
+        {
+            textBox2.Text = string.Format("Initializing {0}.wz...", fileName);
+            Application.DoEvents();
         }
 
         /// <summary>
@@ -387,9 +358,7 @@ namespace HaCreator.GUI
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
             {
-                string mapcat = "Map" + mapid.Substring(0, 1);
-
-                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid);
                 if (mapImage == null)
                 {
                     continue;
@@ -441,7 +410,7 @@ namespace HaCreator.GUI
                 }
                 catch (Exception exp)
                 {
-                    string error = string.Format("Exception occured loading {0}{1}{2}{3}{4}", mapcat, Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
+                    string error = string.Format("Exception occured loading {1}{2}{3}{4}", Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
                 }
                 finally
@@ -484,16 +453,6 @@ namespace HaCreator.GUI
         {
             client64 = isClient64;
             ApplicationSettings.WzClientSelectionIndex = isClient64 ? 1 : 0;
-        }
-
-        public static string GetMainWzDirectory()
-        {
-            return mainWzDirectory;
-        }
-
-        public static void SetMainWzDirectory(string directory)
-        {
-            mainWzDirectory = directory;
         }
     }
 }

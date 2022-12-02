@@ -250,25 +250,15 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
-            WzDirectory MapWzFile;
-            WzDirectory UIWZFile;
-            WzDirectory SoundWZFile;
-            if (Initialization.isClient64())
-            {
-                 MapWzFile = Program.WzManager["map_003"]; // Map.wz
-                 UIWZFile = Program.WzManager["ui_002"]; // NEED FIX?
-                 SoundWZFile = Program.WzManager["sound_000"];  // NEED FIX?
-            }
-            else
-            {
-                 MapWzFile = Program.WzManager["map"]; // Map.wz
-                 UIWZFile = Program.WzManager["ui"];
-                 SoundWZFile = Program.WzManager["sound"];
-            }
-           
-
-            this.bBigBangUpdate = UIWZFile["UIWindow2.img"]?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
-            this.bBigBang2Update = UIWZFile["UIWindow2.img"]?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
+            WzImage mapHelperImage = (WzImage) Program.WzManager.FindWzImageByName("map", "MapHelper.img");
+            WzImage soundUIImage = (WzImage) Program.WzManager.FindWzImageByName("sound", "UI.img");
+            WzImage uiToolTipImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIToolTip.img"); // UI_003.wz
+            WzImage uiBasicImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "Basic.img");
+            WzImage uiWindow1Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow.img"); //
+            WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // UI_004.wz
+                                     
+            this.bBigBangUpdate = uiWindow2Image["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
+            this.bBigBang2Update = uiWindow2Image["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -372,7 +362,7 @@ namespace HaCreator.MapSimulator
             // Portals
             Task t_portal = Task.Run(() =>
             {
-                WzSubProperty portalParent = (WzSubProperty)MapWzFile["MapHelper.img"]["portal"];
+                WzSubProperty portalParent = (WzSubProperty) mapHelperImage["portal"];
 
                 WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
                 //WzSubProperty editorParent = (WzSubProperty) portalParent["editor"];
@@ -388,7 +378,7 @@ namespace HaCreator.MapSimulator
             // Tooltips
             Task t_tooltips = Task.Run(() =>
             {
-                WzSubProperty farmFrameParent = (WzSubProperty)UIWZFile["UIToolTip.img"]?["Item"]?["FarmFrame"];
+                WzSubProperty farmFrameParent = (WzSubProperty) uiToolTipImage["Item"]?["FarmFrame"];
                 foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
                 {
                     TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, UserScreenScaleFactor, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
@@ -400,7 +390,7 @@ namespace HaCreator.MapSimulator
             // Cursor
             Task t_cursor = Task.Run(() =>
             {
-                WzImageProperty cursorImageProperty = (WzImageProperty)UIWZFile["Basic.img"]?["Cursor"];
+                WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
                 this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
             });
 
@@ -419,7 +409,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!mapBoard.MapInfo.hideMinimap)
                 {
-                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(UIWZFile, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, SoundWZFile, bBigBangUpdate);
+                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, soundUIImage, bBigBangUpdate);
                 }
             });
 

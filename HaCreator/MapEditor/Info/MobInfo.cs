@@ -58,27 +58,21 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            var mobWzFiles = Initialization.isClient64() ? WzFileManager.MOB_WZ_FILES_64 : WzFileManager.MOB_WZ_FILES;
+            WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", id + ".img");
+            if (mobImage == null)
+                return null;
 
-            foreach (string mobWzFile in mobWzFiles)
+            if (!mobImage.Parsed)
             {
-                WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                if (mobImage == null)
-                    continue;
-
-                if (!mobImage.Parsed)
-                {
-                    mobImage.ParseImage();
-                }
-                if (mobImage.HCTag == null)
-                {
-                    mobImage.HCTag = MobInfo.Load(mobImage);
-                }
-                MobInfo result = (MobInfo)mobImage.HCTag;
-                result.ParseImageIfNeeded();
-                return result;
+                mobImage.ParseImage();
             }
-            return null;
+            if (mobImage.HCTag == null)
+            {
+                mobImage.HCTag = MobInfo.Load(mobImage);
+            }
+            MobInfo result = (MobInfo)mobImage.HCTag;
+            result.ParseImageIfNeeded();
+            return result;
         }
 
         private static MobInfo Load(WzImage parentObject)
@@ -124,9 +118,9 @@ namespace HaCreator.MapEditor.Info
             {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                 if (link != null)
-                    _LinkedWzImage = Program.WzManager.FindMobImage(link.Value);
+                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", link.Value + ".img");
                 else
-                    _LinkedWzImage = Program.WzManager.FindMobImage(id); // default
+                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", id + ".img"); // default
 
                 return _LinkedWzImage;
             }

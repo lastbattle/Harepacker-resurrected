@@ -70,45 +70,63 @@ namespace HaCreator.Wz
         public static string GetMobNameById(string id)
         {
             id = RemoveLeadingZeros(id);
-            WzObject obj = Program.WzManager.String["Mob.img"][id];
-            if (obj == null)
+
+            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
+            foreach (string stringWzFileName in stringWzFiles)
             {
-                return "";
+                WzObject obj = Program.WzManager[stringWzFileName]?["Mob.img"];
+                if (obj == null)
+                    continue; // not in this wz
+
+                WzObject mobObj = obj[id];
+                WzStringProperty mobName = (WzStringProperty)mobObj["name"];
+                if (mobName == null)
+                    return "";
+
+                return mobName.Value;
             }
-            WzStringProperty mobName = (WzStringProperty)obj["name"];
-            if (mobName == null)
-            {
-                return "";
-            }
-            return mobName.Value;
+            return "";
         }
 
         public static string GetNpcNameById(string id)
         {
             id = RemoveLeadingZeros(id);
-            WzObject obj = Program.WzManager.String["Npc.img"][id];
-            if (obj == null)
+
+            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
+            foreach (string stringWzFileName in stringWzFiles)
             {
-                return "";
+                WzObject obj = Program.WzManager[stringWzFileName]?["Npc.img"];
+                if (obj == null)
+                    continue; // not in this wz
+
+                WzObject npcObj = obj[id];
+                WzStringProperty npcName = (WzStringProperty)npcObj["name"];
+                if (npcName == null)
+                    return "";
+
+                return npcName.Value;
             }
-            WzStringProperty npcName = (WzStringProperty)obj["name"];
-            if (npcName == null)
-            {
-                return "";
-            }
-            return npcName.Value;
+            return "";
         }
 
         public static WzSubProperty GetMapStringProp(string id)
         {
             id = RemoveLeadingZeros(id);
-            WzImage mapNameParent = (WzImage)Program.WzManager.String["Map.img"];
-            foreach (WzSubProperty mapNameCategory in mapNameParent.WzProperties)
+
+            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
+            foreach (string stringWzFileName in stringWzFiles)
             {
-                WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
-                if (mapNameDirectory != null)
+                WzImage mapNameParent = (WzImage)Program.WzManager[stringWzFileName]?["Map.img"];
+                if (mapNameParent == null) 
+                    continue; // not in this wz
+
+                foreach (WzSubProperty mapNameCategory in mapNameParent.WzProperties)
                 {
-                    return mapNameDirectory;
+                    WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
+                    if (mapNameDirectory != null)
+                    {
+                        return mapNameDirectory;
+                    }
                 }
             }
             return null;

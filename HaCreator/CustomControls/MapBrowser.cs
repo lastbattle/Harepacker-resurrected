@@ -70,14 +70,14 @@ namespace HaCreator.CustomControls
             {
                 string imageName = "MapLogin" + (i == 0 ? "" : i.ToString()) + ".img";
 
-                WzObject mapLogin;
-                if (Initialization.isClient64())
+                WzObject mapLogin = null;
+
+                List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
+                foreach (string uiWzFileName in uiWzFiles)
                 {
-                    mapLogin = Program.WzManager["ui_000"]?[imageName];
-                }
-                else
-                {
-                    mapLogin = Program.WzManager["ui"]?[imageName];
+                    mapLogin = Program.WzManager[uiWzFileName]?[imageName];
+                    if (mapLogin != null)
+                        break;
                 }
 
                 if (mapLogin == null)
@@ -206,13 +206,8 @@ namespace HaCreator.CustomControls
             else
             {
                 string mapid = (selectedName).Substring(0, 9);
-                string mapcat;
-                if (Initialization.isClient64())
-                    mapcat = mapid.Substring(0, 1);
-                else
-                    mapcat = "Map" + mapid.Substring(0, 1);
 
-                WzImage mapImage = Program.WzManager.FindMapImage(mapid, mapcat);
+                WzImage mapImage = Program.WzManager.FindMapImage(mapid);
                 if (mapImage == null)
                 {
                     panel_linkWarning.Visible = false;

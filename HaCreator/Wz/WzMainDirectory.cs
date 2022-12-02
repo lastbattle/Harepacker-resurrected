@@ -15,15 +15,28 @@ namespace HaCreator.Wz
 {
     public class WzMainDirectory
     {
-        private WzFile file;
-        private WzDirectory directory;
+        private readonly WzFile file;
+        private readonly WzDirectory directory;
 
+        /// <summary>
+        /// Constructor for oridinary Wz file
+        /// </summary>
+        /// <param name="file"></param>
         public WzMainDirectory(WzFile file)
         {
             this.file = file;
             this.directory = file.WzDirectory;
+            if (directory == null)
+            {
+
+            }
         }
 
+        /// <summary>
+        /// Constructor for hotfix Data.wz file
+        /// </summary>
+        /// <param name="file"></param>
+        /// <param name="directory"></param>
         public WzMainDirectory(WzFile file, WzDirectory directory)
         {
             this.file = file;

@@ -504,23 +504,26 @@ namespace HaCreator.MapSimulator
         /// Draws the frame and the UI of the minimap.
         /// TODO: This whole thing needs to be dramatically simplified via further abstraction to keep it noob-proof :(
         /// </summary>
-        /// <param name="UIWZFile">UI.wz file directory</param>
+        /// <param name="uiWindow1Image">UI.wz/UIWindow1.img pre-bb</param>
+        /// <param name="uiWindow2Image">UI.wz/UIWindow2.img post-bb</param>
+        /// <param name="uiBasicImage">UI.wz/Basic.img</param>
         /// <param name="mapBoard"></param>
         /// <param name="device"></param>
         /// <param name="UserScreenScaleFactor">The scale factor of the window (DPI)</param>
         /// <param name="MapName">The map name. i.e The Hill North</param>
         /// <param name="StreetName">The street name. i.e Hidden street</param>
+        /// <param name="soundUIImage">Sound.wz/UI.img</param>
         /// <param name="bBigBang">Big bang update</param>
         /// <returns></returns>
-        public static MinimapItem CreateMinimapFromProperty(WzDirectory UIWZFile, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, string MapName, string StreetName, WzDirectory SoundWZFile, bool bBigBang)
+        public static MinimapItem CreateMinimapFromProperty(WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage uiBasicImage, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, string MapName, string StreetName, WzImage soundUIImage, bool bBigBang)
         {
             if (mapBoard.MiniMap == null)
                 return null;
 
-            WzSubProperty minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow2.img"]?["MiniMap"];
+            WzSubProperty minimapFrameProperty = (WzSubProperty)uiWindow2Image["MiniMap"];
             if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
             {
-                minimapFrameProperty = (WzSubProperty)UIWZFile["UIWindow.img"]?["MiniMap"];
+                minimapFrameProperty = (WzSubProperty)uiWindow1Image["MiniMap"];
             }
 
             WzSubProperty maxMapProperty = (WzSubProperty)minimapFrameProperty["MaxMap"];
@@ -624,8 +627,8 @@ namespace HaCreator.MapSimulator
                 // >>> If aligning from the left to the right. Items at the left must be at the top of the code
                 // >>> If aligning from the right to the left. Items at the right must be at the top of the code with its (x position - parent width).
                 // TODO: probably a wrapper class in the future, such as HorizontalAlignment and VerticalAlignment, or Grid/ StackPanel 
-                WzBinaryProperty BtMouseClickSoundProperty = (WzBinaryProperty) SoundWZFile["UI.img"]?["BtMouseClick"];
-                WzBinaryProperty BtMouseOverSoundProperty = (WzBinaryProperty)SoundWZFile["UI.img"]?["BtMouseOver"];
+                WzBinaryProperty BtMouseClickSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseClick"];
+                WzBinaryProperty BtMouseOverSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseOver"];
 
                 if (bBigBang)
                 {
@@ -661,10 +664,8 @@ namespace HaCreator.MapSimulator
                 } 
                 else
                 {
-                    WzImage BasicImg = (WzImage) UIWZFile["Basic.img"];
-
-                    WzSubProperty BtMin = (WzSubProperty)BasicImg["BtMin"]; // mininise button
-                    WzSubProperty BtMax = (WzSubProperty)BasicImg["BtMax"]; // maximise button
+                    WzSubProperty BtMin = (WzSubProperty)uiBasicImage["BtMin"]; // mininise button
+                    WzSubProperty BtMax = (WzSubProperty)uiBasicImage["BtMax"]; // maximise button
                     WzSubProperty BtMap = (WzSubProperty)minimapFrameProperty["BtMap"]; // world button
 
                     UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
