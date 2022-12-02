@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Text;
 using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
@@ -46,9 +47,7 @@ namespace HaCreator.Wz
 
         public static string AddLeadingZeros(string source, int maxLength)
         {
-            while (source.Length < maxLength)
-                source = "0" + source;
-            return source;
+            return source.PadLeft(maxLength, '0') + ".img";
         }
 
         public static string RemoveLeadingZeros(string source)

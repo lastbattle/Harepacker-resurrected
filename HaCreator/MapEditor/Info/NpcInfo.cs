@@ -64,7 +64,8 @@ namespace HaCreator.MapEditor.Info
 
         public static NpcInfo Get(string id)
         {
-            WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", id + ".img");
+            string imgName = WzInfoTools.AddLeadingZeros(id, 7);
+            WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName);
             if (npcImage == null)
                 return null;
 
@@ -117,9 +118,15 @@ namespace HaCreator.MapEditor.Info
                 {
                     WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                     if (link != null)
-                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", link.Value + ".img");
+                    {
+                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7);
+                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", linkImgName);
+                    }
                     else
-                        _LinkedWzImage = (WzImage) Program.WzManager.FindWzImageByName("npc", id + ".img"); // default
+                    {
+                        string imgName = WzInfoTools.AddLeadingZeros(id, 7);
+                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName); // default
+                    }
                 }
                 return _LinkedWzImage;
             }

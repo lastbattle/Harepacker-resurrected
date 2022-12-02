@@ -90,14 +90,20 @@ namespace HaCreator.MapEditor.Info
                 List<string> reactorWzFiles = Program.WzManager.GetWzFileNameListFromBase("reactor");
                 foreach (string reactorWzFileName in reactorWzFiles)
                 {
-                    WzObject reactorImage = Program.WzManager[reactorWzFileName]?[id + ".img"];
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7);
+
+                    WzObject reactorImage = Program.WzManager[reactorWzFileName]?[imgName];
                     if (reactorImage == null)  
                         continue;
 
                     if (link != null)
-                        _LinkedWzImage = (WzImage) Program.WzManager[reactorWzFileName][link.Value + ".img"];
+                    {
+                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7);
+
+                        _LinkedWzImage = (WzImage)Program.WzManager[reactorWzFileName][linkImgName];
+                    }
                     else
-                        _LinkedWzImage = (WzImage) reactorImage[id + ".img"];
+                        _LinkedWzImage = (WzImage)reactorImage[imgName];
                 }
                
                 return _LinkedWzImage; 
