@@ -410,7 +410,7 @@ namespace HaCreator.GUI
                 }
                 catch (Exception exp)
                 {
-                    string error = string.Format("Exception occured loading {1}{2}{3}{4}", Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
+                    string error = string.Format("Exception occured loading {0}{1}{2}{3}", Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
                 }
                 finally

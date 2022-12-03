@@ -182,10 +182,10 @@ namespace HaCreator.GUI
 
                 if (selectedName.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
                 {
-                    List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
-                    foreach (string uiWzFileName in uiWzFiles)
+                    List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
+                    foreach (WzDirectory uiWzDir in uiWzDirs)
                     {
-                        mapImage = (WzImage)Program.WzManager[uiWzFileName]?[selectedName + ".img"];
+                        mapImage = (WzImage) uiWzDir?[selectedName + ".img"];
                         if (mapImage != null)
                             break;
                     }
@@ -193,10 +193,10 @@ namespace HaCreator.GUI
                 }
                 else if (mapBrowser.SelectedItem == "CashShopPreview")
                 {
-                    List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
-                    foreach (string uiWzFileName in uiWzFiles)
+                    List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
+                    foreach (WzDirectory uiWzDir in uiWzDirs)
                     {
-                        mapImage = (WzImage)Program.WzManager[uiWzFileName]?["CashShopPreview.img"];
+                        mapImage = (WzImage) uiWzDir?["CashShopPreview.img"];
                         if (mapImage != null)
                             break;
                     }

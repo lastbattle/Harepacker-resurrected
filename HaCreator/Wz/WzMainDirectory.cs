@@ -26,10 +26,6 @@ namespace HaCreator.Wz
         {
             this.file = file;
             this.directory = file.WzDirectory;
-            if (directory == null)
-            {
-
-            }
         }
 
         /// <summary>

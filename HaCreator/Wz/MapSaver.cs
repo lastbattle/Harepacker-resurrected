@@ -91,46 +91,40 @@ namespace HaCreator.Wz
             board.MapInfo.Save(image, board.VRRectangle == null ? (System.Drawing.Rectangle?)null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-                foreach (string stringWzFileName in stringWzFiles)
+                WzImage strMapImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
+                if (strMapImg == null)
+                    throw new Exception("Map.img not found in string.wz");
+
+                WzSubProperty strCatProp = (WzSubProperty)strMapImg[board.MapInfo.strCategoryName];
+                if (strCatProp == null)
                 {
-                    WzImage strMapImg = (WzImage)Program.WzManager[stringWzFileName]?["Map.img"];
-                    if (strMapImg == null)
-                        continue; // not in this wz file
-
-                    WzSubProperty strCatProp = (WzSubProperty)strMapImg[board.MapInfo.strCategoryName];
-                    if (strCatProp == null)
-                    {
-                        strCatProp = new WzSubProperty();
-                        strMapImg[board.MapInfo.strCategoryName] = strCatProp;
-                        Program.WzManager.SetWzFileUpdated("string", strMapImg);
-                    }
-                    WzSubProperty strMapProp = (WzSubProperty)strCatProp[board.MapInfo.id.ToString()];
-                    if (strMapProp == null)
-                    {
-                        strMapProp = new WzSubProperty();
-                        strCatProp[board.MapInfo.id.ToString()] = strMapProp;
-                        Program.WzManager.SetWzFileUpdated("string", strMapImg);
-                    }
-                    WzStringProperty strMapName = (WzStringProperty)strMapProp["mapName"];
-                    if (strMapName == null)
-                    {
-                        strMapName = new WzStringProperty();
-                        strMapProp["mapName"] = strMapName;
-                        Program.WzManager.SetWzFileUpdated("string", strMapImg);
-                    }
-                    WzStringProperty strStreetName = (WzStringProperty)strMapProp["streetName"];
-                    if (strStreetName == null)
-                    {
-                        strStreetName = new WzStringProperty();
-                        strMapProp["streetName"] = strStreetName;
-                        Program.WzManager.SetWzFileUpdated("string", strMapImg);
-                    }
-                    UpdateString(strMapName, board.MapInfo.strMapName, strMapImg);
-                    UpdateString(strStreetName, board.MapInfo.strStreetName, strMapImg);
-
-                    break; // just needs to be loaded once among all WZ files
+                    strCatProp = new WzSubProperty();
+                    strMapImg[board.MapInfo.strCategoryName] = strCatProp;
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
                 }
+                WzSubProperty strMapProp = (WzSubProperty)strCatProp[board.MapInfo.id.ToString()];
+                if (strMapProp == null)
+                {
+                    strMapProp = new WzSubProperty();
+                    strCatProp[board.MapInfo.id.ToString()] = strMapProp;
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                }
+                WzStringProperty strMapName = (WzStringProperty)strMapProp["mapName"];
+                if (strMapName == null)
+                {
+                    strMapName = new WzStringProperty();
+                    strMapProp["mapName"] = strMapName;
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                }
+                WzStringProperty strStreetName = (WzStringProperty)strMapProp["streetName"];
+                if (strStreetName == null)
+                {
+                    strStreetName = new WzStringProperty();
+                    strMapProp["streetName"] = strStreetName;
+                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                }
+                UpdateString(strMapName, board.MapInfo.strMapName, strMapImg);
+                UpdateString(strStreetName, board.MapInfo.strStreetName, strMapImg);
             }
         }
 
@@ -358,10 +352,10 @@ namespace HaCreator.Wz
             WzImage strTooltipImg = null;
 
             // Find the string.wz file
-            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-            foreach (string stringWzFileName in stringWzFiles)
+            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
+            foreach (WzDirectory stringWzDir in stringWzDirs)
             {
-                strTooltipImg = (WzImage)Program.WzManager[stringWzFileName]?["ToolTipHelp.img"];
+                strTooltipImg = (WzImage)stringWzDir?["ToolTipHelp.img"];
                 if (strTooltipImg != null)
                     break;// found
             }
@@ -901,7 +895,7 @@ namespace HaCreator.Wz
                     WzImageProperty containsWzSubPropertyForTargetObj = mirrorFieldDataParent.WzProperties.FirstOrDefault(wzImg =>
                     {
                         return wzImg.WzProperties.FirstOrDefault(x => x.Name == forTargetObject) != null; // mob, user
-                        });
+                    });
 
                     if (containsWzSubPropertyForTargetObj != null)
                     {
@@ -920,7 +914,7 @@ namespace HaCreator.Wz
                                 width,
                                 height);*/
 
-                        InfoTool.SetLtRbRectangle(itemProp, 
+                        InfoTool.SetLtRbRectangle(itemProp,
                             new System.Drawing.Rectangle(rect.X, rect.Y, rect.Width, rect.Height) // convert Microsoft.Xna.Framework.Rectangle to System.Drawing.Rectangle
                             );
 
@@ -1097,8 +1091,8 @@ namespace HaCreator.Wz
                         continue;
                     }*/
 
-                        FootholdAnchor contAnchor = FindOptimalContinuationAnchor((tileInst.BoundItemsList[1].Y + tileInst.BoundItemsList[nitems - 2].Y) / 2,
-                        tileInst.BoundItemsList[1].X, tileInst.BoundItemsList[nitems - 2].X, tileInst.LayerNumber);
+                    FootholdAnchor contAnchor = FindOptimalContinuationAnchor((tileInst.BoundItemsList[1].Y + tileInst.BoundItemsList[nitems - 2].Y) / 2,
+                    tileInst.BoundItemsList[1].X, tileInst.BoundItemsList[nitems - 2].X, tileInst.LayerNumber);
                     if (contAnchor == null)
                     {
                         continue;

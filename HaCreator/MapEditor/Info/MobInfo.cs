@@ -58,7 +58,7 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            string imgName = WzInfoTools.AddLeadingZeros(id, 7);
+            string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
 
             WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
             if (mobImage == null)
@@ -121,12 +121,12 @@ namespace HaCreator.MapEditor.Info
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                 if (link != null)
                 {
-                    string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7);
+                    string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
                     _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
                 }
                 else
                 {
-                    string imgName = WzInfoTools.AddLeadingZeros(id, 7);
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
                     _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default
                 }
                 return _LinkedWzImage;

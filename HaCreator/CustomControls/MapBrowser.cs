@@ -72,10 +72,10 @@ namespace HaCreator.CustomControls
 
                 WzObject mapLogin = null;
 
-                List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
-                foreach (string uiWzFileName in uiWzFiles)
+                List<WzDirectory> uiWzFiles = Program.WzManager.GetWzDirectoriesFromBase("ui");
+                foreach (WzDirectory uiWzFile in uiWzFiles)
                 {
-                    mapLogin = Program.WzManager[uiWzFileName]?[imageName];
+                    mapLogin = uiWzFile?[imageName];
                     if (mapLogin != null)
                         break;
                 }

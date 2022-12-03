@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Text;
 using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
@@ -45,9 +44,16 @@ namespace HaCreator.Wz
             return new WzVectorProperty(name, new WzIntProperty("X", source.X), new WzIntProperty("Y", source.Y));
         }
 
+        /// <summary>
+        /// Add leading zeros to the source string. (pad left)
+        /// i.e 550  = 0000550
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="maxLength"></param>
+        /// <returns></returns>
         public static string AddLeadingZeros(string source, int maxLength)
         {
-            return source.PadLeft(maxLength, '0') + ".img";
+            return source.PadLeft(maxLength, '0');
         }
 
         public static string RemoveLeadingZeros(string source)
@@ -70,14 +76,10 @@ namespace HaCreator.Wz
         {
             id = RemoveLeadingZeros(id);
 
-            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-            foreach (string stringWzFileName in stringWzFiles)
+            WzImage stringWzDirs = (WzImage) Program.WzManager.FindWzImageByName("string", "Mob.img");
+            if (stringWzDirs != null)
             {
-                WzObject obj = Program.WzManager[stringWzFileName]?["Mob.img"];
-                if (obj == null)
-                    continue; // not in this wz
-
-                WzObject mobObj = obj[id];
+                WzObject mobObj = stringWzDirs[id];
                 WzStringProperty mobName = (WzStringProperty)mobObj["name"];
                 if (mobName == null)
                     return "";
@@ -91,14 +93,10 @@ namespace HaCreator.Wz
         {
             id = RemoveLeadingZeros(id);
 
-            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-            foreach (string stringWzFileName in stringWzFiles)
+            WzImage stringWzDirs = (WzImage) Program.WzManager.FindWzImageByName("string", "Npc.img");
+            if (stringWzDirs != null)
             {
-                WzObject obj = Program.WzManager[stringWzFileName]?["Npc.img"];
-                if (obj == null)
-                    continue; // not in this wz
-
-                WzObject npcObj = obj[id];
+                WzObject npcObj = stringWzDirs[id];
                 WzStringProperty npcName = (WzStringProperty)npcObj["name"];
                 if (npcName == null)
                     return "";
@@ -112,14 +110,10 @@ namespace HaCreator.Wz
         {
             id = RemoveLeadingZeros(id);
 
-            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-            foreach (string stringWzFileName in stringWzFiles)
+            WzImage mapImg = (WzImage) Program.WzManager.FindWzImageByName("string", "Map.img");
+            if (mapImg != null)
             {
-                WzImage mapNameParent = (WzImage)Program.WzManager[stringWzFileName]?["Map.img"];
-                if (mapNameParent == null) 
-                    continue; // not in this wz
-
-                foreach (WzSubProperty mapNameCategory in mapNameParent.WzProperties)
+                foreach (WzSubProperty mapNameCategory in mapImg.WzProperties)
                 {
                     WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
                     if (mapNameDirectory != null)
@@ -244,18 +238,6 @@ namespace HaCreator.Wz
                 if (frame1 != null) return frame1;
             }
             return null;
-        }
-
-        public static MobInfo GetMobInfoById(string id)
-        {
-            id = AddLeadingZeros(id, 7);
-            return MobInfo.Get(id);
-        }
-
-        public static NpcInfo GetNpcInfoById(string id)
-        {
-            id = AddLeadingZeros(id, 7);
-            return NpcInfo.Get(id);
         }
 
         public static Color XNAToDrawingColor(XNA.Color c)

@@ -214,6 +214,7 @@ namespace HaCreator.Wz
                 if (tSprop != null)
                     tS = InfoTool.GetString(tSprop);
 
+                // Load objects
                 foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
                 {
                     int x = InfoTool.GetInt(obj["x"]);
@@ -234,6 +235,7 @@ namespace HaCreator.Wz
                     int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
                     int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
                     string tags = InfoTool.GetOptionalString(obj["tags"]);
+
                     WzImageProperty questParent = obj["quest"];
                     List<ObjectInstanceQuest> questInfo = null;
                     if (questParent != null)
@@ -248,10 +250,13 @@ namespace HaCreator.Wz
                     ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
                     if (objInfo == null)
                         continue;
+
                     Layer l = mapBoard.Layers[layer];
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
                     l.zMList.Add(zM);
                 }
+
+                // Load tiles
                 WzImageProperty tileParent = layerProp["tile"];
                 foreach (WzImageProperty tile in tileParent.WzProperties)
                 {
@@ -570,54 +575,49 @@ namespace HaCreator.Wz
                 return;
             }
 
-            List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
-            foreach (string stringWzFileName in stringWzFiles)
+            WzImage tooltipsStringImage = (WzImage)Program.WzManager.FindWzImageByName("string", "ToolTipHelp.img");
+            if (tooltipsStringImage == null)
+                throw new Exception("ToolTipHelp.img not found in string.wz");
+
+            if (!tooltipsStringImage.Parsed)
+                tooltipsStringImage.ParseImage();
+
+            WzSubProperty tooltipStrings = (WzSubProperty)tooltipsStringImage["Mapobject"][mapBoard.MapInfo.id.ToString()];
+            if (tooltipStrings == null)
+                return;
+
+            for (int i = 0; true; i++)
             {
-                WzImage tooltipsStringImage = (WzImage)Program.WzManager[stringWzFileName]?["ToolTipHelp.img"];
-                if (tooltipsStringImage == null)
-                    continue; // not in this wz file.
+                string num = i.ToString();
+                WzSubProperty tooltipString = (WzSubProperty)tooltipStrings[num];
+                WzSubProperty tooltipProp = (WzSubProperty)tooltipsParent[num];
+                WzSubProperty tooltipChar = (WzSubProperty)tooltipsParent[num + "char"];
 
-                if (!tooltipsStringImage.Parsed)
-                    tooltipsStringImage.ParseImage();
+                if (tooltipString == null && tooltipProp == null)
+                    break;
+                if (tooltipString == null ^ tooltipProp == null)
+                    continue;
 
-                WzSubProperty tooltipStrings = (WzSubProperty)tooltipsStringImage["Mapobject"][mapBoard.MapInfo.id.ToString()];
-                if (tooltipStrings == null)
-                    return;
-
-                for (int i = 0; true; i++)
+                string title = InfoTool.GetOptionalString(tooltipString["Title"]);
+                string desc = InfoTool.GetOptionalString(tooltipString["Desc"]);
+                int x1 = InfoTool.GetInt(tooltipProp["x1"]);
+                int x2 = InfoTool.GetInt(tooltipProp["x2"]);
+                int y1 = InfoTool.GetInt(tooltipProp["y1"]);
+                int y2 = InfoTool.GetInt(tooltipProp["y2"]);
+                Microsoft.Xna.Framework.Rectangle tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
+                ToolTipInstance tt = new ToolTipInstance(mapBoard, tooltipPos, title, desc, i);
+                mapBoard.BoardItems.ToolTips.Add(tt);
+                if (tooltipChar != null)
                 {
-                    string num = i.ToString();
-                    WzSubProperty tooltipString = (WzSubProperty)tooltipStrings[num];
-                    WzSubProperty tooltipProp = (WzSubProperty)tooltipsParent[num];
-                    WzSubProperty tooltipChar = (WzSubProperty)tooltipsParent[num + "char"];
+                    x1 = InfoTool.GetInt(tooltipChar["x1"]);
+                    x2 = InfoTool.GetInt(tooltipChar["x2"]);
+                    y1 = InfoTool.GetInt(tooltipChar["y1"]);
+                    y2 = InfoTool.GetInt(tooltipChar["y2"]);
+                    tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
 
-                    if (tooltipString == null && tooltipProp == null)
-                        break;
-                    if (tooltipString == null ^ tooltipProp == null)
-                        continue;
-
-                    string title = InfoTool.GetOptionalString(tooltipString["Title"]);
-                    string desc = InfoTool.GetOptionalString(tooltipString["Desc"]);
-                    int x1 = InfoTool.GetInt(tooltipProp["x1"]);
-                    int x2 = InfoTool.GetInt(tooltipProp["x2"]);
-                    int y1 = InfoTool.GetInt(tooltipProp["y1"]);
-                    int y2 = InfoTool.GetInt(tooltipProp["y2"]);
-                    Microsoft.Xna.Framework.Rectangle tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
-                    ToolTipInstance tt = new ToolTipInstance(mapBoard, tooltipPos, title, desc, i);
-                    mapBoard.BoardItems.ToolTips.Add(tt);
-                    if (tooltipChar != null)
-                    {
-                        x1 = InfoTool.GetInt(tooltipChar["x1"]);
-                        x2 = InfoTool.GetInt(tooltipChar["x2"]);
-                        y1 = InfoTool.GetInt(tooltipChar["y1"]);
-                        y2 = InfoTool.GetInt(tooltipChar["y2"]);
-                        tooltipPos = new Microsoft.Xna.Framework.Rectangle(x1, y1, x2 - x1, y2 - y1);
-
-                        ToolTipChar ttc = new ToolTipChar(mapBoard, tooltipPos, tt);
-                        mapBoard.BoardItems.CharacterToolTips.Add(ttc);
-                    }
+                    ToolTipChar ttc = new ToolTipChar(mapBoard, tooltipPos, tt);
+                    mapBoard.BoardItems.CharacterToolTips.Add(ttc);
                 }
-                break; // just needs to be loaded once among all WZ files
             }
         }
 
@@ -819,7 +819,7 @@ namespace HaCreator.Wz
 
                             ReflectionDrawableBoundary reflectionInfo = new ReflectionDrawableBoundary(gradient, alpha, objectForOverlay, reflection, alphaTest);
 
-                            MirrorFieldData mirrorFieldDataItem = new MirrorFieldData(mapBoard, rectangle, 
+                            MirrorFieldData mirrorFieldDataItem = new MirrorFieldData(mapBoard, rectangle,
                                 new Vector2(offset.X.Value, offset.Y.Value), reflectionInfo, targetObjectReflectionType);
                             mapBoard.BoardItems.MirrorFieldDatas.Add(mirrorFieldDataItem);
                         }
