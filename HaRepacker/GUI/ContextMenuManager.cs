@@ -106,7 +106,7 @@ namespace HaRepacker
 
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        Program.WzFileManager.UnloadWzFile((WzFile)node.Tag);
+                        parentPanel.MainForm.UnloadLoadedWzFile(node.Tag as WzFile);
                     }
                 }));
             Reload = new ToolStripMenuItem("Reload", Properties.Resources.arrow_refresh, new EventHandler(
@@ -117,7 +117,7 @@ namespace HaRepacker
 
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        Program.WzFileManager.ReloadWzFile((WzFile)node.Tag, parentPanel);
+                        parentPanel.MainForm.ReloadLoadedWzFile(node.Tag as WzFile, parentPanel);
                     }
                 }));
             CollapseAllChildNode = new ToolStripMenuItem("Collapse All", Properties.Resources.collapse, new EventHandler(
@@ -141,7 +141,7 @@ namespace HaRepacker
                 {
                     foreach (WzNode node in GetNodes(sender))
                     {
-                        Program.WzFileManager.SortNodesRecursively(node, true);
+                        parentPanel.MainForm.SortNodesRecursively(node, true);
                     }
                 }));
 

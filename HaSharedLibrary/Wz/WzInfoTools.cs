@@ -4,7 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using HaCreator.MapEditor.Info;
+using HaSharedLibrary;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -15,7 +15,7 @@ using System.Text;
 using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
 
-namespace HaCreator.Wz
+namespace HaSharedLibrary.Wz
 {
     public static class WzInfoTools
     {
@@ -72,11 +72,11 @@ namespace HaCreator.Wz
             return source.Substring(firstNonZeroIndex);
         }
 
-        public static string GetMobNameById(string id)
+        public static string GetMobNameById(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
 
-            WzImage stringWzDirs = (WzImage) Program.WzManager.FindWzImageByName("string", "Mob.img");
+            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Mob.img");
             if (stringWzDirs != null)
             {
                 WzObject mobObj = stringWzDirs[id];
@@ -89,11 +89,11 @@ namespace HaCreator.Wz
             return "";
         }
 
-        public static string GetNpcNameById(string id)
+        public static string GetNpcNameById(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
 
-            WzImage stringWzDirs = (WzImage) Program.WzManager.FindWzImageByName("string", "Npc.img");
+            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Npc.img");
             if (stringWzDirs != null)
             {
                 WzObject npcObj = stringWzDirs[id];
@@ -106,11 +106,11 @@ namespace HaCreator.Wz
             return "";
         }
 
-        public static WzSubProperty GetMapStringProp(string id)
+        public static WzSubProperty GetMapStringProp(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
 
-            WzImage mapImg = (WzImage) Program.WzManager.FindWzImageByName("string", "Map.img");
+            WzImage mapImg = (WzImage)fileManager.FindWzImageByName("string", "Map.img");
             if (mapImg != null)
             {
                 foreach (WzSubProperty mapNameCategory in mapImg.WzProperties)
@@ -236,6 +236,49 @@ namespace HaCreator.Wz
             {
                 WzCanvasProperty frame1 = (WzCanvasProperty)GetRealProperty(action0["0"]);
                 if (frame1 != null) return frame1;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Finds a map image from the list of Map.wzs
+        /// On pre 64-bit client:
+        /// Map.wz/Map/Map1/10000000.img
+        /// 
+        /// On post 64-bit client:
+        /// Map/Map/Map1/Map1_000.wz/10000000.img
+        /// </summary>
+        /// <param name="mapid"></param>
+        /// <returns></returns>
+        public static WzImage FindMapImage(string mapid, WzFileManager fileManager)
+        {
+            string mapIdNamePadded = WzInfoTools.AddLeadingZeros(mapid, 9) + ".img";
+
+            string mapcat;
+            if (fileManager.Is64Bit)
+                mapcat = mapIdNamePadded.Substring(0, 1);
+            else
+                mapcat = "Map" + mapIdNamePadded.Substring(0, 1);
+
+            if (!fileManager.Is64Bit)
+            {
+                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map");
+                foreach (WzDirectory mapWzDir in mapWzDirs)
+                {
+                    WzImage mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
+                    if (mapImage != null)
+                        return mapImage;
+                }
+            }
+            else
+            {
+                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map\\map\\map" + mapcat);
+                foreach (WzDirectory mapWzDir in mapWzDirs)
+                {
+                    WzImage mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
+                    if (mapImage != null)
+                        return mapImage;
+                }
             }
             return null;
         }

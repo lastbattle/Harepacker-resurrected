@@ -551,13 +551,11 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Collections\AnchorEnumerator.cs" />
-    <Compile Include="Wz\WzInfoTools.cs" />
     <Compile Include="Wz\PortalGameImageInfo.cs" />
     <Compile Include="Collections\FootholdEnumerator.cs" />
     <Compile Include="Wz\MapLoader.cs" />
     <Compile Include="Wz\MapSaver.cs" />
     <Compile Include="Wz\WzInformationManager.cs" />
-    <Compile Include="Wz\WzMainDirectory.cs" />
     <EmbeddedResource Include="CustomControls\AlphaColorPicker.resx">
       <DependentUpon>AlphaColorPicker.cs</DependentUpon>
     </EmbeddedResource>
@@ -699,7 +697,6 @@
     </EmbeddedResource>
     <Compile Include="MapEditor\TilesDesign\Snapping.cs" />
     <Compile Include="MapEditor\UndoRedo\UndoRedoManager.cs" />
-    <Compile Include="Wz\WzFileManager.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>

@@ -15,16 +15,29 @@ using HaCreator.Wz;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.Helpers;
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Info;
+using MapleLib.WzLib.WzProperties;
+using System.Drawing;
+using HaSharedLibrary.Wz;
+using HaSharedLibrary;
 
 namespace HaCreator.GUI
 {
     public partial class Initialization : System.Windows.Forms.Form
     {
         public HaEditor editor = null;
-        public static bool client64;
+        public static bool _Client64;
+
         public static bool IsClient64()
         {
-            return client64;
+            return _Client64;
+        }
+
+        private static WzMapleVersion _wzMapleVersion = WzMapleVersion.BMS; // Default to BMS, the enc version to use when decrypting the WZ files.
+        public static WzMapleVersion WzMapleVersion
+        {
+            get { return _wzMapleVersion; }
+            private set { }
         }
 
         /// <summary>
@@ -125,35 +138,38 @@ namespace HaCreator.GUI
 
             if (Program.WzManager != null)
             {
-                Program.WzManager.Clear();
+                Program.WzManager.Dispose();
                 Program.WzManager = null; // old loaded items
             }
             if (Program.InfoManager != null)
             {
                 Program.InfoManager.Clear();
             }
+            
+            _wzMapleVersion = fileVersion; // set version to static vars
 
-            Program.WzManager = new WzFileManager(wzPath, fileVersion);
+            Program.WzManager = new WzFileManager(wzPath, IsClient64());
+            Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz
             if (Program.WzManager.HasDataFile) //currently always false
             {
                 UpdateUI_CurrentLoadingWzFile("Data.wz");
 
-                Program.WzManager.LoadDataWzFile("data");
+                Program.WzManager.LoadDataWzFile("data", _wzMapleVersion);
 
-                Program.WzManager.ExtractStringWzMaps();
+                ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
 
-                Program.WzManager.ExtractMobFile();
-                Program.WzManager.ExtractNpcFile();
-                Program.WzManager.ExtractReactorFile();
-                Program.WzManager.ExtractSoundFile();
-                Program.WzManager.ExtractMapMarks();
-                Program.WzManager.ExtractPortals();
-                Program.WzManager.ExtractTileSets();
-                Program.WzManager.ExtractObjSets();
-                Program.WzManager.ExtractBackgroundSets();
+                ExtractMobFile();
+                ExtractNpcFile();
+                ExtractReactorFile();
+                ExtractSoundFile();
+                ExtractMapMarks();
+                ExtractPortals();
+                ExtractTileSets();
+                ExtractObjSets();
+                ExtractBackgroundSets();
             }
             else // for versions beyond v30x
             {
@@ -163,9 +179,9 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(stringWzFileName);
 
-                    Program.WzManager.LoadWzFile(stringWzFileName);
+                    Program.WzManager.LoadWzFile(stringWzFileName, _wzMapleVersion);
                 }
-                Program.WzManager.ExtractStringWzMaps();
+                ExtractStringWzMaps();
 
                 // Mob WZ
                 List<string> mobWzFiles = Program.WzManager.GetWzFileNameListFromBase("mob");
@@ -173,9 +189,9 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(mobWZFile);
 
-                    Program.WzManager.LoadWzFile(mobWZFile);
+                    Program.WzManager.LoadWzFile(mobWZFile, _wzMapleVersion);
                 }
-                Program.WzManager.ExtractMobFile();
+                ExtractMobFile();
 
 
                 // Load Npc
@@ -184,9 +200,9 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(npc);
 
-                    Program.WzManager.LoadWzFile(npc);
+                    Program.WzManager.LoadWzFile(npc, _wzMapleVersion);
                 }
-                Program.WzManager.ExtractNpcFile();
+                ExtractNpcFile();
 
                 // Load reactor
                 List<string> reactorWzFiles = Program.WzManager.GetWzFileNameListFromBase("reactor");
@@ -194,9 +210,9 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(reactor);
 
-                    Program.WzManager.LoadWzFile(reactor);
+                    Program.WzManager.LoadWzFile(reactor, _wzMapleVersion);
                 }
-                Program.WzManager.ExtractReactorFile();
+                ExtractReactorFile();
 
                 // Load sound
                 List<string> soundWzFiles = Program.WzManager.GetWzFileNameListFromBase("sound");
@@ -204,8 +220,8 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(soundWzFileName);
 
-                    Program.WzManager.LoadWzFile(soundWzFileName);
-                    Program.WzManager.ExtractSoundFile();
+                    Program.WzManager.LoadWzFile(soundWzFileName, _wzMapleVersion);
+                    ExtractSoundFile();
                 }
 
 
@@ -215,7 +231,7 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(mapWzFileName);
 
-                    Program.WzManager.LoadWzFile(mapWzFileName);
+                    Program.WzManager.LoadWzFile(mapWzFileName, _wzMapleVersion);
                 }
                 for (int i_map = 0; i_map <= 9; i_map++)
                 {
@@ -224,7 +240,7 @@ namespace HaCreator.GUI
                     {
                         UpdateUI_CurrentLoadingWzFile(map_iWzFileName);
 
-                        Program.WzManager.LoadWzFile(map_iWzFileName);
+                        Program.WzManager.LoadWzFile(map_iWzFileName, _wzMapleVersion);
                     }
                 }
                 List<string> tileWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\tile"); // this doesnt exist before 64-bit client, and is kept in Map.wz
@@ -232,27 +248,27 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(tileWzFileNames);
 
-                    Program.WzManager.LoadWzFile(tileWzFileNames);
+                    Program.WzManager.LoadWzFile(tileWzFileNames, _wzMapleVersion);
                 }
                 List<string> objWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\obj"); // this doesnt exist before 64-bit client, and is kept in Map.wz
                 foreach (string objWzFileName in objWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(objWzFileName);
 
-                    Program.WzManager.LoadWzFile(objWzFileName);
+                    Program.WzManager.LoadWzFile(objWzFileName, _wzMapleVersion);
                 }
                 List<string> backWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\back"); // this doesnt exist before 64-bit client, and is kept in Map.wz
                 foreach (string backWzFileName in backWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(backWzFileName);
 
-                    Program.WzManager.LoadWzFile(backWzFileName);
+                    Program.WzManager.LoadWzFile(backWzFileName, _wzMapleVersion);
                 }
-                Program.WzManager.ExtractMapMarks();
-                Program.WzManager.ExtractPortals();
-                Program.WzManager.ExtractTileSets();
-                Program.WzManager.ExtractObjSets();
-                Program.WzManager.ExtractBackgroundSets();
+                ExtractMapMarks();
+                ExtractPortals();
+                ExtractTileSets();
+                ExtractObjSets();
+                ExtractBackgroundSets();
 
 
                 // UI.wz
@@ -261,7 +277,7 @@ namespace HaCreator.GUI
                 {
                     UpdateUI_CurrentLoadingWzFile(uiWzFileNames);
 
-                    Program.WzManager.LoadWzFile(uiWzFileNames);
+                    Program.WzManager.LoadWzFile(uiWzFileNames, _wzMapleVersion);
                 }
             }
         }
@@ -358,7 +374,7 @@ namespace HaCreator.GUI
 
             foreach (string mapid in Program.InfoManager.Maps.Keys)
             {
-                WzImage mapImage = Program.WzManager.FindMapImage(mapid);
+                WzImage mapImage = WzInfoTools.FindMapImage(mapid, Program.WzManager);
                 if (mapImage == null)
                 {
                     continue;
@@ -451,8 +467,333 @@ namespace HaCreator.GUI
 
         public static void SetClientSelection64(bool isClient64)
         {
-            client64 = isClient64;
+            _Client64 = isClient64;
             ApplicationSettings.WzClientSelectionIndex = isClient64 ? 1 : 0;
         }
+
+
+        #region Extractor
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractMobFile()
+        {
+            // Mob.wz
+            List<WzDirectory> mobWzDirs = Program.WzManager.GetWzDirectoriesFromBase("mob");
+
+            foreach (WzDirectory mobWzDir in mobWzDirs)
+            {
+            }
+
+            // String.wz
+            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
+            foreach (WzDirectory stringWzDir in stringWzDirs)
+            {
+                WzImage mobStringImage = (WzImage)stringWzDir?["mob.img"];
+                if (mobStringImage == null)
+                    continue; // not in this wz
+
+                if (!mobStringImage.Parsed)
+                    mobStringImage.ParseImage();
+                foreach (WzSubProperty mob in mobStringImage.WzProperties)
+                {
+                    WzStringProperty nameProp = (WzStringProperty)mob["name"];
+                    string name = nameProp == null ? "" : nameProp.Value;
+
+                    Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractNpcFile()
+        {
+            // Npc.wz
+            List<WzDirectory> npcWzDirs = Program.WzManager.GetWzDirectoriesFromBase("npc");
+
+            foreach (WzDirectory npcWzDir in npcWzDirs)
+            {
+            }
+
+            // String.wz
+            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
+            foreach (WzDirectory stringWzDir in stringWzDirs)
+            {
+                WzImage npcImage = (WzImage)stringWzDir?["Npc.img"];
+                if (npcImage == null)
+                    continue; // not in this wz
+
+                if (!npcImage.Parsed)
+                    npcImage.ParseImage();
+                foreach (WzSubProperty npc in npcImage.WzProperties)
+                {
+                    WzStringProperty nameProp = (WzStringProperty)npc["name"];
+                    string name = nameProp == null ? "" : nameProp.Value;
+
+                    Program.InfoManager.NPCs.Add(WzInfoTools.AddLeadingZeros(npc.Name, 7), name);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractReactorFile()
+        {
+            List<WzDirectory> reactorWzDirs = Program.WzManager.GetWzDirectoriesFromBase("reactor");
+            foreach (WzDirectory reactorWzDir in reactorWzDirs)
+            {
+                foreach (WzImage reactorImage in reactorWzDir.WzImages)
+                {
+                    ReactorInfo reactor = ReactorInfo.Load(reactorImage);
+                    Program.InfoManager.Reactors[reactor.ID] = reactor;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractSoundFile()
+        {
+            List<WzDirectory> soundWzDirs = Program.WzManager.GetWzDirectoriesFromBase("sound");
+            foreach (WzDirectory soundWzDir in soundWzDirs)
+            {
+                foreach (WzImage soundImage in soundWzDir.WzImages)
+                {
+                    if (!soundImage.Name.ToLower().Contains("bgm"))
+                        continue;
+                    if (!soundImage.Parsed)
+                        soundImage.ParseImage();
+                    try
+                    {
+                        foreach (WzImageProperty bgmImage in soundImage.WzProperties)
+                        {
+                            WzBinaryProperty binProperty = null;
+                            if (bgmImage is WzBinaryProperty bgm)
+                            {
+                                binProperty = bgm;
+                            }
+                            else if (bgmImage is WzUOLProperty uolBGM) // is UOL property
+                            {
+                                WzObject linkVal = ((WzUOLProperty)bgmImage).LinkValue;
+                                if (linkVal is WzBinaryProperty linkCanvas)
+                                {
+                                    binProperty = linkCanvas;
+                                }
+                            }
+
+                            if (binProperty != null)
+                                Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name] = binProperty;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        string error = string.Format("[ExtractSoundFile] Error parsing {0}, {1} file.\r\nError: {2}", soundWzDir.Name, soundImage.Name, e.ToString());
+                        MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractMapMarks()
+        {
+            WzImage mapWzImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
+            if (mapWzImg == null)
+                throw new Exception("MapHelper.img not found in map.wz.");
+
+            foreach (WzCanvasProperty mark in mapWzImg["mark"].WzProperties)
+            {
+                Program.InfoManager.MapMarks[mark.Name] = mark.GetLinkedWzCanvasBitmap();
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractTileSets()
+        {
+            bool bLoadedInMap = false;
+
+            WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Tile");
+            if (mapWzDirs != null)
+            {
+                foreach (WzImage tileset in mapWzDirs.WzImages)
+                    Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
+
+                bLoadedInMap = true;
+                return; // only needs to be loaded once
+            }
+
+            // Not loaded, try to find it in "tile.wz"
+            // on 64-bit client it is stored in a different file apart from map
+            if (!bLoadedInMap)
+            {
+                List<WzDirectory> tileWzDirs = Program.WzManager.GetWzDirectoriesFromBase("map\\tile");
+                foreach (WzDirectory tileWzDir in tileWzDirs)
+                {
+                    foreach (WzImage tileset in tileWzDir.WzImages)
+                        Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handle various scenarios ie Map001.wz exists but may only contain Back or only Obj etc
+        /// </summary>
+        public void ExtractObjSets()
+        {
+            bool bLoadedInMap = false;
+
+            WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Obj");
+            if (mapWzDirs != null)
+            {
+                foreach (WzImage objset in mapWzDirs.WzImages)
+                    Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+
+                bLoadedInMap = true;
+                return; // only needs to be loaded once
+            }
+
+            // Not loaded, try to find it in "tile.wz"
+            // on 64-bit client it is stored in a different file apart from map
+            if (!bLoadedInMap)
+            {
+                List<WzDirectory> objWzDirs = Program.WzManager.GetWzDirectoriesFromBase("map\\obj");
+                foreach (WzDirectory objWzDir in objWzDirs)
+                {
+                    foreach (WzImage objset in objWzDir.WzImages)
+                        Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractBackgroundSets()
+        {
+            bool bLoadedInMap = false;
+
+            WzDirectory mapWzDirs = (WzDirectory) Program.WzManager.FindWzImageByName("map", "Back");
+            if (mapWzDirs != null)
+            {
+                foreach (WzImage bgset in mapWzDirs.WzImages)
+                    Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+
+                bLoadedInMap = true;
+            }
+
+            // Not loaded, try to find it in "tile.wz"
+            // on 64-bit client it is stored in a different file apart from map
+            if (!bLoadedInMap)
+            {
+                List<WzDirectory> backWzDirs = Program.WzManager.GetWzDirectoriesFromBase("map\\back");
+                foreach (WzDirectory backWzDir in backWzDirs)
+                {
+                    foreach (WzImage bgset in backWzDir.WzImages)
+                        Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 
+        /// </summary>
+        public void ExtractStringWzMaps()
+        {
+            WzImage stringWzImg = (WzImage) Program.WzManager.FindWzImageByName("string", "Map.img");
+
+            if (!stringWzImg.Parsed)
+                stringWzImg.ParseImage();
+            foreach (WzSubProperty mapCat in stringWzImg.WzProperties)
+            {
+                foreach (WzSubProperty map in mapCat.WzProperties)
+                {
+                    WzStringProperty streetName = (WzStringProperty)map["streetName"];
+                    WzStringProperty mapName = (WzStringProperty)map["mapName"];
+                    string id;
+                    if (map.Name.Length == 9)
+                        id = map.Name;
+                    else
+                        id = WzInfoTools.AddLeadingZeros(map.Name, 9);
+
+                    if (mapName == null)
+                        Program.InfoManager.Maps[id] = new Tuple<string, string>("", "");
+                    else
+                        Program.InfoManager.Maps[id] = new Tuple<string, string>(streetName?.Value == null ? string.Empty : streetName.Value, mapName.Value);
+                }
+            }
+        }
+
+        public void ExtractPortals()
+        {
+            WzImage mapImg = (WzImage) Program.WzManager.FindWzImageByName("map", "MapHelper.img");
+            if (mapImg == null)
+                throw new Exception("Couldnt extract portals. MapHelper.img not found.");
+
+            WzSubProperty portalParent = (WzSubProperty)mapImg["portal"];
+            WzSubProperty editorParent = (WzSubProperty)portalParent["editor"];
+            for (int i = 0; i < editorParent.WzProperties.Count; i++)
+            {
+                WzCanvasProperty portal = (WzCanvasProperty)editorParent.WzProperties[i];
+                Program.InfoManager.PortalTypeById.Add(portal.Name);
+                PortalInfo.Load(portal);
+            }
+
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
+            foreach (WzImageProperty portal in gameParent.WzProperties)
+            {
+                if (portal.WzProperties[0] is WzSubProperty)
+                {
+                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
+                    Bitmap defaultImage = null;
+                    foreach (WzSubProperty image in portal.WzProperties)
+                    {
+                        //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                        //if (portalContinue == null) continue;
+                        Bitmap portalImage = image["0"].GetBitmap();
+                        if (image.Name == "default")
+                            defaultImage = portalImage;
+                        else
+                            images.Add(image.Name, portalImage);
+                    }
+                    Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                }
+                else if (portal.WzProperties[0] is WzCanvasProperty)
+                {
+                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
+                    Bitmap defaultImage = null;
+                    try
+                    {
+                        foreach (WzCanvasProperty image in portal.WzProperties)
+                        {
+                            //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
+                            //if (portalContinue == null) continue;
+                            Bitmap portalImage = image.GetLinkedWzCanvasBitmap();
+                            defaultImage = portalImage;
+                            images.Add(image.Name, portalImage);
+                        }
+                        Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                    }
+                    catch (InvalidCastException)
+                    {
+                        continue;
+                    } //nexon likes to toss ints in here zType etc
+                }
+            }
+
+            for (int i = 0; i < Program.InfoManager.PortalTypeById.Count; i++)
+            {
+                Program.InfoManager.PortalIdByType[Program.InfoManager.PortalTypeById[i]] = i;
+            }
+        }
+        #endregion
     }
 }

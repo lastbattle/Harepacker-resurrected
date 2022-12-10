@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 using HaCreator.GUI;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.CustomControls
 {
@@ -207,7 +208,7 @@ namespace HaCreator.CustomControls
             {
                 string mapid = (selectedName).Substring(0, 9);
 
-                WzImage mapImage = Program.WzManager.FindMapImage(mapid);
+                WzImage mapImage =  WzInfoTools.FindMapImage(mapid, Program.WzManager);
                 if (mapImage == null)
                 {
                     panel_linkWarning.Visible = false;

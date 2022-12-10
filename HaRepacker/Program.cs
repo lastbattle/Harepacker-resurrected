@@ -15,12 +15,20 @@ using System.IO;
 using System.Security.Principal;
 using System.Globalization;
 using MapleLib.Configuration;
+using HaSharedLibrary;
+using System.Runtime.CompilerServices;
 
 namespace HaRepacker
 {
     public static class Program
     {
-        public static WzFileManager WzFileManager = new WzFileManager();
+        private static WzFileManager _wzFileManager;
+        public static WzFileManager WzFileManager
+        {
+            get { return _wzFileManager; }
+            set { _wzFileManager = value; }
+        }
+
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 
@@ -60,6 +68,9 @@ namespace HaRepacker
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
+            // Load WZFileManager
+            _wzFileManager = new WzFileManager("", true);
 
             // Parameters
             bool firstRun = PrepareApplication(true);
@@ -171,7 +182,7 @@ namespace HaRepacker
             }
             if (disposeFiles)
             {
-                WzFileManager.Terminate();
+                WzFileManager.Dispose();
             }
             _ConfigurationManager.Save();
         }

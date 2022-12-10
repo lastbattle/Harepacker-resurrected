@@ -252,7 +252,7 @@ namespace HaCreator.MapSimulator
         {
             WzImage mapHelperImage = (WzImage) Program.WzManager.FindWzImageByName("map", "MapHelper.img");
             WzImage soundUIImage = (WzImage) Program.WzManager.FindWzImageByName("sound", "UI.img");
-            WzImage uiToolTipImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIToolTip.img"); // UI_003.wz
+            WzImage uiToolTipImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIToolTip.img"); // UI_003.wz
             WzImage uiBasicImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "Basic.img");
             WzImage uiWindow1Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow.img"); //
             WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // UI_004.wz

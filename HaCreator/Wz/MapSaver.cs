@@ -21,6 +21,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.Collections;
 using HaCreator.MapSimulator;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.Wz
 {
@@ -61,7 +62,7 @@ namespace HaCreator.Wz
             {
                 string mapId = image.Name;
 
-                WzObject mapImage = Program.WzManager.FindMapImage(mapId);
+                WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
                 if (mapImage == null)
                     throw new Exception("Could not find a suitable Map.wz to place the new map into.");
 

@@ -233,6 +233,7 @@
     <Compile Include="WzLib\WzFileParseStatus.cs" />
     <Compile Include="WzLib\WzImageProperty.cs" />
     <Compile Include="WzLib\WzImageResource.cs" />
+    <Compile Include="WzLib\WzMainDirectory.cs" />
     <Compile Include="WzLib\WzObject.cs" />
     <Compile Include="WzLib\Util\WzBinaryReader.cs" />
     <Compile Include="WzLib\Util\WzBinaryWriter.cs" />

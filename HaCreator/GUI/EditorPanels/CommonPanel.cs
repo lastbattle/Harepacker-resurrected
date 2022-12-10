@@ -7,6 +7,7 @@
 using HaCreator.CustomControls;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;

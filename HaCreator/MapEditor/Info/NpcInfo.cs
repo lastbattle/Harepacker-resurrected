@@ -7,6 +7,7 @@
 using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -81,7 +82,7 @@ namespace HaCreator.MapEditor.Info
         private static NpcInfo Load(WzImage parentObject)
         {
             string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            return new NpcInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetNpcNameById(id), parentObject);
+            return new NpcInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetNpcNameById(id, Program.WzManager), parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)

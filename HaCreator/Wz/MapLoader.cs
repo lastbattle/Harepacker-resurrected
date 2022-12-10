@@ -30,6 +30,7 @@ using HaCreator.MapSimulator;
 using HaCreator.Exceptions;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.Wz
 {

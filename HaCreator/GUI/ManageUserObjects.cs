@@ -8,6 +8,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure;
 using System;

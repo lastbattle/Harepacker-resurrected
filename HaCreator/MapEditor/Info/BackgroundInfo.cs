@@ -7,6 +7,7 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.Properties;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;

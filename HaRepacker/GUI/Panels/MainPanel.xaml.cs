@@ -45,18 +45,30 @@ namespace HaRepacker.GUI.Panels
         private const string FIELD_TYPE_OBJ_NAME = "fieldType";
         private const string PORTAL_NAME_OBJ_NAME = "pn";
 
+        private readonly MainForm _mainForm;
+        public MainForm MainForm
+        {
+            get { return _mainForm; }
+            private set { }
+        }
+
         // Etc
-        private static List<WzObject> clipboard = new List<WzObject>();
-        private UndoRedoManager undoRedoMan;
+        private readonly static List<WzObject> clipboard = new List<WzObject>();
+        private readonly UndoRedoManager undoRedoMan;
 
         private bool isSelectingWzMapFieldLimit = false;
         private bool isLoading = false;
 
-        public MainPanel()
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        public MainPanel(MainForm mainForm)
         {
             InitializeComponent();
 
             isLoading = true;
+
+            this._mainForm = mainForm;
 
             // undo redo
             undoRedoMan = new UndoRedoManager(this);

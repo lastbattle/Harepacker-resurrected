@@ -16,6 +16,7 @@ using HaCreator.MapEditor;
 using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
 using System.Collections.Generic;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.GUI
 {
@@ -207,9 +208,9 @@ namespace HaCreator.GUI
                     string mapid_str = mapBrowser.SelectedItem.Substring(0, 9);
                     int.TryParse(mapid_str, out mapid);
 
-                    mapImage = Program.WzManager.FindMapImage(mapid.ToString());
+                    mapImage = WzInfoTools.FindMapImage(mapid.ToString(), Program.WzManager);
 
-                    strMapProp = WzInfoTools.GetMapStringProp(mapid_str);
+                    strMapProp = WzInfoTools.GetMapStringProp(mapid_str, Program.WzManager);
                     mapName = WzInfoTools.GetMapName(strMapProp);
                     streetName = WzInfoTools.GetMapStreetName(strMapProp);
                     categoryName = WzInfoTools.GetMapCategoryName(strMapProp);

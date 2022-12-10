@@ -26,7 +26,7 @@ namespace HaRepacker.GUI
         private readonly bool IsRegularWzFile = false; // or data.wz
 
         public string path;
-        private readonly MainPanel panel;
+        private readonly MainPanel _mainPanel;
 
 
         private bool bIsLoading = false;
@@ -56,7 +56,7 @@ namespace HaRepacker.GUI
                 this.wzf = (WzFile)wzNode.Tag;
                 this.IsRegularWzFile = true;
             }
-            this.panel = panel;
+            this._mainPanel = panel;
         }
 
         /// <summary>
@@ -187,7 +187,9 @@ namespace HaRepacker.GUI
                     // Reload the new file
                     WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
                     if (loadedWzFile != null)
-                        Program.WzFileManager.AddLoadedWzFileToMainPanel(loadedWzFile, panel);
+                    {
+                        _mainPanel.MainForm.AddLoadedWzFileToMainPanel(loadedWzFile, _mainPanel);
+                    }
                 }
                 else
                 {
@@ -224,11 +226,12 @@ namespace HaRepacker.GUI
                     }
 
                     // Reload the new file
-                    WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected, panel);
+                    WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected);
                     if (img == null || error_noAdminPriviledge)
                     {
                         MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
                     }
+                    _mainPanel.MainForm.AddLoadedWzImageToMainPanel(img);
                 }
             }
             Close();

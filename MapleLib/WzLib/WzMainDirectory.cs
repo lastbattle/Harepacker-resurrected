@@ -11,7 +11,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.Wz
+namespace MapleLib.WzLib
 {
     public class WzMainDirectory
     {
