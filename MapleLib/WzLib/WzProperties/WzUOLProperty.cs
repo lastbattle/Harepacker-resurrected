@@ -164,7 +164,7 @@ namespace MapleLib.WzLib.WzProperties
 							}
 							else
 							{
-								MapleLib.Helpers.ErrorLogger.Log(MapleLib.Helpers.ErrorLevel.Critical, "UOL got nexon'd at property: " + this.FullPath);
+								MapleLib.Helpers.ErrorLogger.Log(Helpers.ErrorLevel.Critical, "UOL got nexon'd at property: " + this.FullPath);
 								return null;
 							}
 						}

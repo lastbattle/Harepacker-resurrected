@@ -40,6 +40,12 @@ namespace MapleLib.WzLib.Util
 
         private byte[] keys;
 
+        public int KeyLength
+        {
+            get { return keys.Length; }
+            private set { }
+        }
+
         public byte this[int index]
         {
             get

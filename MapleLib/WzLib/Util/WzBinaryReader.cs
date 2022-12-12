@@ -102,11 +102,12 @@ namespace MapleLib.WzLib.Util
                     return string.Empty;
                 }
 
+                int wzKeyLength = WzKey.KeyLength;
                 for (int i = 0; i < length; i++)
                 {
                     ushort encryptedChar = ReadUInt16();
                     encryptedChar ^= mask;
-                    encryptedChar ^= (ushort)((WzKey[i * 2 + 1] << 8) + WzKey[i * 2]);
+                    encryptedChar ^= (ushort)((WzKey[(i * 2 + 1) % wzKeyLength] << 8) + WzKey[(i * 2) % wzKeyLength]);
                     retString.Append((char)encryptedChar);
                     mask++;
                 }
@@ -127,11 +128,12 @@ namespace MapleLib.WzLib.Util
                     return string.Empty;
                 }
 
+                int wzKeyLength = WzKey.KeyLength;
                 for (int i = 0; i < length; i++)
                 {
                     byte encryptedChar = ReadByte();
                     encryptedChar ^= mask;
-                    encryptedChar ^= (byte)WzKey[i];
+                    encryptedChar ^= (byte)WzKey[i % wzKeyLength];
                     retString.Append((char)encryptedChar);
                     mask++;
                 }
@@ -204,18 +206,31 @@ namespace MapleLib.WzLib.Util
 
         public string DecryptString(char[] stringToDecrypt)
         {
-            string outputString = "";
-            for (int i = 0; i < stringToDecrypt.Length; i++)
-                outputString += (char)(stringToDecrypt[i] ^ ((char)((WzKey[i * 2 + 1] << 8) + WzKey[i * 2])));
-            return outputString;
+            StringBuilder outputString = new StringBuilder();
+
+            int i = 0;
+            foreach (char c in stringToDecrypt)
+            {
+                outputString.Append((char)(c ^ ((char)((WzKey[i * 2 + 1] << 8) + WzKey[i * 2]))));
+                i++;
+            }
+            return outputString.ToString();
         }
+
 
         public string DecryptNonUnicodeString(char[] stringToDecrypt)
         {
-            string outputString = "";
+            // Initialize the output string with the correct capacity
+            StringBuilder outputString = new StringBuilder(stringToDecrypt.Length);
+
             for (int i = 0; i < stringToDecrypt.Length; i++)
-                outputString += (char)(stringToDecrypt[i] ^ WzKey[i]);
-            return outputString;
+            {
+                // Append the decrypted character to the StringBuilder object
+                outputString.Append((char)(stringToDecrypt[i] ^ WzKey[i]));
+            }
+
+            // Convert the StringBuilder object to a string and return it
+            return outputString.ToString();
         }
 
         public string ReadStringBlock(uint offset)

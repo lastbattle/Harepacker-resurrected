@@ -72,12 +72,11 @@ namespace MapleLib.WzLib
             string lastEntry = listEntries[lastIndex];
             listEntries[lastIndex] = lastEntry.Substring(0, lastEntry.Length - 1) + "/";
             WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv);
-            string s;
-            for (int i = 0; i < listEntries.Count; i++)
+
+            foreach (string listEntry in listEntries)
             {
-                s = listEntries[i];
-                wzWriter.Write((int)s.Length);
-                char[] encryptedChars = wzWriter.EncryptString(s + (char)0);
+                wzWriter.Write((int)listEntry.Length);
+                char[] encryptedChars = wzWriter.EncryptString(listEntry + (char)0);
                 for (int j = 0; j < encryptedChars.Length; j++)
                     wzWriter.Write((short)encryptedChars[j]);
             }

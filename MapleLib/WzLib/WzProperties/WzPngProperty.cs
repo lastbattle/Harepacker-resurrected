@@ -852,17 +852,23 @@ namespace MapleLib.WzLib.WzProperties
                         }
                         else
                         {*/
-            int curPos = 0;
-            for (int i = 0; i < height; i++)
+            unsafe
             {
-                for (int j = 0; j < width; j++)
+                fixed (byte* pBuf = buf)
                 {
-                    Color curPixel = bmp.GetPixel(j, i);
-                    buf[curPos] = curPixel.B;
-                    buf[curPos + 1] = curPixel.G;
-                    buf[curPos + 2] = curPixel.R;
-                    buf[curPos + 3] = curPixel.A;
-                    curPos += 4;
+                    byte* pCurPixel = pBuf;
+                    for (int i = 0; i < height; i++)
+                    {
+                        for (int j = 0; j < width; j++)
+                        {
+                            Color curPixel = bmp.GetPixel(j, i);
+                            *pCurPixel = curPixel.B;
+                            *(pCurPixel + 1) = curPixel.G;
+                            *(pCurPixel + 2) = curPixel.R;
+                            *(pCurPixel + 3) = curPixel.A;
+                            pCurPixel += 4;
+                        }
+                    }
                 }
             }
             compressedImageBytes = Compress(buf);

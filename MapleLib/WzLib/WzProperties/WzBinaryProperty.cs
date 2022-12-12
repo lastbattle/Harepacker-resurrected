@@ -243,26 +243,6 @@ namespace MapleLib.WzLib.WzProperties
             this.mp3bytes = File.ReadAllBytes(file);
         }
 
-        public static bool Memcmp(byte[] a, byte[] b, int n)
-        {
-            for (int i = 0; i < n; i++)
-            {
-                if (a[i] != b[i])
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        public static string ByteArrayToString(byte[] ba)
-        {
-            StringBuilder hex = new StringBuilder(ba.Length * 3);
-            foreach (byte b in ba)
-                hex.AppendFormat("{0:x2} ", b);
-            return hex.ToString();
-        }
-
         private void RebuildHeader()
         {
             using (BinaryWriter bw = new BinaryWriter(new MemoryStream()))

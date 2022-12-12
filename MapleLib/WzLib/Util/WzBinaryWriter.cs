@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using MapleLib.MapleCryptoLib;
 using MapleLib.WzLib.WzStructure.Enums;
 
@@ -125,17 +126,9 @@ namespace MapleLib.WzLib.Util
 			}
 			else
 			{
-				bool unicode = false;
-				for (int i = 0; i < value.Length; i++)
-				{
-					if (value[i] > sbyte.MaxValue)
-					{
-						unicode = true;
-						break;
-					}
-				}
+                bool unicode = value.Any(c => c > sbyte.MaxValue);
 
-				if (unicode)
+                if (unicode)
 				{
 					ushort mask = 0xAAAA;
 
@@ -149,14 +142,17 @@ namespace MapleLib.WzLib.Util
 						Write((sbyte)value.Length);
 					}
 
-					for (int i = 0; i < value.Length; i++)
-					{
-						ushort encryptedChar = (ushort)value[i];
-						encryptedChar ^= (ushort)((WzKey[i * 2 + 1] << 8) + WzKey[i * 2]);
-						encryptedChar ^= mask;
-						mask++;
-						Write(encryptedChar);
-					}
+					int i = 0;
+                    foreach (var character in value)
+                    {
+                        ushort encryptedChar = (ushort)character;
+                        encryptedChar ^= (ushort)((WzKey[i * 2 + 1] << 8) + WzKey[i * 2]);
+                        encryptedChar ^= mask;
+                        mask++;
+                        Write(encryptedChar);
+
+						i++;
+                    }
 				}
 				else // ASCII
 				{
@@ -172,14 +168,17 @@ namespace MapleLib.WzLib.Util
 						Write((sbyte)(-value.Length));
 					}
 
-					for (int i = 0; i < value.Length; i++)
-					{
-						byte encryptedChar = (byte)value[i];
-						encryptedChar ^= WzKey[i];
-						encryptedChar ^= mask;
-						mask++;
-						Write(encryptedChar);
-					}
+					int i = 0;
+                    foreach (char c in value)
+                    {
+                        byte encryptedChar = (byte)c;
+                        encryptedChar ^= WzKey[i];
+                        encryptedChar ^= mask;
+                        mask++;
+                        Write(encryptedChar);
+
+						i++;
+                    }
 				}
 			}
 		}

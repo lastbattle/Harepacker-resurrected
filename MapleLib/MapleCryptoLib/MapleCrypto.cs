@@ -15,6 +15,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
 using System;
+using System.Numerics;
 
 namespace MapleLib.MapleCryptoLib
 {
@@ -224,7 +225,39 @@ namespace MapleLib.MapleCryptoLib
 			}
 			return ret;
 		}
-		#endregion
 
-	}
+        public static byte[] MultiplyBytes_SIMD(byte[] input, int count, int mult)
+        {
+            byte[] ret = new byte[count * mult];
+            int simdWidth = Vector<byte>.Count;
+
+            // Process input in blocks of simdWidth elements
+            int blockCount = count / simdWidth;
+            for (int i = 0; i < blockCount; i++)
+            {
+                // Load simdWidth elements from input into a vector
+                Vector<byte> vec = new Vector<byte>(input, i * simdWidth);
+
+                // Replicate the vector mult times and store it in the output
+                for (int j = 0; j < mult; j++)
+                {
+                    vec.CopyTo(ret, (i * simdWidth * mult) + (j * simdWidth));
+                }
+            }
+
+            // Process any remaining elements
+            int remainder = count % simdWidth;
+            if (remainder > 0)
+            {
+                for (int x = 0; x < ret.Length; x++)
+                {
+                    ret[x] = input[x % count];
+                }
+            }
+
+            return ret;
+        }
+        #endregion
+
+    }
 }

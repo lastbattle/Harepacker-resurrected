@@ -8,25 +8,16 @@ namespace MapleLib.Helpers
     {
         public static bool CompareBytearrays(byte[] a, byte[] b)
         {
-            if (a.Length != b.Length)
-                return false;
-            int i = 0;
-            foreach (byte c in a)
-            {
-                if (c != b[i])
-                    return false;
-                i++;
-            }
-            return true;
+            return a.Length == b.Length && a.SequenceEqual(b);
         }
 
         public static byte[] IntegerToLittleEndian(int data)
         {
-            byte[] b = new byte[4];
-            b[0] = (byte)data;
-            b[1] = (byte)(((uint)data >> 8) & 0xFF);
-            b[2] = (byte)(((uint)data >> 16) & 0xFF);
-            b[3] = (byte)(((uint)data >> 24) & 0xFF);
+            byte[] b = BitConverter.GetBytes(data);
+            if (!BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(b);
+            }
             return b;
         }
 
@@ -90,14 +81,7 @@ namespace MapleLib.Helpers
         /// <returns>true if <paramref name="c"/>is a hexadecimal digit; otherwise, false.</returns>
         public static bool IsHexDigit(char c)
         {
-            if (('0' <= c && c <= '9') ||
-                ('A' <= c && c <= 'F') ||
-                ('a' <= c && c <= 'f') ||
-                c == '*') //we allow wildcards
-            {
-                return true;
-            }
-            return false;
+            return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f') || (c == '*');
         }
 
         /// <summary>

@@ -16,6 +16,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using MapleLib.WzLib.Util;
 using SharpDX.Direct2D1;
 
@@ -82,12 +83,8 @@ namespace MapleLib.WzLib.WzProperties
         {
             get
             {
-
-                foreach (WzImageProperty iwp in properties)
-                    if (iwp.Name.ToLower() == name.ToLower())
-                        return iwp;
+                return properties.FirstOrDefault(iwp => iwp.Name.ToLower() == name.ToLower());
                 //throw new KeyNotFoundException("A wz property with the specified name was not found");
-                return null;
             }
             set
             {
@@ -112,21 +109,12 @@ namespace MapleLib.WzLib.WzProperties
                 return ((WzImageProperty)Parent)[path.Substring(name.IndexOf('/') + 1)];
             }
             WzImageProperty ret = this;
-            for (int x = 0; x < segments.Length; x++)
+            foreach (string segment in segments)
             {
-                bool foundChild = false;
-                foreach (WzImageProperty iwp in ret.WzProperties)
+                ret = ret.WzProperties.FirstOrDefault(iwp => iwp.Name == segment);
+                if (ret == null)
                 {
-                    if (iwp.Name == segments[x])
-                    {
-                        ret = iwp;
-                        foundChild = true;
-                        break;
-                    }
-                }
-                if (!foundChild)
-                {
-                    return null;
+                    break;
                 }
             }
             return ret;
