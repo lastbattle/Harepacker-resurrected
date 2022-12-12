@@ -13,6 +13,7 @@ using HaSharedLibrary.Wz;
 using System.Xml.Linq;
 using System.Collections.ObjectModel;
 using System.Threading;
+using System.Text.RegularExpressions;
 
 namespace HaSharedLibrary
 {
@@ -84,6 +85,50 @@ namespace HaSharedLibrary
         }
 
         #region Loader
+        /// <summary>
+        /// Automagically detect if the following directory where MapleStory installation is saved
+        /// is a 64-bit wz directory.
+        /// </summary>
+        /// <returns></returns>
+        public static bool Detect64BitDirectoryWzFileFormat(string baseDirectoryPath)
+        {
+            if (!Directory.Exists(baseDirectoryPath))
+                throw new Exception("Non-existent directory provided.");
+
+            //DirectoryInfo baseDirectoryInfo = new DirectoryInfo(directoryPath);
+            bool bDirectoryContainsDataDir = Directory.Exists(Path.Combine(baseDirectoryPath, "Data"));
+
+            int nNumWzFiles = 0;
+            int nNumWzFilesInDataDir = 0;
+
+            foreach (string wzFilePath in Directory.EnumerateFileSystemEntries(baseDirectoryPath, "*.wz", SearchOption.AllDirectories))
+            {
+                FileAttributes attr = File.GetAttributes(wzFilePath);
+                if (attr.HasFlag(FileAttributes.Directory)) // exclude directories, only want the files.wz
+                    continue;
+
+                nNumWzFiles++;
+
+                FileInfo fileInfo = new FileInfo(wzFilePath);
+                string fileDirectory = fileInfo.Directory.FullName;
+                string fileDirectoryExcBase = fileDirectory.Replace(baseDirectoryPath + Path.DirectorySeparatorChar, "").Trim();
+
+                string[] wzFileDirectories = fileDirectoryExcBase.Split(Path.DirectorySeparatorChar); // get the directory of this wz file
+                if (wzFileDirectories.Length > 0)
+                {
+                    if (wzFileDirectories[0] == "Data")
+                        nNumWzFilesInDataDir++;
+                }
+            }
+            if (bDirectoryContainsDataDir)
+            {
+                if (nNumWzFiles > 20 && nNumWzFilesInDataDir > 20)
+                    return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Builds the list of WZ files in the MapleStory directory (for HaCreator only, not used for HaRepacker)
         /// </summary>

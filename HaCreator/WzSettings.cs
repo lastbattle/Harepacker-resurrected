@@ -77,7 +77,6 @@ namespace HaCreator
         public static int MapleVersionIndex = 3;
         public static string MapleFolder = "";
         public static int MapleFolderIndex = 0;
-        public static int WzClientSelectionIndex = 0; // 32 bit, 64 bit
 
         public static ItemTypes theoreticalVisibleTypes = ItemTypes.All; // These two are marked theoretical because the visible\edited types in effect (Board.VisibleTypes\EditedTypes)
         public static ItemTypes theoreticalEditedTypes = ItemTypes.All ^ ItemTypes.Backgrounds; // are subject to the current mode of operation

@@ -26,13 +26,11 @@ namespace HaCreator.GUI
     public partial class Initialization : System.Windows.Forms.Form
     {
         public HaEditor editor = null;
-        public static bool _Client64;
+        
+        private static bool _bIs64BitDirectoryWzFileFormat;
+        public static bool Is64BitDirectoryWzFileFormat { get { return _bIs64BitDirectoryWzFileFormat; } private set { } }
 
-        public static bool IsClient64()
-        {
-            return _Client64;
-        }
-
+        
         private static WzMapleVersion _wzMapleVersion = WzMapleVersion.BMS; // Default to BMS, the enc version to use when decrypting the WZ files.
         public static WzMapleVersion WzMapleVersion
         {
@@ -76,19 +74,6 @@ namespace HaCreator.GUI
                 MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            if (ClientTypeBox.SelectedIndex == -1)
-            {
-                MessageBox.Show("Please Select the Client Type.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-            if (ClientTypeBox.SelectedIndex == 1)
-            {
-                if (!di.Exists)
-                {
-                    MessageBox.Show("Error did not detect Data folder (Perhaps wrong Client Type?)", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-            }
             if (!ApplicationSettings.MapleFolder.Contains(wzPath) && !IsPathCommon(wzPath))
             {
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
@@ -125,17 +110,6 @@ namespace HaCreator.GUI
 
         private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
-
-            if (ClientTypeBox.SelectedIndex == 0)
-            {
-                SetClientSelection64(false);
-            }
-            else
-            {
-                SetClientSelection64(true);
-            }
-
-
             if (Program.WzManager != null)
             {
                 Program.WzManager.Dispose();
@@ -148,7 +122,8 @@ namespace HaCreator.GUI
 
             _wzMapleVersion = fileVersion; // set version to static vars
 
-            Program.WzManager = new WzFileManager(wzPath, IsClient64());
+            _bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
+            Program.WzManager = new WzFileManager(wzPath, _bIs64BitDirectoryWzFileFormat);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz
@@ -333,9 +308,6 @@ namespace HaCreator.GUI
             {
                 pathBox.SelectedIndex = ApplicationSettings.MapleFolderIndex;
             }
-
-            // set default client type box 32-bit, 64-bit
-            ClientTypeBox.SelectedIndex = ApplicationSettings.WzClientSelectionIndex;
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -471,12 +443,6 @@ namespace HaCreator.GUI
             {
                 Close();
             }
-        }
-
-        public static void SetClientSelection64(bool isClient64)
-        {
-            _Client64 = isClient64;
-            ApplicationSettings.WzClientSelectionIndex = isClient64 ? 1 : 0;
         }
 
 
