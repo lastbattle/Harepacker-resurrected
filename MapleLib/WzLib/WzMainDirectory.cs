@@ -11,19 +11,28 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.Wz
+namespace MapleLib.WzLib
 {
     public class WzMainDirectory
     {
-        private WzFile file;
-        private WzDirectory directory;
+        private readonly WzFile file;
+        private readonly WzDirectory directory;
 
+        /// <summary>
+        /// Constructor for oridinary Wz file
+        /// </summary>
+        /// <param name="file"></param>
         public WzMainDirectory(WzFile file)
         {
             this.file = file;
             this.directory = file.WzDirectory;
         }
 
+        /// <summary>
+        /// Constructor for hotfix Data.wz file
+        /// </summary>
+        /// <param name="file"></param>
+        /// <param name="directory"></param>
         public WzMainDirectory(WzFile file, WzDirectory directory)
         {
             this.file = file;

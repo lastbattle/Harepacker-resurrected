@@ -18,6 +18,7 @@ using System.Threading;
 using System.Resources;
 using System.Reflection;
 using HaCreator.Wz;
+using HaSharedLibrary;
 
 namespace HaCreator
 {
@@ -93,6 +94,7 @@ namespace HaCreator
             {
                 Application.Restart();
             }
+            WzManager.Dispose();
         }
 
         /// <summary>

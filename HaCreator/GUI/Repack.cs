@@ -24,6 +24,9 @@ namespace HaCreator.GUI
     {
         private readonly List<WzFile> toRepack = new List<WzFile>();
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public Repack()
         {
             InitializeComponent();
@@ -31,15 +34,14 @@ namespace HaCreator.GUI
             StringBuilder repackTxt = new StringBuilder("Files to repack:");
             repackTxt.Append(Environment.NewLine);
 
-            foreach (WzFile wzf in Program.WzManager.wzFiles.Values)
+            foreach (WzFile wzf in Program.WzManager.WzFileList)
             {
-                if (Program.WzManager.wzFilesUpdated[wzf])
-                {
-                    toRepack.Add(wzf);
-
-                    repackTxt.Append(wzf.Name);
-                    repackTxt.Append(Environment.NewLine);
-                }
+                Program.WzManager.SetWzFileUpdated(wzf);
+                
+                toRepack.Add(wzf);
+                
+                repackTxt.Append(wzf.Name);
+                repackTxt.Append(Environment.NewLine);
             }
             infoLabel.Text = repackTxt.ToString();
         }
@@ -135,7 +137,7 @@ namespace HaCreator.GUI
             });
 
             // Test for write access
-            string rootDir = Path.Combine(Program.WzManager.BaseDir, Program.APP_NAME);
+            string rootDir = Path.Combine(Program.WzManager.WzBaseDirectory, Program.APP_NAME);
             string testDir = Path.Combine(rootDir, "Test");
 
             bool bSaveFileInHaCreatorDirectory = false;
@@ -190,7 +192,7 @@ namespace HaCreator.GUI
             { 
                 ChangeRepackState("Saving XMLs..."); 
             });
-            foreach (WzImage img in Program.WzManager.updatedImages)
+            foreach (WzImage img in Program.WzManager.WzUpdatedImageList)
             {
                 try
                 {
@@ -242,7 +244,7 @@ namespace HaCreator.GUI
 
                 try
                 {
-                    wzf.SaveToDisk(tmpFile, null);
+                    wzf.SaveToDisk(tmpFile);
                     wzf.Dispose();
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder

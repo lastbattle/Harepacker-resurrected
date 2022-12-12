@@ -4,7 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using HaCreator.MapEditor.Info;
+using HaSharedLibrary;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -15,7 +15,7 @@ using System.Text;
 using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
 
-namespace HaCreator.Wz
+namespace HaSharedLibrary.Wz
 {
     public static class WzInfoTools
     {
@@ -44,11 +44,16 @@ namespace HaCreator.Wz
             return new WzVectorProperty(name, new WzIntProperty("X", source.X), new WzIntProperty("Y", source.Y));
         }
 
+        /// <summary>
+        /// Add leading zeros to the source string. (pad left)
+        /// i.e 550  = 0000550
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="maxLength"></param>
+        /// <returns></returns>
         public static string AddLeadingZeros(string source, int maxLength)
         {
-            while (source.Length < maxLength)
-                source = "0" + source;
-            return source;
+            return source.PadLeft(maxLength, '0');
         }
 
         public static string RemoveLeadingZeros(string source)
@@ -67,48 +72,54 @@ namespace HaCreator.Wz
             return source.Substring(firstNonZeroIndex);
         }
 
-        public static string GetMobNameById(string id)
+        public static string GetMobNameById(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
-            WzObject obj = Program.WzManager.String["Mob.img"][id];
-            if (obj == null)
+
+            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Mob.img");
+            if (stringWzDirs != null)
             {
-                return "";
+                WzObject mobObj = stringWzDirs[id];
+                WzStringProperty mobName = (WzStringProperty)mobObj["name"];
+                if (mobName == null)
+                    return "";
+
+                return mobName.Value;
             }
-            WzStringProperty mobName = (WzStringProperty)obj["name"];
-            if (mobName == null)
-            {
-                return "";
-            }
-            return mobName.Value;
+            return "";
         }
 
-        public static string GetNpcNameById(string id)
+        public static string GetNpcNameById(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
-            WzObject obj = Program.WzManager.String["Npc.img"][id];
-            if (obj == null)
+
+            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Npc.img");
+            if (stringWzDirs != null)
             {
-                return "";
+                WzObject npcObj = stringWzDirs[id];
+                WzStringProperty npcName = (WzStringProperty)npcObj["name"];
+                if (npcName == null)
+                    return "";
+
+                return npcName.Value;
             }
-            WzStringProperty npcName = (WzStringProperty)obj["name"];
-            if (npcName == null)
-            {
-                return "";
-            }
-            return npcName.Value;
+            return "";
         }
 
-        public static WzSubProperty GetMapStringProp(string id)
+        public static WzSubProperty GetMapStringProp(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
-            WzImage mapNameParent = (WzImage)Program.WzManager.String["Map.img"];
-            foreach (WzSubProperty mapNameCategory in mapNameParent.WzProperties)
+
+            WzImage mapImg = (WzImage)fileManager.FindWzImageByName("string", "Map.img");
+            if (mapImg != null)
             {
-                WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
-                if (mapNameDirectory != null)
+                foreach (WzSubProperty mapNameCategory in mapImg.WzProperties)
                 {
-                    return mapNameDirectory;
+                    WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
+                    if (mapNameDirectory != null)
+                    {
+                        return mapNameDirectory;
+                    }
                 }
             }
             return null;
@@ -229,16 +240,47 @@ namespace HaCreator.Wz
             return null;
         }
 
-        public static MobInfo GetMobInfoById(string id)
+        /// <summary>
+        /// Finds a map image from the list of Map.wzs
+        /// On pre 64-bit client:
+        /// Map.wz/Map/Map1/10000000.img
+        /// 
+        /// On post 64-bit client:
+        /// Map/Map/Map1/Map1_000.wz/10000000.img
+        /// </summary>
+        /// <param name="mapid"></param>
+        /// <returns></returns>
+        public static WzImage FindMapImage(string mapid, WzFileManager fileManager)
         {
-            id = AddLeadingZeros(id, 7);
-            return MobInfo.Get(id);
-        }
+            string mapIdNamePadded = WzInfoTools.AddLeadingZeros(mapid, 9) + ".img";
 
-        public static NpcInfo GetNpcInfoById(string id)
-        {
-            id = AddLeadingZeros(id, 7);
-            return NpcInfo.Get(id);
+            string mapcat;
+            if (fileManager.Is64Bit)
+                mapcat = mapIdNamePadded.Substring(0, 1);
+            else
+                mapcat = "Map" + mapIdNamePadded.Substring(0, 1);
+
+            if (!fileManager.Is64Bit)
+            {
+                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map");
+                foreach (WzDirectory mapWzDir in mapWzDirs)
+                {
+                    WzImage mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
+                    if (mapImage != null)
+                        return mapImage;
+                }
+            }
+            else
+            {
+                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map\\map\\map" + mapcat);
+                foreach (WzDirectory mapWzDir in mapWzDirs)
+                {
+                    WzImage mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
+                    if (mapImage != null)
+                        return mapImage;
+                }
+            }
+            return null;
         }
 
         public static Color XNAToDrawingColor(XNA.Color c)

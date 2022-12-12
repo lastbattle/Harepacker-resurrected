@@ -31,6 +31,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 
 using SystemWinCtl = System.Windows.Controls;
+using HaSharedLibrary;
 
 namespace HaCreator.MapEditor
 {
@@ -585,13 +586,16 @@ namespace HaCreator.MapEditor
             WaitWindow ww = new WaitWindow("Opening HaRepacker...");
             ww.Show();
             Application.DoEvents();
-            HaRepacker.Program.WzFileManager = new HaRepacker.WzFileManager();
+            
+            HaRepacker.Program.WzFileManager = new WzFileManager("", false);
             bool firstRun = HaRepacker.Program.PrepareApplication(false);
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
             mf.unloadAllToolStripMenuItem.Visible = false;
             mf.reloadAllToolStripMenuItem.Visible = false;
-            foreach (KeyValuePair<string, WzFile> entry in Program.WzManager.wzFiles)
-                mf.Interop_AddLoadedWzFileToManager(entry.Value);
+            foreach (WzFile entry in Program.WzManager.WzFileList)
+            {
+                mf.Interop_AddLoadedWzFileToManager(entry);
+            }
             ww.EndWait();
             lock (multiBoard)
             {

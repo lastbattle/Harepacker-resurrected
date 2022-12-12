@@ -30,6 +30,7 @@ using HaCreator.MapSimulator;
 using HaCreator.Exceptions;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.Wz
 {
@@ -214,6 +215,7 @@ namespace HaCreator.Wz
                 if (tSprop != null)
                     tS = InfoTool.GetString(tSprop);
 
+                // Load objects
                 foreach (WzImageProperty obj in layerProp["obj"].WzProperties)
                 {
                     int x = InfoTool.GetInt(obj["x"]);
@@ -234,6 +236,7 @@ namespace HaCreator.Wz
                     int? cx = InfoTool.GetOptionalTranslatedInt(obj["cx"]);
                     int? cy = InfoTool.GetOptionalTranslatedInt(obj["cy"]);
                     string tags = InfoTool.GetOptionalString(obj["tags"]);
+
                     WzImageProperty questParent = obj["quest"];
                     List<ObjectInstanceQuest> questInfo = null;
                     if (questParent != null)
@@ -248,10 +251,13 @@ namespace HaCreator.Wz
                     ObjectInfo objInfo = ObjectInfo.Get(oS, l0, l1, l2);
                     if (objInfo == null)
                         continue;
+
                     Layer l = mapBoard.Layers[layer];
                     mapBoard.BoardItems.TileObjs.Add((LayeredItem)objInfo.CreateInstance(l, mapBoard, x, y, z, zM, r, hide, reactor, flow, rx, ry, cx, cy, name, tags, questInfo, flip, false));
                     l.zMList.Add(zM);
                 }
+
+                // Load tiles
                 WzImageProperty tileParent = layerProp["tile"];
                 foreach (WzImageProperty tile in tileParent.WzProperties)
                 {
@@ -570,17 +576,16 @@ namespace HaCreator.Wz
                 return;
             }
 
-            WzImage tooltipsStringImage = (WzImage)Program.WzManager.String["ToolTipHelp.img"];
+            WzImage tooltipsStringImage = (WzImage)Program.WzManager.FindWzImageByName("string", "ToolTipHelp.img");
+            if (tooltipsStringImage == null)
+                throw new Exception("ToolTipHelp.img not found in string.wz");
+
             if (!tooltipsStringImage.Parsed)
-            {
                 tooltipsStringImage.ParseImage();
-            }
 
             WzSubProperty tooltipStrings = (WzSubProperty)tooltipsStringImage["Mapobject"][mapBoard.MapInfo.id.ToString()];
             if (tooltipStrings == null)
-            {
                 return;
-            }
 
             for (int i = 0; true; i++)
             {
@@ -815,7 +820,7 @@ namespace HaCreator.Wz
 
                             ReflectionDrawableBoundary reflectionInfo = new ReflectionDrawableBoundary(gradient, alpha, objectForOverlay, reflection, alphaTest);
 
-                            MirrorFieldData mirrorFieldDataItem = new MirrorFieldData(mapBoard, rectangle, 
+                            MirrorFieldData mirrorFieldDataItem = new MirrorFieldData(mapBoard, rectangle,
                                 new Vector2(offset.X.Value, offset.Y.Value), reflectionInfo, targetObjectReflectionType);
                             mapBoard.BoardItems.MirrorFieldDatas.Add(mirrorFieldDataItem);
                         }

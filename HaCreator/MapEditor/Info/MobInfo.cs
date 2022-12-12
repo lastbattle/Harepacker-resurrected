@@ -7,6 +7,7 @@
 using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -58,60 +59,34 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            if (Initialization.isClient64())
-            {
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES_64)
-                {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
+            string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
 
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
-                }
+            WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
+            if (mobImage == null)
                 return null;
-            } else
-            {
-                foreach (string mobWzFile in WzFileManager.MOB_WZ_FILES)
-                {
-                    WzImage mobImage = (WzImage)Program.WzManager[mobWzFile.ToLower()]?[id + ".img"];
-                    if (mobImage == null)
-                        continue;
 
-                    if (!mobImage.Parsed)
-                    {
-                        mobImage.ParseImage();
-                    }
-                    if (mobImage.HCTag == null)
-                    {
-                        mobImage.HCTag = MobInfo.Load(mobImage);
-                    }
-                    MobInfo result = (MobInfo)mobImage.HCTag;
-                    result.ParseImageIfNeeded();
-                    return result;
-                }
-                return null;
+            if (!mobImage.Parsed)
+            {
+                mobImage.ParseImage();
             }
+            if (mobImage.HCTag == null)
+            {
+                mobImage.HCTag = MobInfo.Load(mobImage);
+            }
+            MobInfo result = (MobInfo)mobImage.HCTag;
+            result.ParseImageIfNeeded();
+            return result;
         }
 
         private static MobInfo Load(WzImage parentObject)
         {
             string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            return new MobInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetMobNameById(id), parentObject);
+            return new MobInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetMobNameById(id, Program.WzManager), parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) 
+            if (Image == null)
                 ParseImage();
 
             return new MobInstance(this, board, x, y, UserSettings.Mobrx0Offset, UserSettings.Mobrx1Offset, 20, null, UserSettings.defaultMobTime, flip, false, null, null);
@@ -119,7 +94,7 @@ namespace HaCreator.MapEditor.Info
 
         public BoardItem CreateInstance(Board board, int x, int y, int rx0Shift, int rx1Shift, int yShift, string limitedname, int? mobTime, MapleBool flip, MapleBool hide, int? info, int? team)
         {
-            if (Image == null) 
+            if (Image == null)
                 ParseImage();
 
             return new MobInstance(this, board, x, y, rx0Shift, rx1Shift, yShift, limitedname, mobTime, flip, hide, info, team);
@@ -142,14 +117,20 @@ namespace HaCreator.MapEditor.Info
         /// </summary>
         public WzImage LinkedWzImage
         {
-            get {
+            get
+            {
                 WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
                 if (link != null)
-                    _LinkedWzImage = Program.WzManager.FindMobImage(link.Value);
+                {
+                    string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
+                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
+                }
                 else
-                    _LinkedWzImage = Program.WzManager.FindMobImage(id); // default
-
-                return _LinkedWzImage; 
+                {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default
+                }
+                return _LinkedWzImage;
             }
             set { this._LinkedWzImage = value; }
         }

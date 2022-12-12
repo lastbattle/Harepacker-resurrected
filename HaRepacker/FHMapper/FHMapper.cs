@@ -14,6 +14,7 @@ using System.Diagnostics;
 using MapleLib;
 using HaRepacker.GUI.Panels;
 using MapleLib.Configuration;
+using HaRepacker.GUI;
 
 namespace HaRepacker.FHMapper
 {
@@ -30,6 +31,10 @@ namespace HaRepacker.FHMapper
         private static Font FONT_DISPLAY_MINIMAP_NOT_AVAILABLE = new Font("Segoe UI", 18);
         private static Font FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD = new Font("Segoe UI", 8);
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="MainPanel"></param>
         public FHMapper(MainPanel MainPanel)
         {
             this.MainPanel = MainPanel;
@@ -58,7 +63,7 @@ namespace HaRepacker.FHMapper
                 string streetName = string.Empty;
 
                 string mapNameStringPath = "String.wz/Map.img";
-                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, Program.WzFileManager.WzFileListReadOnly);
+                WzImage mapNameImages = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(mapNameStringPath, Program.WzFileManager.WzFileList);
                 foreach (WzSubProperty subAreaImgProp in mapNameImages.WzProperties)
                 {
                     foreach (WzSubProperty mapImg in subAreaImgProp.WzProperties)
@@ -239,7 +244,7 @@ namespace HaRepacker.FHMapper
                                     mobNamePath = string.Format("String.wz/Npc.img/{0}/name", lifeId);
                                 }
 
-                                WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobWzPath, Program.WzFileManager.WzFileListReadOnly);
+                                WzStringProperty linkInfo = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobWzPath, Program.WzFileManager.WzFileList);
                                 if (linkInfo != null)
                                 {
                                     lifeId = int.Parse(linkInfo.GetString());
@@ -251,7 +256,7 @@ namespace HaRepacker.FHMapper
                                 else
                                     mobLinkWzPath = string.Format("Npc.wz/{0}.img/stand/0", lifeStrId);
 
-                                WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzFileManager.WzFileListReadOnly);
+                                WzCanvasProperty lifeImg = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(mobLinkWzPath, Program.WzFileManager.WzFileList);
                                 if (lifeImg != null)
                                 {
                                     PointF canvasOriginPosition = lifeImg.GetCanvasOriginPosition();
@@ -272,7 +277,7 @@ namespace HaRepacker.FHMapper
                                 }
 
                                 // Get monster name
-                                WzStringProperty stringName = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobNamePath, Program.WzFileManager.WzFileListReadOnly);
+                                WzStringProperty stringName = (WzStringProperty)WzFile.GetObjectFromMultipleWzFilePath(mobNamePath, Program.WzFileManager.WzFileList);
                                 if (stringName != null)
                                     drawBuf.DrawString(string.Format("SP: {0}, Name: {1}, ID: {2}", sp.Name, stringName.GetString(), lifeId), FONT_DISPLAY_PORTAL_LFIE_FOOTHOLD, new SolidBrush(Color.Red), x_text + 7, y_text + 7.3F);
                                 else
@@ -355,7 +360,7 @@ namespace HaRepacker.FHMapper
                             continue;
 
                         string bgObjImagePath = "Map.wz/Back/" + bS + ".img/Back/" + no;
-                        WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzFileManager.WzFileListReadOnly);
+                        WzCanvasProperty wzBgCanvas = (WzCanvasProperty)WzFile.GetObjectFromMultipleWzFilePath(bgObjImagePath, Program.WzFileManager.WzFileList);
                         if (wzBgCanvas != null)
                         {
                             PointF canvasOriginPosition = wzBgCanvas.GetCanvasOriginPosition();
@@ -387,7 +392,7 @@ namespace HaRepacker.FHMapper
                 using (Graphics toolTipBuf = Graphics.FromImage(toolTip))
                 {
                     string stringTooltipPath = "String.wz/ToolTipHelp.img/Mapobject/" + mapIdName;
-                    WzSubProperty wzToolTip = (WzSubProperty)WzFile.GetObjectFromMultipleWzFilePath(stringTooltipPath, Program.WzFileManager.WzFileListReadOnly);
+                    WzSubProperty wzToolTip = (WzSubProperty)WzFile.GetObjectFromMultipleWzFilePath(stringTooltipPath, Program.WzFileManager.WzFileList);
 
                     if (wzToolTip == null)
                     {
@@ -454,7 +459,7 @@ namespace HaRepacker.FHMapper
 
                             string imgObjPath = string.Format("{0}/Obj/{1}/{2}/{3}/{4}/0", wzFile.WzDirectory.Name, imgName, l0, l1, l2);
 
-                            WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, Program.WzFileManager.WzFileListReadOnly);
+                            WzImageProperty objData = (WzImageProperty)WzFile.GetObjectFromMultipleWzFilePath(imgObjPath, Program.WzFileManager.WzFileList);
                             tryagain:
                             if (objData is WzCanvasProperty)
                             {
@@ -518,7 +523,7 @@ namespace HaRepacker.FHMapper
 
                     // Browse to the tileset
                     string tilePath = wzFile.WzDirectory.Name + "/Tile/" + tileSetName + ".img";
-                    WzImage tileSet = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(tilePath, Program.WzFileManager.WzFileListReadOnly);
+                    WzImage tileSet = (WzImage)WzFile.GetObjectFromMultipleWzFilePath(tilePath, Program.WzFileManager.WzFileList);
                     if (!tileSet.Parsed)
                         tileSet.ParseImage();
 

@@ -24,9 +24,9 @@ namespace HaCreator.GUI.EditorPanels
 {
     public partial class LifePanel : UserControl
     {
-        List<string> reactors = new List<string>();
-        List<string> npcs = new List<string>();
-        List<string> mobs = new List<string>();
+        private readonly List<string> reactors = new List<string>();
+        private readonly List<string> npcs = new List<string>();
+        private readonly List<string> mobs = new List<string>();
 
         private HaCreatorStateManager hcsm;
 
@@ -103,7 +103,7 @@ namespace HaCreator.GUI.EditorPanels
                 else if (npcRButton.Checked)
                 {
                     string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
-                    NpcInfo info = WzInfoTools.GetNpcInfoById(id);
+                    NpcInfo info = NpcInfo.Get(id);
                     if (info == null)
                     {
                         lifePictureBox.Image = null;
@@ -120,7 +120,7 @@ namespace HaCreator.GUI.EditorPanels
                 else if (mobRButton.Checked)
                 {
                     string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
-                    MobInfo info = WzInfoTools.GetMobInfoById(id);
+                    MobInfo info = MobInfo.Get(id);
                     if (info == null)
                     {
                         lifePictureBox.Image = null;

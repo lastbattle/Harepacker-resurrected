@@ -7,6 +7,7 @@
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -90,19 +91,15 @@ namespace HaCreator.GUI
 
             long mapid = (long) numericUpDown1.Value; // should be int, but anyway in case the future version uses more than 2.1b
             string mapId_str = mapid.ToString();
-            string mapId_PaddingZeros = mapId_str.PadLeft(9, '0') + ".img"; // 100000000.img.xml
-            string mapcat = "Map" + mapId_PaddingZeros.Substring(0, 1);
 
-            WzDirectory directory = Program.WzManager.FindMapWz(mapcat);
-            WzImage mapImage = (WzImage)directory[mapId_PaddingZeros];
-
+            WzImage mapImage = WzInfoTools.FindMapImage(mapId_str, Program.WzManager);
             if (mapImage == null)
             {
                 MessageBox.Show("Map is null.");
                 return;
             }
 
-            WzSubProperty strMapProp = WzInfoTools.GetMapStringProp(mapId_str);
+            WzSubProperty strMapProp = WzInfoTools.GetMapStringProp(mapId_str, Program.WzManager);
             string cloneMapName = WzInfoTools.GetMapName(strMapProp);
             string cloneStreetName = WzInfoTools.GetMapStreetName(strMapProp);
             string cloneCategoryName = WzInfoTools.GetMapCategoryName(strMapProp);

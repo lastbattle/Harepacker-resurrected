@@ -49,7 +49,7 @@ namespace MapleLib.WzLib
         internal WzMapleVersion maplepLocalVersion;
         internal MapleStoryLocalisation mapleLocaleVersion = MapleStoryLocalisation.Not_Known;
 
-        internal bool wz_withEncryptVersionHeader = true;  // KMS update after Q4 2021, ver 1.2.357
+        internal bool wz_withEncryptVersionHeader = true;  // KMS update after Q4 2021, ver 1.2.357 does not contain any wz enc header information
 
         internal byte[] WzIv;
         #endregion
@@ -103,6 +103,9 @@ namespace MapleLib.WzLib
         /// </summary>
         public MapleStoryLocalisation MapleLocaleVersion { get { return mapleLocaleVersion; } private set { } }
 
+        /// <summary>
+        ///  Since KMST1132 / GMSv230 around 2022/02/09, wz removed the 2-byte encVer at position 0x3C, and use a fixed encVer 777.
+        /// </summary>
         public bool Is64BitWzFile { get { return !wz_withEncryptVersionHeader; } private set { } }
 
         public override WzObject Parent { get { return null; } internal set { } }
@@ -111,8 +114,11 @@ namespace MapleLib.WzLib
 
         public override void Dispose()
         {
+            _isUnloaded = true; // flag first
+
             if (wzDir == null || wzDir.reader == null)
                 return;
+
             wzDir.reader.Close();
             wzDir.reader = null;
             Header = null;
@@ -120,6 +126,12 @@ namespace MapleLib.WzLib
             name = null;
             WzDirectory.Dispose();
         }
+
+        private bool _isUnloaded = false;
+        /// <summary>
+        /// Returns true if this WZ file has been unloaded
+        /// </summary>
+        public bool IsUnloaded { get { return _isUnloaded; } private set { } }
 
         /// <summary>
         /// Initialize MapleStory WZ file
@@ -268,6 +280,7 @@ namespace MapleLib.WzLib
             {
                 this.versionHash = CheckAndGetVersionHash(wzVersionHeader, mapleStoryPatchVersion);
                 reader.Hash = this.versionHash;
+
                 WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
                 directory.ParseDirectory();
                 this.wzDir = directory;
@@ -363,30 +376,6 @@ namespace MapleLib.WzLib
 
                         switch (checkByte)
                         {
-  /*                          case 0x4: // gms v230
-                            case 0xC1:
-                            case 0xC2:
-                            case 73:
-                            case 34:
-                            case 99:
-                            case 66:
-                            case 93:
-                            case 140:
-                            case 32:
-                            case 141:
-                            case 6:
-                            case 96:
-                                {
-                                    // temp fix, TODO: figure out what is this opcode
-                                    reader.PrintHexBytes(50); // test
-
-                                    // 80 EA 00 00 00 04 F7 9B 9D 9C 9D 9E 81 D9 DC D5 80 1C C7 5D 00 80 6E 95 D2 30 3F 4B ED 5A 04 F8 99 9D 9D 9F 80 C6 DD D6 80 66 FD A6 00 80 32 2E 95 56 
-                                    WzDirectory directory = new WzDirectory(reader, this.name, this.versionHash, this.WzIv, this);
-                                    directory.ParseDirectory(lazyParse);
-                                    this.wzDir = directory;
-
-                                    return true;
-                                }*/
                             case 0x73:
                             case 0x1b:
                                 {
@@ -569,7 +558,7 @@ namespace MapleLib.WzLib
         /// <param name="path">Path to the output wz file</param>
         /// <param name="override_saveAs64BitWZ"></param>
         /// <param name="savingToPreferredWzVer"></param>
-        public void SaveToDisk(string path, bool? override_saveAs64BitWZ, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
+        public void SaveToDisk(string path, bool? override_saveAs64BitWZ = null, WzMapleVersion savingToPreferredWzVer = WzMapleVersion.UNKNOWN)
         {
             // WZ IV
             if (savingToPreferredWzVer == WzMapleVersion.UNKNOWN)
@@ -584,6 +573,10 @@ namespace MapleLib.WzLib
             bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
             // Save WZ as 64-bit wz format
             bool bWZ_withEncryptVersionHeader = this.wz_withEncryptVersionHeader;
+            if (override_saveAs64BitWZ != null)
+            {
+                bWZ_withEncryptVersionHeader = (bool)override_saveAs64BitWZ;
+            }
 
             CreateWZVersionHash();
             wzDir.SetVersionHash(versionHash);
@@ -843,7 +836,14 @@ namespace MapleLib.WzLib
             if (checkFirstDirectoryName)
             {
                 if (seperatedPath[0].ToLower() != wzDir.name.ToLower() && seperatedPath[0].ToLower() != wzDir.name.Substring(0, wzDir.name.Length - 3).ToLower())
+                {
+                    // object isnt in this WzFile
+                    // look up the list of other currently loaded WzFile/ WzDirectory
+                    // Map/Tile/logMarble.img/bsc/1
+
+
                     return null;
+                }
             }
 
             if (seperatedPath.Length == 1)
@@ -913,8 +913,10 @@ namespace MapleLib.WzLib
 
         internal bool StringMatch(string strWildCard, string strCompare)
         {
-            if (strWildCard.Length == 0) return strCompare.Length == 0;
-            if (strCompare.Length == 0) return false;
+            if (strWildCard.Length == 0) 
+                return strCompare.Length == 0;
+            if (strCompare.Length == 0) 
+                return false;
             if (strWildCard[0] == '*' && strWildCard.Length > 1)
                 for (int index = 0; index < strCompare.Length; index++)
                 {

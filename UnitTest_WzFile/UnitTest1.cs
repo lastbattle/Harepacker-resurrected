@@ -2,6 +2,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 
 namespace UnitTest_WzFile
@@ -9,7 +10,7 @@ namespace UnitTest_WzFile
     [TestClass]
     public class UnitTest1
     {
-        private static List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
+        private static readonly List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
 
         public UnitTest1()
         {
@@ -23,12 +24,14 @@ namespace UnitTest_WzFile
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_75.wz", WzMapleVersion.GMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_87.wz", WzMapleVersion.GMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_95.wz", WzMapleVersion.GMS));
+            _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_000_GMS_237.wz", WzMapleVersion.GMS));
 
             // MSEA
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_SEA_135.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_SEA_160.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_SEA_211.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_SEA_212.wz", WzMapleVersion.BMS));
+            _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_000_SEA218.wz", WzMapleVersion.BMS));
 
             // Thailand MS
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_ThaiMS_3.wz", WzMapleVersion.BMS));
@@ -46,6 +49,8 @@ namespace UnitTest_WzFile
                 WzMapleVersion wzMapleVerEnc = testFile.Item2;
 
                 string filePath = Path.Combine(Directory.GetCurrentDirectory(), "WzFiles", fileName);
+
+                Debug.WriteLine("Running test for " + fileName);
 
                 try
                 {
