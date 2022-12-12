@@ -114,8 +114,11 @@ namespace MapleLib.WzLib
 
         public override void Dispose()
         {
+            _isUnloaded = true; // flag first
+
             if (wzDir == null || wzDir.reader == null)
                 return;
+
             wzDir.reader.Close();
             wzDir.reader = null;
             Header = null;
@@ -123,6 +126,12 @@ namespace MapleLib.WzLib
             name = null;
             WzDirectory.Dispose();
         }
+
+        private bool _isUnloaded = false;
+        /// <summary>
+        /// Returns true if this WZ file has been unloaded
+        /// </summary>
+        public bool IsUnloaded { get { return _isUnloaded; } private set { } }
 
         /// <summary>
         /// Initialize MapleStory WZ file
@@ -827,7 +836,14 @@ namespace MapleLib.WzLib
             if (checkFirstDirectoryName)
             {
                 if (seperatedPath[0].ToLower() != wzDir.name.ToLower() && seperatedPath[0].ToLower() != wzDir.name.Substring(0, wzDir.name.Length - 3).ToLower())
+                {
+                    // object isnt in this WzFile
+                    // look up the list of other currently loaded WzFile/ WzDirectory
+                    // Map/Tile/logMarble.img/bsc/1
+
+
                     return null;
+                }
             }
 
             if (seperatedPath.Length == 1)

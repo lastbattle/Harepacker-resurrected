@@ -1427,6 +1427,9 @@ namespace HaRepacker.GUI.Panels
         /// <param name="obj"></param>
         private void ShowObjectValue(WzObject obj)
         {
+            if (obj.WzFileParent.IsUnloaded) // already unloaded from memory
+                return;
+
             mp3Player.SoundProperty = null;
             nameBox.Text = obj is WzFile file ? file.Header.Copyright : obj.Name;
             nameBox.ApplyButtonEnabled = false;

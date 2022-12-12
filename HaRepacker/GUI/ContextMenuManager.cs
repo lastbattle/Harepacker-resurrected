@@ -104,9 +104,10 @@ namespace HaRepacker
                     if (!Warning.Warn("Are you sure you want to unload this file?"))
                         return;
 
-                    foreach (WzNode node in GetNodes(sender))
+                    var nodesSelected = GetNodes(sender);
+                    foreach (WzNode node in nodesSelected)
                     {
-                        parentPanel.MainForm.UnloadLoadedWzFile(node.Tag as WzFile);
+                        parentPanel.MainForm.UnloadWzFile(node.Tag as WzFile);
                     }
                 }));
             Reload = new ToolStripMenuItem("Reload", Properties.Resources.arrow_refresh, new EventHandler(
@@ -115,9 +116,10 @@ namespace HaRepacker
                     if (!Warning.Warn("Are you sure you want to reload this file?"))
                         return;
 
-                    foreach (WzNode node in GetNodes(sender))
+                    var nodesSelected = GetNodes(sender);
+                    foreach (WzNode node in nodesSelected) // selected nodes
                     {
-                        parentPanel.MainForm.ReloadLoadedWzFile(node.Tag as WzFile, parentPanel);
+                        parentPanel.MainForm.ReloadWzFile(node.Tag as WzFile);
                     }
                 }));
             CollapseAllChildNode = new ToolStripMenuItem("Collapse All", Properties.Resources.collapse, new EventHandler(

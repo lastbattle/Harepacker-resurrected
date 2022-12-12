@@ -145,7 +145,7 @@ namespace HaCreator.GUI
             {
                 Program.InfoManager.Clear();
             }
-            
+
             _wzMapleVersion = fileVersion; // set version to static vars
 
             Program.WzManager = new WzFileManager(wzPath, IsClient64());
@@ -156,7 +156,15 @@ namespace HaCreator.GUI
             {
                 UpdateUI_CurrentLoadingWzFile("Data.wz");
 
-                Program.WzManager.LoadDataWzFile("data", _wzMapleVersion);
+                try
+                {
+                    Program.WzManager.LoadLegacyDataWzFile("data", _wzMapleVersion);
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show("Error initializing data.wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
+                    return;
+                }
 
                 ExtractStringWzMaps();
                 //Program.WzManager.ExtractItems();
@@ -681,7 +689,7 @@ namespace HaCreator.GUI
         {
             bool bLoadedInMap = false;
 
-            WzDirectory mapWzDirs = (WzDirectory) Program.WzManager.FindWzImageByName("map", "Back");
+            WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Back");
             if (mapWzDirs != null)
             {
                 foreach (WzImage bgset in mapWzDirs.WzImages)
@@ -708,7 +716,7 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractStringWzMaps()
         {
-            WzImage stringWzImg = (WzImage) Program.WzManager.FindWzImageByName("string", "Map.img");
+            WzImage stringWzImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
 
             if (!stringWzImg.Parsed)
                 stringWzImg.ParseImage();
@@ -734,7 +742,7 @@ namespace HaCreator.GUI
 
         public void ExtractPortals()
         {
-            WzImage mapImg = (WzImage) Program.WzManager.FindWzImageByName("map", "MapHelper.img");
+            WzImage mapImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
             if (mapImg == null)
                 throw new Exception("Couldnt extract portals. MapHelper.img not found.");
 

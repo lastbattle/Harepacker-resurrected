@@ -592,8 +592,10 @@ namespace HaCreator.MapEditor
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
             mf.unloadAllToolStripMenuItem.Visible = false;
             mf.reloadAllToolStripMenuItem.Visible = false;
-            foreach (KeyValuePair<string, WzFile> entry in Program.WzManager.wzFiles)
-                mf.Interop_AddLoadedWzFileToManager(entry.Value);
+            foreach (WzFile entry in Program.WzManager.WzFileList)
+            {
+                mf.Interop_AddLoadedWzFileToManager(entry);
+            }
             ww.EndWait();
             lock (multiBoard)
             {
