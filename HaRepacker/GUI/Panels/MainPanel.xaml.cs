@@ -1427,7 +1427,7 @@ namespace HaRepacker.GUI.Panels
         /// <param name="obj"></param>
         private void ShowObjectValue(WzObject obj)
         {
-            if (obj.WzFileParent.IsUnloaded) // already unloaded from memory
+            if (obj.WzFileParent != null && obj.WzFileParent.IsUnloaded) // this WZ is already unloaded from memory, dont attempt to display it (when the user clicks "reload" button while selection is on that)
                 return;
 
             mp3Player.SoundProperty = null;

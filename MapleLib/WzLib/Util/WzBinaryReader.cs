@@ -101,13 +101,12 @@ namespace MapleLib.WzLib.Util
                 {
                     return string.Empty;
                 }
-
-                int wzKeyLength = WzKey.KeyLength;
+                
                 for (int i = 0; i < length; i++)
                 {
                     ushort encryptedChar = ReadUInt16();
                     encryptedChar ^= mask;
-                    encryptedChar ^= (ushort)((WzKey[(i * 2 + 1) % wzKeyLength] << 8) + WzKey[(i * 2) % wzKeyLength]);
+                    encryptedChar ^= (ushort)((WzKey[(i * 2 + 1)] << 8) + WzKey[(i * 2)]);
                     retString.Append((char)encryptedChar);
                     mask++;
                 }
@@ -128,12 +127,11 @@ namespace MapleLib.WzLib.Util
                     return string.Empty;
                 }
 
-                int wzKeyLength = WzKey.KeyLength;
                 for (int i = 0; i < length; i++)
                 {
                     byte encryptedChar = ReadByte();
                     encryptedChar ^= mask;
-                    encryptedChar ^= (byte)WzKey[i % wzKeyLength];
+                    encryptedChar ^= (byte)WzKey[i];
                     retString.Append((char)encryptedChar);
                     mask++;
                 }
