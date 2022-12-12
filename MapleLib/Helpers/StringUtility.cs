@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaSharedLibrary.Util
+namespace MapleLib.Helpers
 {
     public class StringUtility
     {

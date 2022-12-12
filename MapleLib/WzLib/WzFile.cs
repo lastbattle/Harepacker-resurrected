@@ -841,7 +841,7 @@ namespace MapleLib.WzLib
                     // look up the list of other currently loaded WzFile/ WzDirectory
                     // Map/Tile/logMarble.img/bsc/1
 
-
+                    
                     return null;
                 }
             }

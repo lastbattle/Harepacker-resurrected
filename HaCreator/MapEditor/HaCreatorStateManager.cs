@@ -32,6 +32,7 @@ using HaCreator.MapEditor.Instance.Misc;
 
 using SystemWinCtl = System.Windows.Controls;
 using HaSharedLibrary;
+using MapleLib;
 
 namespace HaCreator.MapEditor
 {
@@ -586,8 +587,8 @@ namespace HaCreator.MapEditor
             WaitWindow ww = new WaitWindow("Opening HaRepacker...");
             ww.Show();
             Application.DoEvents();
-            
-            HaRepacker.Program.WzFileManager = new WzFileManager("", false);
+
+            HaRepacker.Program.WzFileManager = new WzFileManager();
             bool firstRun = HaRepacker.Program.PrepareApplication(false);
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
             mf.unloadAllToolStripMenuItem.Visible = false;

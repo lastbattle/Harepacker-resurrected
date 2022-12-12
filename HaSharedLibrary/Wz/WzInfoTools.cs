@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaSharedLibrary;
+using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;

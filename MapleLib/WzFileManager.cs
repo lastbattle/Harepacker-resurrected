@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Util;
+﻿
 using MapleLib.Helpers;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib;
@@ -9,13 +9,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using HaSharedLibrary.Wz;
 using System.Xml.Linq;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Text.RegularExpressions;
 
-namespace HaSharedLibrary
+namespace MapleLib
 {
     public class WzFileManager : IDisposable
     {
@@ -73,8 +72,18 @@ namespace HaSharedLibrary
 
         #endregion
 
+        #region Constructor
         /// <summary>
-        /// Constructor
+        /// Constructor to init WzFileManager for HaRepacker
+        /// </summary>
+        public WzFileManager()
+        {
+            this.baseDir = string.Empty;
+            this._bInitAs64Bit = false;
+        }
+
+        /// <summary>
+        /// Constructor to init WzFileManager for HaCreator
         /// </summary>
         /// <param name="directory"></param>
         /// <param name="_bInitAs64Bit"></param>
@@ -83,6 +92,7 @@ namespace HaSharedLibrary
             this.baseDir = directory;
             this._bInitAs64Bit = _bInitAs64Bit;
         }
+        #endregion
 
         #region Loader
         /// <summary>

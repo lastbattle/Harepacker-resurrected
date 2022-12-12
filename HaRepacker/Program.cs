@@ -17,6 +17,7 @@ using System.Globalization;
 using MapleLib.Configuration;
 using HaSharedLibrary;
 using System.Runtime.CompilerServices;
+using MapleLib;
 
 namespace HaRepacker
 {
@@ -70,7 +71,7 @@ namespace HaRepacker
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
             // Load WZFileManager
-            _wzFileManager = new WzFileManager("", true);
+            _wzFileManager = new WzFileManager();
 
             // Parameters
             bool firstRun = PrepareApplication(true);

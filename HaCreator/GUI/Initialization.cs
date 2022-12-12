@@ -20,6 +20,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Drawing;
 using HaSharedLibrary.Wz;
 using HaSharedLibrary;
+using MapleLib;
 
 namespace HaCreator.GUI
 {
