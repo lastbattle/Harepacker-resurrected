@@ -31,6 +31,8 @@ namespace MapleLib
         #endregion
 
         #region Fields
+        public static WzFileManager fileManager; // static, to allow access from anywhere
+
         private readonly string baseDir;
         /// <summary>
         /// Gets the base directory of the WZ file.
@@ -80,6 +82,8 @@ namespace MapleLib
         {
             this.baseDir = string.Empty;
             this._bInitAs64Bit = false;
+
+            fileManager = this;
         }
 
         /// <summary>
@@ -91,6 +95,8 @@ namespace MapleLib
         {
             this.baseDir = directory;
             this._bInitAs64Bit = _bInitAs64Bit;
+
+            fileManager = this;
         }
         #endregion
 
@@ -532,6 +538,8 @@ namespace MapleLib
         /// <returns></returns>
         public WzObject FindWzImageByName(string baseWzName, string imageName)
         {
+            baseWzName = baseWzName.ToLower();
+            
             List<WzDirectory> wzFiles = GetWzDirectoriesFromBase(baseWzName);
             foreach (WzDirectory wzFile in wzFiles)
             {

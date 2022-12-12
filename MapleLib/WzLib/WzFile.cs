@@ -832,7 +832,11 @@ namespace MapleLib.WzLib
         public WzObject GetObjectFromPath(string path, bool checkFirstDirectoryName = true)
         {
             string[] seperatedPath = path.Split("/".ToCharArray());
+            if (seperatedPath.Length == 1)
+                return WzDirectory;
 
+            WzObject checkObjInOtherWzFile = null;
+            
             if (checkFirstDirectoryName)
             {
                 if (seperatedPath[0].ToLower() != wzDir.name.ToLower() && seperatedPath[0].ToLower() != wzDir.name.Substring(0, wzDir.name.Length - 3).ToLower())
@@ -841,14 +845,39 @@ namespace MapleLib.WzLib
                     // look up the list of other currently loaded WzFile/ WzDirectory
                     // Map/Tile/logMarble.img/bsc/1
 
-                    
-                    return null;
+                    // this is a fix for 64-bit wz file format where items are stored in many multiple WZ files
+
+                    int nSubstractFolderCount = 0;
+                    if (WzFileManager.fileManager != null)
+                    {
+                        if (seperatedPath.Length >= 1)
+                        {
+                            checkObjInOtherWzFile = WzFileManager.fileManager.FindWzImageByName(seperatedPath[0], seperatedPath[1]); // Map/xxx.img
+                            nSubstractFolderCount = 1;
+                            
+                            if (checkObjInOtherWzFile == null && seperatedPath.Length >= 2) // Map/Obj/xxx.img -> Obj.wz
+                            {
+                                checkObjInOtherWzFile = WzFileManager.fileManager.FindWzImageByName(seperatedPath[0] + Path.DirectorySeparatorChar + seperatedPath[1], seperatedPath[2]);
+                                nSubstractFolderCount = 2;
+                            }
+                            else
+                                return null;
+                            
+                            seperatedPath = seperatedPath.Where((item, index) => index >= nSubstractFolderCount)
+                                      .Select(item => item)
+                                      .ToArray();
+                        }
+                    } else
+                        return null;
                 }
             }
 
-            if (seperatedPath.Length == 1)
-                return WzDirectory;
-            WzObject curObj = WzDirectory;
+            WzObject curObj;
+            if (checkObjInOtherWzFile != null)
+                curObj = checkObjInOtherWzFile;
+            else
+                curObj = WzDirectory;
+            
             for (int i = 1; i < seperatedPath.Length; i++)
             {
                 if (curObj == null)
