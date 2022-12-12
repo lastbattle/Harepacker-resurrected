@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Util;
+﻿
 using MapleLib.Helpers;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib;
@@ -9,12 +9,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
-using HaSharedLibrary.Wz;
 using System.Xml.Linq;
 using System.Collections.ObjectModel;
 using System.Threading;
+using System.Text.RegularExpressions;
 
-namespace HaSharedLibrary
+namespace MapleLib
 {
     public class WzFileManager : IDisposable
     {
@@ -31,6 +31,8 @@ namespace HaSharedLibrary
         #endregion
 
         #region Fields
+        public static WzFileManager fileManager; // static, to allow access from anywhere
+
         private readonly string baseDir;
         /// <summary>
         /// Gets the base directory of the WZ file.
@@ -72,8 +74,20 @@ namespace HaSharedLibrary
 
         #endregion
 
+        #region Constructor
         /// <summary>
-        /// Constructor
+        /// Constructor to init WzFileManager for HaRepacker
+        /// </summary>
+        public WzFileManager()
+        {
+            this.baseDir = string.Empty;
+            this._bInitAs64Bit = false;
+
+            fileManager = this;
+        }
+
+        /// <summary>
+        /// Constructor to init WzFileManager for HaCreator
         /// </summary>
         /// <param name="directory"></param>
         /// <param name="_bInitAs64Bit"></param>
@@ -81,9 +95,56 @@ namespace HaSharedLibrary
         {
             this.baseDir = directory;
             this._bInitAs64Bit = _bInitAs64Bit;
+
+            fileManager = this;
         }
+        #endregion
 
         #region Loader
+        /// <summary>
+        /// Automagically detect if the following directory where MapleStory installation is saved
+        /// is a 64-bit wz directory.
+        /// </summary>
+        /// <returns></returns>
+        public static bool Detect64BitDirectoryWzFileFormat(string baseDirectoryPath)
+        {
+            if (!Directory.Exists(baseDirectoryPath))
+                throw new Exception("Non-existent directory provided.");
+
+            //DirectoryInfo baseDirectoryInfo = new DirectoryInfo(directoryPath);
+            bool bDirectoryContainsDataDir = Directory.Exists(Path.Combine(baseDirectoryPath, "Data"));
+
+            int nNumWzFiles = 0;
+            int nNumWzFilesInDataDir = 0;
+
+            foreach (string wzFilePath in Directory.EnumerateFileSystemEntries(baseDirectoryPath, "*.wz", SearchOption.AllDirectories))
+            {
+                FileAttributes attr = File.GetAttributes(wzFilePath);
+                if (attr.HasFlag(FileAttributes.Directory)) // exclude directories, only want the files.wz
+                    continue;
+
+                nNumWzFiles++;
+
+                FileInfo fileInfo = new FileInfo(wzFilePath);
+                string fileDirectory = fileInfo.Directory.FullName;
+                string fileDirectoryExcBase = fileDirectory.Replace(baseDirectoryPath + Path.DirectorySeparatorChar, "").Trim();
+
+                string[] wzFileDirectories = fileDirectoryExcBase.Split(Path.DirectorySeparatorChar); // get the directory of this wz file
+                if (wzFileDirectories.Length > 0)
+                {
+                    if (wzFileDirectories[0] == "Data")
+                        nNumWzFilesInDataDir++;
+                }
+            }
+            if (bDirectoryContainsDataDir)
+            {
+                if (nNumWzFiles > 20 && nNumWzFilesInDataDir > 20)
+                    return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Builds the list of WZ files in the MapleStory directory (for HaCreator only, not used for HaRepacker)
         /// </summary>
@@ -477,6 +538,8 @@ namespace HaSharedLibrary
         /// <returns></returns>
         public WzObject FindWzImageByName(string baseWzName, string imageName)
         {
+            baseWzName = baseWzName.ToLower();
+            
             List<WzDirectory> wzFiles = GetWzDirectoriesFromBase(baseWzName);
             foreach (WzDirectory wzFile in wzFiles)
             {

@@ -19,6 +19,7 @@ using System.Resources;
 using System.Reflection;
 using HaCreator.Wz;
 using HaSharedLibrary;
+using MapleLib;
 
 namespace HaCreator
 {

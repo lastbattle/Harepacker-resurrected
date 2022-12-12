@@ -38,7 +38,6 @@
             this.pathBox = new System.Windows.Forms.ComboBox();
             this.button2 = new System.Windows.Forms.Button();
             this.button_checkMapErrors = new System.Windows.Forms.Button();
-            this.ClientTypeBox = new System.Windows.Forms.ComboBox();
             this.SuspendLayout();
             // 
             // button_initialise
@@ -124,25 +123,12 @@
             this.button_checkMapErrors.UseVisualStyleBackColor = true;
             this.button_checkMapErrors.Click += new System.EventHandler(this.debugButton_Click);
             // 
-            // ClientTypeBox
-            // 
-            this.ClientTypeBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.ClientTypeBox.FormattingEnabled = true;
-            this.ClientTypeBox.Items.AddRange(new object[] {
-            "32 bit",
-            "64 bit"});
-            this.ClientTypeBox.Location = new System.Drawing.Point(315, 38);
-            this.ClientTypeBox.Name = "ClientTypeBox";
-            this.ClientTypeBox.Size = new System.Drawing.Size(54, 21);
-            this.ClientTypeBox.TabIndex = 16;
-            // 
             // Initialization
             // 
             this.AccessibleRole = System.Windows.Forms.AccessibleRole.ScrollBar;
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(372, 133);
-            this.Controls.Add(this.ClientTypeBox);
             this.Controls.Add(this.button_checkMapErrors);
             this.Controls.Add(this.button2);
             this.Controls.Add(this.pathBox);
@@ -177,7 +163,6 @@
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button button_checkMapErrors;
-        private System.Windows.Forms.ComboBox ClientTypeBox;
     }
 }
 

@@ -146,8 +146,6 @@
     <Compile Include="user32.cs" />
     <Compile Include="Util\BitmapHelper.cs" />
     <Compile Include="Util\ScreenDPIUtil.cs" />
-    <Compile Include="Util\StringUtility.cs" />
-    <Compile Include="WzFileManager.cs" />
     <Compile Include="WzMp3Streamer.cs" />
     <Compile Include="Wz\WzInfoTools.cs" />
     <Service Include="{94E38DFF-614B-4cbd-B67C-F211BB35CE8B}" />

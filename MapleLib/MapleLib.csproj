@@ -205,9 +205,11 @@
     <Compile Include="Converters\ImageConverter.cs" />
     <Compile Include="Helpers\ByteUtils.cs" />
     <Compile Include="Helpers\ErrorLogger.cs" />
+    <Compile Include="Helpers\StringUtility.cs" />
     <Compile Include="PacketLib\HexTool.cs" />
     <Compile Include="SquishPNGWrapper.cs" />
     <Compile Include="WzDataReader.cs" />
+    <Compile Include="WzFileManager.cs" />
     <Compile Include="WzLib\Nx\WzToNxSerializer.cs" />
     <Compile Include="WzLib\Spine\WzSpineAnimationItem.cs" />
     <Compile Include="WzLib\Spine\WzSpineAtlasLoader.cs" />
