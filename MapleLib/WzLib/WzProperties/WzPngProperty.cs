@@ -547,6 +547,7 @@ namespace MapleLib.WzLib.WzProperties
             const int rgb565_mask_r = 0xf800;
             const int rgb565_mask_g = 0x07e0;
             const int rgb565_mask_b = 0x001f;
+            
             int r = (val & rgb565_mask_r) >> 11;
             int g = (val & rgb565_mask_g) >> 5;
             int b = (val & rgb565_mask_b);
@@ -569,37 +570,34 @@ namespace MapleLib.WzLib.WzProperties
         public unsafe static void DecompressImage_PixelDataBgra4444(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
             int uncompressedSize = width * height * 2;
+            byte[] decoded = new byte[uncompressedSize * 2];
 
-            // Declare an "unsafe" pointer to the raw data
-            fixed (byte* dataPointer = rawData)
+            // Declare a pointer to the first element of the rawData array
+            // This allows us to directly access the memory of the rawData array
+            // without having to access it through the array indexer, which is slower
+            fixed (byte* pRawData = rawData)
             {
-                // Create pointers for the B, G, and R values of each pixel
-                byte* bPointer = dataPointer;
-                byte* gPointer = dataPointer + 1;
-
-                // Iterate over the pixels
-                for (int i = 0; i < uncompressedSize; i += 2)
+                // Declare a pointer to the first element of the decoded array
+                fixed (byte* pDecoded = decoded)
                 {
-                    // Get the B and G values of the current pixel
-                    byte b = *bPointer;
-                    byte g = *gPointer;
+                    // Iterate over the elements of the rawData array using the pointer
+                    for (int i = 0; i < uncompressedSize; i++)
+                    {
+                        byte byteAtPosition = *(pRawData + i);
 
-                    // Decompress the B and G values
-                    b = (byte)((b >> 4) | (b >> 4));
-                    g = (byte)(g | (g << 4));
+                        int lo = byteAtPosition & 0x0F;
+                        byte b = (byte)(lo | (lo << 4));
+                        *(pDecoded + i * 2) = b;
 
-                    // Set the decompressed B and G values for the current pixel
-                    *bPointer = b;
-                    *gPointer = g;
-
-                    // Move the pointers to the next pixel
-                    bPointer += 2;
-                    gPointer += 2;
+                        int hi = byteAtPosition & 0xF0;
+                        byte g = (byte)(hi | (hi >> 4));
+                        *(pDecoded + i * 2 + 1) = g;
+                    }
                 }
             }
 
-            // Copy the decompressed data to the bitmap
-            Marshal.Copy(rawData, 0, bmpData.Scan0, rawData.Length);
+            // Copy the decoded data to the bitmap using a pointer
+            Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
             bmp.UnlockBits(bmpData);
         }
 
@@ -625,6 +623,7 @@ namespace MapleLib.WzLib.WzProperties
                 Color[] colorTable = new Color[4];
                 int[] colorIdxTable = new int[16];
                 byte[] alphaTable = new byte[16];
+                
                 for (int y = 0; y < height; y += 4)
                 {
                     for (int x = 0; x < width; x += 4)
