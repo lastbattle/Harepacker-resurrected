@@ -68,8 +68,6 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
 
-            DirectoryInfo di = new DirectoryInfo(wzPath + "\\Data");
-
             if (wzPath == "Select MapleStory Folder")
             {
                 MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -79,26 +77,7 @@ namespace HaCreator.GUI
             {
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
             }
-            WzMapleVersion fileVersion;
-            /* short version = -1;
-             if (versionBox.SelectedIndex != 3)
-             {
-                 string testFile = File.Exists(Path.Combine(wzPath, "Data.wz")) ? "Data.wz" : "Item.wz";
-                 try
-                 {
-                     fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, testFile), out version);
-                 }
-                 catch (Exception ex)
-                 {
-                     HaRepackerLib.Warning.Error("Error initializing " + testFile + " (" + ex.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
-                     return;
-                 }
-             }
-             else
-             {*/
-            fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            //  }
-
+            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
             InitializeWzFiles(wzPath, fileVersion);
 
             Hide();
@@ -340,8 +319,8 @@ namespace HaCreator.GUI
             // This function iterates over all maps in the game and verifies that we recognize all their props
             // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
             string wzPath = pathBox.Text;
-            short version = -1;
-            WzMapleVersion fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, "Item.wz"), out version);
+
+            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
             InitializeWzFiles(wzPath, fileVersion);
 
             MultiBoard mb = new MultiBoard();
