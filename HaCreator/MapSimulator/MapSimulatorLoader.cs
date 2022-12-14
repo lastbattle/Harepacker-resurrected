@@ -344,14 +344,17 @@ namespace HaCreator.MapSimulator
         public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, ReactorInstance reactorInstance, GraphicsDevice device, ref List<WzObject> usedProps)
         {
             ReactorInfo reactorInfo = (ReactorInfo)reactorInstance.BaseInfo;
-            WzImage linkedReactorImage = reactorInfo.LinkedWzImage;
-
+            
             List<IDXObject> frames = new List<IDXObject>();
 
-            WzImageProperty framesImage = (WzImageProperty) linkedReactorImage["0"]?["0"];
-            if (framesImage != null)
+            WzImage linkedReactorImage = reactorInfo.LinkedWzImage;
+            if (linkedReactorImage != null)
             {
-                frames = LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps);
+                WzImageProperty framesImage = (WzImageProperty)linkedReactorImage?["0"]?["0"];
+                if (framesImage != null)
+                {
+                    frames = LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps);
+                }
             }
             if (frames.Count == 0)
                 return null;

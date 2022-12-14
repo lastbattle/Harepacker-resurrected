@@ -328,7 +328,8 @@ namespace HaCreator.MapSimulator
                     //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
                     ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                    mapObjects_Reactors.Add(reactorItem);
+                    if (reactorItem != null)
+                        mapObjects_Reactors.Add(reactorItem);
                 }
             });
 
