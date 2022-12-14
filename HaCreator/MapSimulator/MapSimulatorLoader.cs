@@ -23,6 +23,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using HaSharedLibrary.Wz;
+using MapleLib.Helpers;
+using SharpDX.Direct2D1.Effects;
 
 namespace HaCreator.MapSimulator
 {
@@ -236,6 +238,14 @@ namespace HaCreator.MapSimulator
         public static BackgroundItem CreateBackgroundFromProperty(TexturePool texturePool, WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
         {
             List<IDXObject> frames = LoadFrames(texturePool, source, bgInstance.BaseX, bgInstance.BaseY, device, ref usedProps, bgInstance.SpineAni);
+            if (frames.Count == 0)
+            {
+                string error = string.Format("[MapSimulatorLoader] 0 frames loaded for bg texture from src: '{0}'", source.FullPath); // Back_003.wz\\BM3_3.img\\spine\\0
+
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                return null;
+            }
+            
             if (frames.Count == 1)
             {
                 return new BackgroundItem(bgInstance.cx, bgInstance.cy, bgInstance.rx, bgInstance.ry, bgInstance.type, bgInstance.a, bgInstance.front, frames[0], flip, bgInstance.screenMode);
@@ -357,7 +367,12 @@ namespace HaCreator.MapSimulator
                 }
             }
             if (frames.Count == 0)
+            {
+                //string error = string.Format("[MapSimulatorLoader] 0 frames loaded for reactor from src: '{0}'",  reactorInfo.ID);
+
+                //ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                 return null;
+            }
             return new ReactorItem(reactorInstance, frames);
         }
         #endregion

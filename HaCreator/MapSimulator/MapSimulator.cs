@@ -307,16 +307,18 @@ namespace HaCreator.MapSimulator
                 foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
 
-                    backgrounds_back.Add(
-                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    if (bgItem != null)
+                        backgrounds_back.Add(bgItem);
                 }
                 foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
 
-                    backgrounds_front.Add(
-                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    if (bgItem != null)
+                        backgrounds_front.Add(bgItem);
                 }
             });
 
