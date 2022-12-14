@@ -19,7 +19,6 @@ using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzProperties;
 using System.Drawing;
 using HaSharedLibrary.Wz;
-using HaSharedLibrary;
 using MapleLib;
 
 namespace HaCreator.GUI
@@ -78,18 +77,32 @@ namespace HaCreator.GUI
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
             }
             WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            InitializeWzFiles(wzPath, fileVersion);
+            if (InitializeWzFiles(wzPath, fileVersion))
+            {
+                Hide();
+                Application.DoEvents();
+                editor = new HaEditor();
+                editor.ShowDialog();
 
-            Hide();
-            Application.DoEvents();
-            editor = new HaEditor();
-
-            editor.ShowDialog();
-            Application.Exit();
+                Application.Exit();
+            }
         }
 
-        private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
+        /// <summary>
+        /// Initialise the WZ files with the provided folder path
+        /// </summary>
+        /// <param name="wzPath"></param>
+        /// <param name="fileVersion"></param>
+        /// <returns></returns>
+        private bool InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
+            // Check if directory exist
+            if (!Directory.Exists(wzPath))
+            {
+                MessageBox.Show(string.Format(Properties.Resources.Initialization_Error_MSDirectoryNotExist, wzPath), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+
             if (Program.WzManager != null)
             {
                 Program.WzManager.Dispose();
@@ -118,7 +131,7 @@ namespace HaCreator.GUI
                 catch (Exception e)
                 {
                     MessageBox.Show("Error initializing data.wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
-                    return;
+                    return false;
                 }
 
                 ExtractStringWzMaps();
@@ -243,6 +256,7 @@ namespace HaCreator.GUI
                     Program.WzManager.LoadWzFile(uiWzFileNames, _wzMapleVersion);
                 }
             }
+            return true;
         }
 
         private void UpdateUI_CurrentLoadingWzFile(string fileName)
@@ -321,7 +335,10 @@ namespace HaCreator.GUI
             string wzPath = pathBox.Text;
 
             WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            InitializeWzFiles(wzPath, fileVersion);
+            if (!InitializeWzFiles(wzPath, fileVersion))
+            {
+                return;
+            }
 
             MultiBoard mb = new MultiBoard();
             Board mapBoard = new Board(
