@@ -539,7 +539,7 @@ namespace HaCreator.MapSimulator
             if (mapBoard.MiniMap == null)
                 return null;
 
-            WzSubProperty minimapFrameProperty = (WzSubProperty)uiWindow2Image["MiniMap"];
+            WzSubProperty minimapFrameProperty = (WzSubProperty)uiWindow2Image?["MiniMap"];
             if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
             {
                 minimapFrameProperty = (WzSubProperty)uiWindow1Image["MiniMap"];
