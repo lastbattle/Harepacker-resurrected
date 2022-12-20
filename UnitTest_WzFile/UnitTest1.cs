@@ -64,9 +64,7 @@ namespace UnitTest_WzFile
                 //////// Open first ////////
                 WzImage wzImg = _fileManager.LoadDataWzHotfixFile(filePath, wzMapleVer);
 
-                Assert.IsNull(wzImg, "Hotfix Data.wz loading failed.");
-
-                wzImg.Dispose();
+                Assert.IsTrue(wzImg != null, "Hotfix Data.wz loading failed.");
 
                 //////// Save file ////////
                 string tmpFilePath = filePath + ".tmp";
@@ -77,23 +75,24 @@ namespace UnitTest_WzFile
                     using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
                     {
                         wzImg.SaveImage(wzWriter, true); // Write to temp folder
+                        wzImg.Dispose(); // unload
                     }
                 }
+
+                //////// Reload file first ////////
+                WzImage wzImg_newTmpFile = _fileManager.LoadDataWzHotfixFile(tmpFilePath, wzMapleVer);
+                
+                Assert.IsTrue(wzImg_newTmpFile != null, "loading of newly saved Hotfix Data.wz file failed.");
+
+                wzImg_newTmpFile.Dispose(); // unload
                 try
                 {
-                    File.Copy(tmpFilePath, targetFilePath, true);
                     File.Delete(tmpFilePath);
                 }
                 catch (Exception exp)
                 {
                     Debug.WriteLine(exp); // nvm, dont show to user
                 }
-
-
-                //////// Reload file first ////////
-                WzImage wzImg_newTmpFile = _fileManager.LoadDataWzHotfixFile(tmpFilePath, wzMapleVer);
-                
-                Assert.IsNull(wzImg, "loading of newly saved Hotfix Data.wz file failed.");
             }
             catch (Exception e)
             {
