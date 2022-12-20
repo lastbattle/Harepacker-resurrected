@@ -158,7 +158,7 @@ namespace MapleLib.WzLib
             private set {  } 
         }
         /// <summary>
-        /// The offset of the image
+        /// The offset of the start of this image
         /// </summary>
         public uint Offset { get { return offset; } set { offset = value; } }
         public int BlockStart { get { return blockStart; } }
@@ -454,8 +454,9 @@ namespace MapleLib.WzLib
             {
                 long pos = reader.BaseStream.Position;
                 reader.BaseStream.Position = offset;
-                writer.Write(reader.ReadBytes(size));
-                reader.BaseStream.Position = pos;
+                writer.Write(reader.ReadBytes((int) pos));
+
+                reader.BaseStream.Position = pos; // reset
             }
         }
 
