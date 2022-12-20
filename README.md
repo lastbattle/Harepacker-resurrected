@@ -64,11 +64,11 @@ Would you like to contribute to this project instead? If so, you can fork the pr
 
 ![Spine image preview](https://user-images.githubusercontent.com/4586194/109911553-43b19a80-7ce5-11eb-8495-206a9c79d76f.png)
 
-![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
+![Limen: Where the world ends](https://user-images.githubusercontent.com/4586194/208673934-e4300f74-8b6f-4866-a778-f7e675355ced.png)
 
-![Rainbow Street Amherst](https://i.imgur.com/A1U0Hhg.jpg)
+![Rainbow Street Amherst](https://user-images.githubusercontent.com/4586194/208673762-4207a6c5-0f04-42a1-8f32-f6cd39598409.jpg)
 
-![N|Solid](https://imgur.com/download/SrS8Lw8/) 
+![Oblivion Lake](https://user-images.githubusercontent.com/4586194/208673402-8c28c9f4-72da-4c8b-a818-43ed053cf126.png)
 
 
 ----
