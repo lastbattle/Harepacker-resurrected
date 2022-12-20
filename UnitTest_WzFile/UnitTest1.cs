@@ -1,4 +1,6 @@
-﻿using MapleLib.WzLib;
+﻿using MapleLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.Util;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
@@ -10,7 +12,10 @@ namespace UnitTest_WzFile
     [TestClass]
     public class UnitTest1
     {
+        private static WzFileManager _fileManager = new WzFileManager("", false);
+
         private static readonly List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
+
 
         public UnitTest1()
         {
@@ -18,13 +23,13 @@ namespace UnitTest_WzFile
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_000_KMS_359.wz", WzMapleVersion.BMS));
 
             // GMS
+            _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_000_GMS_237.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_146.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_176.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_230.wz", WzMapleVersion.BMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_75.wz", WzMapleVersion.GMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_87.wz", WzMapleVersion.GMS));
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_GMS_95.wz", WzMapleVersion.GMS));
-            _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_000_GMS_237.wz", WzMapleVersion.GMS));
 
             // MSEA
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_SEA_135.wz", WzMapleVersion.BMS));
@@ -40,6 +45,66 @@ namespace UnitTest_WzFile
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_TMS_113.wz", WzMapleVersion.EMS));
         }
 
+        /// <summary>
+        /// Test opening and saving hotfix wz file that is an image file with .wz extension
+        /// </summary>
+        [TestMethod]
+        public void TestOpeningAndSavingHotfixWzFile()
+        {
+            const string fileName = "Data.wz";
+            string filePath = Path.Combine(Directory.GetCurrentDirectory(), "WzFiles", "Hotfix", fileName);
+
+            Debug.WriteLine("Running test for " + fileName);
+
+            try
+            {
+                WzMapleVersion wzMapleVer = WzMapleVersion.BMS;
+                byte[] WzIv = WzTool.GetIvByMapleVersion(wzMapleVer);
+
+                //////// Open first ////////
+                WzImage wzImg = _fileManager.LoadDataWzHotfixFile(filePath, wzMapleVer);
+
+                Assert.IsNull(wzImg, "Hotfix Data.wz loading failed.");
+
+                wzImg.Dispose();
+
+                //////// Save file ////////
+                string tmpFilePath = filePath + ".tmp";
+                string targetFilePath = filePath;
+
+                using (FileStream oldfs = File.Open(tmpFilePath, FileMode.OpenOrCreate))
+                {
+                    using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
+                    {
+                        wzImg.SaveImage(wzWriter, true); // Write to temp folder
+                    }
+                }
+                try
+                {
+                    File.Copy(tmpFilePath, targetFilePath, true);
+                    File.Delete(tmpFilePath);
+                }
+                catch (Exception exp)
+                {
+                    Debug.WriteLine(exp); // nvm, dont show to user
+                }
+
+
+                //////// Reload file first ////////
+                WzImage wzImg_newTmpFile = _fileManager.LoadDataWzHotfixFile(tmpFilePath, wzMapleVer);
+                
+                Assert.IsNull(wzImg, "loading of newly saved Hotfix Data.wz file failed.");
+            }
+            catch (Exception e)
+            {
+                Assert.IsTrue(true,
+                    "Error initializing " + Path.GetFileName(filePath) + " (" + e.Message + ").\r\nAlso, check that the directory is valid and the file is not in use.");
+            }
+        }
+
+        /// <summary>
+        /// Test opening the older wz files
+        /// </summary>
         [TestMethod]
         public void TestOlderWzFiles()
         {
@@ -48,22 +113,22 @@ namespace UnitTest_WzFile
                 string fileName = testFile.Item1;
                 WzMapleVersion wzMapleVerEnc = testFile.Item2;
 
-                string filePath = Path.Combine(Directory.GetCurrentDirectory(), "WzFiles", fileName);
+                string filePath = Path.Combine(Directory.GetCurrentDirectory(), "WzFiles", "Common", fileName);
 
                 Debug.WriteLine("Running test for " + fileName);
 
                 try
                 {
-                    WzFile f = new WzFile(filePath, (short) -1, wzMapleVerEnc);
+                    WzFile f = new WzFile(filePath, (short)-1, wzMapleVerEnc);
 
                     WzFileParseStatus parseStatus = f.ParseWzFile();
 
-                    Assert.IsFalse(parseStatus != WzFileParseStatus.Success, 
+                    Assert.IsFalse(parseStatus != WzFileParseStatus.Success,
                         "Error initializing " + fileName + " (" + parseStatus.GetErrorDescription() + ").");
                 }
                 catch (Exception e)
                 {
-                    Assert.IsTrue(true, 
+                    Assert.IsTrue(true,
                         "Error initializing " + Path.GetFileName(filePath) + " (" + e.Message + ").\r\nAlso, check that the directory is valid and the file is not in use.");
                 }
             }
