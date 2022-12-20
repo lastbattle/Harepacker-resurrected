@@ -436,8 +436,8 @@ namespace MapleLib.WzLib
             }
             finally
             {
-                if (bCloseTestDirectory)
-                    testDirectory.Dispose();
+           //     if (bCloseTestDirectory)
+           //         testDirectory.Dispose();
             }
         }
 
