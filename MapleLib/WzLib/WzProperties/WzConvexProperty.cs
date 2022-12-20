@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using MapleLib.WzLib.Util;
 
 namespace MapleLib.WzLib.WzProperties
@@ -111,23 +112,14 @@ namespace MapleLib.WzLib.WzProperties
 				return ((WzImageProperty)Parent)[path.Substring(name.IndexOf('/') + 1)];
 			}
 			WzImageProperty ret = this;
-			for (int x = 0; x < segments.Length; x++)
+			foreach (string segment in segments)
 			{
-				bool foundChild = false;
-				foreach (WzImageProperty iwp in ret.WzProperties)
-				{
-					if (iwp.Name == segments[x])
-					{
-                        ret = iwp;
-						foundChild = true;
-						break;
-					}
-				}
-				if (!foundChild)
-				{
-					return null;
-				}
-			}
+                ret = ret.WzProperties.FirstOrDefault(iwp => iwp.Name == segment);
+                if (ret == null)
+                {
+                    break;
+                }
+            }
 			return ret;
 		}
 		public override void WriteValue(WzBinaryWriter writer)

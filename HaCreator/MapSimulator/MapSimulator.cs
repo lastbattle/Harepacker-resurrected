@@ -257,8 +257,8 @@ namespace HaCreator.MapSimulator
             WzImage uiWindow1Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow.img"); //
             WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // UI_004.wz
                                      
-            this.bBigBangUpdate = uiWindow2Image["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
-            this.bBigBang2Update = uiWindow2Image["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
+            this.bBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
+            this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -307,16 +307,18 @@ namespace HaCreator.MapSimulator
                 foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
 
-                    backgrounds_back.Add(
-                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    if (bgItem != null)
+                        backgrounds_back.Add(bgItem);
                 }
                 foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
 
-                    backgrounds_front.Add(
-                        MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip));
+                    if (bgItem != null)
+                        backgrounds_front.Add(bgItem);
                 }
             });
 
@@ -328,7 +330,8 @@ namespace HaCreator.MapSimulator
                     //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
                     ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                    mapObjects_Reactors.Add(reactorItem);
+                    if (reactorItem != null)
+                        mapObjects_Reactors.Add(reactorItem);
                 }
             });
 

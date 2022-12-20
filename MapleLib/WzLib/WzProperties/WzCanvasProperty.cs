@@ -20,6 +20,7 @@ using MapleLib.WzLib.Util;
 using System;
 using System.Drawing;
 using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace MapleLib.WzLib.WzProperties
 {
@@ -99,10 +100,8 @@ namespace MapleLib.WzLib.WzProperties
             {
                 if (name == "PNG")
                     return imageProp;
-                foreach (WzImageProperty iwp in properties)
-                    if (iwp.Name.ToLower() == name.ToLower())
-                        return iwp;
-                return null;
+                
+                return properties.FirstOrDefault(iwp => iwp.Name.ToLower() == name.ToLower());
             }
             set
             {
@@ -121,10 +120,7 @@ namespace MapleLib.WzLib.WzProperties
 
         public WzImageProperty GetProperty(string name)
         {
-            foreach (WzImageProperty iwp in properties)
-                if (iwp.Name.ToLower() == name.ToLower())
-                    return iwp;
-            return null;
+            return properties.FirstOrDefault(iwp => iwp.Name.ToLower() == name.ToLower());
         }
 
         /// Gets a wz property by a path name
@@ -138,30 +134,25 @@ namespace MapleLib.WzLib.WzProperties
             {
                 return ((WzImageProperty)Parent)[path.Substring(name.IndexOf('/') + 1)];
             }
+
             WzImageProperty ret = this;
-            for (int x = 0; x < segments.Length; x++)
+            foreach (string segment in segments)
             {
-                bool foundChild = false;
-                if (segments[x] == "PNG")
-                {
+                if (segment == "PNG")
                     return imageProp;
-                }
-                foreach (WzImageProperty iwp in ret.WzProperties)
-                {
-                    if (iwp.Name == segments[x])
-                    {
-                        ret = iwp;
-                        foundChild = true;
-                        break;
-                    }
-                }
-                if (!foundChild)
+
+                WzImageProperty iwp = ret.WzProperties.FirstOrDefault(p => p.Name == segment);
+                if (iwp == null)
                 {
                     return null;
                 }
+
+                ret = iwp;
             }
+
             return ret;
         }
+        
         public override void WriteValue(WzBinaryWriter writer)
         {
             writer.WriteStringValue("Canvas", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);

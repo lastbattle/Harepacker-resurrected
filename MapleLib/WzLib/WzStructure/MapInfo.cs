@@ -536,6 +536,14 @@ namespace MapleLib.WzLib.WzStructure
                     case "spiritSavior":
                     case "standAlonePermitUpgrade": //  993059600.img
                     case "limitHeadAlarmField": // 993180000.img
+                    case "noPsychicGrab": // 993194700.img
+                    case "offSoulEffect": // 993194700.img
+                    case "offActiveEffectItem": // 993194700.img
+                    case "forceDamageSkinID": // 993194700.img
+                    case "minimapFullSizeViewBlock": // 993194700.img
+                    case "limitUIContextMenu": // 993210400.img  993220101.img
+                    case "vanishHaku": // 993194700.img
+                    case "pulbicTaggedObjectVisible": // 993210000.img 
                         {
                             WzImageProperty cloneProperty = prop.DeepClone();
                             //cloneProperty.Parent = prop.Parent;

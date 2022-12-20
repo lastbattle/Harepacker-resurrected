@@ -1,30 +1,30 @@
-### HaSuite / Harepacker resurrected
+## HaSuite / Harepacker resurrected
 [![Github total downloads](https://img.shields.io/github/downloads/lastbattle/Harepacker-resurrected/total.svg)]() 
 [![Github All Releases](https://img.shields.io/github/release/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/releases)
 [![Github All Issues](https://img.shields.io/github/issues/lastbattle/Harepacker-resurrected.svg)](https://github.com/lastbattle/Harepacker-resurrected/issues)
 
-A collection of tools for MapleStory. A .wz file and level (or you call that field/maps) editor.
+A collection of tools for MapleStory, including a .wz file and level/field/map editor.
 
->> A fork of [HaSuite - HaCreator 2.1/HaRepacker](https://github.com/hadeutscher/HaSuite) | [Ragezone](http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/)
+> Original thread: [HaSuite - HaCreator 2.1/HaRepacker 4.2.3](https://github.com/hadeutscher/HaSuite) | [Ragezone](http://forum.ragezone.com/f702/release-hasuite-hacreator-2-1-a-1068988/)
 
-----
-![Harepacker](https://user-images.githubusercontent.com/4586194/109911770-a7d45e80-7ce5-11eb-9843-e4414bb6016f.png)
-
-![Image preview](https://user-images.githubusercontent.com/4586194/109911721-85dadc00-7ce5-11eb-9111-4e2bfdbf5551.png)
-
-![Spine image preview](https://user-images.githubusercontent.com/4586194/109911553-43b19a80-7ce5-11eb-8495-206a9c79d76f.png)
-
-![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
-
-![Rainbow Street Amherst](https://i.imgur.com/A1U0Hhg.jpg)
-
-![Orbis Tower](https://user-images.githubusercontent.com/4586194/104141605-9ad87480-53f2-11eb-8d58-8d676d11e22c.png)
-
-![N|Solid](https://imgur.com/download/SrS8Lw8/) 
-
+> Discussion thread: [Ragezone](https://forum.ragezone.com/f702/release-harepacker-resurrected-1149521/)
 
 ----
-# BUILD
+
+## Project contents
+* HaCreator - MapleStory level editor
+* HaRepacker - MapleStory .wz file editor
+* HaSharedLibrary - A shared library between HaRepacker & HaCreator for mostly GUI
+* MapleLib - A shared library between HaRepacker & HaCreator for the WZ files.
+* squish-1.11\apng - (Unused for now, might consider .NET Core implementation of SIMD for images in future releases) [info](https://sjbrown.co.uk/?code=squish)
+* spine-csharp 2.1.25 - 2D animation library [official website](https://github.com/EsotericSoftware/spine-runtimes) | [official website, spine demo](http://esotericsoftware.com/spine-demos) | [MapleStory dev's note](https://orangemushroom.net/2015/06/17/developers-note-maplestory-reboot-update-introduction-2-and-3/)
+* UnitTest_WzFile - For testing of wz file across versions.
+
+##### MapleLib2 by haha01haha01;
+ - is based on MapleLib by Snow, WzLib by JonyLeeson, and information from Fiel\Koolk
+
+----
+## BUILD
 ### To build HaSuite, you need 
  - at least [Microsoft Visual Studio 2019](https://visualstudio.microsoft.com/vs/)
  - [Git](https://git-scm.com/downloads) or [Github, bundled](https://desktop.github.com/) for cloning, and downloading of related sub-module components in the repository.
@@ -45,28 +45,38 @@ git submodule update
 
 ----
 
-### Development
+## Development
 
-Want to support the development? Buy me a coffee <3
-**Bitcoin**: [3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx](https://blockstream.info/address/3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx)
+Please note that this is a community-driven project that I work on in my free time. Don't expect any issues to be fixed or new features to be added quickly.
 
-How about contributing instead? Great! Fork it, create pull request! Its all free! 
-> p.s. This is purely community driven & at my free time, please don't expect me to fix things for you immediately.
+Want to support the development?
 
-##### Third party libraries
+**BTC**: [3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx](https://blockstream.info/address/3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx)
 
-##### MapleLib2 by haha01haha01;
- - based on MapleLib by Snow;
- - based on WzLib by JonyLeeson;
- - based on information from Fiel\Koolk.
+Would you like to contribute to this project instead? If so, you can fork the project and create a pull request. It's all free!
 
 
-License
 ----
+
+![Harepacker](https://user-images.githubusercontent.com/4586194/109911770-a7d45e80-7ce5-11eb-9843-e4414bb6016f.png)
+
+![Image preview](https://user-images.githubusercontent.com/4586194/109911721-85dadc00-7ce5-11eb-9111-4e2bfdbf5551.png)
+
+![Spine image preview](https://user-images.githubusercontent.com/4586194/109911553-43b19a80-7ce5-11eb-8495-206a9c79d76f.png)
+
+![Limen: Where the world ends](https://i.imgur.com/oUYaRMt.png)
+
+![Rainbow Street Amherst](https://i.imgur.com/A1U0Hhg.jpg)
+
+![N|Solid](https://imgur.com/download/SrS8Lw8/) 
+
+
+----
+## License
 
 MIT
 ```
-Copyright (c) 2018~2021, LastBattle https://github.com/lastbattle
+Copyright (c) 2018~2023, LastBattle https://github.com/lastbattle
 Copyright (c) 2010~2013, haha01haha http://forum.ragezone.com/f701/release-universal-harepacker-version-892005/
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

@@ -55,49 +55,52 @@
   <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
-    <None Include="WzFiles\TamingMob_000_GMS_237.wz">
+    <None Include="WzFiles\Common\TamingMob_000_GMS_237.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_000_SEA218.wz">
+    <None Include="WzFiles\Common\TamingMob_000_SEA218.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_SEA_212.wz">
+    <None Include="WzFiles\Common\TamingMob_SEA_212.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_ThaiMS_3.wz">
+    <None Include="WzFiles\Common\TamingMob_ThaiMS_3.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_SEA_160.wz">
+    <None Include="WzFiles\Common\TamingMob_SEA_160.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_SEA_135.wz">
+    <None Include="WzFiles\Common\TamingMob_SEA_135.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_146.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_146.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_176.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_176.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_87.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_87.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_75.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_75.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_TMS_113.wz">
+    <None Include="WzFiles\Common\TamingMob_TMS_113.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_95.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_95.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_GMS_230.wz">
+    <None Include="WzFiles\Common\TamingMob_GMS_230.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_000_KMS_359.wz">
+    <None Include="WzFiles\Common\TamingMob_000_KMS_359.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Include="WzFiles\TamingMob_SEA_211.wz">
+    <None Include="WzFiles\Common\TamingMob_SEA_211.wz">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Include="WzFiles\Hotfix\Data.wz">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -111,6 +114,7 @@
       <Name>MapleLib</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">

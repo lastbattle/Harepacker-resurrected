@@ -22,6 +22,7 @@ using System.Diagnostics;
 using MapleLib.PacketLib;
 using MapleLib.WzLib.WzStructure.Enums;
 using MapleLib.WzLib.WzProperties;
+using System.Linq;
 
 namespace MapleLib.WzLib
 {
@@ -546,7 +547,8 @@ namespace MapleLib.WzLib
         /// </summary>
         public void ClearImages()
         {
-            foreach (WzImage img in images) img.Parent = null;
+            foreach (WzImage img in images) 
+                img.Parent = null;
             images.Clear();
         }
 
@@ -555,7 +557,8 @@ namespace MapleLib.WzLib
         /// </summary>
         public void ClearDirectories()
         {
-            foreach (WzDirectory dir in subDirs) dir.Parent = null;
+            foreach (WzDirectory dir in subDirs) 
+                dir.Parent = null;
             subDirs.Clear();
         }
 
@@ -566,10 +569,8 @@ namespace MapleLib.WzLib
         /// <returns>The wz image that has the specified name or null if none was found</returns>
         public WzImage GetImageByName(string name)
         {
-            foreach (WzImage wzI in images)
-                if (wzI.Name.ToLower() == name.ToLower())
-                    return wzI;
-            return null;
+            // Find the first WzImage with a matching name (case-insensitive)
+            return images.FirstOrDefault(wzI => wzI.Name.ToLower() == name.ToLower());
         }
 
         /// <summary>
@@ -579,10 +580,8 @@ namespace MapleLib.WzLib
         /// <returns>The wz directory that has the specified name or null if none was found</returns>
         public WzDirectory GetDirectoryByName(string name)
         {
-            foreach (WzDirectory dir in subDirs)
-                if (dir.Name.ToLower() == name.ToLower())
-                    return dir;
-            return null;
+            // Find the first WzDirectory with a matching name (case-insensitive)
+            return subDirs.FirstOrDefault(dir => dir.Name.ToLower() == name.ToLower());
         }
 
         /// <summary>

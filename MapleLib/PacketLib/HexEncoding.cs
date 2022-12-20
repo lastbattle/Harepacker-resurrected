@@ -31,16 +31,12 @@ namespace MapleLib.PacketLib
 		/// <returns>Char is a hex digit</returns>
 		public static bool IsHexDigit(Char c)
 		{
-			int numChar;
 			int numA = Convert.ToInt32('A');
 			int num1 = Convert.ToInt32('0');
 			c = Char.ToUpper(c);
-			numChar = Convert.ToInt32(c);
-			if (numChar >= numA && numChar < (numA + 6))
-				return true;
-			if (numChar >= num1 && numChar < (num1 + 10))
-				return true;
-			return false;
+			int numChar = Convert.ToInt32(c);
+
+			return (numChar >= numA && numChar < (numA + 6)) || (numChar >= num1 && numChar < (num1 + 10));
 		}
 
 		/// <summary>
@@ -84,9 +80,9 @@ namespace MapleLib.PacketLib
 			int j = 0;
 			for (int i = 0; i < bytes.Length; i++)
 			{
-				hex = new String(new Char[] { newString[j], newString[j + 1] });
+				hex = new string(new Char[] { newString[j], newString[j + 1] });
 				bytes[i] = HexToByte(hex);
-				j = j + 2;
+				j += 2;
 			}
 			return bytes;
 		}
@@ -96,22 +92,15 @@ namespace MapleLib.PacketLib
 		/// </summary>
 		/// <param name="bytes">Bytes to convert to ASCII</param>
 		/// <returns>The byte array as an ASCII string</returns>
-		public static String ToStringFromAscii(byte[] bytes)
-		{
-			char[] ret = new char[bytes.Length];
-			for (int x = 0; x < bytes.Length; x++)
-			{
-				if (bytes[x] < 32 && bytes[x] >= 0)
-				{
-					ret[x] = '.';
-				}
-				else
-				{
-					int chr = ((short)bytes[x]) & 0xFF;
-					ret[x] = (char)chr;
-				}
-			}
-			return new String(ret);
-		}
-	}
+        public static string ToStringFromAscii(byte[] bytes)
+        {
+            char[] ret = new char[bytes.Length];
+            for (int x = 0; x < bytes.Length; x++)
+            {
+                // Use a ternary operator to avoid an if statement
+                ret[x] = (bytes[x] < 32 && bytes[x] >= 0) ? '.' : (char)((short)bytes[x] & 0xFF);
+            }
+            return new string(ret);
+        }
+    }
 }

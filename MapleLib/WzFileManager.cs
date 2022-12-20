@@ -111,34 +111,16 @@ namespace MapleLib
             if (!Directory.Exists(baseDirectoryPath))
                 throw new Exception("Non-existent directory provided.");
 
-            //DirectoryInfo baseDirectoryInfo = new DirectoryInfo(directoryPath);
-            bool bDirectoryContainsDataDir = Directory.Exists(Path.Combine(baseDirectoryPath, "Data"));
+            string dataDirectoryPath = Path.Combine(baseDirectoryPath, "Data");
+            bool bDirectoryContainsDataDir = Directory.Exists(dataDirectoryPath);
 
-            int nNumWzFiles = 0;
-            int nNumWzFilesInDataDir = 0;
-
-            foreach (string wzFilePath in Directory.EnumerateFileSystemEntries(baseDirectoryPath, "*.wz", SearchOption.AllDirectories))
-            {
-                FileAttributes attr = File.GetAttributes(wzFilePath);
-                if (attr.HasFlag(FileAttributes.Directory)) // exclude directories, only want the files.wz
-                    continue;
-
-                nNumWzFiles++;
-
-                FileInfo fileInfo = new FileInfo(wzFilePath);
-                string fileDirectory = fileInfo.Directory.FullName;
-                string fileDirectoryExcBase = fileDirectory.Replace(baseDirectoryPath + Path.DirectorySeparatorChar, "").Trim();
-
-                string[] wzFileDirectories = fileDirectoryExcBase.Split(Path.DirectorySeparatorChar); // get the directory of this wz file
-                if (wzFileDirectories.Length > 0)
-                {
-                    if (wzFileDirectories[0] == "Data")
-                        nNumWzFilesInDataDir++;
-                }
-            }
             if (bDirectoryContainsDataDir)
             {
-                if (nNumWzFiles > 20 && nNumWzFilesInDataDir > 20)
+                // Use a regular expression to search for .wz files in the Data directory
+                string searchPattern = @"*.wz";
+                int nNumWzFilesInDataDir = Directory.EnumerateFileSystemEntries(dataDirectoryPath, searchPattern, SearchOption.AllDirectories).Count();
+
+                if (nNumWzFilesInDataDir > 40)
                     return true;
             }
 
@@ -157,25 +139,25 @@ namespace MapleLib
             {
                 // parse through "Data" directory and iterate through every folder
                 string baseDir = WzBaseDirectory;
-                foreach (string dir in Directory.EnumerateDirectories(baseDir, "*", SearchOption.AllDirectories))
-                {
-                    string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
-                    if (EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == folderName))
-                        continue; // exclude folders
 
+                // Use Where() and Select() to filter and transform the directories
+                var directories = Directory.EnumerateDirectories(baseDir, "*", SearchOption.AllDirectories)
+                                           .Where(dir => !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower()));
+
+                // Iterate over the filtered and transformed directories
+                foreach (string dir in directories)
+                {
+                    //string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
                     //Debug.WriteLine("----");
                     //Debug.WriteLine(dir);
 
                     string[] iniFiles = Directory.GetFiles(dir, "*.ini");
                     if (iniFiles.Length <= 0 || iniFiles.Length > 1)
-                    {
                         throw new Exception(".ini file at the directory '" + dir + "' is missing, or unavailable.");
-                    }
+
                     string iniFile = iniFiles[0];
                     if (!File.Exists(iniFile))
-                    {
                         throw new Exception(".ini file at the directory '" + dir + "' is missing.");
-                    }
                     else
                     {
                         string[] iniFileLines = File.ReadAllLines(iniFile);
@@ -202,13 +184,8 @@ namespace MapleLib
                             if (_wzFilesList.ContainsKey(wzDirectoryNameOfWzFile))
                                 _wzFilesList[wzDirectoryNameOfWzFile].Add(fileName2);
                             else
-                            {
-                                _wzFilesList.Add(wzDirectoryNameOfWzFile,
-                                        new List<string>
-                                        {
-                                            fileName2
-                                        });
-                            }
+                                _wzFilesList.Add(wzDirectoryNameOfWzFile, new List<string> { fileName2 });
+
                             if (!_wzFilesDirectoryList.ContainsKey(fileName2))
                                 _wzFilesDirectoryList.Add(fileName2, dir);
                         }
@@ -217,38 +194,26 @@ namespace MapleLib
             }
             else
             {
-                foreach (string wzFileName in Directory.EnumerateFileSystemEntries(baseDir, "*.wz", SearchOption.AllDirectories))
+                var wzFileNames = Directory.EnumerateFileSystemEntries(baseDir, "*.wz", SearchOption.AllDirectories)
+                    .Where(f => !File.GetAttributes(f).HasFlag(FileAttributes.Directory) // exclude directories
+                                && !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == new DirectoryInfo(Path.GetDirectoryName(f)).Name)); // exclude folders
+                foreach (string wzFileName in wzFileNames)
                 {
-                    FileAttributes attr = File.GetAttributes(wzFileName);
-                    if (attr.HasFlag(FileAttributes.Directory)) // exclude directories, only want the files.wz
-                        continue;
-
-                    string folderName = new DirectoryInfo(System.IO.Path.GetDirectoryName(wzFileName)).Name;
+                    //string folderName = new DirectoryInfo(Path.GetDirectoryName(wzFileName)).Name;
                     string directory = Path.GetDirectoryName(wzFileName);
-
-                    if (EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == folderName))
-                        continue; // exclude folders
 
                     string fileName = Path.GetFileName(wzFileName);
                     string fileName2 = fileName.Replace(".wz", "");
 
                     // Mob2, Mob001, Map001, Map002
                     // remove the numbers to get the base name 'map'
-                    string wzBaseFileName = fileName.Replace(".wz", "");
-                    wzBaseFileName = string.Join("", wzBaseFileName.ToLower().Where(c => char.IsLetter(c)));
-
-                    //Debug.WriteLine(wzFileName);
+                    string wzBaseFileName = new string(fileName2.ToLower().Where(c => char.IsLetter(c)).ToArray());
 
                     if (_wzFilesList.ContainsKey(wzBaseFileName))
                         _wzFilesList[wzBaseFileName].Add(fileName2);
                     else
-                    {
-                        _wzFilesList.Add(wzBaseFileName,
-                                        new List<string>
-                                        {
-                                            fileName2
-                                        });
-                    }
+                        _wzFilesList.Add(wzBaseFileName, new List<string> { fileName2 });
+
                     if (!_wzFilesDirectoryList.ContainsKey(fileName2))
                         _wzFilesDirectoryList.Add(fileName2, directory);
                 }
@@ -518,16 +483,11 @@ namespace MapleLib
         /// <returns></returns>
         public List<WzDirectory> GetWzDirectoriesFromBase(string baseName)
         {
-            List<WzDirectory> dirs = new List<WzDirectory>();
-
-            List<string> nameList = GetWzFileNameListFromBase(baseName);
-            foreach (string name in nameList)
-            {
-                WzDirectory dir = this[name];
-                if (dir != null)
-                    dirs.Add(this[name]);
-            }
-            return dirs;
+            // Use Select() and Where() to transform and filter the WzDirectory list
+            return GetWzFileNameListFromBase(baseName)
+                    .Select(name => this[name])
+                    .Where(dir => dir != null)
+                    .ToList();
         }
 
         /// <summary>
@@ -539,23 +499,14 @@ namespace MapleLib
         public WzObject FindWzImageByName(string baseWzName, string imageName)
         {
             baseWzName = baseWzName.ToLower();
-            
-            List<WzDirectory> wzFiles = GetWzDirectoriesFromBase(baseWzName);
-            foreach (WzDirectory wzFile in wzFiles)
-            {
-                if (wzFile == null)
-                    continue; // hmm?
 
-                //foreach (WzObject obj in wzFile.WzImages)
-                //    Debug.WriteLine(obj.Name);
+            // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+            WzObject image = GetWzDirectoriesFromBase(baseWzName)
+                                .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                                .Select(wzFile => wzFile[imageName])
+                                .FirstOrDefault();
 
-                WzObject image = wzFile[imageName];
-                if (image == null)
-                    continue; // not in this wz
-
-                return image;
-            }
-            return null;
+            return image;
         }
 
         /// <summary>

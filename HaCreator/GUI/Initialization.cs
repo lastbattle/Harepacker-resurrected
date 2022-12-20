@@ -19,7 +19,6 @@ using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzProperties;
 using System.Drawing;
 using HaSharedLibrary.Wz;
-using HaSharedLibrary;
 using MapleLib;
 
 namespace HaCreator.GUI
@@ -68,8 +67,6 @@ namespace HaCreator.GUI
             ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
             string wzPath = pathBox.Text;
 
-            DirectoryInfo di = new DirectoryInfo(wzPath + "\\Data");
-
             if (wzPath == "Select MapleStory Folder")
             {
                 MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -79,38 +76,33 @@ namespace HaCreator.GUI
             {
                 ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
             }
-            WzMapleVersion fileVersion;
-            /* short version = -1;
-             if (versionBox.SelectedIndex != 3)
-             {
-                 string testFile = File.Exists(Path.Combine(wzPath, "Data.wz")) ? "Data.wz" : "Item.wz";
-                 try
-                 {
-                     fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, testFile), out version);
-                 }
-                 catch (Exception ex)
-                 {
-                     HaRepackerLib.Warning.Error("Error initializing " + testFile + " (" + ex.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
-                     return;
-                 }
-             }
-             else
-             {*/
-            fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            //  }
+            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
+            if (InitializeWzFiles(wzPath, fileVersion))
+            {
+                Hide();
+                Application.DoEvents();
+                editor = new HaEditor();
+                editor.ShowDialog();
 
-            InitializeWzFiles(wzPath, fileVersion);
-
-            Hide();
-            Application.DoEvents();
-            editor = new HaEditor();
-
-            editor.ShowDialog();
-            Application.Exit();
+                Application.Exit();
+            }
         }
 
-        private void InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
+        /// <summary>
+        /// Initialise the WZ files with the provided folder path
+        /// </summary>
+        /// <param name="wzPath"></param>
+        /// <param name="fileVersion"></param>
+        /// <returns></returns>
+        private bool InitializeWzFiles(string wzPath, WzMapleVersion fileVersion)
         {
+            // Check if directory exist
+            if (!Directory.Exists(wzPath))
+            {
+                MessageBox.Show(string.Format(Properties.Resources.Initialization_Error_MSDirectoryNotExist, wzPath), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+
             if (Program.WzManager != null)
             {
                 Program.WzManager.Dispose();
@@ -139,7 +131,7 @@ namespace HaCreator.GUI
                 catch (Exception e)
                 {
                     MessageBox.Show("Error initializing data.wz (" + e.Message + ").\r\nCheck that the directory is valid and the file is not in use.");
-                    return;
+                    return false;
                 }
 
                 ExtractStringWzMaps();
@@ -264,6 +256,7 @@ namespace HaCreator.GUI
                     Program.WzManager.LoadWzFile(uiWzFileNames, _wzMapleVersion);
                 }
             }
+            return true;
         }
 
         private void UpdateUI_CurrentLoadingWzFile(string fileName)
@@ -340,9 +333,12 @@ namespace HaCreator.GUI
             // This function iterates over all maps in the game and verifies that we recognize all their props
             // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
             string wzPath = pathBox.Text;
-            short version = -1;
-            WzMapleVersion fileVersion = WzTool.DetectMapleVersion(Path.Combine(wzPath, "Item.wz"), out version);
-            InitializeWzFiles(wzPath, fileVersion);
+
+            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
+            if (!InitializeWzFiles(wzPath, fileVersion))
+            {
+                return;
+            }
 
             MultiBoard mb = new MultiBoard();
             Board mapBoard = new Board(

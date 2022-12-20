@@ -43,12 +43,13 @@ namespace HaRepacker.GUI
             MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
 
             this.wzNode = wzNode;
-            if (wzNode.Tag is WzImage)
+            if (wzNode.Tag is WzImage) // Data.wz hotfix file
             {
                 this.wzImg = (WzImage)wzNode.Tag;
                 this.IsRegularWzFile = false;
 
-                versionBox.Enabled = false;
+                versionBox.Enabled = false; // disable, not necessary
+                checkBox_64BitFile.Enabled = false; // disable, not necessary
 
             }
             else
@@ -82,7 +83,8 @@ namespace HaRepacker.GUI
                 { // Data.wz uses BMS encryption... no sepcific version indicated
                     encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(WzMapleVersion.BMS);
                 }
-            } finally
+            }
+            finally
             {
                 bIsLoading = false;
             }
@@ -122,7 +124,8 @@ namespace HaRepacker.GUI
             {
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
-            } else
+            }
+            else
             {
                 MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
@@ -152,28 +155,27 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
-                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked;
+                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
                 WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
                 if (this.IsRegularWzFile)
                 {
-                    if (wzf is WzFile file && wzf.MapleVersion != wzMapleVersionSelected)
-                        PrepareAllImgs(file.WzDirectory);
 
-                    wzf.MapleVersion = wzMapleVersionSelected;
-                    if (wzf is WzFile file1)
+                    if (wzf.MapleVersion != wzMapleVersionSelected)
                     {
-                        file1.Version = (short)versionBox.Value;
+                        PrepareAllImgs(wzf.WzDirectory);
                     }
+                    wzf.Version = (short)versionBox.Value;
+                    wzf.MapleVersion = wzMapleVersionSelected;
 
                     if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
                     {
                         wzf.SaveToDisk(dialog.FileName + "$tmp", bSaveAs64BitWzFile, wzMapleVersionSelected);
-                        wzNode.DeleteWzNode();
                         try
                         {
                             File.Delete(dialog.FileName);
                             File.Move(dialog.FileName + "$tmp", dialog.FileName);
-                        }catch(IOException ex)
+                        }
+                        catch (IOException ex)
                         {
                             MessageBox.Show("Handle error overwriting WZ file", HaRepacker.Properties.Resources.Error);
                         }
@@ -181,10 +183,11 @@ namespace HaRepacker.GUI
                     else
                     {
                         wzf.SaveToDisk(dialog.FileName, bSaveAs64BitWzFile, wzMapleVersionSelected);
-                        wzNode.DeleteWzNode();
                     }
+                    _mainPanel.MainForm.UnloadWzFile(wzf);
 
                     // Reload the new file
+                    var loadedFiles = Program.WzFileManager.WzFileList;
                     WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
                     if (loadedWzFile != null)
                     {
@@ -218,7 +221,7 @@ namespace HaRepacker.GUI
                         {
                             Debug.WriteLine(exp); // nvm, dont show to user
                         }
-                        wzNode.DeleteWzNode();
+                        wzNode.DeleteWzNode(); // this is a WzImage, and cannot be unloaded by _mainPanel.MainForm.UnloadWzFile
                     }
                     catch (UnauthorizedAccessException)
                     {

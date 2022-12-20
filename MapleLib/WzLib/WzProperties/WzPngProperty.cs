@@ -27,6 +27,7 @@ using System.Runtime.InteropServices;
 using MapleLib.Converters;
 using MapleLib.WzLib.Util;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Graphics.PackedVector;
 
 namespace MapleLib.WzLib.WzProperties
 {
@@ -546,6 +547,7 @@ namespace MapleLib.WzLib.WzProperties
             const int rgb565_mask_r = 0xf800;
             const int rgb565_mask_g = 0x07e0;
             const int rgb565_mask_b = 0x001f;
+            
             int r = (val & rgb565_mask_r) >> 11;
             int g = (val & rgb565_mask_g) >> 5;
             int b = (val & rgb565_mask_b);
@@ -556,24 +558,45 @@ namespace MapleLib.WzLib.WzProperties
             return c;
         }
 
+        /// <summary>
+        /// For debugging: an example of this image may be found at "Effect.wz\\5skill.img\\character_delayed\\0"
+        /// </summary>
+        /// <param name="rawData"></param>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <param name="bmp"></param>
+        /// <param name="bmpData"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void DecompressImage_PixelDataBgra4444(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
+        public unsafe static void DecompressImage_PixelDataBgra4444(byte[] rawData, int width, int height, Bitmap bmp, BitmapData bmpData)
         {
             int uncompressedSize = width * height * 2;
             byte[] decoded = new byte[uncompressedSize * 2];
 
-            for (int i = 0; i < uncompressedSize; i++)
+            // Declare a pointer to the first element of the rawData array
+            // This allows us to directly access the memory of the rawData array
+            // without having to access it through the array indexer, which is slower
+            fixed (byte* pRawData = rawData)
             {
-                byte byteAtPosition = rawData[i];
+                // Declare a pointer to the first element of the decoded array
+                fixed (byte* pDecoded = decoded)
+                {
+                    // Iterate over the elements of the rawData array using the pointer
+                    for (int i = 0; i < uncompressedSize; i++)
+                    {
+                        byte byteAtPosition = *(pRawData + i);
 
-                int lo = byteAtPosition & 0x0F;
-                byte b = (byte)(lo | (lo << 4));
-                decoded[i * 2] = b;
+                        int lo = byteAtPosition & 0x0F;
+                        byte b = (byte)(lo | (lo << 4));
+                        *(pDecoded + i * 2) = b;
 
-                int hi = byteAtPosition & 0xF0;
-                byte g = (byte)(hi | (hi >> 4));
-                decoded[i * 2 + 1] = g;
+                        int hi = byteAtPosition & 0xF0;
+                        byte g = (byte)(hi | (hi >> 4));
+                        *(pDecoded + i * 2 + 1) = g;
+                    }
+                }
             }
+
+            // Copy the decoded data to the bitmap using a pointer
             Marshal.Copy(decoded, 0, bmpData.Scan0, decoded.Length);
             bmp.UnlockBits(bmpData);
         }
@@ -600,6 +623,7 @@ namespace MapleLib.WzLib.WzProperties
                 Color[] colorTable = new Color[4];
                 int[] colorIdxTable = new int[16];
                 byte[] alphaTable = new byte[16];
+                
                 for (int y = 0; y < height; y += 4)
                 {
                     for (int x = 0; x < width; x += 4)
@@ -844,6 +868,7 @@ namespace MapleLib.WzLib.WzProperties
             format2 = 0;
             width = bmp.Width;
             height = bmp.Height;
+            
             //byte[] bmpBytes = bmp.BitmapToBytes();
             /* if (SquishPNGWrapper.CheckAndLoadLibrary())
                         {
@@ -852,17 +877,23 @@ namespace MapleLib.WzLib.WzProperties
                         }
                         else
                         {*/
-            int curPos = 0;
-            for (int i = 0; i < height; i++)
+            unsafe
             {
-                for (int j = 0; j < width; j++)
+                fixed (byte* pBuf = buf)
                 {
-                    Color curPixel = bmp.GetPixel(j, i);
-                    buf[curPos] = curPixel.B;
-                    buf[curPos + 1] = curPixel.G;
-                    buf[curPos + 2] = curPixel.R;
-                    buf[curPos + 3] = curPixel.A;
-                    curPos += 4;
+                    byte* pCurPixel = pBuf;
+                    for (int i = 0; i < height; i++)
+                    {
+                        for (int j = 0; j < width; j++)
+                        {
+                            Color curPixel = bmp.GetPixel(j, i);
+                            *pCurPixel = curPixel.B;
+                            *(pCurPixel + 1) = curPixel.G;
+                            *(pCurPixel + 2) = curPixel.R;
+                            *(pCurPixel + 3) = curPixel.A;
+                            pCurPixel += 4;
+                        }
+                    }
                 }
             }
             compressedImageBytes = Compress(buf);

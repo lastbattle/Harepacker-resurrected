@@ -14,6 +14,8 @@
  * You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
+using System.Numerics;
+
 namespace MapleLib.MapleCryptoLib
 {
 	/// <summary>
@@ -106,40 +108,34 @@ namespace MapleLib.MapleCryptoLib
 			}
 		}
 
-		/// <summary>
-		/// Rolls a byte left
-		/// </summary>
-		/// <param name="val">input byte to roll</param>
-		/// <param name="num">amount of bits to roll</param>
-		/// <returns>The left rolled byte</returns>
-		public static byte rol(byte val, int num)
-		{
-			int highbit;
-			for (int i = 0; i < num; i++)
-			{
-				highbit = ((val & 0x80) != 0 ? 1 : 0);
-				val <<= 1;
-				val |= (byte)highbit;
-			}
-			return val;
-		}
+        /// <summary>
+        /// Rolls a byte left
+        /// </summary>
+        /// <param name="val">input byte to roll</param>
+        /// <param name="num">amount of bits to roll</param>
+        /// <returns>The left rolled byte</returns>
+        public static byte rol(byte val, int num)
+        {
+            for (int i = 0; i < num; i++)
+            {
+                val = (byte)((val << 1) | ((val >> 7) & 1));
+            }
+            return val;
+        }
 
-		/// <summary>
-		/// Rolls a byte right
-		/// </summary>
-		/// <param name="val">input byte to roll</param>
-		/// <param name="num">amount of bits to roll</param>
-		/// <returns>The right rolled byte</returns>
-		public static byte ror(byte val, int num)
-		{
-			int lowbit;
-			for (int i = 0; i < num; i++)
-			{
-				lowbit = ((val & 1) != 0 ? 1 : 0);
-				val >>= 1;
-				val |= (byte)(lowbit << 7);
-			}
-			return val;
-		}
-	}
+        /// <summary>
+        /// Rolls a byte right
+        /// </summary>
+        /// <param name="val">input byte to roll</param>
+        /// <param name="num">amount of bits to roll</param>
+        /// <returns>The right rolled byte</returns>
+        public static byte ror(byte val, int num)
+        {
+            for (int i = 0; i < num; i++)
+            {
+                val = (byte)((val >> 1) | ((val & 1) << 7));
+            }
+            return val;
+        }
+    }
 }
