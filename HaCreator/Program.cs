@@ -95,7 +95,10 @@ namespace HaCreator
             {
                 Application.Restart();
             }
-            WzManager.Dispose();
+            if (WzManager != null)  // doesnt initialise on load until WZ files are loaded via Initialization.xaml.cs
+            {
+                WzManager.Dispose();
+            }
         }
 
         /// <summary>

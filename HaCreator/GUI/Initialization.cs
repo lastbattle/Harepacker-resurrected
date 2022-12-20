@@ -20,6 +20,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Drawing;
 using HaSharedLibrary.Wz;
 using MapleLib;
+using System.Windows.Shapes;
 
 namespace HaCreator.GUI
 {
@@ -72,9 +73,9 @@ namespace HaCreator.GUI
                 MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            if (!ApplicationSettings.MapleFolder.Contains(wzPath) && !IsPathCommon(wzPath))
+            if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
             {
-                ApplicationSettings.MapleFolder = ApplicationSettings.MapleFolder == "" ? wzPath : (ApplicationSettings.MapleFolder + "," + wzPath);
+                ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
             }
             WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
             if (InitializeWzFiles(wzPath, fileVersion))
@@ -275,14 +276,17 @@ namespace HaCreator.GUI
             versionBox.SelectedIndex = 0;
             try
             {
-                string[] paths = ApplicationSettings.MapleFolder.Split(",".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-                foreach (string x in paths)
+                string[] paths = ApplicationSettings.MapleFoldersList.Split(",".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
+                foreach (string path in paths)
                 {
-                    pathBox.Items.Add(x);
+                    if (!Directory.Exists(path)) // check if the old path actually exist before adding it to the combobox
+                        continue;
+
+                    pathBox.Items.Add(path);
                 }
-                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
+                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY) // default path list
                 {
-                    if (Directory.Exists(path))
+                    if (Directory.Exists(path)) 
                     {
                         pathBox.Items.Add(path);
                     }
