@@ -107,7 +107,6 @@ namespace MapleLib.WzLib
         public override void Dispose()
         {
             name = null;
-            reader = null;
             if (properties != null)
             {
                 foreach (WzImageProperty prop in properties)
@@ -116,6 +115,12 @@ namespace MapleLib.WzLib
                 }
                 properties.Clear();
                 properties = null;
+            }
+            if (reader != null)
+            {
+                reader.Close();
+                reader.Dispose();
+                reader = null;
             }
         }
         #endregion
