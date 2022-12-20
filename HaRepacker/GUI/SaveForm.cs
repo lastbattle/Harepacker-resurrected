@@ -43,12 +43,13 @@ namespace HaRepacker.GUI
             MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
 
             this.wzNode = wzNode;
-            if (wzNode.Tag is WzImage)
+            if (wzNode.Tag is WzImage) // Data.wz hotfix file
             {
                 this.wzImg = (WzImage)wzNode.Tag;
                 this.IsRegularWzFile = false;
 
-                versionBox.Enabled = false;
+                versionBox.Enabled = false; // disable, not necessary
+                checkBox_64BitFile.Enabled = false; // disable, not necessary
 
             }
             else
@@ -154,7 +155,7 @@ namespace HaRepacker.GUI
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
-                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked;
+                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
                 WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
                 if (this.IsRegularWzFile)
                 {
