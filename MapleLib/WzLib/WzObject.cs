@@ -54,19 +54,21 @@ namespace MapleLib.WzLib
         {
             get
             {
-                if (this is WzFile)
+                WzObject wzObject = this;
+                
+                if (wzObject is WzFile)
                 {
                     return ((WzFile)this)[name];
                 } 
-                else if (this is WzDirectory)
+                else if (wzObject is WzDirectory)
                 {
                     return ((WzDirectory)this)[name];
                 }
-                else if (this is WzImage)
+                else if (wzObject is WzImage)
                 {
                     return ((WzImage)this)[name];
                 }
-                else if (this is WzImageProperty)
+                else if (wzObject is WzImageProperty)
                 {
                     return ((WzImageProperty)this)[name];
                 }
@@ -99,7 +101,9 @@ namespace MapleLib.WzLib
         {
             get
             {
-                if (this is WzFile) return ((WzFile)this).WzDirectory.Name;
+                if (this is WzFile file) 
+                    return file.WzDirectory.Name;
+                
                 string result = this.Name;
                 WzObject currObj = this;
                 while (currObj.Parent != null)

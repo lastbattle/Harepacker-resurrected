@@ -41,7 +41,7 @@ namespace MapleLib.WzLib.Serialization
         public int Total { get { return total; } }
         public int Current { get { return curr; } }
 
-        protected static void createDirSafe(ref string path)
+        protected static void CreateDirSafe(ref string path)
         {
             if (path.Substring(path.Length - 1, 1) == @"\")
                 path = path.Substring(0, path.Length - 1);
@@ -56,8 +56,8 @@ namespace MapleLib.WzLib.Serialization
             Directory.CreateDirectory(path);
         }
 
-        private static string regexSearch = ":" + new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
-        private static Regex regex_invalidPath = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
+        private readonly static string regexSearch = ":" + new string(Path.GetInvalidFileNameChars()) + new string(Path.GetInvalidPathChars());
+        private readonly static Regex regex_invalidPath = new Regex(string.Format("[{0}]", Regex.Escape(regexSearch)));
         /// <summary>
         /// Escapes invalid file name and paths (if nexon uses any illegal character that causes issue during saving)
         /// </summary>
@@ -609,7 +609,7 @@ namespace MapleLib.WzLib.Serialization
             curr = 0;
 
             if (!Directory.Exists(outPath))
-                WzSerializer.createDirSafe(ref outPath);
+                WzSerializer.CreateDirSafe(ref outPath);
 
             if (outPath.Substring(outPath.Length - 1, 1) != @"\")
             {
@@ -718,7 +718,7 @@ namespace MapleLib.WzLib.Serialization
             this.outPath = outPath;
             if (!Directory.Exists(outPath))
             {
-                WzSerializer.createDirSafe(ref outPath);
+                WzSerializer.CreateDirSafe(ref outPath);
             }
 
             if (outPath.Substring(outPath.Length - 1, 1) != @"\")
@@ -908,7 +908,7 @@ namespace MapleLib.WzLib.Serialization
         private void exportDirInternal(WzDirectory dir, string path)
         {
             if (!Directory.Exists(path))
-                createDirSafe(ref path);
+                CreateDirSafe(ref path);
 
             if (path.Substring(path.Length - 1) != @"\")
                 path += @"\";
@@ -979,7 +979,7 @@ namespace MapleLib.WzLib.Serialization
         private void exportDirXmlInternal(WzDirectory dir, string path)
         {
             if (!Directory.Exists(path))
-                createDirSafe(ref path);
+                CreateDirSafe(ref path);
 
             if (path.Substring(path.Length - 1) != @"\")
                 path += @"\";

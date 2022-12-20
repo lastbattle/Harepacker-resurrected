@@ -245,6 +245,12 @@ namespace MapleLib.WzLib
             // it can be any number if the client is 64-bit. Assigning 777 is just for convenience when calculating the versionHash.
             this.wzVersionHeader = this.wz_withEncryptVersionHeader ? reader.ReadUInt16() : wzVersionHeader64bit_start;
 
+            Debug.WriteLine("----------------------------------------");
+            Debug.WriteLine(string.Format("Read Wz File {0}", this.Name));
+            Debug.WriteLine(string.Format("wz_withEncryptVersionHeader: {0}", wz_withEncryptVersionHeader));
+            Debug.WriteLine(string.Format("wzVersionHeader: {0}", wzVersionHeader));
+            Debug.WriteLine("----------------------------------------");
+
             if (mapleStoryPatchVersion == -1)
             {
                 // for 64-bit client, return immediately if version 777 works correctly.
@@ -268,6 +274,8 @@ namespace MapleLib.WzLib
 
                 for (int j = maplestoryVerDetectedFromClient; j < MAX_PATCH_VERSION; j++)
                 {
+                    //Debug.WriteLine("Try decode 1 with maplestory ver: " + j);
+
                     if (TryDecodeWithWZVersionNumber(reader, wzVersionHeader, j, lazyParse))
                     {
                         return WzFileParseStatus.Success;
@@ -561,61 +569,72 @@ namespace MapleLib.WzLib
             // MapleStory UserKey
             bool bIsWzUserKeyDefault = MapleCryptoConstants.IsDefaultMapleStoryUserKey(); // check if its saving to the same UserKey.
             // Save WZ as 64-bit wz format
-            bool bWZ_withEncryptVersionHeader = this.wz_withEncryptVersionHeader;
+            bool bSaveAs64BitWz = this.wz_withEncryptVersionHeader;
             if (override_saveAs64BitWZ != null)
             {
-                bWZ_withEncryptVersionHeader = (bool)override_saveAs64BitWZ;
+                bSaveAs64BitWz = (bool)override_saveAs64BitWZ;
             }
 
             CreateWZVersionHash();
             wzDir.SetVersionHash(versionHash);
 
-            string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
-            File.Create(tempFile).Close();
-            using (FileStream fs = new FileStream(tempFile, FileMode.Append, FileAccess.Write))
+            Debug.WriteLine("----------------------------------------");
+            Debug.WriteLine(string.Format("Saving Wz File {0}", this.Name));
+            Debug.WriteLine(string.Format("wzVersionHeader: {0}", wzVersionHeader));
+            Debug.WriteLine(string.Format("bSaveAs64BitWz: {0}", bSaveAs64BitWz));
+            Debug.WriteLine("----------------------------------------");
+
+            try
             {
-                wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, bIsWzUserKeyDefault, fs);
+                string tempFile = Path.GetFileNameWithoutExtension(path) + ".TEMP";
+                File.Create(tempFile).Close();
+                using (FileStream fs = new FileStream(tempFile, FileMode.Append, FileAccess.Write))
+                {
+                    wzDir.GenerateDataFile(bIsWzIvSimilar ? null : WzIv, bIsWzUserKeyDefault, fs);
+                }
+
+                WzTool.StringCache.Clear();
+
+                using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
+                {
+                    wzWriter.Hash = versionHash;
+
+                    uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + (!bSaveAs64BitWz ? 2u : 0)));
+                    Header.FSize = totalLen - Header.FStart;
+                    for (int i = 0; i < 4; i++)
+                    {
+                        wzWriter.Write((byte)Header.Ident[i]);
+                    }
+                    wzWriter.Write((long)Header.FSize);
+                    wzWriter.Write(Header.FStart);
+                    wzWriter.WriteNullTerminatedString(Header.Copyright);
+
+                    long extraHeaderLength = Header.FStart - wzWriter.BaseStream.Position;
+                    if (extraHeaderLength > 0)
+                    {
+                        wzWriter.Write(new byte[(int)extraHeaderLength]);
+                    }
+                    if (!bSaveAs64BitWz) // 64 bit doesnt have a version number.
+                        wzWriter.Write((ushort) wzVersionHeader);
+
+                    wzWriter.Header = Header;
+                    wzDir.SaveDirectory(wzWriter);
+                    wzWriter.StringCache.Clear();
+
+                    using (FileStream fs = File.OpenRead(tempFile))
+                    {
+                        wzDir.SaveImages(wzWriter, fs);
+                    }
+                    File.Delete(tempFile);
+
+                    wzWriter.StringCache.Clear();
+                }
             }
-
-            WzTool.StringCache.Clear();
-
-            using (WzBinaryWriter wzWriter = new WzBinaryWriter(File.Create(path), WzIv))
+            finally
             {
-                wzWriter.Hash = versionHash;
-
-                uint totalLen = wzDir.GetImgOffsets(wzDir.GetOffsets(Header.FStart + (bWZ_withEncryptVersionHeader ? 2u: 0)));
-                Header.FSize = totalLen - Header.FStart;
-                for (int i = 0; i < 4; i++)
-                {
-                    wzWriter.Write((byte)Header.Ident[i]);
-                }
-                wzWriter.Write((long)Header.FSize);
-                wzWriter.Write(Header.FStart);
-                wzWriter.WriteNullTerminatedString(Header.Copyright);
-
-                long extraHeaderLength = Header.FStart - wzWriter.BaseStream.Position;
-                if (extraHeaderLength > 0)
-                {
-                    wzWriter.Write(new byte[(int)extraHeaderLength]);
-                }
-                if (bWZ_withEncryptVersionHeader)
-                    wzWriter.Write(wzVersionHeader);
-
-                wzWriter.Header = Header;
-                wzDir.SaveDirectory(wzWriter);
-                wzWriter.StringCache.Clear();
-
-                using (FileStream fs = File.OpenRead(tempFile))
-                {
-                    wzDir.SaveImages(wzWriter, fs);
-                }
-                File.Delete(tempFile);
-
-                wzWriter.StringCache.Clear();
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
         }
 
         public void ExportXml(string path, bool oneFile)
