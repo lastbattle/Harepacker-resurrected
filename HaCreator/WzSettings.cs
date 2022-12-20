@@ -75,7 +75,7 @@ namespace HaCreator
     public static class ApplicationSettings
     {
         public static int MapleVersionIndex = 3;
-        public static string MapleFolder = "";
+        public static string MapleFoldersList = ""; // list of maplestory folder seperated by ','
         public static int MapleFolderIndex = 0;
 
         public static ItemTypes theoreticalVisibleTypes = ItemTypes.All; // These two are marked theoretical because the visible\edited types in effect (Board.VisibleTypes\EditedTypes)
