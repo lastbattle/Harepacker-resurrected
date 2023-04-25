@@ -227,11 +227,13 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="200" />
-                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="5" />
                             <ColumnDefinition Width="105" />
                             <ColumnDefinition Width="105" />
 
-                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="5" />
+                            
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
@@ -239,7 +241,7 @@
                 </ItemsPanelTemplate>
             </StatusBar.ItemsPanel>
 
-            <StatusBarItem>
+            <StatusBarItem Grid.Column="0">
                 <TextBlock x:Name="selectionLabel" Text="Selection Type: None" />
             </StatusBarItem>
 
@@ -255,10 +257,14 @@
             <Separator x:Name="separator" Grid.Column="4" />
 
             <StatusBarItem Grid.Column="5">
+                <TextBlock x:Name="toolStripStatusLabel_debugMode" Width="90" Text="DEBUG MODE"/>
+            </StatusBarItem>
+
+            <StatusBarItem Grid.Column="6">
                 <TextBlock x:Name="toolStripStatusLabel_additionalInfo" Text="-"/>
             </StatusBarItem>
 
-            <StatusBarItem Grid.Column="6" HorizontalAlignment="Right">
+            <StatusBarItem Grid.Column="7" HorizontalAlignment="Right">
                 <TextBlock x:Name="statusBarItemLabel_Others" Text="-" Margin="0,0,30,0"/>
             </StatusBarItem>
         </StatusBar>

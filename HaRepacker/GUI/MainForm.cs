@@ -54,11 +54,6 @@ namespace HaRepacker.GUI
 
             AddTabsInternal("Default");
 
-            // Events
-#if DEBUG
-            debugToolStripMenuItem.Visible = true;
-#endif
-
             // Sets theme color
             SetThemeColor();
 
@@ -130,7 +125,7 @@ namespace HaRepacker.GUI
         }
 
 
-        #region WZ files, Panels & TreeView management
+        #region Load, unload WZ files + Panels & TreeView management
         public void Interop_AddLoadedWzFileToManager(WzFile f)
         {
             InsertWzFileToPanel(f);
@@ -1209,7 +1204,7 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void optionsToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            new OptionsForm(MainPanel).ShowDialog();
+            new OptionsForm().ShowDialog();
         }
 
         /// <summary>
