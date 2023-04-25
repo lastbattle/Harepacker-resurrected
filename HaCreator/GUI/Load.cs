@@ -20,13 +20,15 @@ using HaSharedLibrary.Wz;
 
 namespace HaCreator.GUI
 {
-    public partial class Load : System.Windows.Forms.Form
+    public partial class FieldSelector : System.Windows.Forms.Form
     {
         private readonly MultiBoard multiBoard;
         private readonly System.Windows.Controls.TabControl Tabs;
         private readonly System.Windows.RoutedEventHandler[] rightClickHandler;
 
         private readonly string defaultMapNameFilter;
+
+        private bool _bAutoCloseUponSelection = false;
 
         /// <summary>
         /// 
@@ -35,7 +37,7 @@ namespace HaCreator.GUI
         /// <param name="Tabs"></param>
         /// <param name="rightClickHandler"></param>
         /// <param name="defaultMapNameFilter">The default text to set for the map name filter</param>
-        public Load(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler,
+        public FieldSelector(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler, bool bAutoCloseUponSelection,
             string defaultMapNameFilter = null)
         {
             InitializeComponent();
@@ -44,6 +46,7 @@ namespace HaCreator.GUI
             this.multiBoard = board;
             this.Tabs = Tabs;
             this.rightClickHandler = rightClickHandler;
+            this._bAutoCloseUponSelection = bAutoCloseUponSelection;
             this.defaultMapNameFilter = defaultMapNameFilter;
 
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
@@ -220,7 +223,9 @@ namespace HaCreator.GUI
 
             DialogResult = DialogResult.OK;
             ww.EndWait();
-            Close();
+
+            if (_bAutoCloseUponSelection)
+                Close();
         }
 
         private void MapBrowser_SelectionChanged()

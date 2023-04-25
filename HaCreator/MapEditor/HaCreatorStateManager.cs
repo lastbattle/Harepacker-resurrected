@@ -814,7 +814,9 @@ namespace HaCreator.MapEditor
             {
                 mapNameFilter = ( currentSelectedBoard.MapInfo.id / 10000).ToString(); // shows near-by maps relative to the current map opened in the Board
             }
-            LoadMap(new Load(multiBoard, tabs, MakeRightClickHandler(), mapNameFilter));
+            
+            FieldSelector fieldSelector = new FieldSelector(multiBoard, tabs, MakeRightClickHandler(), false, mapNameFilter); // allow this selector to float above the editor UI.
+            LoadMap(fieldSelector);
         }
 
         /// <summary>
@@ -823,9 +825,9 @@ namespace HaCreator.MapEditor
         /// <param name="tm">To map</param>
         public void LoadMap(int tm)
         {
-            Load load = new Load(multiBoard, tabs, MakeRightClickHandler(), tm.ToString());
+            FieldSelector fieldSelector = new FieldSelector(multiBoard, tabs, MakeRightClickHandler(), false, tm.ToString());
 
-            LoadMap(load);
+            LoadMap(fieldSelector);
         }
 
         /// <summary>
@@ -853,8 +855,7 @@ namespace HaCreator.MapEditor
                 {
                     if (deviceLoadedThisTime)
                     {
-                        if (FirstMapLoaded != null)
-                            FirstMapLoaded.Invoke();
+                        FirstMapLoaded?.Invoke();
                     }
                     multiBoard.SelectedBoard.SelectedPlatform = multiBoard.SelectedBoard.SelectedLayerIndex == -1 ? -1 : multiBoard.SelectedBoard.Layers[multiBoard.SelectedBoard.SelectedLayerIndex].zMList.ElementAt(0);
                     ribbon.SetLayers(multiBoard.SelectedBoard.Layers);

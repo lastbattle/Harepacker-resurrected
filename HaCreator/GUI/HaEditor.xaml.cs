@@ -88,7 +88,8 @@ namespace HaCreator.GUI
 
             if (!hcsm.backupMan.AttemptRestore())
             {
-                hcsm.LoadMap(new Load(multiBoard, tabControl1, hcsm.MakeRightClickHandler()));
+                FieldSelector selector = new FieldSelector(multiBoard, tabControl1, hcsm.MakeRightClickHandler(), true); // first load of a map, get the user to select a map first.
+                hcsm.LoadMap(selector);
             }
         }
 

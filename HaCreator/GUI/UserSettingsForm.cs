@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -69,6 +70,9 @@ namespace HaCreator.GUI
             scrollexpBox.Value = (decimal)UserSettings.ScrollExponentFactor;
             scrollfactBox.Value = (decimal)UserSettings.ScrollFactor;
             movementBox.Value = (decimal)UserSettings.SignificantDistance;
+
+            // API
+            openAI_apiKey_textBox.Text = ApplicationSettings.OpenAI_ApiKey;
         }
 
         public static Color XNAToSystemColor(Microsoft.Xna.Framework.Color color)
@@ -136,7 +140,29 @@ namespace HaCreator.GUI
             UserSettings.ScrollFactor = (double)scrollfactBox.Value;
             UserSettings.SignificantDistance = (float)movementBox.Value;
 
+            // API
+            ApplicationSettings.OpenAI_ApiKey = openAI_apiKey_textBox.Text;
+
             Close();
+        }
+
+        /// <summary>
+        /// OpenAI API Link label
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
+            Process myProcess = new Process();
+
+            try {
+                // true is the default, but it is important not to set it to false
+                myProcess.StartInfo.UseShellExecute = true;
+                myProcess.StartInfo.FileName = ((LinkLabel)sender).Text;
+                myProcess.Start();
+            }
+            catch (Exception ex) {
+                Console.WriteLine(ex.Message);
+            }
         }
     }
 }

@@ -45,6 +45,15 @@ namespace HaRepacker.GUI
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
             this.themeColor__comboBox = new System.Windows.Forms.ComboBox();
             this.label3 = new System.Windows.Forms.Label();
+            this.panel1 = new System.Windows.Forms.Panel();
+            this.panel2 = new System.Windows.Forms.Panel();
+            this.label4 = new System.Windows.Forms.Label();
+            this.label5 = new System.Windows.Forms.Label();
+            this.openAI_apiKey_textBox = new System.Windows.Forms.TextBox();
+            this.label6 = new System.Windows.Forms.Label();
+            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
+            this.panel1.SuspendLayout();
+            this.panel2.SuspendLayout();
             this.SuspendLayout();
             // 
             // sortBox
@@ -139,28 +148,75 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.label3, "label3");
             this.label3.Name = "label3";
             // 
+            // panel1
+            // 
+            this.panel1.Controls.Add(this.label5);
+            this.panel1.Controls.Add(this.sortBox);
+            this.panel1.Controls.Add(this.themeColor__comboBox);
+            this.panel1.Controls.Add(this.label1);
+            this.panel1.Controls.Add(this.label3);
+            this.panel1.Controls.Add(this.lineBreakBox);
+            this.panel1.Controls.Add(this.loadRelated);
+            this.panel1.Controls.Add(this.label2);
+            this.panel1.Controls.Add(this.autoAssociateBox);
+            this.panel1.Controls.Add(this.apngIncompEnable);
+            this.panel1.Controls.Add(this.browse);
+            this.panel1.Controls.Add(this.defXmlFolderEnable);
+            this.panel1.Controls.Add(this.defXmlFolderBox);
+            resources.ApplyResources(this.panel1, "panel1");
+            this.panel1.Name = "panel1";
+            // 
+            // panel2
+            // 
+            this.panel2.Controls.Add(this.linkLabel1);
+            this.panel2.Controls.Add(this.label6);
+            this.panel2.Controls.Add(this.openAI_apiKey_textBox);
+            this.panel2.Controls.Add(this.label4);
+            resources.ApplyResources(this.panel2, "panel2");
+            this.panel2.Name = "panel2";
+            // 
+            // label4
+            // 
+            resources.ApplyResources(this.label4, "label4");
+            this.label4.Name = "label4";
+            // 
+            // label5
+            // 
+            resources.ApplyResources(this.label5, "label5");
+            this.label5.Name = "label5";
+            // 
+            // openAI_apiKey_textBox
+            // 
+            resources.ApplyResources(this.openAI_apiKey_textBox, "openAI_apiKey_textBox");
+            this.openAI_apiKey_textBox.Name = "openAI_apiKey_textBox";
+            // 
+            // label6
+            // 
+            resources.ApplyResources(this.label6, "label6");
+            this.label6.Name = "label6";
+            // 
+            // linkLabel1
+            // 
+            resources.ApplyResources(this.linkLabel1, "linkLabel1");
+            this.linkLabel1.Name = "linkLabel1";
+            this.linkLabel1.TabStop = true;
+            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
+            // 
             // OptionsForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.Controls.Add(this.themeColor__comboBox);
-            this.Controls.Add(this.label3);
-            this.Controls.Add(this.loadRelated);
-            this.Controls.Add(this.autoAssociateBox);
-            this.Controls.Add(this.browse);
-            this.Controls.Add(this.defXmlFolderBox);
-            this.Controls.Add(this.defXmlFolderEnable);
-            this.Controls.Add(this.apngIncompEnable);
-            this.Controls.Add(this.label2);
-            this.Controls.Add(this.lineBreakBox);
-            this.Controls.Add(this.label1);
+            this.Controls.Add(this.panel2);
+            this.Controls.Add(this.panel1);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
-            this.Controls.Add(this.sortBox);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "OptionsForm";
+            this.panel1.ResumeLayout(false);
+            this.panel1.PerformLayout();
+            this.panel2.ResumeLayout(false);
+            this.panel2.PerformLayout();
             this.ResumeLayout(false);
-            this.PerformLayout();
 
         }
 
@@ -181,5 +237,12 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.CheckBox autoAssociateBox;
         private System.Windows.Forms.ComboBox themeColor__comboBox;
         private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.Panel panel1;
+        private System.Windows.Forms.Label label5;
+        private System.Windows.Forms.Panel panel2;
+        private System.Windows.Forms.LinkLabel linkLabel1;
+        private System.Windows.Forms.Label label6;
+        private System.Windows.Forms.TextBox openAI_apiKey_textBox;
+        private System.Windows.Forms.Label label4;
     }
 }
