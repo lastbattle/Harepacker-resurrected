@@ -51,6 +51,15 @@ namespace MapleLib
             private set { }
         }
 
+        private readonly bool _bIsPreBBDataWzFormat;
+        /// <summary>
+        /// Defines if the currently loaded WZ directory are in the pre-BB format with only Data.wz (beta version?)
+        /// </summary>
+        public bool IsPreBBDataWzFormat {
+            get { return _bIsPreBBDataWzFormat; }
+            private set { }
+        }
+
 
         private readonly ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim(); // for '_wzFiles', '_wzFilesUpdated', '_updatedImages', & '_wzDirs'
         private readonly Dictionary<string, WzFile> _wzFiles = new Dictionary<string, WzFile>();
@@ -90,11 +99,13 @@ namespace MapleLib
         /// Constructor to init WzFileManager for HaCreator
         /// </summary>
         /// <param name="directory"></param>
-        /// <param name="_bInitAs64Bit"></param>
-        public WzFileManager(string directory, bool _bInitAs64Bit)
+        /// <param name="bInitAs64Bit"></param>
+        /// <param name="bIsPreBBDataWzFormat"></param>
+        public WzFileManager(string directory, bool bInitAs64Bit, bool bIsPreBBDataWzFormat)
         {
             this.baseDir = directory;
-            this._bInitAs64Bit = _bInitAs64Bit;
+            this._bInitAs64Bit = bInitAs64Bit;
+            this._bIsPreBBDataWzFormat = bIsPreBBDataWzFormat;
 
             fileManager = this;
         }
@@ -103,7 +114,7 @@ namespace MapleLib
         #region Loader
         /// <summary>
         /// Automagically detect if the following directory where MapleStory installation is saved
-        /// is a 64-bit wz directory.
+        /// is a 64-bit wz directory
         /// </summary>
         /// <returns></returns>
         public static bool Detect64BitDirectoryWzFileFormat(string baseDirectoryPath)
@@ -124,6 +135,29 @@ namespace MapleLib
                     return true;
             }
 
+            return false;
+        }
+
+        /// <summary>
+        /// Automagically detect if the following directory where MapleStory installation is saved
+        /// is a pre-bb WZ with only Data.wz
+        /// </summary>
+        /// <returns></returns>
+        public static bool DetectIsPreBBDataWZFormat(string baseDirectoryPath) {
+            if (!Directory.Exists(baseDirectoryPath))
+                throw new Exception("Non-existent directory provided.");
+
+            // Check if the directory contains a "Data.wz" file
+            string dataWzFilePath = Path.Combine(baseDirectoryPath, "Data.wz");
+            bool bDirectoryContainsDataWz = File.Exists(dataWzFilePath);
+            if (bDirectoryContainsDataWz) {
+                string skillWzFilePath = Path.Combine(baseDirectoryPath, "Skill.wz");
+                string stringWzFilePath = Path.Combine(baseDirectoryPath, "String.wz");
+                string characterWzFilePath = Path.Combine(baseDirectoryPath, "Character.wz");
+
+                if (!File.Exists(skillWzFilePath) && !File.Exists(stringWzFilePath) && !File.Exists(characterWzFilePath))
+                    return true;
+            }
             return false;
         }
 
@@ -437,14 +471,6 @@ namespace MapleLib
             get { return new List<WzImage>(this._updatedWzImages).AsReadOnly(); }
             private set { }
         }
-
-        /// <summary>
-        /// data.wz is wildly inconsistent between versions now, just avoid at all costs
-        /// </summary>
-        public bool HasDataFile
-        {
-            get { return false; }//return File.Exists(Path.Combine(baseDir, "Data.wz")); }
-        }
         #endregion
 
         #region Finder
@@ -471,9 +497,16 @@ namespace MapleLib
         /// <returns></returns>
         public List<string> GetWzFileNameListFromBase(string baseName)
         {
-            if (!_wzFilesList.ContainsKey(baseName))
-                return new List<string>(); // return as an empty list if none
-            return _wzFilesList[baseName];
+            if (_bIsPreBBDataWzFormat) {
+                if (!_wzFilesList.ContainsKey("data"))
+                    return new List<string>(); // return as an empty list if none
+                return _wzFilesList["data"];
+            }
+            else {
+                if (!_wzFilesList.ContainsKey(baseName))
+                    return new List<string>(); // return as an empty list if none
+                return _wzFilesList[baseName];
+            }
         }
 
         /// <summary>
@@ -483,11 +516,12 @@ namespace MapleLib
         /// <returns></returns>
         public List<WzDirectory> GetWzDirectoriesFromBase(string baseName)
         {
+            List<string> wzDirs = GetWzFileNameListFromBase(baseName);
             // Use Select() and Where() to transform and filter the WzDirectory list
-            return GetWzFileNameListFromBase(baseName)
-                    .Select(name => this[name])
-                    .Where(dir => dir != null)
-                    .ToList();
+            return wzDirs
+                .Select(name => this[name])
+                .Where(dir => dir != null)
+                .ToList();
         }
 
         /// <summary>
@@ -496,16 +530,24 @@ namespace MapleLib
         /// <param name="baseWzName"></param>
         /// <param name="imageName"></param>
         /// <returns></returns>
-        public WzObject FindWzImageByName(string baseWzName, string imageName)
-        {
+        public WzObject FindWzImageByName(string baseWzName, string imageName) {
             baseWzName = baseWzName.ToLower();
 
-            // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
-            WzObject image = GetWzDirectoriesFromBase(baseWzName)
-                                .Where(wzFile => wzFile != null && wzFile[imageName] != null)
-                                .Select(wzFile => wzFile[imageName])
-                                .FirstOrDefault();
-
+            WzObject image = null;
+            List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
+            if (_bIsPreBBDataWzFormat) {
+                image = dirs
+                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && wzFile[baseWzName][imageName] != null)
+                    .Select(wzFile => wzFile[baseWzName][imageName])
+                    .FirstOrDefault();
+            }
+            else {
+                // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+                image = dirs
+                    .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                    .Select(wzFile => wzFile[imageName])
+                    .FirstOrDefault();
+            }
             return image;
         }
 
@@ -515,8 +557,7 @@ namespace MapleLib
         /// <param name="filePathOrBaseFileName"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private string GetWzFilePath(string filePathOrBaseFileName)
-        {
+        private string GetWzFilePath(string filePathOrBaseFileName) {
             // find the base directory from 'wzFilesList'
             if (!_wzFilesDirectoryList.ContainsKey(filePathOrBaseFileName)) // if the key is not found, it might be a path instead
             {

@@ -254,31 +254,22 @@ namespace HaSharedLibrary.Wz
         public static WzImage FindMapImage(string mapid, WzFileManager fileManager)
         {
             string mapIdNamePadded = WzInfoTools.AddLeadingZeros(mapid, 9) + ".img";
+            string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
+            string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 
-            string mapcat;
-            if (fileManager.Is64Bit)
-                mapcat = mapIdNamePadded.Substring(0, 1);
-            else
-                mapcat = "Map" + mapIdNamePadded.Substring(0, 1);
+            List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase(baseDir);
 
-            if (!fileManager.Is64Bit)
+            foreach (WzDirectory mapWzDir in mapWzDirs) 
             {
-                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map");
-                foreach (WzDirectory mapWzDir in mapWzDirs)
-                {
-                    WzImage mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
-                    if (mapImage != null)
-                        return mapImage;
-                }
-            }
-            else
-            {
-                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map\\map\\map" + mapcat);
-                foreach (WzDirectory mapWzDir in mapWzDirs)
-                {
-                    WzImage mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
-                    if (mapImage != null)
-                        return mapImage;
+                WzImage mapImage;
+
+                if (fileManager.Is64Bit)
+                    mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
+                else 
+                    mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
+
+                if (mapImage != null) {
+                    return mapImage;
                 }
             }
             return null;

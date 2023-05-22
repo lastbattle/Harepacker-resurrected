@@ -28,9 +28,6 @@ namespace HaCreator.GUI
     {
         public HaEditor editor = null;
         
-        private static bool _bIs64BitDirectoryWzFileFormat;
-        public static bool Is64BitDirectoryWzFileFormat { get { return _bIs64BitDirectoryWzFileFormat; } private set { } }
-
         
         private static WzMapleVersion _wzMapleVersion = WzMapleVersion.BMS; // Default to BMS, the enc version to use when decrypting the WZ files.
         public static WzMapleVersion WzMapleVersion
@@ -116,18 +113,19 @@ namespace HaCreator.GUI
 
             _wzMapleVersion = fileVersion; // set version to static vars
 
-            _bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
-            Program.WzManager = new WzFileManager(wzPath, _bIs64BitDirectoryWzFileFormat);
+            bool bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
+            bool bIsPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFormat(wzPath); // set
+            Program.WzManager = new WzFileManager(wzPath, bIs64BitDirectoryWzFileFormat, bIsPreBBDataWzFormat);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz
-            if (Program.WzManager.HasDataFile) //currently always false
+            if (Program.WzManager.IsPreBBDataWzFormat) //currently always false
             {
                 UpdateUI_CurrentLoadingWzFile("Data.wz");
 
                 try
                 {
-                    Program.WzManager.LoadLegacyDataWzFile("data", _wzMapleVersion);
+                    Program.WzManager.LoadLegacyDataWzFile("Data", _wzMapleVersion);
                 }
                 catch (Exception e)
                 {

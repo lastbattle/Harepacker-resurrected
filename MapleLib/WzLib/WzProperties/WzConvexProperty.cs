@@ -83,8 +83,9 @@ namespace MapleLib.WzLib.WzProperties
 		{
 			get
 			{
+                string nameLower = name.ToLower();
                 foreach (WzImageProperty iwp in properties)
-					if (iwp.Name.ToLower() == name.ToLower())
+					if (iwp.Name.ToLower() == nameLower)
 						return iwp;
 				//throw new KeyNotFoundException("A wz property with the specified name was not found");
 				return null;
@@ -93,8 +94,9 @@ namespace MapleLib.WzLib.WzProperties
 
         public WzImageProperty GetProperty(string name)
         {
+			string nameLower = name.ToLower();
             foreach (WzImageProperty iwp in properties)
-                if (iwp.Name.ToLower() == name.ToLower())
+                if (iwp.Name.ToLower() == nameLower)
                     return iwp;
             return null;
         }
@@ -126,8 +128,8 @@ namespace MapleLib.WzLib.WzProperties
 		{
             List<WzExtended> extendedProps = new List<WzExtended>(properties.Count);
             foreach (WzImageProperty prop in properties) 
-				if (prop is WzExtended) 
-					extendedProps.Add((WzExtended)prop);
+				if (prop is WzExtended extended) 
+					extendedProps.Add(extended);
 			writer.WriteStringValue("Shape2D#Convex2D", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);
             writer.WriteCompressedInt(extendedProps.Count);
 
