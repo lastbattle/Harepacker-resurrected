@@ -13,6 +13,7 @@ using System.Xml.Linq;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Text.RegularExpressions;
+using Microsoft.Xna.Framework;
 
 namespace MapleLib
 {
@@ -509,6 +510,7 @@ namespace MapleLib
         /// <summary>
         /// Get the list of sub wz files by its base name ("mob")
         /// i.e 'mob' expands to the list array of files "Mob001", "Mob2"
+        /// exception: returns Data.wz regardless for pre-bb beta maplestory
         /// </summary>
         /// <param name="baseName"></param>
         /// <returns></returns>
@@ -535,10 +537,18 @@ namespace MapleLib
         {
             List<string> wzDirs = GetWzFileNameListFromBase(baseName);
             // Use Select() and Where() to transform and filter the WzDirectory list
-            return wzDirs
-                .Select(name => this[name])
-                .Where(dir => dir != null)
-                .ToList();
+            if (_bIsPreBBDataWzFormat) { 
+                return wzDirs
+                    .Select(name => this["data"][baseName] as WzDirectory)
+                    .Where(dir => dir != null)
+                    .ToList();
+            }
+            else {
+                return wzDirs
+                    .Select(name => this[name])
+                    .Where(dir => dir != null)
+                    .ToList();
+            }
         }
 
         /// <summary>
@@ -550,21 +560,13 @@ namespace MapleLib
         public WzObject FindWzImageByName(string baseWzName, string imageName) {
             baseWzName = baseWzName.ToLower();
 
-            WzObject image = null;
             List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
-            if (_bIsPreBBDataWzFormat) {
-                image = dirs
-                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && (imageName == string.Empty ? true : wzFile[baseWzName][imageName] != null))
-                    .Select(wzFile => (imageName == string.Empty ? wzFile[baseWzName] : wzFile[baseWzName][imageName]))
-                    .FirstOrDefault();
-            }
-            else {
-                // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
-                image = dirs
+            // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+            WzObject image = dirs
                     .Where(wzFile => wzFile != null && wzFile[imageName] != null)
                     .Select(wzFile => wzFile[imageName])
                     .FirstOrDefault();
-            }
+
             return image;
         }
 
@@ -578,19 +580,11 @@ namespace MapleLib
             baseWzName = baseWzName.ToLower();
 
             List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
-            if (_bIsPreBBDataWzFormat) {
-                return dirs
-                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && (imageName == string.Empty ? true : wzFile[baseWzName][imageName] != null))
-                    .Select(wzFile => (imageName == string.Empty ? wzFile[baseWzName] : wzFile[baseWzName][imageName]))
-                    .ToList();
-            }
-            else {
-                // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
-                return dirs
-                    .Where(wzFile => wzFile != null && wzFile[imageName] != null)
-                    .Select(wzFile => wzFile[imageName])
-                    .ToList();
-            }
+            // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+            return dirs
+                .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                .Select(wzFile => wzFile[imageName])
+                .ToList();
         }
 
         /// <summary>

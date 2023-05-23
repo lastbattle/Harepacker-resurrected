@@ -260,28 +260,14 @@ namespace HaSharedLibrary.Wz
             string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
             string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 
-            if (fileManager.IsPreBBDataWzFormat) {
-                WzObject mapObject = fileManager.FindWzImageByName(baseDir, "Map");
+            WzObject mapObject = fileManager.FindWzImageByName(baseDir, fileManager.Is64Bit ? mapIdNamePadded : "Map");
 
-                WzImage mapImage = (WzImage) (mapObject?[mapcat]?[mapIdNamePadded]);
-                return mapImage;
+            if (fileManager.Is64Bit) {
+                return (WzImage)mapObject;
             } else {
-                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase(baseDir);
-
-                foreach (WzDirectory mapWzDir in mapWzDirs) {
-                    WzImage mapImage;
-
-                    if (fileManager.Is64Bit)
-                        mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
-                    else
-                        mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
-
-                    if (mapImage != null) {
-                        return mapImage;
-                    }
-                }
+                WzImage mapImage = (WzImage)mapObject?[mapcat]?[mapIdNamePadded];
+                return mapImage;
             }
-            return null;
         }
 
         public static Color XNAToDrawingColor(XNA.Color c)
