@@ -31,19 +31,14 @@ namespace HaCreator.GUI
         {
             InitializeComponent();
 
-            StringBuilder repackTxt = new StringBuilder("Files to repack:");
-            repackTxt.Append(Environment.NewLine);
-
             foreach (WzFile wzf in Program.WzManager.WzFileList)
             {
                 Program.WzManager.SetWzFileUpdated(wzf);
                 
                 toRepack.Add(wzf);
-                
-                repackTxt.Append(wzf.Name);
-                repackTxt.Append(Environment.NewLine);
+
+                checkedListBox_changedFiles.Items.Add(wzf.Name, CheckState.Checked);
             }
-            infoLabel.Text = repackTxt.ToString();
         }
 
         /// <summary>
@@ -94,9 +89,13 @@ namespace HaCreator.GUI
             MessageBox.Show(data, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
+        /// <summary>
+        /// Change the repack state label
+        /// </summary>
+        /// <param name="state"></param>
         private void ChangeRepackState(string state)
         {
-            stateLabel.Text = state;
+            label_repackState.Text = state;
         }
 
         /// <summary>
@@ -192,6 +191,7 @@ namespace HaCreator.GUI
             { 
                 ChangeRepackState("Saving XMLs..."); 
             });
+
             foreach (WzImage img in Program.WzManager.WzUpdatedImageList)
             {
                 try
@@ -213,6 +213,19 @@ namespace HaCreator.GUI
             // Save WZ Files
             foreach (WzFile wzf in toRepack)
             {
+                // Check if this wz file is selected and can be saved
+                bool bCanSave = false;
+                foreach (string checkedItemName in checkedListBox_changedFiles.CheckedItems) { // no uncheckedItems list :(
+                    if (checkedItemName == wzf.Name) {
+                        bCanSave = true;
+                        break;
+                    }
+                }
+                if (!bCanSave)
+                    continue;
+
+                // end
+
                 Invoke((Action)delegate 
                 { 
                     ChangeRepackState("Saving " + wzf.Name + "..."); 
