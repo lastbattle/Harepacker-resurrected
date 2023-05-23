@@ -60,7 +60,7 @@ namespace HaCreator.Wz
         {
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                string mapId = image.Name;
+                string mapId = image.Name.Replace(".img", string.Empty);
 
                 WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
                 if (mapImage == null)
