@@ -105,7 +105,7 @@ namespace HaCreator.GUI
         /// <param name="bSaveFileInHaCreatorDirectory"></param>
         private void FinishSuccess(bool bSaveFileInHaCreatorDirectory)
         {
-            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "Please replace the files under the MapleStory directory." : "Please replace the files in HaCreator\\Output."));
+            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "" : "Please replace the files in HaCreator\\Output."));
 
             if (!bSaveFileInHaCreatorDirectory)
             {
@@ -249,7 +249,12 @@ namespace HaCreator.GUI
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder
                     {
-                        File.Move(tmpFile, orgFile + "_NewCreated.wz");
+                        // Move the original Wz file to a backup name
+                        string currentDateTimeString = DateTime.Now.ToString().Replace(":", "_").Replace("/", "_");
+                        File.Move(orgFile, orgFile + string.Format("_BAK_{0}.wz", currentDateTimeString));
+
+                        // Move the newly created WZ file as the new file 
+                        File.Move(tmpFile, orgFile);
                     }
                 }
                 catch (Exception e)
