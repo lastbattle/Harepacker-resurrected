@@ -99,12 +99,17 @@ namespace HaCreator.GUI
             }
             MapType type = GetIdBoxMapType();
             MapSaver saver = new MapSaver(board);
+
+            // Regenerate minimap first
+            board.RegenerateMinimap();
+
             if (type == MapType.RegularMap)
             {
                 int newId = int.Parse(idBox.Text);
                 saver.ChangeMapTypeAndID(newId, MapType.RegularMap);
                 saver.SaveMapImage();
                 saver.UpdateMapLists();
+
                 MessageBox.Show("Saved map with ID: " + newId.ToString());
             }
             else
