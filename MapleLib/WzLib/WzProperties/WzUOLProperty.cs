@@ -142,7 +142,8 @@ namespace MapleLib.WzLib.WzProperties
 				{
 					string[] paths = val.Split('/');
                     linkVal = (WzObject)this.parent;
-                    string asdf = parent.FullPath;
+                    string fullPath = parent.FullPath;
+
 					foreach (string path in paths)
 					{
 						if (path == "..")

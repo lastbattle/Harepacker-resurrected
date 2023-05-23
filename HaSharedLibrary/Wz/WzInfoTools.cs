@@ -243,6 +243,9 @@ namespace HaSharedLibrary.Wz
 
         /// <summary>
         /// Finds a map image from the list of Map.wzs
+        /// On pre-bb client (BETA)
+        /// Data.wz/Map/Map/Map1/10000000.img
+        /// 
         /// On pre 64-bit client:
         /// Map.wz/Map/Map1/10000000.img
         /// 
@@ -254,34 +257,17 @@ namespace HaSharedLibrary.Wz
         public static WzImage FindMapImage(string mapid, WzFileManager fileManager)
         {
             string mapIdNamePadded = WzInfoTools.AddLeadingZeros(mapid, 9) + ".img";
+            string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
+            string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 
-            string mapcat;
-            if (fileManager.Is64Bit)
-                mapcat = mapIdNamePadded.Substring(0, 1);
-            else
-                mapcat = "Map" + mapIdNamePadded.Substring(0, 1);
+            WzObject mapObject = fileManager.FindWzImageByName(baseDir, fileManager.Is64Bit ? mapIdNamePadded : "Map");
 
-            if (!fileManager.Is64Bit)
-            {
-                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map");
-                foreach (WzDirectory mapWzDir in mapWzDirs)
-                {
-                    WzImage mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
-                    if (mapImage != null)
-                        return mapImage;
-                }
+            if (fileManager.Is64Bit) {
+                return (WzImage)mapObject;
+            } else {
+                WzImage mapImage = (WzImage)mapObject?[mapcat]?[mapIdNamePadded];
+                return mapImage;
             }
-            else
-            {
-                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase("map\\map\\map" + mapcat);
-                foreach (WzDirectory mapWzDir in mapWzDirs)
-                {
-                    WzImage mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
-                    if (mapImage != null)
-                        return mapImage;
-                }
-            }
-            return null;
         }
 
         public static Color XNAToDrawingColor(XNA.Color c)

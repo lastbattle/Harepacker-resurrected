@@ -13,13 +13,15 @@ using System.Xml.Linq;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Text.RegularExpressions;
+using Microsoft.Xna.Framework;
+using System.Diagnostics;
 
 namespace MapleLib
 {
     public class WzFileManager : IDisposable
     {
         #region Constants
-        private static readonly string[] EXCLUDED_DIRECTORY_FROM_WZ_LIST = { "bak", "backup", "hshield", "blackcipher", "harepacker", "hacreator", "xml" };
+        private static readonly string[] EXCLUDED_DIRECTORY_FROM_WZ_LIST = { "bak", "backup", "original", "xml", "hshield", "blackcipher", "harepacker", "hacreator", "xml" };
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",
@@ -51,10 +53,19 @@ namespace MapleLib
             private set { }
         }
 
+        private readonly bool _bIsPreBBDataWzFormat;
+        /// <summary>
+        /// Defines if the currently loaded WZ directory are in the pre-BB format with only Data.wz (beta version?)
+        /// </summary>
+        public bool IsPreBBDataWzFormat {
+            get { return _bIsPreBBDataWzFormat; }
+            private set { }
+        }
+
 
         private readonly ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim(); // for '_wzFiles', '_wzFilesUpdated', '_updatedImages', & '_wzDirs'
         private readonly Dictionary<string, WzFile> _wzFiles = new Dictionary<string, WzFile>();
-        private readonly Dictionary<string, bool> _wzFilesUpdated = new Dictionary<string, bool>(); // key = filepath, flag for the list of WZ files changed to be saved later via Repack 
+        private readonly Dictionary<WzFile, bool> _wzFilesUpdated = new Dictionary<WzFile, bool>(); // key = WzFile, flag for the list of WZ files changed to be saved later via Repack 
         private readonly HashSet<WzImage> _updatedWzImages = new HashSet<WzImage>();
         private readonly Dictionary<string, WzMainDirectory> _wzDirs = new Dictionary<string, WzMainDirectory>();
 
@@ -90,11 +101,13 @@ namespace MapleLib
         /// Constructor to init WzFileManager for HaCreator
         /// </summary>
         /// <param name="directory"></param>
-        /// <param name="_bInitAs64Bit"></param>
-        public WzFileManager(string directory, bool _bInitAs64Bit)
+        /// <param name="bInitAs64Bit"></param>
+        /// <param name="bIsPreBBDataWzFormat"></param>
+        public WzFileManager(string directory, bool bInitAs64Bit, bool bIsPreBBDataWzFormat)
         {
             this.baseDir = directory;
-            this._bInitAs64Bit = _bInitAs64Bit;
+            this._bInitAs64Bit = bInitAs64Bit;
+            this._bIsPreBBDataWzFormat = bIsPreBBDataWzFormat;
 
             fileManager = this;
         }
@@ -103,7 +116,7 @@ namespace MapleLib
         #region Loader
         /// <summary>
         /// Automagically detect if the following directory where MapleStory installation is saved
-        /// is a 64-bit wz directory.
+        /// is a 64-bit wz directory
         /// </summary>
         /// <returns></returns>
         public static bool Detect64BitDirectoryWzFileFormat(string baseDirectoryPath)
@@ -128,6 +141,46 @@ namespace MapleLib
         }
 
         /// <summary>
+        /// Automagically detect if the following directory where MapleStory installation is saved
+        /// is a pre-bb WZ with only Data.wz
+        /// </summary>
+        /// <returns></returns>
+        public static bool DetectIsPreBBDataWZFormat(string baseDirectoryPath) {
+            if (!Directory.Exists(baseDirectoryPath))
+                throw new Exception("Non-existent directory provided.");
+
+            // Check if the directory contains a "Data.wz" file
+            string dataWzFilePath = Path.Combine(baseDirectoryPath, "Data.wz");
+            bool bDirectoryContainsDataWz = File.Exists(dataWzFilePath);
+            if (bDirectoryContainsDataWz) {
+                // Check if Skill.wz, String.wz, Character.wz exist in the base directory
+                string skillWzFilePath = Path.Combine(baseDirectoryPath, "Skill.wz");
+                string stringWzFilePath = Path.Combine(baseDirectoryPath, "String.wz");
+                string characterWzFilePath = Path.Combine(baseDirectoryPath, "Character.wz");
+
+                bool skillWzExist = File.Exists(skillWzFilePath);
+                bool stringWzExist = File.Exists(stringWzFilePath);
+                bool characterWzExist = File.Exists(characterWzFilePath);
+
+                if (!skillWzExist && !stringWzExist && !characterWzExist) {
+                    // Check if "Data" directory contains a "Character", "Skill", or "String" directory
+                    // to filter for 64-bit wz maplestory
+                    string skillDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "Skill");
+                    string stringDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "String");
+                    string characterDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "Character");
+
+                    bool skillDirExist = Directory.Exists(skillDirectoryPath);
+                    bool stringDirExist = Directory.Exists(stringDirectoryPath);
+                    bool characterDirExist = Directory.Exists(characterDirectoryPath);
+
+                    if (!skillDirExist && !stringDirExist && !characterDirExist)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Builds the list of WZ files in the MapleStory directory (for HaCreator only, not used for HaRepacker)
         /// </summary>
         /// <returns></returns>
@@ -142,14 +195,14 @@ namespace MapleLib
 
                 // Use Where() and Select() to filter and transform the directories
                 var directories = Directory.EnumerateDirectories(baseDir, "*", SearchOption.AllDirectories)
-                                           .Where(dir => !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower()));
+                                           .Where(dir => !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => dir.ToLower().Contains(x)));
 
                 // Iterate over the filtered and transformed directories
                 foreach (string dir in directories)
                 {
-                    //string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
-                    //Debug.WriteLine("----");
-                    //Debug.WriteLine(dir);
+                    string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
+                    Debug.WriteLine("----");
+                    Debug.WriteLine(dir);
 
                     string[] iniFiles = Directory.GetFiles(dir, "*.ini");
                     if (iniFiles.Length <= 0 || iniFiles.Length > 1)
@@ -177,6 +230,9 @@ namespace MapleLib
                             string fileName2 = fileName.Replace(".wz", "");
 
                             string wzDirectoryNameOfWzFile = dir.Replace(baseDir, "").ToLower();
+
+                            if (EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(item => fileName2.ToLower().Contains(item)))
+                                continue; // backup files
 
                             //Debug.WriteLine(partialWzFileName);
                             //Debug.WriteLine(wzDirectoryOfWzFile);
@@ -240,7 +296,7 @@ namespace MapleLib
 
             string fileName_ = baseName.ToLower().Replace(".wz", "");
 
-            if (_wzFilesUpdated.ContainsKey(wzf.FilePath)) // some safety check
+            if (_wzFilesUpdated.ContainsKey(wzf)) // some safety check
                 throw new Exception(string.Format("Wz {0} at the path {1} has already been loaded, and cannot be loaded again. Remove it from memory first.", fileName_, wzf.FilePath));
 
             // write lock to begin adding to the dictionary
@@ -248,7 +304,7 @@ namespace MapleLib
             try
             {
                 _wzFiles[fileName_] = wzf;
-                _wzFilesUpdated[wzf.FilePath] = false;
+                _wzFilesUpdated[wzf] = false;
                 _wzDirs[fileName_] = new WzMainDirectory(wzf);
             }
             finally
@@ -277,7 +333,7 @@ namespace MapleLib
 
             baseName = baseName.ToLower();
 
-            if (_wzFilesUpdated.ContainsKey(wzf.FilePath)) // some safety check
+            if (_wzFilesUpdated.ContainsKey(wzf)) // some safety check
                 throw new Exception(string.Format("Wz file {0} at the path {1} has already been loaded, and cannot be loaded again.", baseName, wzf.FilePath));
 
             // write lock to begin adding to the dictionary
@@ -285,7 +341,7 @@ namespace MapleLib
             try
             {
                 _wzFiles[baseName] = wzf;
-                _wzFilesUpdated[wzf.FilePath] = false;
+                _wzFilesUpdated[wzf] = false;
                 _wzDirs[baseName] = new WzMainDirectory(wzf);
             }
             finally
@@ -341,13 +397,13 @@ namespace MapleLib
         /// <exception cref="Exception"></exception>
         public void SetWzFileUpdated(WzFile wzFile)
         {
-            if (_wzFilesUpdated.ContainsKey(wzFile.FilePath))
+            if (_wzFilesUpdated.ContainsKey(wzFile))
             {
                 // write lock to begin adding to the dictionary
                 _readWriteLock.EnterWriteLock();
                 try
                 {
-                    _wzFilesUpdated[wzFile.FilePath] = true;
+                    _wzFilesUpdated[wzFile] = true;
                 }
                 finally
                 {
@@ -356,6 +412,27 @@ namespace MapleLib
             }
             else
                 throw new Exception("wz file to be flagged do not exist in memory " + wzFile.FilePath);
+        }
+
+        /// <summary>
+        /// Gets the list of updated or changed WZ files.
+        /// </summary>
+        /// <returns></returns>
+        public List<WzFile> GetUpdatedWzFiles() {
+            List<WzFile> updatedWzFiles = new List<WzFile>();
+            // readlock
+            _readWriteLock.EnterReadLock();
+            try {
+                foreach (KeyValuePair<WzFile, bool> wzFileUpdated in _wzFilesUpdated) {
+                    if (wzFileUpdated.Value == true) {
+                        updatedWzFiles.Add(wzFileUpdated.Key);
+                    }
+                }
+            }
+            finally {
+                _readWriteLock.ExitReadLock();
+            }
+            return updatedWzFiles;
         }
 
         /// <summary>
@@ -372,7 +449,7 @@ namespace MapleLib
                 try
                 {
                     _wzFiles.Remove(baseName);
-                    _wzFilesUpdated.Remove(wzFilePath);
+                    _wzFilesUpdated.Remove(wzFile);
                     _wzDirs.Remove(baseName);
                 }
                 finally
@@ -437,14 +514,6 @@ namespace MapleLib
             get { return new List<WzImage>(this._updatedWzImages).AsReadOnly(); }
             private set { }
         }
-
-        /// <summary>
-        /// data.wz is wildly inconsistent between versions now, just avoid at all costs
-        /// </summary>
-        public bool HasDataFile
-        {
-            get { return false; }//return File.Exists(Path.Combine(baseDir, "Data.wz")); }
-        }
         #endregion
 
         #region Finder
@@ -466,14 +535,22 @@ namespace MapleLib
         /// <summary>
         /// Get the list of sub wz files by its base name ("mob")
         /// i.e 'mob' expands to the list array of files "Mob001", "Mob2"
+        /// exception: returns Data.wz regardless for pre-bb beta maplestory
         /// </summary>
         /// <param name="baseName"></param>
         /// <returns></returns>
         public List<string> GetWzFileNameListFromBase(string baseName)
         {
-            if (!_wzFilesList.ContainsKey(baseName))
-                return new List<string>(); // return as an empty list if none
-            return _wzFilesList[baseName];
+            if (_bIsPreBBDataWzFormat) {
+                if (!_wzFilesList.ContainsKey("data"))
+                    return new List<string>(); // return as an empty list if none
+                return _wzFilesList["data"];
+            }
+            else {
+                if (!_wzFilesList.ContainsKey(baseName))
+                    return new List<string>(); // return as an empty list if none
+                return _wzFilesList[baseName];
+            }
         }
 
         /// <summary>
@@ -483,30 +560,56 @@ namespace MapleLib
         /// <returns></returns>
         public List<WzDirectory> GetWzDirectoriesFromBase(string baseName)
         {
+            List<string> wzDirs = GetWzFileNameListFromBase(baseName);
             // Use Select() and Where() to transform and filter the WzDirectory list
-            return GetWzFileNameListFromBase(baseName)
+            if (_bIsPreBBDataWzFormat) { 
+                return wzDirs
+                    .Select(name => this["data"][baseName] as WzDirectory)
+                    .Where(dir => dir != null)
+                    .ToList();
+            }
+            else {
+                return wzDirs
                     .Select(name => this[name])
                     .Where(dir => dir != null)
                     .ToList();
+            }
         }
 
         /// <summary>
         /// Finds the wz image within the multiple wz files (by the base wz name)
         /// </summary>
         /// <param name="baseWzName"></param>
-        /// <param name="imageName"></param>
+        /// <param name="imageName">Matches any if string.empty.</param>
         /// <returns></returns>
-        public WzObject FindWzImageByName(string baseWzName, string imageName)
-        {
+        public WzObject FindWzImageByName(string baseWzName, string imageName) {
             baseWzName = baseWzName.ToLower();
 
+            List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
             // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
-            WzObject image = GetWzDirectoriesFromBase(baseWzName)
-                                .Where(wzFile => wzFile != null && wzFile[imageName] != null)
-                                .Select(wzFile => wzFile[imageName])
-                                .FirstOrDefault();
+            WzObject image = dirs
+                    .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                    .Select(wzFile => wzFile[imageName])
+                    .FirstOrDefault();
 
             return image;
+        }
+
+        /// <summary>
+        /// Finds the wz image within the multiple wz files (by the base wz name)
+        /// </summary>
+        /// <param name="baseWzName"></param>
+        /// <param name="imageName">Matches any if string.empty.</param>
+        /// <returns></returns>
+        public List<WzObject> FindWzImagesByName(string baseWzName, string imageName) {
+            baseWzName = baseWzName.ToLower();
+
+            List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
+            // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+            return dirs
+                .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                .Select(wzFile => wzFile[imageName])
+                .ToList();
         }
 
         /// <summary>
@@ -515,8 +618,7 @@ namespace MapleLib
         /// <param name="filePathOrBaseFileName"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private string GetWzFilePath(string filePathOrBaseFileName)
-        {
+        private string GetWzFilePath(string filePathOrBaseFileName) {
             // find the base directory from 'wzFilesList'
             if (!_wzFilesDirectoryList.ContainsKey(filePathOrBaseFileName)) // if the key is not found, it might be a path instead
             {

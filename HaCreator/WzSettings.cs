@@ -10,6 +10,7 @@ using XNA = Microsoft.Xna.Framework;
 using MapleLib.WzLib.WzStructure.Data;
 using System.Drawing;
 using HaSharedLibrary.Render.DX;
+using Newtonsoft.Json;
 
 namespace HaCreator
 {
@@ -88,5 +89,11 @@ namespace HaCreator
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";
         public static string LastXmlPath = "";
+
+
+        #region API Key
+        [JsonProperty(PropertyName = "OpenAI_ApiKey")]
+        public static string OpenAI_ApiKey = "";
+        #endregion
     }
 }

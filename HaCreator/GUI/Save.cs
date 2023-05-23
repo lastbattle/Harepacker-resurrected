@@ -99,12 +99,17 @@ namespace HaCreator.GUI
             }
             MapType type = GetIdBoxMapType();
             MapSaver saver = new MapSaver(board);
+
+            // Regenerate minimap first
+            board.RegenerateMinimap();
+
             if (type == MapType.RegularMap)
             {
                 int newId = int.Parse(idBox.Text);
                 saver.ChangeMapTypeAndID(newId, MapType.RegularMap);
                 saver.SaveMapImage();
                 saver.UpdateMapLists();
+
                 MessageBox.Show("Saved map with ID: " + newId.ToString());
             }
             else
@@ -113,6 +118,7 @@ namespace HaCreator.GUI
                 ((TabItemContainer)board.TabPage.Tag).Text = board.MapInfo.strMapName;
                 saver.ChangeMapTypeAndID(-1, type);
                 saver.SaveMapImage();
+
                 MessageBox.Show("Saved map: " + board.MapInfo.strMapName);
             }
             Close();

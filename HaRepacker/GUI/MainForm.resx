@@ -122,19 +122,19 @@
   </metadata>
   <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
   <data name="newToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="newToolStripMenuItem.Text" xml:space="preserve">
     <value>New (Ctl + T)</value>
   </data>
   <data name="openToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="openToolStripMenuItem.Text" xml:space="preserve">
     <value>Open WZ; ZLZ.dll (Ctl + O)</value>
   </data>
   <data name="toolStripMenuItem_newWzFormat.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="toolStripMenuItem_newWzFormat.Text" xml:space="preserve">
     <value>Open WZ .ini (Ctl + I)</value>
@@ -157,28 +157,28 @@
 </value>
   </data>
   <data name="saveToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="saveToolStripMenuItem.Text" xml:space="preserve">
     <value>Save...</value>
   </data>
   <data name="toolStripSeparator5.Size" type="System.Drawing.Size, System.Drawing">
-    <value>220, 6</value>
+    <value>212, 6</value>
   </data>
   <data name="copyToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="copyToolStripMenuItem.Text" xml:space="preserve">
     <value>Copy (Ctrl+C)</value>
   </data>
   <data name="pasteToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="pasteToolStripMenuItem.Text" xml:space="preserve">
     <value>Paste (Ctrl+V)</value>
   </data>
   <data name="toolStripSeparator4.Size" type="System.Drawing.Size, System.Drawing">
-    <value>220, 6</value>
+    <value>212, 6</value>
   </data>
   <data name="reloadAllToolStripMenuItem.Image" type="System.Drawing.Bitmap, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
     <value>
@@ -197,7 +197,7 @@
 </value>
   </data>
   <data name="reloadAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="reloadAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Reload All</value>
@@ -220,7 +220,7 @@
 </value>
   </data>
   <data name="unloadAllToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>223, 30</value>
+    <value>215, 22</value>
   </data>
   <data name="unloadAllToolStripMenuItem.Text" xml:space="preserve">
     <value>Unload All</value>
@@ -453,7 +453,7 @@
     <value>NXForamt</value>
   </data>
   <data name="exportFilesToXMLToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>159, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="exportFilesToXMLToolStripMenuItem.Text" xml:space="preserve">
     <value>Export File(s) to</value>
@@ -507,7 +507,7 @@
     <value>IMG</value>
   </data>
   <data name="exportDataToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>159, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="exportDataToolStripMenuItem.Text" xml:space="preserve">
     <value>Export Selection</value>
@@ -525,22 +525,22 @@
     <value>IMG</value>
   </data>
   <data name="importToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>159, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="importToolStripMenuItem.Text" xml:space="preserve">
     <value>Import</value>
   </data>
   <data name="toolStripSeparator9.Size" type="System.Drawing.Size, System.Drawing">
-    <value>156, 6</value>
+    <value>185, 6</value>
   </data>
   <data name="optionsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>159, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="optionsToolStripMenuItem.Text" xml:space="preserve">
     <value>Options...</value>
   </data>
   <data name="toolStripSeparator8.Size" type="System.Drawing.Size, System.Drawing">
-    <value>156, 6</value>
+    <value>185, 6</value>
   </data>
   <data name="searchToolStripMenuItem.Image" type="System.Drawing.Bitmap, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
     <value>
@@ -559,16 +559,10 @@
 </value>
   </data>
   <data name="searchToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>159, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="searchToolStripMenuItem.Text" xml:space="preserve">
     <value>Search (Ctrl+F)</value>
-  </data>
-  <data name="toolsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>46, 22</value>
-  </data>
-  <data name="toolsToolStripMenuItem.Text" xml:space="preserve">
-    <value>Tools</value>
   </data>
   <data name="renderMapToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>185, 22</value>
@@ -592,37 +586,31 @@
     <value>1</value>
   </data>
   <data name="fHMappingToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>168, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="fHMappingToolStripMenuItem.Text" xml:space="preserve">
     <value>FH Mapping</value>
   </data>
   <data name="toolStripMenuItem_searchWzStrings.Size" type="System.Drawing.Size, System.Drawing">
-    <value>168, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="toolStripMenuItem_searchWzStrings.Text" xml:space="preserve">
     <value>Search WZ strings</value>
   </data>
-  <data name="extrasToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>50, 22</value>
+  <data name="toolsToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
+    <value>46, 22</value>
   </data>
-  <data name="extrasToolStripMenuItem.Text" xml:space="preserve">
-    <value>Extras</value>
-  </data>
-  <data name="encryptionBox.Font" type="System.Drawing.Font, System.Drawing">
-    <value>Segoe UI, 8.25pt</value>
-  </data>
-  <data name="encryptionBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>268, 22</value>
+  <data name="toolsToolStripMenuItem.Text" xml:space="preserve">
+    <value>Tools</value>
   </data>
   <data name="viewHelpToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>173, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="viewHelpToolStripMenuItem.Text" xml:space="preserve">
     <value>View Help</value>
   </data>
   <data name="aboutToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>173, 22</value>
+    <value>188, 30</value>
   </data>
   <data name="aboutToolStripMenuItem.Text" xml:space="preserve">
     <value>About HaRepacker</value>
@@ -633,14 +621,11 @@
   <data name="helpToolStripMenuItem.Text" xml:space="preserve">
     <value>Help</value>
   </data>
-  <data name="debugToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
-    <value>93, 22</value>
+  <data name="encryptionBox.Font" type="System.Drawing.Font, System.Drawing">
+    <value>Segoe UI, 8.25pt</value>
   </data>
-  <data name="debugToolStripMenuItem.Text" xml:space="preserve">
-    <value>DEBUG MODE</value>
-  </data>
-  <data name="debugToolStripMenuItem.Visible" type="System.Boolean, mscorlib">
-    <value>False</value>
+  <data name="encryptionBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>268, 22</value>
   </data>
   <data name="mainMenu.Location" type="System.Drawing.Point, System.Drawing">
     <value>0, 0</value>
@@ -2810,12 +2795,6 @@
   <data name="&gt;&gt;searchToolStripMenuItem.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="&gt;&gt;extrasToolStripMenuItem.Name" xml:space="preserve">
-    <value>extrasToolStripMenuItem</value>
-  </data>
-  <data name="&gt;&gt;extrasToolStripMenuItem.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
   <data name="&gt;&gt;fHMappingToolStripMenuItem.Name" xml:space="preserve">
     <value>fHMappingToolStripMenuItem</value>
   </data>
@@ -2846,12 +2825,6 @@
   <data name="&gt;&gt;toolStripMenuItem_searchWzStrings.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="&gt;&gt;encryptionBox.Name" xml:space="preserve">
-    <value>encryptionBox</value>
-  </data>
-  <data name="&gt;&gt;encryptionBox.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripComboBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
   <data name="&gt;&gt;helpToolStripMenuItem.Name" xml:space="preserve">
     <value>helpToolStripMenuItem</value>
   </data>
@@ -2870,11 +2843,11 @@
   <data name="&gt;&gt;aboutToolStripMenuItem.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="&gt;&gt;debugToolStripMenuItem.Name" xml:space="preserve">
-    <value>debugToolStripMenuItem</value>
+  <data name="&gt;&gt;encryptionBox.Name" xml:space="preserve">
+    <value>encryptionBox</value>
   </data>
-  <data name="&gt;&gt;debugToolStripMenuItem.Type" xml:space="preserve">
-    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  <data name="&gt;&gt;encryptionBox.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripComboBox, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>MainForm</value>

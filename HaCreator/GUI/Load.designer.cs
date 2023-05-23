@@ -2,7 +2,7 @@
 
 namespace HaCreator.GUI
 {
-    partial class Load
+    partial class FieldSelector
     {
         /// <summary>
         /// Required designer variable.
@@ -30,7 +30,7 @@ namespace HaCreator.GUI
         /// </summary>
         private void InitializeComponent()
         {
-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Load));
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FieldSelector));
             this.loadButton = new System.Windows.Forms.Button();
             this.WZSelect = new System.Windows.Forms.RadioButton();
             this.XMLSelect = new System.Windows.Forms.RadioButton();

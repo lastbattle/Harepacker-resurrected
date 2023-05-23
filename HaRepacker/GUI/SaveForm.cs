@@ -146,10 +146,10 @@ namespace HaRepacker.GUI
 
             using (SaveFileDialog dialog = new SaveFileDialog()
             {
-                Title = HaRepacker.Properties.Resources.SelectOutWz,
+                Title = Properties.Resources.SelectOutWz,
                 FileName = wzNode.Text,
                 Filter = string.Format("{0}|*.wz",
-                HaRepacker.Properties.Resources.WzFilter)
+                Properties.Resources.WzFilter)
             })
             {
                 if (dialog.ShowDialog() != DialogResult.OK)
@@ -177,7 +177,7 @@ namespace HaRepacker.GUI
                         }
                         catch (IOException ex)
                         {
-                            MessageBox.Show("Handle error overwriting WZ file", HaRepacker.Properties.Resources.Error);
+                            MessageBox.Show("Handle error overwriting WZ file", Properties.Resources.Error);
                         }
                     }
                     else

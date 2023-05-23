@@ -50,5 +50,10 @@ namespace MapleLib.Configuration
         [JsonProperty(PropertyName = "MapleStoryVersion_EncryptionBytes")]
         public string MapleVersion_CustomEncryptionBytes = "0x00-0x00-0x00-0x00";
         #endregion
+
+        #region API Key
+        [JsonProperty(PropertyName = "OpenAI_ApiKey")]
+        public string OpenAI_ApiKey = "";
+        #endregion
     }
 }

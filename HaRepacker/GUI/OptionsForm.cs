@@ -8,16 +8,14 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.Serialization;
 using HaRepacker.GUI.Panels;
+using System.Diagnostics;
 
 namespace HaRepacker.GUI
 {
     public partial class OptionsForm : Form
     {
-        private MainPanel panel;
-
-        public OptionsForm(MainPanel panel)
+        public OptionsForm()
         {
-            this.panel = panel;
             InitializeComponent();
 
             sortBox.Checked = Program.ConfigurationManager.UserSettings.Sort;
@@ -34,6 +32,9 @@ namespace HaRepacker.GUI
 
             // Theme color
             themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
+
+            // API Key
+            openAI_apiKey_textBox.Text = Program.ConfigurationManager.ApplicationSettings.OpenAI_ApiKey;
         }
 
 
@@ -79,6 +80,9 @@ namespace HaRepacker.GUI
             Program.ConfigurationManager.UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
             Program.ConfigurationManager.UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
 
+            // APi key
+            Program.ConfigurationManager.ApplicationSettings.OpenAI_ApiKey = openAI_apiKey_textBox.Text;
+
             Program.ConfigurationManager.Save();
             Close();
         }
@@ -92,6 +96,25 @@ namespace HaRepacker.GUI
         {
             browse.Enabled = defXmlFolderEnable.Checked;
             defXmlFolderBox.Enabled = defXmlFolderEnable.Checked;
+        }
+
+        /// <summary>
+        /// OpenAI API hyperlink url
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
+            Process myProcess = new Process();
+
+            try {
+                // true is the default, but it is important not to set it to false
+                myProcess.StartInfo.UseShellExecute = true;
+                myProcess.StartInfo.FileName = ((LinkLabel)sender).Text;
+                myProcess.Start();
+            }
+            catch (Exception ex) {
+                Console.WriteLine(ex.Message);
+            }
         }
     }
 }

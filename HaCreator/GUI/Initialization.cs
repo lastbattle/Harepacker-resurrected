@@ -28,9 +28,6 @@ namespace HaCreator.GUI
     {
         public HaEditor editor = null;
         
-        private static bool _bIs64BitDirectoryWzFileFormat;
-        public static bool Is64BitDirectoryWzFileFormat { get { return _bIs64BitDirectoryWzFileFormat; } private set { } }
-
         
         private static WzMapleVersion _wzMapleVersion = WzMapleVersion.BMS; // Default to BMS, the enc version to use when decrypting the WZ files.
         public static WzMapleVersion WzMapleVersion
@@ -116,18 +113,20 @@ namespace HaCreator.GUI
 
             _wzMapleVersion = fileVersion; // set version to static vars
 
-            _bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
-            Program.WzManager = new WzFileManager(wzPath, _bIs64BitDirectoryWzFileFormat);
+            bool bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
+            bool bIsPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFormat(wzPath); // set
+
+            Program.WzManager = new WzFileManager(wzPath, bIs64BitDirectoryWzFileFormat, bIsPreBBDataWzFormat);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz
-            if (Program.WzManager.HasDataFile) //currently always false
+            if (Program.WzManager.IsPreBBDataWzFormat) //currently always false
             {
                 UpdateUI_CurrentLoadingWzFile("Data.wz");
 
                 try
                 {
-                    Program.WzManager.LoadLegacyDataWzFile("data", _wzMapleVersion);
+                    Program.WzManager.LoadLegacyDataWzFile("Data", _wzMapleVersion);
                 }
                 catch (Exception e)
                 {
@@ -192,14 +191,14 @@ namespace HaCreator.GUI
                 ExtractReactorFile();
 
                 // Load sound
-                List<string> soundWzFiles = Program.WzManager.GetWzFileNameListFromBase("sound");
-                foreach (string soundWzFileName in soundWzFiles)
+                List<string> soundWzDirs = Program.WzManager.GetWzFileNameListFromBase("sound");
+                foreach (string soundDirName in soundWzDirs)
                 {
-                    UpdateUI_CurrentLoadingWzFile(soundWzFileName);
+                    UpdateUI_CurrentLoadingWzFile(soundDirName);
 
-                    Program.WzManager.LoadWzFile(soundWzFileName, _wzMapleVersion);
-                    ExtractSoundFile();
+                    Program.WzManager.LoadWzFile(soundDirName, _wzMapleVersion);
                 }
+                ExtractSoundFile();
 
 
                 // Load maps
@@ -531,31 +530,31 @@ namespace HaCreator.GUI
         /// <summary>
         /// 
         /// </summary>
-        public void ExtractSoundFile()
-        {
+        public void ExtractSoundFile() {
             List<WzDirectory> soundWzDirs = Program.WzManager.GetWzDirectoriesFromBase("sound");
-            foreach (WzDirectory soundWzDir in soundWzDirs)
+
+            foreach (WzDirectory soundWzDir in soundWzDirs) 
             {
+                if (Program.WzManager.IsPreBBDataWzFormat) {
+                    WzDirectory x = (WzDirectory) soundWzDir["Sound"];
+                }
+
                 foreach (WzImage soundImage in soundWzDir.WzImages)
                 {
                     if (!soundImage.Name.ToLower().Contains("bgm"))
                         continue;
                     if (!soundImage.Parsed)
                         soundImage.ParseImage();
-                    try
-                    {
-                        foreach (WzImageProperty bgmImage in soundImage.WzProperties)
-                        {
+                    try {
+                        foreach (WzImageProperty bgmImage in soundImage.WzProperties) {
                             WzBinaryProperty binProperty = null;
-                            if (bgmImage is WzBinaryProperty bgm)
-                            {
+                            if (bgmImage is WzBinaryProperty bgm) {
                                 binProperty = bgm;
                             }
                             else if (bgmImage is WzUOLProperty uolBGM) // is UOL property
                             {
                                 WzObject linkVal = ((WzUOLProperty)bgmImage).LinkValue;
-                                if (linkVal is WzBinaryProperty linkCanvas)
-                                {
+                                if (linkVal is WzBinaryProperty linkCanvas) {
                                     binProperty = linkCanvas;
                                 }
                             }
@@ -564,8 +563,7 @@ namespace HaCreator.GUI
                                 Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name] = binProperty;
                         }
                     }
-                    catch (Exception e)
-                    {
+                    catch (Exception e) {
                         string error = string.Format("[ExtractSoundFile] Error parsing {0}, {1} file.\r\nError: {2}", soundWzDir.Name, soundImage.Name, e.ToString());
                         MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                         continue;

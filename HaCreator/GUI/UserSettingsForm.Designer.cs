@@ -119,8 +119,12 @@
             this.label19 = new System.Windows.Forms.Label();
             this.label10 = new System.Windows.Forms.Label();
             this.label9 = new System.Windows.Forms.Label();
+            this.tabPage4 = new System.Windows.Forms.TabPage();
             this.okayButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
+            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
+            this.label45 = new System.Windows.Forms.Label();
+            this.openAI_apiKey_textBox = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.linewBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dotwBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.mobrx0Box)).BeginInit();
@@ -143,6 +147,7 @@
             this.tabPage3.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.movementBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.zShiftBox)).BeginInit();
+            this.tabPage4.SuspendLayout();
             this.SuspendLayout();
             // 
             // label2
@@ -166,7 +171,7 @@
             // label4
             // 
             this.label4.AutoSize = true;
-            this.label4.Location = new System.Drawing.Point(183, 154);
+            this.label4.Location = new System.Drawing.Point(8, 41);
             this.label4.Name = "label4";
             this.label4.Size = new System.Drawing.Size(63, 13);
             this.label4.TabIndex = 6;
@@ -174,7 +179,7 @@
             // 
             // linewBox
             // 
-            this.linewBox.Location = new System.Drawing.Point(247, 152);
+            this.linewBox.Location = new System.Drawing.Point(77, 39);
             this.linewBox.Maximum = new decimal(new int[] {
             255,
             0,
@@ -196,7 +201,7 @@
             // 
             // dotwBox
             // 
-            this.dotwBox.Location = new System.Drawing.Point(247, 126);
+            this.dotwBox.Location = new System.Drawing.Point(75, 11);
             this.dotwBox.Maximum = new decimal(new int[] {
             255,
             0,
@@ -219,7 +224,7 @@
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(186, 128);
+            this.label5.Location = new System.Drawing.Point(10, 13);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(61, 13);
             this.label5.TabIndex = 8;
@@ -613,10 +618,11 @@
             this.tabControl1.Controls.Add(this.tabPage1);
             this.tabControl1.Controls.Add(this.tabPage2);
             this.tabControl1.Controls.Add(this.tabPage3);
-            this.tabControl1.Location = new System.Drawing.Point(12, 12);
+            this.tabControl1.Controls.Add(this.tabPage4);
+            this.tabControl1.Location = new System.Drawing.Point(-2, 1);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
-            this.tabControl1.Size = new System.Drawing.Size(545, 473);
+            this.tabControl1.Size = new System.Drawing.Size(571, 493);
             this.tabControl1.TabIndex = 77;
             // 
             // tabPage1
@@ -635,14 +641,14 @@
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
             this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage1.Size = new System.Drawing.Size(537, 447);
+            this.tabPage1.Size = new System.Drawing.Size(563, 467);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "General";
             // 
             // autoBackupBox
             // 
             this.autoBackupBox.AutoSize = true;
-            this.autoBackupBox.Location = new System.Drawing.Point(165, 269);
+            this.autoBackupBox.Location = new System.Drawing.Point(10, 154);
             this.autoBackupBox.Name = "autoBackupBox";
             this.autoBackupBox.Size = new System.Drawing.Size(118, 17);
             this.autoBackupBox.TabIndex = 64;
@@ -651,7 +657,7 @@
             // invertUpDownBox
             // 
             this.invertUpDownBox.AutoSize = true;
-            this.invertUpDownBox.Location = new System.Drawing.Point(165, 246);
+            this.invertUpDownBox.Location = new System.Drawing.Point(10, 131);
             this.invertUpDownBox.Name = "invertUpDownBox";
             this.invertUpDownBox.Size = new System.Drawing.Size(172, 17);
             this.invertUpDownBox.TabIndex = 63;
@@ -660,7 +666,7 @@
             // fixFh
             // 
             this.fixFh.AutoSize = true;
-            this.fixFh.Location = new System.Drawing.Point(165, 223);
+            this.fixFh.Location = new System.Drawing.Point(10, 108);
             this.fixFh.Name = "fixFh";
             this.fixFh.Size = new System.Drawing.Size(165, 17);
             this.fixFh.TabIndex = 62;
@@ -669,7 +675,7 @@
             // clipBox
             // 
             this.clipBox.AutoSize = true;
-            this.clipBox.Location = new System.Drawing.Point(165, 200);
+            this.clipBox.Location = new System.Drawing.Point(10, 85);
             this.clipBox.Name = "clipBox";
             this.clipBox.Size = new System.Drawing.Size(69, 17);
             this.clipBox.TabIndex = 61;
@@ -678,7 +684,7 @@
             // errorsCheckBox
             // 
             this.errorsCheckBox.AutoSize = true;
-            this.errorsCheckBox.Location = new System.Drawing.Point(165, 178);
+            this.errorsCheckBox.Location = new System.Drawing.Point(10, 63);
             this.errorsCheckBox.Name = "errorsCheckBox";
             this.errorsCheckBox.Size = new System.Drawing.Size(284, 17);
             this.errorsCheckBox.TabIndex = 60;
@@ -687,7 +693,7 @@
             // label20
             // 
             this.label20.AutoSize = true;
-            this.label20.Location = new System.Drawing.Point(81, 13);
+            this.label20.Location = new System.Drawing.Point(10, 433);
             this.label20.Name = "label20";
             this.label20.Size = new System.Drawing.Size(393, 13);
             this.label20.TabIndex = 57;
@@ -746,7 +752,7 @@
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Name = "tabPage2";
             this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage2.Size = new System.Drawing.Size(537, 447);
+            this.tabPage2.Size = new System.Drawing.Size(563, 467);
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "Graphics";
             // 
@@ -1158,7 +1164,7 @@
             this.tabPage3.Location = new System.Drawing.Point(4, 22);
             this.tabPage3.Name = "tabPage3";
             this.tabPage3.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage3.Size = new System.Drawing.Size(537, 447);
+            this.tabPage3.Size = new System.Drawing.Size(563, 467);
             this.tabPage3.TabIndex = 2;
             this.tabPage3.Text = "Advanced";
             // 
@@ -1252,12 +1258,25 @@
             this.label9.Text = "It is not recommended to change anything here unless you know what are you doing." +
     "";
             // 
+            // tabPage4
+            // 
+            this.tabPage4.BackColor = System.Drawing.SystemColors.Control;
+            this.tabPage4.Controls.Add(this.linkLabel1);
+            this.tabPage4.Controls.Add(this.label45);
+            this.tabPage4.Controls.Add(this.openAI_apiKey_textBox);
+            this.tabPage4.Location = new System.Drawing.Point(4, 22);
+            this.tabPage4.Name = "tabPage4";
+            this.tabPage4.Padding = new System.Windows.Forms.Padding(3);
+            this.tabPage4.Size = new System.Drawing.Size(563, 467);
+            this.tabPage4.TabIndex = 3;
+            this.tabPage4.Text = "API";
+            // 
             // okayButton
             // 
             this.okayButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okayButton.Location = new System.Drawing.Point(210, 491);
+            this.okayButton.Location = new System.Drawing.Point(2, 500);
             this.okayButton.Name = "okayButton";
-            this.okayButton.Size = new System.Drawing.Size(66, 28);
+            this.okayButton.Size = new System.Drawing.Size(278, 28);
             this.okayButton.TabIndex = 78;
             this.okayButton.Text = "OK";
             this.okayButton.Click += new System.EventHandler(this.okButton_Click);
@@ -1265,12 +1284,40 @@
             // cancelButton
             // 
             this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(282, 491);
+            this.cancelButton.Location = new System.Drawing.Point(287, 500);
             this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(66, 28);
+            this.cancelButton.Size = new System.Drawing.Size(278, 28);
             this.cancelButton.TabIndex = 79;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
+            // 
+            // linkLabel1
+            // 
+            this.linkLabel1.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            this.linkLabel1.Location = new System.Drawing.Point(98, 35);
+            this.linkLabel1.Name = "linkLabel1";
+            this.linkLabel1.Size = new System.Drawing.Size(243, 18);
+            this.linkLabel1.TabIndex = 22;
+            this.linkLabel1.TabStop = true;
+            this.linkLabel1.Text = "https://platform.openai.com/account/api-keys";
+            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
+            // 
+            // label45
+            // 
+            this.label45.AutoSize = true;
+            this.label45.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            this.label45.Location = new System.Drawing.Point(10, 13);
+            this.label45.Name = "label45";
+            this.label45.Size = new System.Drawing.Size(85, 13);
+            this.label45.TabIndex = 25;
+            this.label45.Text = "OpenAI API key";
+            // 
+            // openAI_apiKey_textBox
+            // 
+            this.openAI_apiKey_textBox.Location = new System.Drawing.Point(101, 10);
+            this.openAI_apiKey_textBox.Name = "openAI_apiKey_textBox";
+            this.openAI_apiKey_textBox.Size = new System.Drawing.Size(454, 22);
+            this.openAI_apiKey_textBox.TabIndex = 24;
             // 
             // UserSettingsForm
             // 
@@ -1311,6 +1358,8 @@
             this.tabPage3.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.movementBox)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.zShiftBox)).EndInit();
+            this.tabPage4.ResumeLayout(false);
+            this.tabPage4.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -1410,5 +1459,9 @@
         private System.Windows.Forms.Label label44;
         private CustomControls.AlphaColorPicker minimapColorPicker;
         private System.Windows.Forms.CheckBox autoBackupBox;
+        private System.Windows.Forms.TabPage tabPage4;
+        private System.Windows.Forms.LinkLabel linkLabel1;
+        private System.Windows.Forms.Label label45;
+        private System.Windows.Forms.TextBox openAI_apiKey_textBox;
     }
 }

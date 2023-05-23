@@ -43,6 +43,7 @@ namespace MapleLib.WzLib.Nx
 		public void SerializeFile(WzFile file, string path)
 		{
 			String filename = file.Name.Replace(".wz", ".nx");
+
 			using (FileStream fs = new FileStream(Path.Combine(Path.GetDirectoryName(path), filename), FileMode.Create, FileAccess.ReadWrite,
 					FileShare.None))
 			using (BinaryWriter bw = new BinaryWriter(fs))

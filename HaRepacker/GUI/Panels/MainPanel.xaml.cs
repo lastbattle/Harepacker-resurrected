@@ -32,6 +32,7 @@ using static MapleLib.Configuration.UserSettings;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.IO;
+using System.Net;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -69,6 +70,13 @@ namespace HaRepacker.GUI.Panels
             isLoading = true;
 
             this._mainForm = mainForm;
+
+            // Events
+#if DEBUG
+            toolStripStatusLabel_debugMode.Visibility = Visibility.Visible;
+#else
+            toolStripStatusLabel_debugMode.Visibility = Visibility.Collapsed;
+#endif
 
             // undo redo
             undoRedoMan = new UndoRedoManager(this);
@@ -1486,7 +1494,6 @@ namespace HaRepacker.GUI.Panels
             // Avalon Text editor
             textEditor.Visibility = Visibility.Collapsed;
 
-
             // vars
             bool bIsWzLuaProperty = obj is WzLuaProperty;
             bool bIsWzSoundProperty = obj is WzBinaryProperty;
@@ -1502,6 +1509,15 @@ namespace HaRepacker.GUI.Panels
             // Set layout visibility
             if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty)
             {
+               /*if (obj is WzSubProperty) { // detect String.wz/Npc.img/ directory for AI related tools
+                    if (obj.Parent.Name == "Npc.img") 
+                    {
+                        WzObject wzObj = obj.GetTopMostWzDirectory();
+                        if (wzObj.Name == "String.wz" || (wzObj.Name.StartsWith("String") && wzObj.Name.EndsWith(".wz"))) 
+                        {
+                        }
+                    }
+                }*/
             }
             else if (obj is WzCanvasProperty canvasProp)
             {

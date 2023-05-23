@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
@@ -49,30 +50,22 @@ namespace MapleLib.WzLib.Util
 
         public static int GetEncodedStringLength(string s)
         {
-            int len = 0;
             if (string.IsNullOrEmpty(s))
                 return 1;
+
             bool unicode = false;
-            foreach (char c in s)
-                if (c > 255)
+            int length = s.Length;
+
+            foreach (char c in s) {
+                if (c > 255) {
                     unicode = true;
-            if (unicode)
-            {
-                if (s.Length > 126)
-                    len += 5;
-                else
-                    len += 1;
-                len += s.Length * 2;
+                    break;
+                }
             }
-            else
-            {
-                if (s.Length > 127)
-                    len += 5;
-                else
-                    len += 1;
-                len += s.Length;
-            }
-            return len;
+            int prefixLength = length > (unicode ? 126 : 127) ? 5 : 1;
+            int encodedLength = unicode ? length * 2 : length;
+
+            return prefixLength + encodedLength;
         }
 
         public static int GetWzObjectValueLength(string s, byte type)
@@ -130,15 +123,9 @@ namespace MapleLib.WzLib.Util
             }
         }
 
-        private static int GetRecognizedCharacters(string source)
-        {
-            int result = 0;
-            foreach (char c in source)
-                if (0x20 <= c && c <= 0x7E)
-                    result++;
-            return result;
+        private static int GetRecognizedCharacters(string source) {
+            return source.Count(c => c >= 0x20 && c <= 0x7E);
         }
-
 
         /// <summary>
         /// Attempts to bruteforce the WzKey with a given WZ file

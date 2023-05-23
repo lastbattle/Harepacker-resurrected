@@ -22,7 +22,7 @@ namespace HaCreator.GUI
 {
     public partial class Repack : Form
     {
-        private readonly List<WzFile> toRepack = new List<WzFile>();
+        private readonly List<WzFile> toRepack;
 
         /// <summary>
         /// Constructor
@@ -31,19 +31,11 @@ namespace HaCreator.GUI
         {
             InitializeComponent();
 
-            StringBuilder repackTxt = new StringBuilder("Files to repack:");
-            repackTxt.Append(Environment.NewLine);
-
-            foreach (WzFile wzf in Program.WzManager.WzFileList)
+            toRepack = Program.WzManager.GetUpdatedWzFiles();
+            foreach (WzFile wzf in toRepack)
             {
-                Program.WzManager.SetWzFileUpdated(wzf);
-                
-                toRepack.Add(wzf);
-                
-                repackTxt.Append(wzf.Name);
-                repackTxt.Append(Environment.NewLine);
+                checkedListBox_changedFiles.Items.Add(wzf.Name, CheckState.Checked);
             }
-            infoLabel.Text = repackTxt.ToString();
         }
 
         /// <summary>
@@ -94,9 +86,13 @@ namespace HaCreator.GUI
             MessageBox.Show(data, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
+        /// <summary>
+        /// Change the repack state label
+        /// </summary>
+        /// <param name="state"></param>
         private void ChangeRepackState(string state)
         {
-            stateLabel.Text = state;
+            label_repackState.Text = state;
         }
 
         /// <summary>
@@ -105,7 +101,7 @@ namespace HaCreator.GUI
         /// <param name="bSaveFileInHaCreatorDirectory"></param>
         private void FinishSuccess(bool bSaveFileInHaCreatorDirectory)
         {
-            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "Please replace the files under the MapleStory directory." : "Please replace the files in HaCreator\\Output."));
+            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "" : "Please replace the files in HaCreator\\Output."));
 
             if (!bSaveFileInHaCreatorDirectory)
             {
@@ -192,6 +188,7 @@ namespace HaCreator.GUI
             { 
                 ChangeRepackState("Saving XMLs..."); 
             });
+
             foreach (WzImage img in Program.WzManager.WzUpdatedImageList)
             {
                 try
@@ -213,6 +210,19 @@ namespace HaCreator.GUI
             // Save WZ Files
             foreach (WzFile wzf in toRepack)
             {
+                // Check if this wz file is selected and can be saved
+                bool bCanSave = false;
+                foreach (string checkedItemName in checkedListBox_changedFiles.CheckedItems) { // no uncheckedItems list :(
+                    if (checkedItemName == wzf.Name) {
+                        bCanSave = true;
+                        break;
+                    }
+                }
+                if (!bCanSave)
+                    continue;
+
+                // end
+
                 Invoke((Action)delegate 
                 { 
                     ChangeRepackState("Saving " + wzf.Name + "..."); 
@@ -249,7 +259,12 @@ namespace HaCreator.GUI
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder
                     {
-                        File.Move(tmpFile, orgFile + "_NewCreated.wz");
+                        // Move the original Wz file to a backup name
+                        string currentDateTimeString = DateTime.Now.ToString().Replace(":", "_").Replace("/", "_");
+                        File.Move(orgFile, orgFile + string.Format("_BAK_{0}.wz", currentDateTimeString));
+
+                        // Move the newly created WZ file as the new file 
+                        File.Move(tmpFile, orgFile);
                     }
                 }
                 catch (Exception e)

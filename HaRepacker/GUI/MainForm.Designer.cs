@@ -93,17 +93,15 @@ namespace HaRepacker.GUI
             this.optionsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator8 = new System.Windows.Forms.ToolStripSeparator();
             this.searchToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.extrasToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fHMappingToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.renderMapToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.zoomTextBox = new System.Windows.Forms.ToolStripTextBox();
             this.toolStripMenuItem_searchWzStrings = new System.Windows.Forms.ToolStripMenuItem();
-            this.encryptionBox = new System.Windows.Forms.ToolStripComboBox();
             this.helpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.viewHelpToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.debugToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.encryptionBox = new System.Windows.Forms.ToolStripComboBox();
             this.AbortButton = new System.Windows.Forms.Button();
             this.tabControl_MainPanels = new System.Windows.Forms.TabControl();
             this.button_addTab = new System.Windows.Forms.Button();
@@ -117,10 +115,8 @@ namespace HaRepacker.GUI
             this.fileToolStripMenuItem,
             this.editToolStripMenuItem,
             this.toolsToolStripMenuItem,
-            this.extrasToolStripMenuItem,
-            this.encryptionBox,
             this.helpToolStripMenuItem,
-            this.debugToolStripMenuItem});
+            this.encryptionBox});
             resources.ApplyResources(this.mainMenu, "mainMenu");
             this.mainMenu.Name = "mainMenu";
             // 
@@ -398,7 +394,9 @@ namespace HaRepacker.GUI
             this.toolStripSeparator9,
             this.optionsToolStripMenuItem,
             this.toolStripSeparator8,
-            this.searchToolStripMenuItem});
+            this.searchToolStripMenuItem,
+            this.fHMappingToolStripMenuItem,
+            this.toolStripMenuItem_searchWzStrings});
             this.toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
             resources.ApplyResources(this.toolsToolStripMenuItem, "toolsToolStripMenuItem");
             // 
@@ -544,14 +542,6 @@ namespace HaRepacker.GUI
             this.searchToolStripMenuItem.Name = "searchToolStripMenuItem";
             this.searchToolStripMenuItem.Click += new System.EventHandler(this.searchToolStripMenuItem_Click);
             // 
-            // extrasToolStripMenuItem
-            // 
-            this.extrasToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.fHMappingToolStripMenuItem,
-            this.toolStripMenuItem_searchWzStrings});
-            this.extrasToolStripMenuItem.Name = "extrasToolStripMenuItem";
-            resources.ApplyResources(this.extrasToolStripMenuItem, "extrasToolStripMenuItem");
-            // 
             // fHMappingToolStripMenuItem
             // 
             this.fHMappingToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
@@ -566,14 +556,12 @@ namespace HaRepacker.GUI
             this.renderMapToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.map;
             this.renderMapToolStripMenuItem.Name = "renderMapToolStripMenuItem";
             resources.ApplyResources(this.renderMapToolStripMenuItem, "renderMapToolStripMenuItem");
-            this.renderMapToolStripMenuItem.Click += new System.EventHandler(this.renderMapToolStripMenuItem_Click);
             // 
             // settingsToolStripMenuItem
             // 
             this.settingsToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.cog;
             this.settingsToolStripMenuItem.Name = "settingsToolStripMenuItem";
             resources.ApplyResources(this.settingsToolStripMenuItem, "settingsToolStripMenuItem");
-            this.settingsToolStripMenuItem.Click += new System.EventHandler(this.settingsToolStripMenuItem_Click);
             // 
             // zoomTextBox
             // 
@@ -584,15 +572,6 @@ namespace HaRepacker.GUI
             // 
             this.toolStripMenuItem_searchWzStrings.Name = "toolStripMenuItem_searchWzStrings";
             resources.ApplyResources(this.toolStripMenuItem_searchWzStrings, "toolStripMenuItem_searchWzStrings");
-            this.toolStripMenuItem_searchWzStrings.Click += new System.EventHandler(this.ToolStripMenuItem_searchWzStrings_Click);
-            // 
-            // encryptionBox
-            // 
-            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.encryptionBox.DropDownWidth = 400;
-            resources.ApplyResources(this.encryptionBox, "encryptionBox");
-            this.encryptionBox.Name = "encryptionBox";
-            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.EncryptionBox_SelectedIndexChanged);
             // 
             // helpToolStripMenuItem
             // 
@@ -616,10 +595,13 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.aboutToolStripMenuItem, "aboutToolStripMenuItem");
             this.aboutToolStripMenuItem.Click += new System.EventHandler(this.aboutToolStripMenuItem_Click);
             // 
-            // debugToolStripMenuItem
+            // encryptionBox
             // 
-            this.debugToolStripMenuItem.Name = "debugToolStripMenuItem";
-            resources.ApplyResources(this.debugToolStripMenuItem, "debugToolStripMenuItem");
+            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.encryptionBox.DropDownWidth = 400;
+            resources.ApplyResources(this.encryptionBox, "encryptionBox");
+            this.encryptionBox.Name = "encryptionBox";
+            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.EncryptionBox_SelectedIndexChanged);
             // 
             // AbortButton
             // 
@@ -709,23 +691,16 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripMenuItem classicToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newToolStripMenuItem1;
         private System.Windows.Forms.Button AbortButton;
-        private System.Windows.Forms.ToolStripMenuItem extrasToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem fHMappingToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem renderMapToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem undoToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem redoToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem expandAllToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem collapseAllToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem searchToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem debugToolStripMenuItem;
         public System.Windows.Forms.ToolStripMenuItem unloadAllToolStripMenuItem;
         public System.Windows.Forms.ToolStripMenuItem reloadAllToolStripMenuItem;
-        private System.Windows.Forms.ToolStripTextBox zoomTextBox;
         private System.Windows.Forms.TabControl tabControl_MainPanels;
         private System.Windows.Forms.Button button_addTab;
         private System.Windows.Forms.ToolStripMenuItem wzLongPropertyToolStripMenuItem;
-        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
         private System.Windows.Forms.ToolStripMenuItem copyToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem pasteToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem jSONToolStripMenuItem;
@@ -741,6 +716,11 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator7;
         private System.Windows.Forms.ToolStripMenuItem nXForamtToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_newWzFormat;
+        private System.Windows.Forms.ToolStripMenuItem fHMappingToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem renderMapToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
+        private System.Windows.Forms.ToolStripTextBox zoomTextBox;
+        private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
     }
 }
 
