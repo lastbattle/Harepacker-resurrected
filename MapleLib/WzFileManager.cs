@@ -14,13 +14,14 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using System.Text.RegularExpressions;
 using Microsoft.Xna.Framework;
+using System.Diagnostics;
 
 namespace MapleLib
 {
     public class WzFileManager : IDisposable
     {
         #region Constants
-        private static readonly string[] EXCLUDED_DIRECTORY_FROM_WZ_LIST = { "bak", "backup", "hshield", "blackcipher", "harepacker", "hacreator", "xml" };
+        private static readonly string[] EXCLUDED_DIRECTORY_FROM_WZ_LIST = { "bak", "backup", "original", "xml", "hshield", "blackcipher", "harepacker", "hacreator", "xml" };
 
         public static readonly string[] COMMON_MAPLESTORY_DIRECTORY = new string[] {
             @"C:\Nexon\MapleStory",
@@ -194,14 +195,14 @@ namespace MapleLib
 
                 // Use Where() and Select() to filter and transform the directories
                 var directories = Directory.EnumerateDirectories(baseDir, "*", SearchOption.AllDirectories)
-                                           .Where(dir => !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => x.ToLower() == new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower()));
+                                           .Where(dir => !EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(x => dir.ToLower().Contains(x)));
 
                 // Iterate over the filtered and transformed directories
                 foreach (string dir in directories)
                 {
-                    //string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
-                    //Debug.WriteLine("----");
-                    //Debug.WriteLine(dir);
+                    string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
+                    Debug.WriteLine("----");
+                    Debug.WriteLine(dir);
 
                     string[] iniFiles = Directory.GetFiles(dir, "*.ini");
                     if (iniFiles.Length <= 0 || iniFiles.Length > 1)
@@ -229,6 +230,9 @@ namespace MapleLib
                             string fileName2 = fileName.Replace(".wz", "");
 
                             string wzDirectoryNameOfWzFile = dir.Replace(baseDir, "").ToLower();
+
+                            if (EXCLUDED_DIRECTORY_FROM_WZ_LIST.Any(item => fileName2.ToLower().Contains(item)))
+                                continue; // backup files
 
                             //Debug.WriteLine(partialWzFileName);
                             //Debug.WriteLine(wzDirectoryOfWzFile);
