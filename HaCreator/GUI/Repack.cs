@@ -22,7 +22,7 @@ namespace HaCreator.GUI
 {
     public partial class Repack : Form
     {
-        private readonly List<WzFile> toRepack = new List<WzFile>();
+        private readonly List<WzFile> toRepack;
 
         /// <summary>
         /// Constructor
@@ -31,12 +31,9 @@ namespace HaCreator.GUI
         {
             InitializeComponent();
 
-            foreach (WzFile wzf in Program.WzManager.WzFileList)
+            toRepack = Program.WzManager.GetUpdatedWzFiles();
+            foreach (WzFile wzf in toRepack)
             {
-                Program.WzManager.SetWzFileUpdated(wzf);
-                
-                toRepack.Add(wzf);
-
                 checkedListBox_changedFiles.Items.Add(wzf.Name, CheckState.Checked);
             }
         }

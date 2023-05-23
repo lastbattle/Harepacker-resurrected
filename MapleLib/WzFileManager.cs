@@ -64,7 +64,7 @@ namespace MapleLib
 
         private readonly ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim(); // for '_wzFiles', '_wzFilesUpdated', '_updatedImages', & '_wzDirs'
         private readonly Dictionary<string, WzFile> _wzFiles = new Dictionary<string, WzFile>();
-        private readonly Dictionary<string, bool> _wzFilesUpdated = new Dictionary<string, bool>(); // key = filepath, flag for the list of WZ files changed to be saved later via Repack 
+        private readonly Dictionary<WzFile, bool> _wzFilesUpdated = new Dictionary<WzFile, bool>(); // key = WzFile, flag for the list of WZ files changed to be saved later via Repack 
         private readonly HashSet<WzImage> _updatedWzImages = new HashSet<WzImage>();
         private readonly Dictionary<string, WzMainDirectory> _wzDirs = new Dictionary<string, WzMainDirectory>();
 
@@ -292,7 +292,7 @@ namespace MapleLib
 
             string fileName_ = baseName.ToLower().Replace(".wz", "");
 
-            if (_wzFilesUpdated.ContainsKey(wzf.FilePath)) // some safety check
+            if (_wzFilesUpdated.ContainsKey(wzf)) // some safety check
                 throw new Exception(string.Format("Wz {0} at the path {1} has already been loaded, and cannot be loaded again. Remove it from memory first.", fileName_, wzf.FilePath));
 
             // write lock to begin adding to the dictionary
@@ -300,7 +300,7 @@ namespace MapleLib
             try
             {
                 _wzFiles[fileName_] = wzf;
-                _wzFilesUpdated[wzf.FilePath] = false;
+                _wzFilesUpdated[wzf] = false;
                 _wzDirs[fileName_] = new WzMainDirectory(wzf);
             }
             finally
@@ -329,7 +329,7 @@ namespace MapleLib
 
             baseName = baseName.ToLower();
 
-            if (_wzFilesUpdated.ContainsKey(wzf.FilePath)) // some safety check
+            if (_wzFilesUpdated.ContainsKey(wzf)) // some safety check
                 throw new Exception(string.Format("Wz file {0} at the path {1} has already been loaded, and cannot be loaded again.", baseName, wzf.FilePath));
 
             // write lock to begin adding to the dictionary
@@ -337,7 +337,7 @@ namespace MapleLib
             try
             {
                 _wzFiles[baseName] = wzf;
-                _wzFilesUpdated[wzf.FilePath] = false;
+                _wzFilesUpdated[wzf] = false;
                 _wzDirs[baseName] = new WzMainDirectory(wzf);
             }
             finally
@@ -393,13 +393,13 @@ namespace MapleLib
         /// <exception cref="Exception"></exception>
         public void SetWzFileUpdated(WzFile wzFile)
         {
-            if (_wzFilesUpdated.ContainsKey(wzFile.FilePath))
+            if (_wzFilesUpdated.ContainsKey(wzFile))
             {
                 // write lock to begin adding to the dictionary
                 _readWriteLock.EnterWriteLock();
                 try
                 {
-                    _wzFilesUpdated[wzFile.FilePath] = true;
+                    _wzFilesUpdated[wzFile] = true;
                 }
                 finally
                 {
@@ -408,6 +408,27 @@ namespace MapleLib
             }
             else
                 throw new Exception("wz file to be flagged do not exist in memory " + wzFile.FilePath);
+        }
+
+        /// <summary>
+        /// Gets the list of updated or changed WZ files.
+        /// </summary>
+        /// <returns></returns>
+        public List<WzFile> GetUpdatedWzFiles() {
+            List<WzFile> updatedWzFiles = new List<WzFile>();
+            // readlock
+            _readWriteLock.EnterReadLock();
+            try {
+                foreach (KeyValuePair<WzFile, bool> wzFileUpdated in _wzFilesUpdated) {
+                    if (wzFileUpdated.Value == true) {
+                        updatedWzFiles.Add(wzFileUpdated.Key);
+                    }
+                }
+            }
+            finally {
+                _readWriteLock.ExitReadLock();
+            }
+            return updatedWzFiles;
         }
 
         /// <summary>
@@ -424,7 +445,7 @@ namespace MapleLib
                 try
                 {
                     _wzFiles.Remove(baseName);
-                    _wzFilesUpdated.Remove(wzFilePath);
+                    _wzFilesUpdated.Remove(wzFile);
                     _wzDirs.Remove(baseName);
                 }
                 finally
