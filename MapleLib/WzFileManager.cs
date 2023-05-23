@@ -151,12 +151,29 @@ namespace MapleLib
             string dataWzFilePath = Path.Combine(baseDirectoryPath, "Data.wz");
             bool bDirectoryContainsDataWz = File.Exists(dataWzFilePath);
             if (bDirectoryContainsDataWz) {
+                // Check if Skill.wz, String.wz, Character.wz exist in the base directory
                 string skillWzFilePath = Path.Combine(baseDirectoryPath, "Skill.wz");
                 string stringWzFilePath = Path.Combine(baseDirectoryPath, "String.wz");
                 string characterWzFilePath = Path.Combine(baseDirectoryPath, "Character.wz");
 
-                if (!File.Exists(skillWzFilePath) && !File.Exists(stringWzFilePath) && !File.Exists(characterWzFilePath))
-                    return true;
+                bool skillWzExist = File.Exists(skillWzFilePath);
+                bool stringWzExist = File.Exists(stringWzFilePath);
+                bool characterWzExist = File.Exists(characterWzFilePath);
+
+                if (!skillWzExist && !stringWzExist && !characterWzExist) {
+                    // Check if "Data" directory contains a "Character", "Skill", or "String" directory
+                    // to filter for 64-bit wz maplestory
+                    string skillDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "Skill");
+                    string stringDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "String");
+                    string characterDirectoryPath = Path.Combine(baseDirectoryPath, "Data", "Character");
+
+                    bool skillDirExist = Directory.Exists(skillDirectoryPath);
+                    bool stringDirExist = Directory.Exists(stringDirectoryPath);
+                    bool characterDirExist = Directory.Exists(characterDirectoryPath);
+
+                    if (!skillDirExist && !stringDirExist && !characterDirExist)
+                        return true;
+                }
             }
             return false;
         }
@@ -528,7 +545,7 @@ namespace MapleLib
         /// Finds the wz image within the multiple wz files (by the base wz name)
         /// </summary>
         /// <param name="baseWzName"></param>
-        /// <param name="imageName"></param>
+        /// <param name="imageName">Matches any if string.empty.</param>
         /// <returns></returns>
         public WzObject FindWzImageByName(string baseWzName, string imageName) {
             baseWzName = baseWzName.ToLower();
@@ -537,8 +554,8 @@ namespace MapleLib
             List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
             if (_bIsPreBBDataWzFormat) {
                 image = dirs
-                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && wzFile[baseWzName][imageName] != null)
-                    .Select(wzFile => wzFile[baseWzName][imageName])
+                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && (imageName == string.Empty ? true : wzFile[baseWzName][imageName] != null))
+                    .Select(wzFile => (imageName == string.Empty ? wzFile[baseWzName] : wzFile[baseWzName][imageName]))
                     .FirstOrDefault();
             }
             else {
@@ -549,6 +566,31 @@ namespace MapleLib
                     .FirstOrDefault();
             }
             return image;
+        }
+
+        /// <summary>
+        /// Finds the wz image within the multiple wz files (by the base wz name)
+        /// </summary>
+        /// <param name="baseWzName"></param>
+        /// <param name="imageName">Matches any if string.empty.</param>
+        /// <returns></returns>
+        public List<WzObject> FindWzImagesByName(string baseWzName, string imageName) {
+            baseWzName = baseWzName.ToLower();
+
+            List<WzDirectory> dirs = GetWzDirectoriesFromBase(baseWzName);
+            if (_bIsPreBBDataWzFormat) {
+                return dirs
+                    .Where(wzFile => wzFile != null && wzFile[baseWzName] != null && (imageName == string.Empty ? true : wzFile[baseWzName][imageName] != null))
+                    .Select(wzFile => (imageName == string.Empty ? wzFile[baseWzName] : wzFile[baseWzName][imageName]))
+                    .ToList();
+            }
+            else {
+                // Use Where() and FirstOrDefault() to filter the WzDirectories and find the first matching WzObject
+                return dirs
+                    .Where(wzFile => wzFile != null && wzFile[imageName] != null)
+                    .Select(wzFile => wzFile[imageName])
+                    .ToList();
+            }
         }
 
         /// <summary>
