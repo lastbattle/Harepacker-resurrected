@@ -243,6 +243,9 @@ namespace HaSharedLibrary.Wz
 
         /// <summary>
         /// Finds a map image from the list of Map.wzs
+        /// On pre-bb client (BETA)
+        /// Data.wz/Map/Map/Map1/10000000.img
+        /// 
         /// On pre 64-bit client:
         /// Map.wz/Map/Map1/10000000.img
         /// 
@@ -257,19 +260,25 @@ namespace HaSharedLibrary.Wz
             string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
             string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 
-            List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase(baseDir);
+            if (fileManager.IsPreBBDataWzFormat) {
+                WzObject mapObject = fileManager.FindWzImageByName(baseDir, "Map");
 
-            foreach (WzDirectory mapWzDir in mapWzDirs) 
-            {
-                WzImage mapImage;
+                WzImage mapImage = (WzImage) (mapObject?[mapcat]?[mapIdNamePadded]);
+                return mapImage;
+            } else {
+                List<WzDirectory> mapWzDirs = fileManager.GetWzDirectoriesFromBase(baseDir);
 
-                if (fileManager.Is64Bit)
-                    mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
-                else 
-                    mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
+                foreach (WzDirectory mapWzDir in mapWzDirs) {
+                    WzImage mapImage;
 
-                if (mapImage != null) {
-                    return mapImage;
+                    if (fileManager.Is64Bit)
+                        mapImage = (WzImage)mapWzDir?[mapIdNamePadded];
+                    else
+                        mapImage = (WzImage)mapWzDir?["Map"]?[mapcat]?[mapIdNamePadded];
+
+                    if (mapImage != null) {
+                        return mapImage;
+                    }
                 }
             }
             return null;

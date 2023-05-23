@@ -115,6 +115,7 @@ namespace HaCreator.GUI
 
             bool bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
             bool bIsPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFormat(wzPath); // set
+
             Program.WzManager = new WzFileManager(wzPath, bIs64BitDirectoryWzFileFormat, bIsPreBBDataWzFormat);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
