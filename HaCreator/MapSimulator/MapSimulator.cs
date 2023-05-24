@@ -734,11 +734,33 @@ namespace HaCreator.MapSimulator
             // Reactors
             foreach (ReactorItem reactorItem in mapObjects_Reactors)
             {
+                ReactorInstance instance = reactorItem.ReactorInstance;
+
                 reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                null,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw reactor debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(80, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                    sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                    sb.Append(" id: ").Append(instance.ReactorInfo.ID).Append(Environment.NewLine);
+                    sb.Append(" name: ").Append(instance.Name).Append(Environment.NewLine);
+
+                    spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Life (NPC + Mobs)
@@ -758,6 +780,8 @@ namespace HaCreator.MapSimulator
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw mobs debug tooltip
             }
             foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
@@ -775,6 +799,8 @@ namespace HaCreator.MapSimulator
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw npc debug tooltip
             }
 
             // Front Backgrounds
@@ -979,6 +1005,9 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DoScreenshot()
         {
+            if (!bSaveScreenshotComplete)
+                return;
+
             if (bSaveScreenshot)
             {
                 bSaveScreenshot = false;
