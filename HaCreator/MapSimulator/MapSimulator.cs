@@ -258,7 +258,7 @@ namespace HaCreator.MapSimulator
             WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // doesnt exist before big-bang
                                      
             this.bBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
-            this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
+            this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // chaos update
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -486,6 +486,9 @@ namespace HaCreator.MapSimulator
             // clear used items
             foreach (WzObject obj in usedProps)
             {
+                if (obj == null)
+                    continue; // obj copied twice in usedProps?
+
                 // Spine events
                 WzSpineObject spineObj = (WzSpineObject) obj.MSTagSpine;
                 if (spineObj != null)
@@ -697,19 +700,43 @@ namespace HaCreator.MapSimulator
             // Portals
             foreach (PortalItem portalItem in mapObjects_Portal)
             {
+                PortalInstance instance = portalItem.PortalInstance;
+
                 portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw portal debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        instance.Width + 40,
+                        instance.Height);
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                    sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                    sb.Append(" script: ").Append(instance.script).Append(Environment.NewLine);
+                    sb.Append(" tm: ").Append(instance.tm).Append(Environment.NewLine);
+                    sb.Append(" pt: ").Append(instance.pt).Append(Environment.NewLine);
+                    sb.Append(" pn: ").Append(instance.pt).Append(Environment.NewLine);
+
+                    spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Reactors
             foreach (ReactorItem reactorItem in mapObjects_Reactors)
             {
                 reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    null,
+                mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
             }
@@ -785,7 +812,7 @@ namespace HaCreator.MapSimulator
 
                             if (bShowDebugMode)
                             {
-                                DrawBorder(spriteBatch, rect, 1, Color.White); // test
+                                DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f)); // test
                                 spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
                             }
 
@@ -904,7 +931,7 @@ namespace HaCreator.MapSimulator
         /// <param name="thicknessOfBorder"></param>
         /// <param name="borderColor"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
+        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor, Color backgroundColor)
         {
             // Draw top line
             sprite.Draw(texture_debugBoundaryRect, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
@@ -922,6 +949,11 @@ namespace HaCreator.MapSimulator
                                             rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
                                             rectangleToDraw.Width,
                                             thicknessOfBorder), borderColor);
+
+            // Draw background
+            if (backgroundColor != Color.Transparent)
+                // draw a black background sprite with the rectangleToDraw as area
+                sprite.Draw(texture_debugBoundaryRect, rectangleToDraw, backgroundColor);
         }
 
         /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
