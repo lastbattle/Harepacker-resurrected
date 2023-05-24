@@ -803,24 +803,44 @@ namespace HaCreator.MapSimulator
                     Debug.WriteLine(rect.ToString());
                 }
             }
-            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
+            foreach (NpcItem npcItem in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
+                NpcInstance instance = npcItem.NpcInstance;
+
                 ReflectionDrawableBoundary mirrorFieldData = null;
                 if (mirrorBottomReflection != null)
                 {
-                    if (rect_mirrorBottom.Contains(new Point(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y)))
+                    if (rect_mirrorBottom.Contains(new Point(npcItem.NpcInstance.X, npcItem.NpcInstance.Y)))
                         mirrorFieldData = mirrorBottomReflection;
                 }
                 if (mirrorFieldData == null)  // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(npcItem.NpcInstance.X, npcItem.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
 
-                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                npcItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
 
                 // Draw npc debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                    sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                    sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
+                    sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
+
+                    spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Front Backgrounds

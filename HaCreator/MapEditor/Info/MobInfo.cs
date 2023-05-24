@@ -132,7 +132,7 @@ namespace HaCreator.MapEditor.Info
 
                     WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default;
 
-                    WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                    WzStringProperty link = (WzStringProperty)mobImage?["info"]?["link"];
                     if (link != null) {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
                         WzImage linkedImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
