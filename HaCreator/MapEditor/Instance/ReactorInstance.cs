@@ -18,15 +18,27 @@ namespace HaCreator.MapEditor.Instance
 {
     public class ReactorInstance : BoardItem, IFlippable, ISerializable
     {
-        private ReactorInfo baseInfo;
+        private readonly ReactorInfo reactorInfo;
+        public ReactorInfo ReactorInfo { get { return reactorInfo; } }
+
         private int reactorTime;
         private bool flip;
         private string name;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="baseInfo"></param>
+        /// <param name="board"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="reactorTime"></param>
+        /// <param name="name"></param>
+        /// <param name="flip"></param>
         public ReactorInstance(ReactorInfo baseInfo, Board board, int x, int y, int reactorTime, string name, bool flip)
             : base(board, x, y, -1)
         {
-            this.baseInfo = baseInfo;
+            this.reactorInfo = baseInfo;
             this.reactorTime = reactorTime;
             this.flip = flip;
             this.name = name;
@@ -38,13 +50,13 @@ namespace HaCreator.MapEditor.Instance
         {
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
             //if (baseInfo.Texture == null) baseInfo.CreateTexture(sprite.GraphicsDevice);
-            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 1f);
+            sprite.Draw(reactorInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 1f);
             base.Draw(sprite, color, xShift, yShift);
         }
 
         public override MapleDrawableInfo BaseInfo
         {
-            get { return baseInfo; }
+            get { return reactorInfo; }
         }
 
         public bool Flip
@@ -80,25 +92,25 @@ namespace HaCreator.MapEditor.Instance
         {
             get
             {
-                return baseInfo.Image;
+                return reactorInfo.Image;
             }
         }
 
         public override int Width
         {
-            get { return baseInfo.Width; }
+            get { return reactorInfo.Width; }
         }
 
         public override int Height
         {
-            get { return baseInfo.Height; }
+            get { return reactorInfo.Height; }
         }
 
         public override System.Drawing.Point Origin
         {
             get
             {
-                return baseInfo.Origin;
+                return reactorInfo.Origin;
             }
         }
 
@@ -132,7 +144,7 @@ namespace HaCreator.MapEditor.Instance
         protected void UpdateSerializedForm(SerializationForm result)
         {
             base.UpdateSerializedForm(result);
-            result.id = baseInfo.ID;
+            result.id = reactorInfo.ID;
             result.reactortime = reactorTime;
             result.flip = flip;
             result.name = name;
@@ -141,7 +153,7 @@ namespace HaCreator.MapEditor.Instance
         public ReactorInstance(Board board, SerializationForm json)
             : base(board, json)
         {
-            baseInfo = ReactorInfo.Get(json.id);
+            reactorInfo = ReactorInfo.Get(json.id);
         }
     }
 }
