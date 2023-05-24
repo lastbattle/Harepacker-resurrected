@@ -42,6 +42,7 @@ namespace HaCreator.GUI
         private const string 
             WZ_FILE_NAME = "map",
             WZ_FILE_IMAGE = "Physics.img";
+        private WzImage mapPhysicsImage;
 
         /// <summary>
         /// Constructor
@@ -61,6 +62,13 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void MapPhysicsEditor_Load(object sender, EventArgs e)
         {
+            if (Program.WzManager.IsPreBBDataWzFormat) {
+                MessageBox.Show(string.Format("Editing of {0}/{1} is not available in beta MapleStory.", WZ_FILE_NAME, WZ_FILE_IMAGE));
+                Close();
+                return;
+            }
+
+            mapPhysicsImage = (WzImage)Program.WzManager.FindWzImageByName(WZ_FILE_NAME, WZ_FILE_IMAGE);
             if (!LoadWzValues())
             {
                 Close();
@@ -78,29 +86,27 @@ namespace HaCreator.GUI
             bool bLoadedSuccessfully = false;
             try
             {
-                WzDirectory wzMapFile = Program.WzManager[WZ_FILE_NAME];
-                WzImage image = (WzImage)wzMapFile[WZ_FILE_IMAGE];
-                if (image != null)
+                if (mapPhysicsImage != null)
                 {
-                    numericUpDown_walkForce.Value = (decimal)image["walkForce"].GetDouble();
-                    numericUpDown_walkSpeed.Value = (decimal)image["walkSpeed"].GetDouble();
-                    numericUpDown_walkDrag.Value = (decimal)image["walkDrag"].GetDouble();
-                    numericUpDown_slipForce.Value = (decimal)image["slipForce"].GetDouble();
-                    numericUpDown_slipSpeed.Value = (decimal)image["slipSpeed"].GetDouble();
-                    numericUpDown_floatDrag1.Value = (decimal)image["floatDrag1"].GetDouble();
-                    numericUpDown_floatDrag2.Value = (decimal)image["floatDrag2"].GetDouble();
-                    numericUpDown_floatCoefficient.Value = (decimal)image["floatCoefficient"].GetDouble();
-                    numericUpDown_swimForce.Value = (decimal)image["swimForce"].GetDouble();
-                    numericUpDown_swimSpeed.Value = (decimal)image["swimSpeed"].GetDouble();
-                    numericUpDown_flyForce.Value = (decimal)image["flyForce"].GetDouble();
-                    numericUpDown_flySpeed.Value = (decimal)image["flySpeed"].GetDouble();
-                    numericUpDown_gravityAcc.Value = (decimal)image["gravityAcc"].GetDouble();
-                    numericUpDown_fallSpeed.Value = (decimal)image["fallSpeed"].GetDouble();
-                    numericUpDown_jumpSpeed.Value = (decimal)image["jumpSpeed"].GetDouble();
-                    numericUpDown_maxFriction.Value = (decimal)image["maxFriction"].GetDouble();
-                    numericUpDown_minFriction.Value = (decimal)image["minFriction"].GetDouble();
-                    numericUpDown_swimSpeedDec.Value = (decimal)image["swimSpeedDec"].GetDouble();
-                    numericUpDown_flyJumpDec.Value = (decimal)image["flyJumpDec"].GetDouble();
+                    numericUpDown_walkForce.Value = (decimal)mapPhysicsImage["walkForce"].GetDouble();
+                    numericUpDown_walkSpeed.Value = (decimal)mapPhysicsImage["walkSpeed"].GetDouble();
+                    numericUpDown_walkDrag.Value = (decimal)mapPhysicsImage["walkDrag"].GetDouble();
+                    numericUpDown_slipForce.Value = (decimal)mapPhysicsImage["slipForce"].GetDouble();
+                    numericUpDown_slipSpeed.Value = (decimal)mapPhysicsImage["slipSpeed"].GetDouble();
+                    numericUpDown_floatDrag1.Value = (decimal)mapPhysicsImage["floatDrag1"].GetDouble();
+                    numericUpDown_floatDrag2.Value = (decimal)mapPhysicsImage["floatDrag2"].GetDouble();
+                    numericUpDown_floatCoefficient.Value = (decimal)mapPhysicsImage["floatCoefficient"].GetDouble();
+                    numericUpDown_swimForce.Value = (decimal)mapPhysicsImage["swimForce"].GetDouble();
+                    numericUpDown_swimSpeed.Value = (decimal)mapPhysicsImage["swimSpeed"].GetDouble();
+                    numericUpDown_flyForce.Value = (decimal)mapPhysicsImage["flyForce"].GetDouble();
+                    numericUpDown_flySpeed.Value = (decimal)mapPhysicsImage["flySpeed"].GetDouble();
+                    numericUpDown_gravityAcc.Value = (decimal)mapPhysicsImage["gravityAcc"].GetDouble();
+                    numericUpDown_fallSpeed.Value = (decimal)mapPhysicsImage["fallSpeed"].GetDouble();
+                    numericUpDown_jumpSpeed.Value = (decimal)mapPhysicsImage["jumpSpeed"].GetDouble();
+                    numericUpDown_maxFriction.Value = (decimal)mapPhysicsImage["maxFriction"].GetDouble();
+                    numericUpDown_minFriction.Value = (decimal)mapPhysicsImage["minFriction"].GetDouble();
+                    numericUpDown_swimSpeedDec.Value = (decimal)mapPhysicsImage["swimSpeedDec"].GetDouble();
+                    numericUpDown_flyJumpDec.Value = (decimal)mapPhysicsImage["flyJumpDec"].GetDouble();
 
                     bLoadedSuccessfully = true;
                 }
@@ -129,31 +135,29 @@ namespace HaCreator.GUI
             string errorMessage = null;
             try
             {
-                WzDirectory wzMapFile = Program.WzManager[WZ_FILE_NAME];
-                WzImage image = (WzImage)wzMapFile[WZ_FILE_IMAGE];
-                if (image != null)
+                if (mapPhysicsImage != null)
                 {
-                    image["walkForce"].SetValue(numericUpDown_walkForce.Value);
-                    image["walkSpeed"].SetValue(numericUpDown_walkSpeed.Value);
-                    image["walkDrag"].SetValue(numericUpDown_walkDrag.Value);
-                    image["slipForce"].SetValue(numericUpDown_slipForce.Value);
-                    image["slipSpeed"].SetValue(numericUpDown_slipSpeed.Value);
-                    image["floatDrag1"].SetValue(numericUpDown_floatDrag1.Value);
-                    image["floatDrag2"].SetValue(numericUpDown_floatDrag2.Value);
-                    image["floatCoefficient"].SetValue(numericUpDown_floatCoefficient.Value);
-                    image["swimForce"].SetValue(numericUpDown_swimForce.Value);
-                    image["swimSpeed"].SetValue(numericUpDown_swimSpeed.Value);
-                    image["flyForce"].SetValue(numericUpDown_flyForce.Value);
-                    image["flySpeed"].SetValue(numericUpDown_flySpeed.Value);
-                    image["gravityAcc"].SetValue(numericUpDown_gravityAcc.Value);
-                    image["fallSpeed"].SetValue(numericUpDown_fallSpeed.Value);
-                    image["jumpSpeed"].SetValue(numericUpDown_jumpSpeed.Value);
-                    image["maxFriction"].SetValue(numericUpDown_maxFriction.Value);
-                    image["minFriction"].SetValue(numericUpDown_minFriction.Value);
-                    image["swimSpeedDec"].SetValue(numericUpDown_swimSpeedDec.Value);
-                    image["flyJumpDec"].SetValue(numericUpDown_flyJumpDec.Value);
+                    mapPhysicsImage["walkForce"].SetValue(numericUpDown_walkForce.Value);
+                    mapPhysicsImage["walkSpeed"].SetValue(numericUpDown_walkSpeed.Value);
+                    mapPhysicsImage["walkDrag"].SetValue(numericUpDown_walkDrag.Value);
+                    mapPhysicsImage["slipForce"].SetValue(numericUpDown_slipForce.Value);
+                    mapPhysicsImage["slipSpeed"].SetValue(numericUpDown_slipSpeed.Value);
+                    mapPhysicsImage["floatDrag1"].SetValue(numericUpDown_floatDrag1.Value);
+                    mapPhysicsImage["floatDrag2"].SetValue(numericUpDown_floatDrag2.Value);
+                    mapPhysicsImage["floatCoefficient"].SetValue(numericUpDown_floatCoefficient.Value);
+                    mapPhysicsImage["swimForce"].SetValue(numericUpDown_swimForce.Value);
+                    mapPhysicsImage["swimSpeed"].SetValue(numericUpDown_swimSpeed.Value);
+                    mapPhysicsImage["flyForce"].SetValue(numericUpDown_flyForce.Value);
+                    mapPhysicsImage["flySpeed"].SetValue(numericUpDown_flySpeed.Value);
+                    mapPhysicsImage["gravityAcc"].SetValue(numericUpDown_gravityAcc.Value);
+                    mapPhysicsImage["fallSpeed"].SetValue(numericUpDown_fallSpeed.Value);
+                    mapPhysicsImage["jumpSpeed"].SetValue(numericUpDown_jumpSpeed.Value);
+                    mapPhysicsImage["maxFriction"].SetValue(numericUpDown_maxFriction.Value);
+                    mapPhysicsImage["minFriction"].SetValue(numericUpDown_minFriction.Value);
+                    mapPhysicsImage["swimSpeedDec"].SetValue(numericUpDown_swimSpeedDec.Value);
+                    mapPhysicsImage["flyJumpDec"].SetValue(numericUpDown_flyJumpDec.Value);
 
-                    Program.WzManager.SetWzFileUpdated(WZ_FILE_NAME, image); // flag as changed 
+                    Program.WzManager.SetWzFileUpdated(WZ_FILE_NAME, mapPhysicsImage); // flag as changed 
                 }
                 else
                 {
