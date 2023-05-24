@@ -764,24 +764,44 @@ namespace HaCreator.MapSimulator
             }
 
             // Life (NPC + Mobs)
-            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
+            foreach (MobItem mobItem in mapObjects_Mobs) // Mobs
             {
+                MobInstance instance = mobItem.MobInstance;
+
                 ReflectionDrawableBoundary mirrorFieldData = null;
                 if (mirrorBottomReflection != null)
                 {
-                    if (rect_mirrorBottom.Contains(new Point(mapMob.MobInstance.X, mapMob.MobInstance.Y)))
+                    if (rect_mirrorBottom.Contains(new Point(mobItem.MobInstance.X, mobItem.MobInstance.Y)))
                         mirrorFieldData = mirrorBottomReflection;
                 }
                 if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapMob.MobInstance.X, mapMob.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobItem.MobInstance.X, mobItem.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
 
-                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                mobItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
 
                 // Draw mobs debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    StringBuilder sb = new StringBuilder();
+                    sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                    sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                    sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
+                    sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
+
+                    spriteBatch.DrawString(font_DebugValues, sb.ToString(), new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
             foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
