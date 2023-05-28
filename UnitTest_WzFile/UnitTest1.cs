@@ -12,7 +12,7 @@ namespace UnitTest_WzFile
     [TestClass]
     public class UnitTest1
     {
-        private static WzFileManager _fileManager = new WzFileManager("", false);
+        private static WzFileManager _fileManager = new WzFileManager("", false, false);
 
         private static readonly List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
 
@@ -43,6 +43,7 @@ namespace UnitTest_WzFile
 
             // TaiwanMS
             _testFiles.Add(new Tuple<string, WzMapleVersion>("TamingMob_TMS_113.wz", WzMapleVersion.EMS));
+            _testFiles.Add(new Tuple<string, WzMapleVersion>("TMS_113_Item.wz", WzMapleVersion.EMS));
         }
 
         /// <summary>
