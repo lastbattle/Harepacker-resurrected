@@ -635,8 +635,8 @@ namespace HaCreator.MapEditor.Input
         
         private void HandleMinimapBrowse(Board selectedBoard, XNA.Point realPosition)
         {
-            int h = realPosition.X * selectedBoard.mag - (int)parentBoard.Width / 2;
-            int v = realPosition.Y * selectedBoard.mag - (int)parentBoard.Height / 2;
+            int h = realPosition.X * selectedBoard.mag - (int)parentBoard.ActualWidth / 2;
+            int v = realPosition.Y * selectedBoard.mag - (int)parentBoard.ActualHeight / 2;
             if (h < 0) selectedBoard.hScroll = 0;
             else if (h > parentBoard.MaxHScroll) 
                 selectedBoard.hScroll = (int)parentBoard.MaxHScroll;
