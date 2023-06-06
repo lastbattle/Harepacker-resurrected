@@ -27,6 +27,14 @@ namespace HaCreator.MapEditor.Info
 
         private WzImage _LinkedWzImage;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="id"></param>
+        /// <param name="name"></param>
+        /// <param name="parentObject"></param>
         public NpcInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
         {
@@ -117,16 +125,20 @@ namespace HaCreator.MapEditor.Info
             get {
                 if (_LinkedWzImage == null)
                 {
-                    WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName);
+
+                    WzStringProperty link = (WzStringProperty)npcImage?["info"]?["link"];
                     if (link != null)
                     {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", linkImgName);
+                        WzImage linkedImage = (WzImage)Program.WzManager.FindWzImageByName("npc", linkImgName);
+
+                        _LinkedWzImage = linkedImage ?? npcImage; // fallback to npcImage if null
                     }
                     else
                     {
-                        string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                        _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName); // default
+                        _LinkedWzImage = npcImage;
                     }
                 }
                 return _LinkedWzImage;

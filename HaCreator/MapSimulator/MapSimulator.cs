@@ -258,7 +258,7 @@ namespace HaCreator.MapSimulator
             WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // doesnt exist before big-bang
                                      
             this.bBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
-            this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
+            this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // chaos update
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
@@ -486,6 +486,9 @@ namespace HaCreator.MapSimulator
             // clear used items
             foreach (WzObject obj in usedProps)
             {
+                if (obj == null)
+                    continue; // obj copied twice in usedProps?
+
                 // Spine events
                 WzSpineObject spineObj = (WzSpineObject) obj.MSTagSpine;
                 if (spineObj != null)
@@ -697,57 +700,161 @@ namespace HaCreator.MapSimulator
             // Portals
             foreach (PortalItem portalItem in mapObjects_Portal)
             {
+                PortalInstance instance = portalItem.PortalInstance;
+
                 portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw portal debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        instance.Width + 40,
+                        instance.Height);
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (portalItem.CanUpdateDebugText(TickCount, 1000)) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" script: ").Append(instance.script).Append(Environment.NewLine);
+                        sb.Append(" tm: ").Append(instance.tm).Append(Environment.NewLine);
+                        sb.Append(" pt: ").Append(instance.pt).Append(Environment.NewLine);
+                        sb.Append(" pn: ").Append(instance.pt).Append(Environment.NewLine);
+
+                        portalItem.DebugText = sb.ToString();
+                    }
+                    spriteBatch.DrawString(font_DebugValues, portalItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Reactors
             foreach (ReactorItem reactorItem in mapObjects_Reactors)
             {
+                ReactorInstance instance = reactorItem.ReactorInstance;
+
                 reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     null,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw reactor debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(80, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (reactorItem.CanUpdateDebugText(TickCount, 1000)) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.ReactorInfo.ID).Append(Environment.NewLine);
+                        sb.Append(" name: ").Append(instance.Name).Append(Environment.NewLine);
+
+                        reactorItem.DebugText = sb.ToString();
+                    }
+
+                    spriteBatch.DrawString(font_DebugValues, reactorItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Life (NPC + Mobs)
-            foreach (MobItem mapMob in mapObjects_Mobs) // Mobs
+            foreach (MobItem mobItem in mapObjects_Mobs) // Mobs
             {
+                MobInstance instance = mobItem.MobInstance;
+
                 ReflectionDrawableBoundary mirrorFieldData = null;
                 if (mirrorBottomReflection != null)
                 {
-                    if (rect_mirrorBottom.Contains(new Point(mapMob.MobInstance.X, mapMob.MobInstance.Y)))
+                    if (rect_mirrorBottom.Contains(new Point(mobItem.MobInstance.X, mobItem.MobInstance.Y)))
                         mirrorFieldData = mirrorBottomReflection;
                 }
                 if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapMob.MobInstance.X, mapMob.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobItem.MobInstance.X, mobItem.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
 
-                mapMob.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                mobItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw mobs debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (mobItem.CanUpdateDebugText(TickCount, 1000)) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
+                        sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
+
+                        mobItem.DebugText = sb.ToString();
+                    }
+
+                    spriteBatch.DrawString(font_DebugValues, mobItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
-            foreach (NpcItem mapNpc in mapObjects_NPCs) // NPCs (always in front of mobs)
+            foreach (NpcItem npcItem in mapObjects_NPCs) // NPCs (always in front of mobs)
             {
+                NpcInstance instance = npcItem.NpcInstance;
+
                 ReflectionDrawableBoundary mirrorFieldData = null;
                 if (mirrorBottomReflection != null)
                 {
-                    if (rect_mirrorBottom.Contains(new Point(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y)))
+                    if (rect_mirrorBottom.Contains(new Point(npcItem.NpcInstance.X, npcItem.NpcInstance.Y)))
                         mirrorFieldData = mirrorBottomReflection;
                 }
                 if (mirrorFieldData == null)  // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mapNpc.NpcInstance.X, mapNpc.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(npcItem.NpcInstance.X, npcItem.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
 
-                mapNpc.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                npcItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     mirrorFieldData,
                     RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                     TickCount);
+
+                // Draw npc debug tooltip
+                if (bShowDebugMode) {
+                    Rectangle rect = new Rectangle(
+                        instance.X - shiftCenteredX - (instance.Width - 20),
+                        instance.Y - shiftCenteredY - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (npcItem.CanUpdateDebugText(TickCount, 1000)) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
+                        sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
+
+                        npcItem.DebugText = sb.ToString();
+                    }
+                    spriteBatch.DrawString(font_DebugValues, npcItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
             }
 
             // Front Backgrounds
@@ -785,8 +892,15 @@ namespace HaCreator.MapSimulator
 
                             if (bShowDebugMode)
                             {
-                                DrawBorder(spriteBatch, rect, 1, Color.White); // test
-                                spriteBatch.DrawString(font_DebugValues, "X: " + rect.X + ", Y: " + rect.Y, new Vector2(rect.X, rect.Y), Color.White);
+                                DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f)); // test
+
+                                if (tooltip.CanUpdateDebugText(TickCount, 1000)) {
+                                    string text = "X: " + rect.X + ", Y: " + rect.Y;
+
+                                    tooltip.DebugText = text;
+                                }
+
+                                spriteBatch.DrawString(font_DebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
                             }
 
                             if (!rect.Contains(mouseState.X, mouseState.Y))
@@ -904,7 +1018,7 @@ namespace HaCreator.MapSimulator
         /// <param name="thicknessOfBorder"></param>
         /// <param name="borderColor"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor)
+        private void DrawBorder(SpriteBatch sprite, Rectangle rectangleToDraw, int thicknessOfBorder, Color borderColor, Color backgroundColor)
         {
             // Draw top line
             sprite.Draw(texture_debugBoundaryRect, new Rectangle(rectangleToDraw.X, rectangleToDraw.Y, rectangleToDraw.Width, thicknessOfBorder), borderColor);
@@ -922,6 +1036,11 @@ namespace HaCreator.MapSimulator
                                             rectangleToDraw.Y + rectangleToDraw.Height - thicknessOfBorder,
                                             rectangleToDraw.Width,
                                             thicknessOfBorder), borderColor);
+
+            // Draw background
+            if (backgroundColor != Color.Transparent)
+                // draw a black background sprite with the rectangleToDraw as area
+                sprite.Draw(texture_debugBoundaryRect, rectangleToDraw, backgroundColor);
         }
 
         /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -947,6 +1066,9 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DoScreenshot()
         {
+            if (!bSaveScreenshotComplete)
+                return;
+
             if (bSaveScreenshot)
             {
                 bSaveScreenshot = false;

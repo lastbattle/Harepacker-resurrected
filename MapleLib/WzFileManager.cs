@@ -200,9 +200,9 @@ namespace MapleLib
                 // Iterate over the filtered and transformed directories
                 foreach (string dir in directories)
                 {
-                    string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
-                    Debug.WriteLine("----");
-                    Debug.WriteLine(dir);
+                    //string folderName = new DirectoryInfo(Path.GetDirectoryName(dir)).Name.ToLower();
+                    //Debug.WriteLine("----");
+                    //Debug.WriteLine(dir);
 
                     string[] iniFiles = Directory.GetFiles(dir, "*.ini");
                     if (iniFiles.Length <= 0 || iniFiles.Length > 1)

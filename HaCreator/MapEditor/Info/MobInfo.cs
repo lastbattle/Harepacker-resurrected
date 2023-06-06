@@ -22,6 +22,14 @@ namespace HaCreator.MapEditor.Info
 
         private WzImage _LinkedWzImage;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="id"></param>
+        /// <param name="name"></param>
+        /// <param name="parentObject"></param>
         public MobInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
         {
@@ -119,16 +127,21 @@ namespace HaCreator.MapEditor.Info
         {
             get
             {
-                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-                if (link != null)
-                {
-                    string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
-                }
-                else
-                {
+                if (_LinkedWzImage == null) {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                    _LinkedWzImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default
+
+                    WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default;
+
+                    WzStringProperty link = (WzStringProperty)mobImage?["info"]?["link"];
+                    if (link != null) {
+                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
+                        WzImage linkedImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
+
+                        _LinkedWzImage = linkedImage ?? mobImage; // fallback to mobImage if linkedimage isnt available
+                    }
+                    else {
+                        _LinkedWzImage = mobImage;
+                    }
                 }
                 return _LinkedWzImage;
             }

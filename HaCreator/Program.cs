@@ -27,7 +27,6 @@ namespace HaCreator
     {
         public static WzFileManager WzManager;
         public static WzInformationManager InfoManager;
-        public static WzSettingsManager SettingsManager;
         public static bool AbortThreads = false;
         public static bool Restarting;
 
@@ -35,6 +34,8 @@ namespace HaCreator
 
         public static HaEditor HaEditorWindow = null;
 
+        #region Settings
+        public static WzSettingsManager SettingsManager;
         public static string GetLocalSettingsFolder()
         {
             string appdata = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -48,6 +49,7 @@ namespace HaCreator
         {
             return Path.Combine(GetLocalSettingsFolder(), "Settings.json");
         }
+        #endregion
 
         /// <summary>
         /// The main entry point for the application.

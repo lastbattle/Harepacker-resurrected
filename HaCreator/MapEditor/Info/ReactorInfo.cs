@@ -86,28 +86,21 @@ namespace HaCreator.MapEditor.Info
         public WzImage LinkedWzImage
         {
             get {
-                WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-
-                List<WzDirectory> reactorWzDirs = Program.WzManager.GetWzDirectoriesFromBase("reactor");
-                foreach (WzDirectory reactorWzDir in reactorWzDirs)
-                {
+                if (_LinkedWzImage == null) {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzObject reactorObject = Program.WzManager.FindWzImageByName("reactor", imgName);
 
-                    WzObject reactorImage = reactorWzDir?[imgName];
-                    if (reactorImage == null)  
-                        continue;
-
-                    if (link != null)
-                    {
+                    WzStringProperty link = (WzStringProperty)reactorObject?["info"]?["link"];
+                    if (link != null) {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
+                        WzImage findLinkedImg = (WzImage)Program.WzManager.FindWzImageByName("reactor", linkImgName);
 
-                        _LinkedWzImage = (WzImage) reactorWzDir[linkImgName];
+                        _LinkedWzImage = findLinkedImg ?? (WzImage) reactorObject; // fallback if link is null
                     }
                     else
-                        _LinkedWzImage = (WzImage) reactorImage[imgName];
+                        _LinkedWzImage = (WzImage)reactorObject;
                 }
-               
-                return _LinkedWzImage; 
+                return _LinkedWzImage;
             }
             set { this._LinkedWzImage = value; }
         }

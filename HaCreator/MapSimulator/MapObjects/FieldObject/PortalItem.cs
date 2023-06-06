@@ -15,14 +15,30 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
     public class PortalItem : BaseDXDrawableItem
     {
         private readonly PortalInstance portalInstance;
+        /// <summary>
+        /// The portal instance information
+        /// </summary>
+        public PortalInstance PortalInstance {
+            get { return portalInstance; }
+            private set { }
+        }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="portalInstance"></param>
+        /// <param name="frames"></param>
         public PortalItem(PortalInstance portalInstance, List<IDXObject> frames)
             : base(frames, false)
         {
             this.portalInstance = portalInstance;
         }
 
-
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="portalInstance"></param>
+        /// <param name="frame0"></param>
         public PortalItem(PortalInstance portalInstance, IDXObject frame0)
             : base(frame0, false)
         {

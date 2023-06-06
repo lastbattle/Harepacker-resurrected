@@ -419,7 +419,8 @@ namespace MapleLib.WzLib
                 {
                     // coincidentally in msea v194 Map001.wz, the hash matches exactly using mapleStoryPatchVersion of 113, and it fails to decrypt later on (probably 1 in a million chance? o_O).
                     // damn, technical debt accumulating here
-                    if (mapleStoryPatchVersion == 113)
+                    // also needs to check for 'Is64BitWzFile' as it may match TaiwanMS v113 (pre-bb) and return as false.
+                    if (Is64BitWzFile && mapleStoryPatchVersion == 113) 
                     {
                         // hack for now
                         reader.BaseStream.Position = fallbackOffsetPosition; // reset

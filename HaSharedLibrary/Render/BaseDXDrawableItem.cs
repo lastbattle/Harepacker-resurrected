@@ -26,6 +26,29 @@ namespace HaSharedLibrary.Render.DX
         protected readonly bool notAnimated;
         private readonly IDXObject frame0;
 
+        // Debug
+        private string _DebugText = null;
+        private int _lastDebugSwitchTime = 0;
+        /// <summary>
+        /// Indexed debug text for developers. 
+        /// </summary>
+        public string DebugText {
+            get { return _DebugText; }
+            set { this._DebugText = value; }
+        }
+        /// <summary>
+        /// Returns true if the debug text is ready to be updated 
+        /// </summary>
+        /// <param name="TickCount"></param>
+        /// <returns></returns>
+        public bool CanUpdateDebugText(int TickCount, int updateTimeMillis) {
+            // Animated
+            if (TickCount - _lastDebugSwitchTime > updateTimeMillis) {
+                this._lastDebugSwitchTime = TickCount;
+                return true;
+            }
+            return false;
+        }
 
         /// <summary>
         /// The last frame drawn
