@@ -14,14 +14,6 @@
  * You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*/
 
-using SharpDX;
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 namespace MapleLib.ClientLib {
 
     /// <summary>
@@ -86,21 +78,39 @@ namespace MapleLib.ClientLib {
 
 
         /// <summary>
-        /// Calculates the MapleStory CRC value
+        /// Calculates the MapleStory CRC value of a signed int32
         /// </summary>
         /// <param name="val">The value to use.</param>
         /// <param name="length">Data size (32 bit = 4, 64 bit = 8)</param>
         /// <param name="initialCrc">The initial value to start with</param>
-        /// <param name="flag1"></param>
+        /// <param name="xorInitialCrc"></param>
         /// <param name="a5"></param>
         /// <param name="flag2"></param>
         /// <returns></returns>
-        public static uint GetCrc32(int input, uint length, uint initialValue, bool flag1, bool flag2) {
-
+        public static uint GetCrc32(int input, uint initialValue, bool xorInitialCrc, bool flag2) {
             unsafe {
                 // Get a pointer to the first byte of the uint value
                 uint result = 0;
-                uint crc32 = GetCrc32((byte*)&input, length, initialValue, flag1, ref result, flag2);
+                uint crc32 = GetCrc32((byte*)&input, 4, initialValue, xorInitialCrc, ref result, flag2);
+                return crc32;
+            }
+        }
+
+        /// <summary>
+        /// Calculates the MapleStory CRC value of a signed int64
+        /// </summary>
+        /// <param name="val">The value to use.</param>
+        /// <param name="length">Data size (32 bit = 4, 64 bit = 8)</param>
+        /// <param name="initialCrc">The initial value to start with</param>
+        /// <param name="xorInitialCrc"></param>
+        /// <param name="a5"></param>
+        /// <param name="flag2"></param>
+        /// <returns></returns>
+        public static uint GetCrc32(long input, uint initialValue, bool xorInitialCrc, bool flag2) {
+            unsafe {
+                // Get a pointer to the first byte of the uint value
+                uint result = 0;
+                uint crc32 = GetCrc32((byte*)&input, 8, initialValue, xorInitialCrc, ref result, flag2);
                 return crc32;
             }
         }
@@ -111,21 +121,25 @@ namespace MapleLib.ClientLib {
         /// <param name="val">The value to use.</param>
         /// <param name="length">Data size (32 bit = 4, 64 bit = 8)</param>
         /// <param name="initialCrc">The initial value to start with</param>
-        /// <param name="flag1"></param>
+        /// <param name="xorInitialCrc"></param>
         /// <param name="a5"></param>
         /// <param name="flag2"></param>
         /// <returns></returns>
-        public static unsafe uint GetCrc32(byte* val, uint length, uint initialCrc, bool flag1, ref uint a5, bool flag2) {
+        private static unsafe uint GetCrc32(byte* val, uint length, uint initialCrc, bool xorInitialCrc, ref uint a5, bool flag2) {
             byte* v6 = val;
-            if (flag1)
+            if (xorInitialCrc)
                 initialCrc ^= (uint)val;
-            uint v7 = length;
-            uint v8 = initialCrc;
+            uint length_ = length;
+            uint initialCrc_ = initialCrc;
+
+            if (length < 0 || length >= 16) { // gonna check byte* val pointer somehow.. null terminated byte?
+                throw new System.Exception("Invalid length specified.");
+            }
 
             if (length >= 0x10) {
                 uint v9 = length >> 4;
                 do {
-                    uint v10 = CCrc32.ms_adwCrc32Table[v6[1] ^ (((uint)CCrc32.ms_adwCrc32Table[*v6 ^ (v8 >> 24)] ^ (v8 << 8)) >> 24)] ^ (((uint)CCrc32.ms_adwCrc32Table[*v6 ^ (v8 >> 24)] ^ (v8 << 8)) << 8);
+                    uint v10 = CCrc32.ms_adwCrc32Table[v6[1] ^ (((uint)CCrc32.ms_adwCrc32Table[*v6 ^ (initialCrc_ >> 24)] ^ (initialCrc_ << 8)) >> 24)] ^ (((uint)CCrc32.ms_adwCrc32Table[*v6 ^ (initialCrc_ >> 24)] ^ (initialCrc_ << 8)) << 8);
                     byte* v11 = v6 + 1;
                     uint v12 = CCrc32.ms_adwCrc32Table[*++v11 ^ (v10 >> 24)] ^ (v10 << 8);
                     uint v13 = *++v11 ^ (v12 >> 24);
@@ -175,18 +189,18 @@ namespace MapleLib.ClientLib {
                     uint v46 = CCrc32.ms_adwCrc32Table[v44 ^ (v45 >> 24)] ^ (v45 << 8);
                     uint v47 = CCrc32.ms_adwCrc32Table[v11[1] ^ (v46 >> 24)] ^ (v46 << 8);
                     v6 = v11 + 2;
-                    v7 -= 0x10;
+                    length_ -= 0x10;
                     --v9;
-                    v8 = v47;
+                    initialCrc_ = v47;
                 } while (v9 != 0);
             }
 
-            while (v7 > 0) {
-                v8 = CCrc32.ms_adwCrc32Table[*v6++ ^ (v8 >> 24)] ^ (v8 << 8);
-                --v7;
+            while (length_ > 0) {
+                initialCrc_ = CCrc32.ms_adwCrc32Table[*v6++ ^ (initialCrc_ >> 24)] ^ (initialCrc_ << 8);
+                --length_;
             }
 
-            if (flag1 && flag2) {
+            if (xorInitialCrc && flag2) {
                 //  int v48 = CCrc32.dword_E0DB10;
                 //   *(uint*)(v48 + 132) = _ZtlSecureTear<long>(v6, CCrc32.dword_E0DB10 + 124);
             }
@@ -194,7 +208,7 @@ namespace MapleLib.ClientLib {
             if (a5 != null)
                 a5 = 7;
 
-            return v8;
+            return initialCrc_;
         }
     }
 }
