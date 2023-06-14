@@ -52,7 +52,6 @@ namespace HaRepacker.GUI.Panels
             get { return _mainForm; }
             private set { }
         }
-
         // Etc
         private readonly static List<WzObject> clipboard = new List<WzObject>();
         private readonly UndoRedoManager undoRedoMan;

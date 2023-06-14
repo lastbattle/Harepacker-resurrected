@@ -198,6 +198,8 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ClientLib\CCrc32.cs" />
+    <Compile Include="ClientLib\CWvsPhysicalSpace2D.cs" />
     <Compile Include="ClientLib\MapleStoryLocalisation.cs" />
     <Compile Include="Configuration\ApplicationSettings.cs" />
     <Compile Include="Configuration\ConfigurationManager.cs" />

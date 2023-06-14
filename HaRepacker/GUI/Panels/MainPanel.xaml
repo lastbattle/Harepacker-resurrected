@@ -4,7 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HaRepacker"
-             
+
              xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
               xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
@@ -286,6 +286,7 @@
 
                 <WindowsFormsHost x:Name="treeView_WinFormsHost" Grid.Row="0">
                     <local:TreeViewMS x:Name="DataTree" 
+                                      AllowDrop="True"
                                       AfterSelect="DataTree_AfterSelect"
                                       KeyDown="DataTree_KeyDown"
                                       DoubleClick="DataTree_DoubleClick"/>
