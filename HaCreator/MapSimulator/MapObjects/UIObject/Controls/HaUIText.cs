@@ -31,11 +31,12 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
 
         private HaUIInfo _info;
 
-        public HaUIText(string text, Font font, Color color, HaUIInfo info) {
+        public HaUIText(string text, Color color, string font, float fontSize, float userScreenScaleFactor) {
             this._text = text;
-            this.font = font;
+            this.font = new System.Drawing.Font(font, fontSize / userScreenScaleFactor);
             this.color = color;
-            this._info = info;
+
+            this._info = new HaUIInfo();
         }
 
         public HaUIText(string text, Font font, Color color) {
