@@ -100,17 +100,24 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
         public HaUISize GetSize() {
             if (orientation == HaUIStackOrientation.Horizontal) {
                 HaUISize allChildSizes = new HaUISize(
-                    childrens.Sum(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right), 
+                    childrens.Sum(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right),
                     childrens.Max(r => r.GetSize().Height + r.GetInfo().Margins.Top + r.GetInfo().Margins.Bottom));
 
-                return allChildSizes;
+                // normalise to MinHeight and MinWidth
+                return new HaUISize(
+                    Math.Max(_info.MinWidth, allChildSizes.Width), 
+                    Math.Max(_info.MinHeight, allChildSizes.Height));
             }
             else // StackOrientation.Vertical
             {
                 HaUISize allChildSizes = new HaUISize(
-                    childrens.Max(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right), 
+                    childrens.Max(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right),
                     childrens.Sum(r => r.GetSize().Height + r.GetInfo().Margins.Top + r.GetInfo().Margins.Bottom));
-                return allChildSizes;
+
+                // normalise to MinHeight and MinWidth
+                return new HaUISize(
+                    Math.Max(_info.MinWidth, allChildSizes.Width),
+                    Math.Max(_info.MinHeight, allChildSizes.Height));
             }
         }
 

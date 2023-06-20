@@ -24,6 +24,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using MapleLib.Converters;
@@ -48,6 +49,7 @@ namespace HaCreator.MapSimulator
         /// <param name="c">Fills throughout the entire row and column. [Optional path] </param>
         /// <param name="targetImageWidth"></param>
         /// <param name="targetImageHeight"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void DrawUIFrame(System.Drawing.Graphics graphics,
             System.Drawing.Color backgroundColor,
             Bitmap ne, Bitmap nw, Bitmap se, Bitmap sw,

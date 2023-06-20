@@ -93,7 +93,11 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
         public HaUISize GetSize() {
             int width = gridContent.Values.Max(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right) * columns;
             int height = gridContent.Values.Max(r => r.GetSize().Height + r.GetInfo().Margins.Top + r.GetInfo().Margins.Bottom) * rows;
-            return new HaUISize(width, height);
+
+            // normalise to MinHeight and MinWidth
+            return new HaUISize(
+                Math.Max(_info.MinWidth, width),
+                Math.Max(_info.MinHeight, height));
         }
 
         public HaUIInfo GetInfo() {

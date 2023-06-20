@@ -33,5 +33,15 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
         public HaUIPadding Padding;
         public HaUIAlignment HorizontalAlignment = HaUIAlignment.Start;
         public HaUIAlignment VerticalAlignment = HaUIAlignment.Start;
+
+        /// <summary>
+        /// The min width of this IHaUIRenderable
+        /// </summary>
+        public int MinHeight;
+
+        /// <summary>
+        /// The max width of this IHaUIRenderable
+        /// </summary>
+        public int MinWidth;
     }
 }

@@ -26,14 +26,22 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
 
     public interface IHaUIRenderable {
         /// <summary>
-        // Implementation of the rendering logic goes here.
-        // You may want to loop through all elements in the grid, call their Render method,
+        // Loop through all elements in the grid, call their Render method,
         // and combine the results into one Bitmap, considering margins, padding, and alignment.
         // This is highly dependent on your specific rendering requirements.
         // Placeholder for the required interface method:
         /// </summary>
         /// <returns></returns>
         Bitmap Render();
+
+        /// <summary>
+        // Loop through all elements in the grid, call their Render method,
+        // and combine the results into one Bitmap, considering margins, padding, and alignment.
+        // This is highly dependent on your specific rendering requirements.
+        // Placeholder for the required interface method:
+        /// </summary>
+        /// <returns></returns>
+        //Bitmap RenderTextOnly(Bitmap previousBitmap);
 
         /// <summary>
         // Implementation of the size logic goes here.

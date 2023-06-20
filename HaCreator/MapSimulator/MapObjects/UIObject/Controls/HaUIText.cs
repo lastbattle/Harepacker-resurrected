@@ -57,7 +57,6 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
                     g.DrawString(_text, font, brush, _info.Margins.Left, _info.Margins.Top);
                 }
             }
-
             return textBitmap;
         }
 

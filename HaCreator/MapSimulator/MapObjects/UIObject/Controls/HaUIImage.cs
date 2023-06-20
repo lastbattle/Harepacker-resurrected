@@ -66,7 +66,10 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
                 width += _info.Padding.Top;
                 height += _info.Padding.Bottom;
             //}
-            return new HaUISize(width, height);
+            // normalise to MinHeight and MinWidth
+            return new HaUISize(
+                Math.Max(_info.MinWidth, width),
+                Math.Max(_info.MinHeight, height));
         }
 
         public HaUIInfo GetInfo() {

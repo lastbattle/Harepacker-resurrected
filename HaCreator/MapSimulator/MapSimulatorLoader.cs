@@ -515,7 +515,7 @@ namespace HaCreator.MapSimulator {
 
             // Constants
             const float TOOLTIP_FONTSIZE = 10f;
-            const int MAPMARK_MAPNAME_LEFT_MARGIN = 7;
+            const int MAPMARK_MAPNAME_LEFT_MARGIN = 4;
             const int MAPMARK_MAPNAME_TOP_MARGIN = 17;
             const int MAP_IMAGE_PADDING = 2; // the number of pixels from the left to draw the minimap image
             System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
@@ -536,47 +536,40 @@ namespace HaCreator.MapSimulator {
             // Create map minimap image
             HaUIImage minimapUiImage = new HaUIImage(new HaUIInfo() {
                 Bitmap = miniMapImage,
-                Margins = new HaUIMargin() { Left = MAP_IMAGE_PADDING, Right = MAP_IMAGE_PADDING, Top = 0, Bottom = 0 },
-                Padding = new HaUIPadding() { Bottom = 10, Left = 10, Right = 10 }
+                HorizontalAlignment = HaUIAlignment.Center,
+                Margins = new HaUIMargin() { Left = MAP_IMAGE_PADDING + 10, Right = MAP_IMAGE_PADDING + 10, Top = 10, Bottom = 0 },
+                //Padding = new HaUIPadding() { Bottom = 10, Left = 10, Right = 10 }
             });
 
             // Create BitmapStackPanel for text and minimap
-            HaUIStackPanel fullMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical);
+            HaUIStackPanel fullMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical, new HaUIInfo() {
+                MinWidth = 150 // set a min width, so the MapName and StreetName is not cut off if the map image is too thin
+            });
+            HaUIStackPanel mapNameMarkStackPanel = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo() {
+                Margins = new HaUIMargin() { Top = MAPMARK_MAPNAME_TOP_MARGIN, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
+            });
 
             if (mapMark != null) {
-                HaUIImage mapNameMarkStackPanel = new HaUIImage(new HaUIInfo() {
+                // minimap map-mark image
+                HaUIImage mapNameMarkImage = new HaUIImage(new HaUIInfo() {
                     Bitmap = mapMark,
-                    Margins = new HaUIMargin() { Top = MAPMARK_MAPNAME_TOP_MARGIN, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
                 });
-                fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
+                mapNameMarkStackPanel.AddRenderable(mapNameMarkImage);
             }
+            // Minimap name, and street name
+            string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
+            HaUIText haUITextMapNameStreetName = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, TOOLTIP_FONTSIZE, UserScreenScaleFactor);
+            haUITextMapNameStreetName.GetInfo().Margins.Top = 3;
+            haUITextMapNameStreetName.GetInfo().Margins.Left = 2;
+
+            mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
+
+            fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
             fullMiniMapStackPanel.AddRenderable(minimapUiImage);
 
-            // Render final Bitmap
-            System.Drawing.Bitmap finalBitmap = fullMiniMapStackPanel.Render();
+            // Render final minimap Bitmap with UI frames
+            System.Drawing.Bitmap finalBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
 
-            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(finalBitmap)) {
-                // Frames and background
-                UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, finalBitmap.Width, finalBitmap.Height);
-            }
-
-            // Draw text on top of the UI frame
-            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(finalBitmap)) {
-                // Create map name and street name
-                string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
-                HaUIText bitmapText = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, TOOLTIP_FONTSIZE, UserScreenScaleFactor); // Assuming margins based on your DrawString parameters
-                bitmapText.GetInfo().Margins.Top = MAPMARK_MAPNAME_TOP_MARGIN + 3;
-                if (mapMark != null)
-                    bitmapText.GetInfo().Margins.Left = 50;
-                else
-                    bitmapText.GetInfo().Margins.Left = MAPMARK_MAPNAME_LEFT_MARGIN;
-
-                graphics.DrawImage(bitmapText.Render(), new System.Drawing.PointF());
-            }
-
-            // Now you can do whatever you want with finalBitmap,
-            // like creating a Texture2D, etc.
-            // For example:
             Texture2D texturer_miniMap = finalBitmap.ToTexture2D(device);
 
             // Dots pixel 

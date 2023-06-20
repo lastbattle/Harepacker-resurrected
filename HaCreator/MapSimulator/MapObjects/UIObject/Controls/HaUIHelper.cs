@@ -19,6 +19,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+using System.Drawing;
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
 
@@ -31,6 +33,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
         /// <param name="child"></param>
         /// <param name="alignment"></param>
         /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int CalculateAlignmentOffset(int total, int child, HaUIAlignment alignment) {
             switch (alignment) {
                 case HaUIAlignment.Center:
@@ -40,6 +43,29 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
                 default: // HaUIAlignment.Start
                     return 0;
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static System.Drawing.Bitmap RenderAndMergeMinimapUIFrame(HaUIStackPanel toDrawUI, System.Drawing.Color color_bgFill, 
+            Bitmap ne, Bitmap nw, Bitmap se, Bitmap sw,
+             Bitmap e, Bitmap w, Bitmap n, Bitmap s) {
+            HaUISize size = toDrawUI.GetSize();
+
+            System.Drawing.Bitmap finalBitmap = new System.Drawing.Bitmap(size.Width, size.Height);
+
+            // draw UI frame first
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(finalBitmap)) {
+                // Frames and background
+                UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, size.Width, size.Height);
+
+                // then render the full thing on top of it
+                System.Drawing.Bitmap miniMapWithoutFrameBitmap = toDrawUI.Render();
+
+                // Now you can do whatever you want with finalBitmap,
+                // like creating a Texture2D, etc.
+                graphics.DrawImage(miniMapWithoutFrameBitmap, new System.Drawing.PointF(0, 0));
+            }
+            return finalBitmap;
         }
     }
 }
