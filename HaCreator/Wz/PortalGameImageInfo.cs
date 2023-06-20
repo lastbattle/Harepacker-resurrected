@@ -17,9 +17,9 @@ namespace HaCreator.Wz
 {
     public class PortalGameImageInfo
     {
-        private Bitmap defaultImage;
+        private readonly Bitmap defaultImage;
 
-        private Dictionary<string, Bitmap> imageList;
+        private readonly Dictionary<string, Bitmap> imageList;
 
         public PortalGameImageInfo(Bitmap defaultImage, Dictionary<string, Bitmap> imageList)
         {
