@@ -20,6 +20,7 @@ SOFTWARE.
 */
 
 
+using System;
 using System.Drawing;
 
 namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
@@ -46,6 +47,9 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             this._info = new HaUIInfo();
         }
 
+        public void AddRenderable(IHaUIRenderable renderable) {
+            throw new Exception("Not supported in HaUIText.");
+        }
 
         public Bitmap Render() {
             HaUISize size = GetSize();

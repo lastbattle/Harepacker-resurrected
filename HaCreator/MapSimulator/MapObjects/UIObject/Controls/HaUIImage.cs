@@ -40,6 +40,10 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             }
         }
 
+        public void AddRenderable(IHaUIRenderable renderable) {
+            throw new Exception("Not supported in HaUIImage.");
+        }
+
         public Bitmap Render() {
             HaUISize size = GetSize();
             int totalWidth = size.Width;

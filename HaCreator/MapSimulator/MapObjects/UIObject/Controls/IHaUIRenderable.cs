@@ -26,6 +26,12 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
 
     public interface IHaUIRenderable {
         /// <summary>
+        /// Adds a renderable IHaUIRenderable to this IHaUIRenderable
+        /// </summary>
+        /// <param name="renderable"></param>
+        void AddRenderable(IHaUIRenderable renderable);
+
+        /// <summary>
         // Loop through all elements in the grid, call their Render method,
         // and combine the results into one Bitmap, considering margins, padding, and alignment.
         // This is highly dependent on your specific rendering requirements.

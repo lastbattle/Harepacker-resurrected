@@ -517,7 +517,7 @@ namespace HaCreator.MapSimulator {
             const float TOOLTIP_FONTSIZE = 10f;
             const int MAPMARK_MAPNAME_LEFT_MARGIN = 4;
             const int MAPMARK_MAPNAME_TOP_MARGIN = 17;
-            const int MAP_IMAGE_PADDING = 2; // the number of pixels from the left to draw the minimap image
+            const int MAP_IMAGE_TEXT_PADDING = 2; // the number of pixels from the left to draw the minimap image
             System.Drawing.Color color_bgFill = System.Drawing.Color.Transparent;
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
 
@@ -537,7 +537,7 @@ namespace HaCreator.MapSimulator {
             HaUIImage minimapUiImage = new HaUIImage(new HaUIInfo() {
                 Bitmap = miniMapImage,
                 HorizontalAlignment = HaUIAlignment.Center,
-                Margins = new HaUIMargin() { Left = MAP_IMAGE_PADDING + 10, Right = MAP_IMAGE_PADDING + 10, Top = 10, Bottom = 0 },
+                Margins = new HaUIMargin() { Left = MAP_IMAGE_TEXT_PADDING + 10, Right = MAP_IMAGE_TEXT_PADDING + 10, Top = 10, Bottom = 0 },
                 //Padding = new HaUIPadding() { Bottom = 10, Left = 10, Right = 10 }
             });
 
@@ -560,17 +560,21 @@ namespace HaCreator.MapSimulator {
             string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
             HaUIText haUITextMapNameStreetName = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, TOOLTIP_FONTSIZE, UserScreenScaleFactor);
             haUITextMapNameStreetName.GetInfo().Margins.Top = 3;
-            haUITextMapNameStreetName.GetInfo().Margins.Left = 2;
+            haUITextMapNameStreetName.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
+            haUITextMapNameStreetName.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
 
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
-
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
+
+            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
+
             fullMiniMapStackPanel.AddRenderable(minimapUiImage);
 
             // Render final minimap Bitmap with UI frames
-            System.Drawing.Bitmap finalBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
+            System.Drawing.Bitmap finalFullMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
 
-            Texture2D texturer_miniMap = finalBitmap.ToTexture2D(device);
+            Texture2D texturer_miniMapMinimised = finalMininisedMinimapBitmap.ToTexture2D(device);
+            Texture2D texturer_miniMap = finalFullMinimapBitmap.ToTexture2D(device);
 
             // Dots pixel 
             System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
@@ -581,13 +585,23 @@ namespace HaCreator.MapSimulator {
             IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2D(device), 0);
             BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(dxObj_miniMapPixel, false) {
                 Position = new Point(
-                MAP_IMAGE_PADDING, // map is on the center
+                MAP_IMAGE_TEXT_PADDING, // map is on the center
                 0)
             };
 
             // Map
-            IDXObject dxObj = new DXObject(0, 0, texturer_miniMap, 0);
-            MinimapItem minimapItem = new MinimapItem(dxObj, item_pixelDot);
+            IDXObject dxObj_miniMap_Minimised = new DXObject(0, 0, texturer_miniMapMinimised, 0);
+            IDXObject dxObj_miniMap = new DXObject(0, 0, texturer_miniMap, 0);
+
+            MinimapItem minimapItem = new MinimapItem(dxObj_miniMap, 
+                new BaseDXDrawableItem(dxObj_miniMapPixel, false) 
+                {
+                    Position = new Point(MAP_IMAGE_TEXT_PADDING, 0) // map is on the center
+                }, 
+                new BaseDXDrawableItem(dxObj_miniMap_Minimised, false) 
+                { 
+                    Position = new Point(MAP_IMAGE_TEXT_PADDING, 0) 
+                });
 
             ////////////// Minimap buttons////////////////////
             // This must be in order. 
@@ -606,22 +620,22 @@ namespace HaCreator.MapSimulator {
 
                 UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMap.X = texturer_miniMap.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
 
                 UIObject objUIBtBig = new UIObject(BtBig, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
                 UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
                 UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
                 // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
@@ -635,17 +649,17 @@ namespace HaCreator.MapSimulator {
 
                 UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMap.X = texturer_miniMap.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
 
                 UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMax.X = objUIBtMap.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
                 UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
-                    new Point(MAP_IMAGE_PADDING, MAP_IMAGE_PADDING), device);
+                    new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
                 objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
                 // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);

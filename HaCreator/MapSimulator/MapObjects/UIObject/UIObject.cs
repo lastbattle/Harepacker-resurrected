@@ -249,10 +249,10 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// <param name="containerParentX"></param>
         /// <param name="containerParentY"></param>
         /// <param name="mouseState"></param>
-        public void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, int containerParentX, int containerParentY, MouseState mouseState)
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, int containerParentX, int containerParentY, MouseState mouseState)
         {
             if (this.currentState == UIObjectState.Disabled)
-                return; // disabled buttons dont react
+                return false; // disabled buttons dont react
 
             // The position of the button relative to the minimap
             int minimapButtonRelativeX = -(containerParentX) - X; // Left to right
@@ -298,11 +298,13 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                     if (seBtMouseOver != null) // play mouse over sound
                         seBtMouseOver.Play();
                 }
+                return true;
             }
             else
             {
                 SetButtonState(UIObjectState.Normal);
             }
+            return false;
         }
 
         /// <summary>

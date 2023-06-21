@@ -5,11 +5,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Objects.UIObject
 {
@@ -26,15 +22,19 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         private MapObjects.UIObject.UIObject objUIBtBig;
         private MapObjects.UIObject.UIObject objUIBtMap;
 
+        private bool _bIsCollapsedState = false; // minimised minimap state
+        private readonly BaseDXDrawableItem frame_collapsedState;
+
         /// <summary>
-        /// Constructor
+        /// Constructor for the minimap window
         /// </summary>
-        /// <param name="frames"></param>
+        /// <param name="frame"></param>
         /// <param name="item_pixelDot"></param>
-        public MinimapItem(IDXObject frames, BaseDXDrawableItem item_pixelDot)
-            : base(frames, false)
+        public MinimapItem(IDXObject frame, BaseDXDrawableItem item_pixelDot, BaseDXDrawableItem frame_collapsedState)
+            : base(frame, false)
         {
             this.item_pixelDot = item_pixelDot;
+            this.frame_collapsedState = frame_collapsedState;
 
             this.Position = new Point(10, 10); // starting position
         }
@@ -78,21 +78,30 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             // control minimap render UI position via
             //  Position.X, Position.Y
 
-            // Draw the main drame
-            base.Draw(sprite, skeletonMeshRenderer, gameTime,
-                0, 0, centerX, centerY,
-                drawReflectionInfo,
-                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                TickCount);
+            // Draw the main frame
+            if (_bIsCollapsedState) {
+                frame_collapsedState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                   0, 0, centerX, centerY,
+                   drawReflectionInfo,
+                   RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                   TickCount);
+            } else {
+                base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                   0, 0, centerX, centerY,
+                   drawReflectionInfo,
+                   RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                   TickCount);
 
-            int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
-            int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
+                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
+                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
 
-            item_pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
-                -Position.X, -Position.Y, minimapPosX, minimapPosY,
-                drawReflectionInfo,
-                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                TickCount);
+                // Draw the minimap pixel dor
+                item_pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    -Position.X, -Position.Y, minimapPosX, minimapPosY,
+                    drawReflectionInfo,
+                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    TickCount);
+            }
 
             //IDXObject lastFrameDrawn = base.LastFrameDrawn;
             //int minimapMainFrameWidth = lastFrameDrawn.Width;
@@ -117,12 +126,48 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             }
         }
 
+        public void MinimiseOrMaximiseMinimap() {
+            if (!this._bIsCollapsedState) {
+                ObjUIBtMin_ButtonClickReleased(null);
+            } else {
+                ObjUIBtMax_ButtonClickReleased(null);
+            }
+        }
+
         #region IClickableUIObject
-        public void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState)
-        {
-            foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons)
-            {
-                uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
+        private Point? mouseOffsetOnDragStart = null;
+        public void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
+            foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons) {
+                bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
+                if (bHandled)
+                    return;
+            }
+
+            // handle UI movement
+            if (mouseState.LeftButton == ButtonState.Pressed) {
+                // The rectangle of the MinimapItem UI object
+
+                // if drag has not started, initialize the offset
+                if (mouseOffsetOnDragStart == null) {
+                    Rectangle rect = new Rectangle(
+                        this.Position.X,
+                        this.Position.Y,
+                        this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
+                    if (!rect.Contains(mouseState.X, mouseState.Y)) {
+                        return;
+                    }
+                    mouseOffsetOnDragStart = new Point(mouseState.X - this.Position.X, mouseState.Y - this.Position.Y);
+                }
+
+                // Calculate the mouse position relative to the minimap
+                // and move the minimap Position
+                this.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
+                //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
+            }
+            else {
+                // if the mouse button is not pressed, reset the initial drag offset
+                mouseOffsetOnDragStart = null;
             }
         }
         #endregion
@@ -136,6 +181,11 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         {
             objUIBtMin.SetButtonState(UIObjectState.Disabled);
             objUIBtMax.SetButtonState(UIObjectState.Normal);
+
+            BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
+            frame_collapsedState.CopyObjectPosition(baseItem);
+
+            this._bIsCollapsedState = true;
         }
 
         /// <summary>
@@ -146,6 +196,10 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         {
             objUIBtMin.SetButtonState(UIObjectState.Normal);
             objUIBtMax.SetButtonState(UIObjectState.Disabled);
+
+            this.CopyObjectPosition(frame_collapsedState);
+
+            this._bIsCollapsedState = false;
         }
 
         /// <summary>

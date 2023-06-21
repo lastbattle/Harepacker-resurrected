@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator
         private MouseCursorItem mouseCursor;
 
         // Audio
-        private WzMp3Streamer audio;
+        private WzSoundResourceStreamer audio;
 
         // Etc
         private readonly Board mapBoard;
@@ -240,7 +240,7 @@ namespace HaCreator.MapSimulator
             // to build your own font: /MonoGame Font Builder/game.mgcb
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
             font_navigationKeysHelper = Content.Load<SpriteFont>("XnaDefaultFont");
-            font_DebugValues = Content.Load<SpriteFont>("XnaFont_Debug");
+            font_DebugValues = Content.Load<SpriteFont>("XnaDefaultFont");//("XnaFont_Debug");
 
             base.Initialize();
         }
@@ -263,7 +263,7 @@ namespace HaCreator.MapSimulator
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
-                audio = new WzMp3Streamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
                 if (audio != null)
                 {
                     audio.Volume = 0.3f;
@@ -635,7 +635,7 @@ namespace HaCreator.MapSimulator
             // Minimap M
             if (newKeyboardState.IsKeyDown(Keys.M))
             {
-
+                miniMap.MinimiseOrMaximiseMinimap();
             }
 
             // Debug keys
@@ -938,10 +938,11 @@ namespace HaCreator.MapSimulator
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
-                sb.Append("Mouse : X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap).Append(Environment.NewLine);
-                sb.Append("RMouse: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y);
+                sb.Append("Game Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append(Environment.NewLine);
+                sb.Append("Monitor Cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
+
                 spriteBatch.DrawString(font_DebugValues, sb.ToString(), 
-                    new Vector2(Width - 170, 10), Color.White); // use the original width to render text
+                    new Vector2(Width - 270, 10), Color.White); // use the original width to render text
             }
 
             // Cursor [this is in front of everything else]

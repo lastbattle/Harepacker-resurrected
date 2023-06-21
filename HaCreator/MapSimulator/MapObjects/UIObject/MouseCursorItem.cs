@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         private int mouseCursorItemStates; // enum
 
-        private BaseDXDrawableItem cursorItemPressedState; // default state of the cursor = this instance
+        private readonly BaseDXDrawableItem cursorItemPressedState; // default state of the cursor = this instance
 
 
         public MouseCursorItem(List<IDXObject> frames, BaseDXDrawableItem cursorItemPressedState)

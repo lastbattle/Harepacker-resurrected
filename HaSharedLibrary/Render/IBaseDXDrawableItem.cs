@@ -5,6 +5,8 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaSharedLibrary.Render.DX;
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,6 +17,10 @@ namespace HaSharedLibrary.Render
 {
     public interface IBaseDXDrawableItem
     {
-        // nothing for now.. hmm 
+        bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height);
+
+        void CopyObjectPosition(IBaseDXDrawableItem copySrc);
+
+        Point Position { get; set; }
     }
 }

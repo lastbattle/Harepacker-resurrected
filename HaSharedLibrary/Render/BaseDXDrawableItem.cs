@@ -176,12 +176,20 @@ namespace HaSharedLibrary.Render.DX
         /// <param name="height"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height)
+        public bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height)
         {
             return (frame.X - shiftCenteredX + frame.Width > 0 &&
                 frame.Y - shiftCenteredY + frame.Height > 0 &&
                 frame.X - shiftCenteredX < width &&
                 frame.Y - shiftCenteredY < height);
+        }
+
+        /// <summary>
+        /// Copies the X and Y position from copySrc
+        /// </summary>
+        /// <param name="copySrc"></param>
+        public void CopyObjectPosition(IBaseDXDrawableItem copySrc) {
+            this.Position = new Point(copySrc.Position.X, copySrc.Position.Y);
         }
     }
 }

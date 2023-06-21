@@ -54,6 +54,10 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             this.gridContent = new Dictionary<Point, IHaUIRenderable>();
         }
 
+        public void AddRenderable(IHaUIRenderable renderable) {
+            AddRenderable(0, 0, renderable);
+        }
+
         public void AddRenderable(int row, int column, IHaUIRenderable renderable) {
             if (row < 0 || row >= rows)
                 throw new ArgumentException("Invalid row index", nameof(row));
