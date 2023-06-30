@@ -22,6 +22,7 @@ SOFTWARE.
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 
@@ -75,21 +76,31 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
                 int offset = orientation == HaUIStackOrientation.Horizontal ? _info.Margins.Left : _info.Margins.Top; // Initial offset based on the panel's margin
                 foreach (IHaUIRenderable child in childrens) {
                     Bitmap childBitmap = child.Render();
-                    HaUIMargin childMargin = child.GetInfo().Margins;
+                    HaUIInfo subUIInfo = child.GetInfo();
 
                     if (orientation == HaUIStackOrientation.Horizontal) {
-                        int y = HaUIHelper.CalculateAlignmentOffset(totalHeight, childBitmap.Height, _info.VerticalAlignment);
+                        int alignmentYOffset = HaUIHelper.CalculateAlignmentOffset(totalHeight, childBitmap.Height, subUIInfo.VerticalAlignment);
 
-                        g.DrawImage(childBitmap, offset + childMargin.Left, y + childMargin.Top);  // Adjust for vertical alignment and margin
+                        int x = offset + subUIInfo.Margins.Left;
+                        int y = alignmentYOffset + subUIInfo.Margins.Top;
 
-                        offset += childBitmap.Width + childMargin.Left + childMargin.Right;  // Adjust for margin
+                        g.DrawImage(childBitmap, x, y);  // Adjust for vertical alignment and margin
+
+                        offset += childBitmap.Width + subUIInfo.Margins.Left + subUIInfo.Margins.Right;  // Adjust for margin
+
+                        //Debug.WriteLine("Drawing {0}x{1} at x: {2}, y: {3}. W: {4}, H: {5   }", childBitmap.Width, childBitmap.Height, x, y, totalWidth, totalHeight);
                     }
                     else {
-                        int x = HaUIHelper.CalculateAlignmentOffset(totalWidth, childBitmap.Width, _info.HorizontalAlignment);
+                        int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(totalWidth, childBitmap.Width, subUIInfo.HorizontalAlignment);
 
-                        g.DrawImage(childBitmap, x + childMargin.Left, offset + childMargin.Top);  // Adjust for horizontal alignment and margin
+                        int x = alignmentXOffset + subUIInfo.Margins.Left;
+                        int y = offset + subUIInfo.Margins.Top;
 
-                        offset += childBitmap.Height + childMargin.Top + childMargin.Bottom;  // Adjust for margin
+                        g.DrawImage(childBitmap, x, y);  // Adjust for horizontal alignment and margin
+
+                        offset += childBitmap.Height + subUIInfo.Margins.Top + subUIInfo.Margins.Bottom;  // Adjust for margin
+
+                        //Debug.WriteLine("Drawing {0}x{1} at x: {2}, y: {3}. W: {4}, H: {5   }", childBitmap.Width, childBitmap.Height, x, y, totalWidth, totalHeight);
                     }
                 }
             }

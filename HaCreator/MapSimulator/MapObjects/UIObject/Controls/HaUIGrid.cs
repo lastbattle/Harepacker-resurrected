@@ -21,6 +21,7 @@ SOFTWARE.
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Printing;
 using System.Linq;
@@ -33,25 +34,36 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
     /// </summary>
     public class HaUIGrid : IHaUIRenderable {
 
-        private int rows;
-        private int columns;
+        private readonly int rows;
+        private readonly int columns;
 
-        private HaUIInfo _info;
+        private readonly HaUIInfo _info;
 
-        private Dictionary<Point, IHaUIRenderable> gridContent;
+        private List<KeyValuePair<Point, IHaUIRenderable>> gridContent;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="rows"></param>
+        /// <param name="columns"></param>
         public HaUIGrid(int rows, int columns) {
             this.rows = rows;
             this.columns = columns;
             this._info = new HaUIInfo();
-            this.gridContent = new Dictionary<Point, IHaUIRenderable>();
+            this.gridContent = new List<KeyValuePair<Point, IHaUIRenderable>>();
         }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="rows"></param>
+        /// <param name="columns"></param>
+        /// <param name="info"></param>
         public HaUIGrid(int rows, int columns, HaUIInfo info) {
             this.rows = rows;
             this.columns = columns;
             this._info = info;
-            this.gridContent = new Dictionary<Point, IHaUIRenderable>();
+            this.gridContent = new List<KeyValuePair<Point, IHaUIRenderable>>();
         }
 
         public void AddRenderable(IHaUIRenderable renderable) {
@@ -65,29 +77,37 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             if (column < 0 || column >= columns)
                 throw new ArgumentException("Invalid column index", nameof(column));
 
-            gridContent[new Point(column, row)] = renderable;
+            gridContent.Add(new KeyValuePair<Point, IHaUIRenderable>(new Point(column, row), renderable));
         }
 
         public Bitmap Render() {
-            HaUISize thisSize = GetSize();
-            int cellWidth = thisSize.Width;
-            int cellHeight = thisSize.Height;
+            HaUISize thisGridSize = GetSize();
+            int cellWidth = thisGridSize.Width;
+            int cellHeight = thisGridSize.Height;
 
             Bitmap gridBitmap = new Bitmap(cellWidth * columns, cellHeight * rows);
             using (Graphics g = Graphics.FromImage(gridBitmap)) {
                 g.Clear(Color.Transparent);
 
                 foreach (var pair in gridContent) {
+                    Bitmap drawImage = pair.Value.Render();
                     HaUISize contentSize = pair.Value.GetSize();
+                    HaUIInfo subUIInfo = pair.Value.GetInfo();
+                    Point subUIKey = pair.Key;
 
-                    int x = pair.Key.X * cellWidth + HaUIHelper.CalculateAlignmentOffset(contentSize.Width, cellWidth, pair.Value.GetInfo().HorizontalAlignment);
-                    int y = pair.Key.Y * cellHeight + HaUIHelper.CalculateAlignmentOffset(contentSize.Height, cellHeight, pair.Value.GetInfo().VerticalAlignment);
+                    int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(contentSize.Width, cellWidth, subUIInfo.HorizontalAlignment);
+                    int alignmentYOffset = HaUIHelper.CalculateAlignmentOffset(contentSize.Width, cellWidth, subUIInfo.VerticalAlignment);
+
+                    int x = subUIKey.X * cellWidth - alignmentXOffset;
+                    int y = subUIKey.Y * cellHeight - alignmentYOffset;
+
+                    //Debug.WriteLine("Drawing {0}x{1} at x: {2}, y: {3}. W: {4}, H: {5   }", drawImage.Width, drawImage.Height, x, y, cellWidth, cellHeight);
 
                     // Account for Margins
-                    //int marginWidth = x - pair.Value.GetInfo().Margins.Left - pair.Value.GetInfo().Margins.Right;
-                    //int marginHeight = y - pair.Value.GetInfo().Margins.Top - pair.Value.GetInfo().Margins.Bottom;
+                    //int marginWidth = x - subUIInfo.Margins.Left - subUIInfo.Margins.Right;
+                    //int marginHeight = y - subUIInfo.Margins.Top - subUIInfo.Margins.Bottom;
 
-                    g.DrawImage(pair.Value.Render(), x, y);
+                    g.DrawImage(drawImage, x, y);
                 }
             }
 
@@ -95,8 +115,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
         }
 
         public HaUISize GetSize() {
-            int width = gridContent.Values.Max(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right) * columns;
-            int height = gridContent.Values.Max(r => r.GetSize().Height + r.GetInfo().Margins.Top + r.GetInfo().Margins.Bottom) * rows;
+            int width = gridContent.Select(pair => pair.Value).ToList().Max(r => r.GetSize().Width + r.GetInfo().Margins.Left + r.GetInfo().Margins.Right) * columns;
+            int height = gridContent.Select(pair => pair.Value).ToList().Max(r => r.GetSize().Height + r.GetInfo().Margins.Top + r.GetInfo().Margins.Bottom) * rows;
 
             // normalise to MinHeight and MinWidth
             return new HaUISize(
