@@ -275,7 +275,7 @@ namespace MapleLib.WzLib.Serialization
                     byte[] pngbytes;
                     using (MemoryStream stream = new MemoryStream())
                     {
-                        propertyCanvas.PngProperty.GetImage(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                        propertyCanvas.PngProperty.GetImage(false)?.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
                         pngbytes = stream.ToArray();
                     }
                     jsonCanvas.Add(FIELD_BASEDATA_NAME, Convert.ToBase64String(pngbytes));
