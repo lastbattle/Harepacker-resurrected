@@ -1034,7 +1034,7 @@ namespace HaRepacker.GUI.Panels
                     CheckImageNodeRecursively(child);
             }
             WzNode hash = WzNode.GetChildNode(node, "_hash");
-            if (hash != null) { hash.Remove(); }
+            if (hash != null) { hash.DeleteWzNode(); }
         }
 
 
