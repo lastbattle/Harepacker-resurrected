@@ -200,7 +200,7 @@ namespace MapleLib.WzLib.WzProperties
             width = reader.ReadCompressedInt();
             height = reader.ReadCompressedInt();
             format = reader.ReadCompressedInt();
-            format2 = reader.ReadByte();
+            format2 = reader.ReadCompressedInt();
             reader.BaseStream.Position += 4;
             offs = reader.BaseStream.Position;
             int len = reader.ReadInt32() - 1;
