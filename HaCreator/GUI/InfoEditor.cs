@@ -21,6 +21,8 @@ using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.GUI.InstanceEditor;
 using MapleLib.WzLib.WzStructure.Data.MapStructure;
 using HaCreator.Wz;
+using HaRepacker;
+using HaCreator.GUI.Input;
 
 namespace HaCreator.GUI
 {
@@ -58,8 +60,8 @@ namespace HaCreator.GUI
             reactorNameShuffle.Tag = reactorNameBox;
             fsEnable.Tag = fsBox;
             massEnable.Tag = new Control[] { createMobInterval, fixedMobCapacity };
-            hpDecEnable.Tag = new Control[] { decHP, protectItem, decIntervalEnable, decInterval, protectEnable };
-            protectEnable.Tag = new Control[] { protectItem };
+            hpDecEnable.Tag = new Control[] { decHP, listBox_protectItem, decIntervalEnable, decInterval, protectEnable };
+            protectEnable.Tag = new Control[] { listBox_protectItem };
             decIntervalEnable.Tag = decInterval;
             helpEnable.Tag = helpBox;
             timedMobEnable.Tag = new Control[] { timedMobEnd, timedMobStart };
@@ -135,7 +137,7 @@ namespace HaCreator.GUI
             LoadOptionalInt(info.fixedMobCapacity, fixedMobCapacity, massEnable);
             LoadOptionalInt(info.decHP, decHP, hpDecEnable);
             LoadOptionalInt(info.decInterval, decInterval, decIntervalEnable);
-            LoadOptionalInt(info.protectItem, protectItem, protectEnable);
+            LoadOptionalIntArray(info.protectItem, listBox_protectItem, protectEnable);
 
             // Help
             helpEnable.Checked = info.help != null;
@@ -258,15 +260,93 @@ namespace HaCreator.GUI
             }
         }
 
+        /// <summary>
+        /// Loads optional int into the NumericUpDown target
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
         private void LoadOptionalInt(int? source, NumericUpDown target, CheckBox checkBox)
         {
             checkBox.Checked = source != null;
             if (source != null) target.Value = source.Value;
         }
 
+        /// <summary>
+        /// Loads an optional int array into a ComboBox
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
+        private void LoadOptionalIntArray(List<int> source, ComboBox target, CheckBox checkBox) {
+            checkBox.Checked = source != null && source.Count > 0;
+            if (checkBox.Checked == true) {
+                foreach (int val in source) {
+                    target.Items.Add(val.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads an optional int array into a ListBox
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
+        private void LoadOptionalIntArray(List<int> source, ListBox target, CheckBox checkBox) {
+            checkBox.Checked = source != null && source.Count > 0;
+            if (checkBox.Checked == true) {
+                foreach (int val in source) {
+                    target.Items.Add(val.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets an optional int from a NumericUpDown
+        /// </summary>
+        /// <param name="textbox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns></returns>
         private int? GetOptionalInt(NumericUpDown textbox, CheckBox checkBox)
         {
             return checkBox.Checked ? (int?)textbox.Value : null;
+        }
+
+        /// <summary>
+        /// Gets an optional int array from a ComboBox
+        /// </summary>
+        /// <param name="comboBox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns>null if none is selected</returns>
+        private List<int> GetOptionalIntArrayFromList(ComboBox comboBox, CheckBox checkBox) {
+            List<int> ret = new List<int>();
+            if (checkBox.Checked) {
+                if (comboBox.SelectedText != null) {
+                    foreach (string itemId in comboBox.Items) {
+                        ret.Add(int.Parse(itemId));
+                    }
+                    return ret;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets an optional int array from a ListBox
+        /// </summary>
+        /// <param name="comboBox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns>null if none is selected</returns>
+        private List<int> GetOptionalIntArrayFromList(ListBox listBox, CheckBox checkBox) {
+            List<int> ret = new List<int>();
+            if (checkBox.Checked) {
+                foreach (string itemId in listBox.Items) {
+                    ret.Add(int.Parse(itemId));
+                }
+                return ret;
+            }
+            return null;
         }
 
         private void LoadOptionalFloat(float? source, NumericUpDown target, CheckBox checkBox)
@@ -294,6 +374,35 @@ namespace HaCreator.GUI
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+        }
+
+        /// <summary>
+        /// On add protect item Id
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addProtectItem_Click(object sender, EventArgs e) {
+            string name;
+            int? value;
+
+            if (!IntInputBox.Show("Enter item ID", "0", 0, out name, out value, true)) {
+                return;
+            }
+            if (value == 0) {
+                MessageBox.Show("Value must not be 0.");
+                return;
+            }
+            listBox_protectItem.Items.Add(value.ToString());
+        }
+
+        /// <summary>
+        /// Remove protect item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeProtectItem_Click(object sender, EventArgs e) {
+            if (listBox_protectItem.SelectedIndex != -1)
+                listBox_protectItem.Items.RemoveAt(listBox_protectItem.SelectedIndex);
         }
 
         private void InfoEditor_FormClosing(object sender, FormClosingEventArgs e)
@@ -355,7 +464,7 @@ namespace HaCreator.GUI
                 info.fixedMobCapacity = GetOptionalInt(fixedMobCapacity, massEnable);
                 info.decHP = GetOptionalInt(decHP, hpDecEnable);
                 info.decInterval = GetOptionalInt(decInterval, decIntervalEnable);
-                info.protectItem = GetOptionalInt(protectItem, protectEnable);
+                info.protectItem = GetOptionalIntArrayFromList(listBox_protectItem, protectEnable);
 
                 if (helpEnable.Checked) info.help = helpBox.Text.Replace("\r\n", @"\n");
                 if (summonMobEnable.Checked)

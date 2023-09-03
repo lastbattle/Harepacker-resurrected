@@ -117,13 +117,26 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="EnterValidInput" xml:space="preserve">
-    <value>Please enter valid input</value>
+  <assembly alias="System.Drawing" name="System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+  <data name="label1.Size" type="System.Drawing.Size, System.Drawing">
+    <value>34, 13</value>
   </data>
-  <data name="Initialization_Error_MSDirectoryNotExist" xml:space="preserve">
-    <value>The MapleStory directory {0} provided does not exist.</value>
+  <data name="label1.Text" xml:space="preserve">
+    <value>名稱:</value>
   </data>
-  <data name="Warning" xml:space="preserve">
-    <value>Warning</value>
+  <data name="okButton.Text" xml:space="preserve">
+    <value>確認</value>
+  </data>
+  <data name="cancelButton.Text" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="label2.Size" type="System.Drawing.Size, System.Drawing">
+    <value>22, 13</value>
+  </data>
+  <data name="label2.Text" xml:space="preserve">
+    <value>值:</value>
+  </data>
+  <data name="valueBox.Text" xml:space="preserve">
+    <value>0</value>
   </data>
 </root>

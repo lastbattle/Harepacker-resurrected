@@ -86,7 +86,7 @@ namespace MapleLib.WzLib.WzStructure
         public AutoLieDetector autoLieDetector = null;
         public MapleBool expeditionOnly = null;
         public float? fs = null; //slip on ice speed, default 0.2
-        public int? protectItem = null; //ID, item protecting from cold
+        public List<int> protectItem = null; //ID, item protecting from cold
         public int? createMobInterval = null; //used for massacre pqs
         public int? fixedMobCapacity = null; //mob capacity to target (used for massacre pqs)
         public MapleBool mirror_Bottom = null; // Mirror Bottom (Reflection for objects near VRBottom of the field, arcane river maps)
@@ -310,7 +310,20 @@ namespace MapleLib.WzLib.WzStructure
                         fs = InfoTool.GetFloat(prop);
                         break;
                     case "protectItem":
-                        protectItem = InfoTool.GetInt(prop); // could also be a WzSubProperty in later versions.  "Map002.wz\\Map\\Map2\\211000200.img\\info\\protectItem"
+                        if (prop is WzSubProperty) { // if its a WzSubProperty, then its a list of ints.  "Map002.wz\\Map\\Map2\\211000200.img\\info\\protectItem\\0"
+                            WzSubProperty subProp = prop as WzSubProperty;
+                            protectItem = new List<int>();
+                            if (subProp.WzProperties != null && subProp.WzProperties.Count > 0) {
+                                foreach (WzImageProperty item in subProp.WzProperties) {
+                                    protectItem.Add(item.GetInt());
+                                }
+                            }
+                        }
+                        else {
+                            protectItem = new List<int> {
+                                InfoTool.GetInt(prop) // older versions uses only an int
+                            };
+                        }
                         break;
                     case "createMobInterval":
                         createMobInterval = InfoTool.GetInt(prop);
@@ -544,6 +557,10 @@ namespace MapleLib.WzLib.WzStructure
                     case "limitUIContextMenu": // 993210400.img  993220101.img
                     case "vanishHaku": // 993194700.img
                     case "pulbicTaggedObjectVisible": // 993210000.img 
+                    case "housingGrid": // v225
+                    case "noUseStardustField": // v225
+                    case "shiftChannelForbidden": // v225
+                    case "barrierAut": // v237
                         {
                             WzImageProperty cloneProperty = prop.DeepClone();
                             //cloneProperty.Parent = prop.Parent;
@@ -648,7 +665,22 @@ namespace MapleLib.WzLib.WzStructure
             }
             info["expeditionOnly"] = InfoTool.SetOptionalBool(expeditionOnly);
             info["fs"] = InfoTool.SetOptionalFloat(fs);
-            info["protectItem"] = InfoTool.SetOptionalInt(protectItem);
+
+            // Protect Item
+            if (protectItem != null && protectItem.Count > 0) {
+                if (protectItem.Count == 1) { // older versions uses only an int
+                    info["protectItem"] = InfoTool.SetOptionalInt(protectItem[0]);
+                } else {  // if its a WzSubProperty, then its a list of ints.  "Map002.wz\\Map\\Map2\\211000200.img\\info\\protectItem\\0"
+                    WzSubProperty subProp = new WzSubProperty();
+                    int i = 0;
+                    foreach (var item in protectItem) {
+                        WzIntProperty wzIntProperty = new WzIntProperty(i.ToString(), item);
+                        subProp.AddProperty(wzIntProperty);
+                        i++;
+                    }
+                    info["protectItem"] = subProp;
+                }
+            }
             info["createMobInterval"] = InfoTool.SetOptionalInt(createMobInterval);
             info["fixedMobCapacity"] = InfoTool.SetOptionalInt(fixedMobCapacity);
             info["streetName"] = InfoTool.SetOptionalString(streetName);

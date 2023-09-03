@@ -231,6 +231,15 @@
     <Compile Include="GUI\EditorPanels\TilePanel.Designer.cs">
       <DependentUpon>TilePanel.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Input\IntegerInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\IntInputBox.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Input\IntInputBox.Designer.cs">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\InstanceEditor\MassZmEditor.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -420,11 +429,12 @@
     <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIStackPanel.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIText.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\Controls\IHaUIRenderable.cs" />
+    <Compile Include="MapSimulator\MapObjects\UIObject\StatusBarUI.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObject.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectButtonEventHandler.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectState.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\IUIObjectEvents.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\MinimapItem.cs" />
+    <Compile Include="MapSimulator\MapObjects\UIObject\MinimapUI.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\MouseCursorItem.cs" />
     <Compile Include="MapSimulator\MapObjects\FieldObject\NpcItem.cs" />
     <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectViewModelBase.cs" />
@@ -616,6 +626,16 @@
     <EmbeddedResource Include="GUI\Initialization.resx">
       <DependentUpon>Initialization.cs</DependentUpon>
       <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHS.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHT.resx">
+      <DependentUpon>IntInputBox.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\BackgroundInstanceEditor.resx">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
