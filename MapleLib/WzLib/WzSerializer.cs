@@ -253,7 +253,7 @@ namespace MapleLib.WzLib.Serialization
             const string FIELD_X_NAME = "_x";
             const string FIELD_Y_NAME = "_y";
 
-            const string FIELD_BASEDATA_NAME = "_height";
+            const string FIELD_BASEDATA_NAME = "_image";
 
             const string FIELD_VALUE_NAME = "_value";
 
@@ -275,7 +275,7 @@ namespace MapleLib.WzLib.Serialization
                     byte[] pngbytes;
                     using (MemoryStream stream = new MemoryStream())
                     {
-                        propertyCanvas.PngProperty.GetImage(false).Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                        propertyCanvas.PngProperty.GetImage(false)?.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
                         pngbytes = stream.ToArray();
                     }
                     jsonCanvas.Add(FIELD_BASEDATA_NAME, Convert.ToBase64String(pngbytes));
