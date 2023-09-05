@@ -941,9 +941,9 @@ namespace HaCreator.Wz
         }
 
         /// <summary>
-        /// 
+        /// Creates the map object from WzImage.
         /// </summary>
-        /// <param name="mapId">May be -1 if none.</param>
+        /// <param name="mapId">May be -1 if none. If mapid == -1, it suggest a map that is cloned from a source or loaded from .ham file.</param>
         /// <param name="mapImage"></param>
         /// <param name="mapName"></param>
         /// <param name="streetName"></param>
@@ -1040,7 +1040,7 @@ namespace HaCreator.Wz
         /// </summary>
         /// <param name="streetName"></param>
         /// <param name="mapName"></param>
-        /// <param name="mapId">May be -1 if none.</param>
+        /// <param name="mapId">May be -1 if none. If mapid == -1, it suggest a map that is cloned from a source or loaded from .ham file.</param>
         /// <param name="tooltip"></param>
         /// <param name="menu"></param>
         /// <param name="size"></param>
@@ -1052,7 +1052,9 @@ namespace HaCreator.Wz
         {
             lock (multiBoard)
             {
-                Board newBoard = multiBoard.CreateBoard(size, center, menu);
+                bool bIsNewMapDesign = mapId == -1;
+
+                Board newBoard = multiBoard.CreateBoard(size, center, menu, bIsNewMapDesign);
                 GenerateDefaultZms(newBoard);
 
                 System.Windows.Controls.TabItem newTabPage = new System.Windows.Controls.TabItem
@@ -1078,8 +1080,6 @@ namespace HaCreator.Wz
                 {
                     item.Tag = newTabPage;
                 }
-
-
                 multiBoard.HaCreatorStateManager.UpdateEditorPanelVisibility();
             }
         }
@@ -1093,7 +1093,7 @@ namespace HaCreator.Wz
         /// <returns></returns>
         public static string GetFormattedMapNameForTabItem(int mapId, string streetName, string mapName)
         {
-            return string.Format("[{0}] {1}: {2}", mapId == -1 ? "" : mapId.ToString(), streetName, mapName); // Header of the tab
+            return string.Format("[{0}] {1}: {2}", mapId == -1 ? "<NEW>" : mapId.ToString(), streetName, mapName); // Header of the tab
         }
 
         public static void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)

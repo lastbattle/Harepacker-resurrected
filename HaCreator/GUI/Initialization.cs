@@ -348,6 +348,7 @@ namespace HaCreator.GUI
                 new Microsoft.Xna.Framework.Point(),
                 new Microsoft.Xna.Framework.Point(),
                 mb,
+                false,
                 null,
                 MapleLib.WzLib.WzStructure.Data.ItemTypes.None,
                 MapleLib.WzLib.WzStructure.Data.ItemTypes.None);

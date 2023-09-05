@@ -17,8 +17,17 @@ namespace HaCreator.GUI.InstanceEditor
         /// <summary>
         /// The NumericUpDown text to set upon selection
         /// </summary>
-        private NumericUpDown numericUpDown;
+        private NumericUpDown numericUpDown = null;
 
+        /// <summary>
+        /// Or the textbox
+        /// </summary>
+        private TextBox textBox = null;
+
+        /// <summary>
+        /// Load map selector
+        /// </summary>
+        /// <param name="numericUpDown"></param>
         public LoadMapSelector(NumericUpDown numericUpDown)
         {
             InitializeComponent();
@@ -26,23 +35,47 @@ namespace HaCreator.GUI.InstanceEditor
             DialogResult = DialogResult.Cancel;
 
             this.numericUpDown = numericUpDown;
-
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
 
+        /// <summary>
+        /// Load map selector
+        /// </summary>
+        /// <param name="textbox"></param>
+        public LoadMapSelector(TextBox textbox) {
+            InitializeComponent();
+
+            DialogResult = DialogResult.Cancel;
+
+            this.textBox = textbox;
+            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+        }
+
+        /// <summary>
+        /// On load
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Load_Load(object sender, EventArgs e)
         {
             this.mapBrowser.InitializeMaps(false); // load list of maps without Cash Shop, Login, etc
         }
 
+        /// <summary>
+        /// On load button clicked, selects that map and closes this dialog.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void loadButton_Click(object sender, EventArgs e)
         {
             string mapid = mapBrowser.SelectedItem.Substring(0, 9);
             string mapcat = "Map" + mapid.Substring(0, 1);
 
-
-            this.numericUpDown.Value = long.Parse(mapid);
-
+            if (numericUpDown != null) {
+                this.numericUpDown.Value = long.Parse(mapid);
+            } else {
+                this.textBox.Text = mapid;
+            }
             DialogResult = DialogResult.OK;
             Close();
         }

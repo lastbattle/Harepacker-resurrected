@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -24,39 +25,54 @@ namespace HaCreator.GUI
     {
         private readonly Board board;
 
+        /// <summary>
+        /// Save UI window for saving a map
+        /// </summary>
+        /// <param name="board"></param>
+        /// <exception cref="NotSupportedException"></exception>
         public Save(Board board)
         {
             this.board = board;
             InitializeComponent();
-            switch (board.MapInfo.mapType)
-            { 
-                case MapType.CashShopPreview:
-                case MapType.MapLogin:
-                    idBox.Text = board.MapInfo.strMapName;
-                    break;
-                case MapType.RegularMap:
-                    idBox.Text = board.MapInfo.id == -1 ? "" : board.MapInfo.id.ToString();
-                    break;
-                default:
-                    throw new NotSupportedException("Unknown map type at Save::.ctor()");
+
+            if (board.IsNewMapDesign) {
+                idBox_mapId.Text =  MapConstants.MaxMap.ToString();
+            }
+            else {
+                switch (board.MapInfo.mapType) {
+                    case MapType.CashShopPreview:
+                    case MapType.MapLogin:
+                        idBox_mapId.Text = board.MapInfo.strMapName;
+                        break;
+                    case MapType.RegularMap:
+                        idBox_mapId.Text = board.MapInfo.id == -1 ? "-1" : board.MapInfo.id.ToString();
+                        break;
+                    default:
+                        throw new NotSupportedException("Unknown map type at Save::.ctor()");
+                }
             }
             idBox_TextChanged(null, null);
         }
 
         private MapType GetIdBoxMapType()
         {
-            if (idBox.Text.StartsWith("MapLogin"))
+            if (idBox_mapId.Text.StartsWith("MapLogin"))
                 return MapType.MapLogin;
-            else if (idBox.Text == "CashShopPreview")
+            else if (idBox_mapId.Text == "CashShopPreview")
                 return MapType.CashShopPreview;
             else
                 return MapType.RegularMap;
         }
 
+        /// <summary>
+        /// On map id textbox change
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void idBox_TextChanged(object sender, EventArgs e)
         {
             int id = 0;
-            if (idBox.Text == "")
+            if (idBox_mapId.Text == string.Empty)
             {
                 statusLabel.Text = "Please choose an ID";
                 saveButton.Enabled = false;
@@ -66,20 +82,24 @@ namespace HaCreator.GUI
                 statusLabel.Text = "";
                 saveButton.Enabled = true;
             }
-            else if (!int.TryParse(idBox.Text, out id))
+            else if (!int.TryParse(idBox_mapId.Text, out id) || id == MapConstants.MaxMap)
             {
-                statusLabel.Text = "Must enter a number";
+                statusLabel.Text = "You must enter a number.";
                 saveButton.Enabled = false;
             }
             else if (id < MapConstants.MinMap || id > MapConstants.MaxMap)
             {
-                statusLabel.Text = "Out of range";
+                statusLabel.Text = "Out of range. Select between "+ MapConstants.MinMap + " and "+ MapConstants.MaxMap + ".";
                 saveButton.Enabled = false;
             }
-            else if (WzInfoTools.GetMapStringProp(id.ToString(), Program.WzManager) != null)
-            {
-                statusLabel.Text = "WARNING: Will overwrite existing map";
-                saveButton.Enabled = true;
+            else if (WzInfoTools.GetMapStringProp(id.ToString(), Program.WzManager) != null) {
+                if (board.IsNewMapDesign) { // if its a new design, do not allow overriding regardless 
+                    statusLabel.Text = "WARNING: It will overwrite existing map, select an empty ID.";
+                    saveButton.Enabled = false;
+                } else {
+                    statusLabel.Text = "WARNING: It will overwrite existing map.";
+                    saveButton.Enabled = true;
+                }
             }
             else
             {
@@ -88,6 +108,11 @@ namespace HaCreator.GUI
             }
         }
 
+        /// <summary>
+        /// Click save button
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void saveButton_Click(object sender, EventArgs e)
         {
             if (board.ParentControl.UserObjects.NewObjects.Count > 0)
@@ -105,7 +130,7 @@ namespace HaCreator.GUI
 
             if (type == MapType.RegularMap)
             {
-                int newId = int.Parse(idBox.Text);
+                int newId = int.Parse(idBox_mapId.Text);
                 saver.ChangeMapTypeAndID(newId, MapType.RegularMap);
                 saver.SaveMapImage();
                 saver.UpdateMapLists();
@@ -114,7 +139,7 @@ namespace HaCreator.GUI
             }
             else
             {
-                board.MapInfo.strMapName = idBox.Text;
+                board.MapInfo.strMapName = idBox_mapId.Text;
                 ((TabItemContainer)board.TabPage.Tag).Text = board.MapInfo.strMapName;
                 saver.ChangeMapTypeAndID(-1, type);
                 saver.SaveMapImage();
@@ -124,6 +149,11 @@ namespace HaCreator.GUI
             Close();
         }
 
+        /// <summary>
+        /// On key down
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Save_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
@@ -134,6 +164,16 @@ namespace HaCreator.GUI
             {
                 saveButton_Click(null, null);
             }
+        }
+
+        /// <summary>
+        /// Select a map from the list
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_select_Click(object sender, EventArgs e) {
+            LoadMapSelector selector = new LoadMapSelector(idBox_mapId);
+            selector.ShowDialog();
         }
     }
 }
