@@ -62,14 +62,18 @@ namespace HaCreator.Wz
             {
                 string mapId = image.Name.Replace(".img", string.Empty);
 
-                WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
-                if (mapImage == null)
-                    throw new Exception("Could not find a suitable Map.wz to place the new map into.");
+                WzDirectory parent;
+                if (board.IsNewMapDesign) {
+                    parent = (WzDirectory)WzInfoTools.FindMapDirectoryParent(mapId, Program.WzManager);
+                }
+                else {
+                    WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
+                    if (mapImage == null)
+                        throw new Exception("Could not find a suitable Map.wz to place the new map into.");
 
-                WzDirectory parent = (WzDirectory)mapImage.Parent;
-                if (mapImage != null)
+                    parent = (WzDirectory)mapImage.Parent;
                     mapImage.Remove();
-
+                }
                 parent.AddImage(image);
 
                 Program.WzManager.SetWzFileUpdated(parent.GetTopMostWzDirectory().Name /* "map" */, image);
