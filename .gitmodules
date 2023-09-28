@@ -1,3 +1,6 @@
 [submodule "spine-runtimes"]
 	path = spine-runtimes
 	url = https://github.com/EsotericSoftware/spine-runtimes
+[submodule "MapleLib"]
+	path = MapleLib
+	url = https://github.com/lastbattle/MapleLib
