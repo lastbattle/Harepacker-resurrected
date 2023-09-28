@@ -126,40 +126,14 @@ namespace MapleLib.WzLib.WzProperties
         /// <param name="writer"></param>
         public override void WriteValue(WzBinaryWriter writer)
         {
-            bool bIsLuaProperty = false;
-            if (properties.Count == 1 && properties[0] is WzLuaProperty)
-            {
-                bIsLuaProperty = true;
-            }
+            bool bIsLuaProperty = properties.Count == 1 && properties[0] is WzLuaProperty;
+
             if (!bIsLuaProperty)
                 writer.WriteStringValue("Property", WzImage.WzImageHeaderByte_WithoutOffset, WzImage.WzImageHeaderByte_WithOffset);
 
-            // Sort WzCanvasPropertys' in images by their name 
-            // see https://github.com/lastbattle/Harepacker-resurrected/issues/173
-            properties.Sort((img1, img2) =>
-            {
-                if (img1 == null)
-                    return 0;
-                else if (img1.GetType() == typeof(WzCanvasProperty) ||  // frames
-                    img1.GetType() == typeof(WzSubProperty)) // footholds
-                {
-                    int nodeId1, nodeId2;
-                    if (int.TryParse(img1.Name, out nodeId1) && int.TryParse(img2.Name, out nodeId2))
-                    {
-                        if (nodeId1 == nodeId2)
-                            return 0;
-                        if (nodeId1 > nodeId2)
-                            return 1;
-                        return -1;
-                    } else // default to string compare
-                        return img1.Name.CompareTo(img2.Name);
-                }
-                else
-                    return img1.Name.CompareTo(img2.Name);  // (leave non canvas nodes at the very bottom, i.e "info")
-            });
-
             WzImageProperty.WritePropertyList(writer, properties);
         }
+
 
         /// <summary>
         /// Exports as XML
@@ -241,6 +215,36 @@ namespace MapleLib.WzLib.WzProperties
         {
             foreach (WzImageProperty prop in properties) prop.Parent = null;
             properties.Clear();
+        }
+
+        /// <summary>
+        /// Sort the properties by its its number, then alphabetical order.
+        /// i.e 1,2,3,4,5,6,7,8,9,10,11,a,b,c,d,e,f
+        /// </summary>
+        public void SortProperties() 
+        {
+            // Sort WzCanvasPropertys' in images by their name 
+            // see https://github.com/lastbattle/Harepacker-resurrected/issues/173
+            properties.Sort((img1, img2) => {
+                if (img1 == null)
+                    return 0;
+                else if (img1.GetType() == typeof(WzCanvasProperty) ||  // frames
+                    img1.GetType() == typeof(WzSubProperty)) // footholds
+                {
+                    int nodeId1, nodeId2;
+                    if (int.TryParse(img1.Name, out nodeId1) && int.TryParse(img2.Name, out nodeId2)) {
+                        if (nodeId1 == nodeId2)
+                            return 0;
+                        if (nodeId1 > nodeId2)
+                            return 1;
+                        return -1;
+                    }
+                    else // default to string compare
+                        return img1.Name.CompareTo(img2.Name);
+                }
+                else
+                    return img1.Name.CompareTo(img2.Name);  // (leave non canvas nodes at the very bottom, i.e "info")
+            });
         }
         #endregion
     }

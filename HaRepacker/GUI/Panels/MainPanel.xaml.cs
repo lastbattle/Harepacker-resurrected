@@ -1040,7 +1040,7 @@ namespace HaRepacker.GUI.Panels
         /// <summary>
         /// Fix the '_inlink' and '_outlink' image property for compatibility to old MapleStory ver.
         /// </summary>
-        public void FixLinkForOldMS_Click()
+        public void FixLinkForOldMapleStory_OnClick()
         {
             // handle multiple nodes...
             int nodeCount = DataTree.SelectedNodes.Count;
