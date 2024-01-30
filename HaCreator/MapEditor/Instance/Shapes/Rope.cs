@@ -48,6 +48,7 @@ namespace HaCreator.MapEditor.Instance.Shapes
                 board.BoardItems.RopeAnchors.Remove(firstAnchor);
                 board.BoardItems.RopeAnchors.Remove(secondAnchor);
                 board.BoardItems.RopeLines.Remove(line);
+                board.BoardItems.Ropes.Remove(this);
                 if (undoPipe != null)
                 {
                     undoPipe.Add(UndoRedoManager.RopeRemoved(this));
