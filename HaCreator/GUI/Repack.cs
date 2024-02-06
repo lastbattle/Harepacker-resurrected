@@ -254,7 +254,8 @@ namespace HaCreator.GUI
 
                 try
                 {
-                    wzf.SaveToDisk(tmpFile);
+                    bool bSaveAs64BitWzFile = wzf.Is64BitWzFile; // no version number
+                    wzf.SaveToDisk(tmpFile, bSaveAs64BitWzFile);
                     wzf.Dispose();
 
                     if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder
