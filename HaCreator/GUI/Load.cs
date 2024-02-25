@@ -17,6 +17,7 @@ using HaCreator.Wz;
 using MapleLib.WzLib.Serialization;
 using System.Collections.Generic;
 using HaSharedLibrary.Wz;
+using MapleLib.WzLib.WzStructure;
 
 namespace HaCreator.GUI
 {
@@ -52,6 +53,11 @@ namespace HaCreator.GUI
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
 
+        /// <summary>
+        /// On Load
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Load_Load(object sender, EventArgs e)
         {
             switch (ApplicationSettings.lastRadioIndex)
@@ -68,7 +74,7 @@ namespace HaCreator.GUI
                     WZSelect.Checked = true;
                     break;
             }
-            this.mapBrowser.InitializeMaps(true);
+            this.mapBrowser.InitializeMapsListboxItem(true);
 
             // after loading
             if (defaultMapNameFilter != null)
@@ -78,6 +84,19 @@ namespace HaCreator.GUI
 
                 this.mapBrowser.searchBox_TextChanged(this.searchBox, null);
             }
+        }
+
+        /// <summary>
+        /// On check uncheck 'town' only filters
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void checkBox_townOnly_CheckedChanged(object sender, EventArgs e) {
+            // set bool
+            this.mapBrowser.EnableIsTownFilter = checkBox_townOnly.Checked;
+
+            // search again
+            this.mapBrowser.searchMapsInternal(this.searchBox.Text == this.searchBox.WatermarkText ? "" : this.searchBox.Text);
         }
 
         private void SelectionChanged(object sender, EventArgs e)
@@ -153,7 +172,7 @@ namespace HaCreator.GUI
             int mapid = -1;
             string mapName = null, streetName = "", categoryName = "";
             WzSubProperty strMapProp = null;
-
+            MapInfo info = null;
 
             if (HAMSelect.Checked)
             {
@@ -176,6 +195,7 @@ namespace HaCreator.GUI
                     Show();
                     return;
                 }
+                info = new MapInfo(mapImage, mapName, streetName, categoryName);
             }
             else if (WZSelect.Checked)
             {
@@ -194,6 +214,7 @@ namespace HaCreator.GUI
                             break;
                     }
                     mapName = streetName = categoryName = selectedName;
+                    info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
                 else if (mapBrowser.SelectedItem == "CashShopPreview")
                 {
@@ -205,21 +226,29 @@ namespace HaCreator.GUI
                             break;
                     }
                     mapName = streetName = categoryName = "CashShopPreview";
+                    info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
                 else
                 {
                     string mapid_str = mapBrowser.SelectedItem.Substring(0, 9);
                     int.TryParse(mapid_str, out mapid);
 
-                    mapImage = WzInfoTools.FindMapImage(mapid.ToString(), Program.WzManager);
+                    if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
+                        Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
-                    strMapProp = WzInfoTools.GetMapStringProp(mapid_str, Program.WzManager);
-                    mapName = WzInfoTools.GetMapName(strMapProp);
-                    streetName = WzInfoTools.GetMapStreetName(strMapProp);
-                    categoryName = WzInfoTools.GetMapCategoryName(strMapProp);
+                        mapImage = loadedMap.Item1;
+                        strMapProp = loadedMap.Item2;
+                        mapName = loadedMap.Item3;
+                        streetName = loadedMap.Item4;
+                        categoryName = loadedMap.Item5;
+                        info = loadedMap.Item6;
+                    } else {
+                        MessageBox.Show("Map is missing.", "Error");
+                        return; // map isnt available in Map.wz, despite it being listed on String.wz
+                    }
                 }
             }
-            MapLoader.CreateMapFromImage(mapid, mapImage, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
+            MapLoader.CreateMapFromImage(mapid, mapImage, info, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
 
             DialogResult = DialogResult.OK;
             ww.EndWait();

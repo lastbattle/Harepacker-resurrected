@@ -16,13 +16,19 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using HaCreator.GUI;
 using HaSharedLibrary.Wz;
+using MapleLib.WzLib.WzStructure;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
+using System.Collections.Specialized;
 
 namespace HaCreator.CustomControls
 {
     public partial class MapBrowser : UserControl
     {
         private bool loadMapAvailable = false;
-        private readonly List<string> maps = new List<string>();
+        private List<string> maps = null; // cache
+        private Dictionary<string, Tuple<WzImage, MapInfo>> mapsMapInfo = new Dictionary<string, Tuple<WzImage, MapInfo>>();
+
+        private bool _bEnableIsTownFilter = false;
 
         public MapBrowser()
         {
@@ -56,6 +62,16 @@ namespace HaCreator.CustomControls
             }
         }
 
+        /// <summary>
+        /// Sets the 'town' filter for searchbox
+        /// </summary>
+        public bool EnableIsTownFilter {
+            get { return _bEnableIsTownFilter; }
+            set { 
+                this._bEnableIsTownFilter = value;
+            }
+        }
+
         public delegate void MapSelectChangedDelegate();
         public event MapSelectChangedDelegate SelectionChanged;
 
@@ -63,8 +79,13 @@ namespace HaCreator.CustomControls
         /// Initialise
         /// </summary>
         /// <param name="special">True to include cash shop and login.</param>
-        public void InitializeMaps(bool special)
+        public void InitializeMapsListboxItem(bool special)
         {
+            if (maps != null) {
+                return; // already loaded
+            }
+            maps = new List<string>();
+
             // Logins
             List<string> mapLogins = new List<string>();
             for (int i = 0; i < 20; i++) // Not exceeding 20 logins yet.
@@ -87,9 +108,18 @@ namespace HaCreator.CustomControls
             }
 
             // Maps
-            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
+            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.MapsNameCache)
             {
-                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
+                string mapid_str = map.Key.Substring(0, 9);
+
+                if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
+                    Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+
+                    string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2);
+
+                    maps.Add(displayMapNameString);
+                    mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                }
             }
             maps.Sort();
 
@@ -115,30 +145,50 @@ namespace HaCreator.CustomControls
         public void searchBox_TextChanged(object sender, EventArgs e)
         {
             TextBox searchBox = (TextBox)sender;
-            string tosearch = searchBox.Text.ToLower();
+            string searchText = searchBox.Text.ToLower();
 
-            if (_previousSeachText == tosearch)
+            if (_previousSeachText == searchText)
                 return;
+            _previousSeachText = searchText; // set
+            
+            // start searching
+            searchMapsInternal(searchText);
+        }
 
-            _previousSeachText = tosearch; // set
-
-
+        /// <summary>
+        /// Search and filters map according to the user's query
+        /// </summary>
+        /// <param name="searchText"></param>
+        public void searchMapsInternal(string searchText) {
             // Cancel existing task if any
-            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested)
-            {
+            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested) {
                 _existingSearchTaskToken.Cancel();
             }
 
             // Clear 
             mapNamesBox.Items.Clear();
-            if (tosearch == string.Empty)
-            {
-                mapNamesBox.Items.AddRange(maps.Cast<object>().ToArray<object>());
+            if (searchText == string.Empty) {
+                var filteredItems = maps.Where(kvp => {
+                    MapInfo mapInfo = null;
+                    if (mapsMapInfo.ContainsKey(kvp)) {
+                        mapInfo = mapsMapInfo[kvp].Item2;
+
+                        if (this._bEnableIsTownFilter) {
+                            if (!mapInfo.town)
+                                return false;
+                        }
+                    }
+                    return true;
+                }).Select(kvp => kvp) // or kvp.Value or any transformation you need
+                  .Cast<object>()
+                  .ToArray();
+
+
+                mapNamesBox.Items.AddRange(filteredItems);
 
                 mapNamesBox_SelectedIndexChanged(null, null);
             }
-            else
-            {
+            else {
 
                 Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
 
@@ -146,32 +196,42 @@ namespace HaCreator.CustomControls
                 _existingSearchTaskToken = new CancellationTokenSource();
                 var cancellationToken = _existingSearchTaskToken.Token;
 
-                Task t = Task.Run(() =>
-                {
+                Task t = Task.Run(() => {
                     Thread.Sleep(500); // average key typing speed
 
                     List<string> mapsFiltered = new List<string>();
-                    foreach (string map in maps)
-                    {
+                    foreach (string map in maps) {
                         if (_existingSearchTaskToken.IsCancellationRequested)
                             return; // stop immediately
 
-                        if (map.ToLower().Contains(tosearch))
+                        MapInfo mapInfo = null;
+                        if (mapsMapInfo.ContainsKey(map)) {
+                            mapInfo = mapsMapInfo[map].Item2;
+                        }
+
+                        // Filter by string first
+                        if (map.ToLower().Contains(searchText)) {
+
+                            // Filter again by 'town' if mapInfo is not null.
+                            if (mapInfo != null) {
+                                if (this._bEnableIsTownFilter) {
+                                    if (!mapInfo.town)
+                                        continue;
+                                }
+                            }
                             mapsFiltered.Add(map);
+                        }
                     }
 
-                    currentDispatcher.BeginInvoke(new Action(() =>
-                    {
-                        foreach (string map in mapsFiltered) 
-                        { 
+                    currentDispatcher.BeginInvoke(new Action(() => {
+                        foreach (string map in mapsFiltered) {
                             if (_existingSearchTaskToken.IsCancellationRequested)
                                 return; // stop immediately
 
                             mapNamesBox.Items.Add(map);
                         }
 
-                        if (mapNamesBox.Items.Count > 0)
-                        {
+                        if (mapNamesBox.Items.Count > 0) {
                             mapNamesBox.SelectedIndex = 0; // set default selection to reduce clicks
                         }
                     }));
@@ -208,8 +268,13 @@ namespace HaCreator.CustomControls
             {
                 string mapid = (selectedName).Substring(0, 9);
 
-                WzImage mapImage =  WzInfoTools.FindMapImage(mapid, Program.WzManager);
-                if (mapImage == null)
+                Tuple<WzImage, MapInfo> mapTupleInfo = null;
+                if (mapsMapInfo.ContainsKey(selectedName)) {
+                    mapTupleInfo = mapsMapInfo[selectedName];
+                }
+
+
+                if (mapTupleInfo == null)
                 {
                     panel_linkWarning.Visible = false;
                     panel_mapExistWarning.Visible = true;
@@ -219,13 +284,13 @@ namespace HaCreator.CustomControls
                 }
                 else
                 {
-                    using (WzImageResource rsrc = new WzImageResource(mapImage))
+                    using (WzImageResource rsrc = new WzImageResource(mapTupleInfo.Item1))
                     {
-                        if (mapImage["info"]["link"] != null)
+                        if (mapTupleInfo.Item1["info"]["link"] != null)
                         {
                             panel_linkWarning.Visible = true;
                             panel_mapExistWarning.Visible = false;
-                            label_linkMapId.Text = mapImage["info"]["link"].ToString();
+                            label_linkMapId.Text = mapTupleInfo.Item1["info"]["link"].ToString();
 
                             minimapBox.Image = new Bitmap(1, 1);
                             loadMapAvailable = false;
@@ -236,7 +301,7 @@ namespace HaCreator.CustomControls
                             panel_mapExistWarning.Visible = false;
 
                             loadMapAvailable = true;
-                            WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
+                            WzCanvasProperty minimap = (WzCanvasProperty)mapTupleInfo.Item1.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
                                 minimapBox.Image = minimap.GetLinkedWzCanvasBitmap();

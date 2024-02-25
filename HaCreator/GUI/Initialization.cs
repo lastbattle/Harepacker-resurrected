@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
+using System.Linq;
 using System.Windows.Forms;
 using System.Collections.Generic;
 using System.IO;
@@ -20,7 +21,7 @@ using MapleLib.WzLib.WzProperties;
 using System.Drawing;
 using HaSharedLibrary.Wz;
 using MapleLib;
-using System.Windows.Shapes;
+using System.Threading.Tasks;
 
 namespace HaCreator.GUI
 {
@@ -146,6 +147,8 @@ namespace HaCreator.GUI
                 ExtractTileSets();
                 ExtractObjSets();
                 ExtractBackgroundSets();
+
+                ExtractMaps();
             }
             else // for versions beyond v30x
             {
@@ -245,7 +248,7 @@ namespace HaCreator.GUI
                 ExtractTileSets();
                 ExtractObjSets();
                 ExtractBackgroundSets();
-
+                ExtractMaps();
 
                 // UI.wz
                 List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
@@ -353,7 +356,7 @@ namespace HaCreator.GUI
                 MapleLib.WzLib.WzStructure.Data.ItemTypes.None,
                 MapleLib.WzLib.WzStructure.Data.ItemTypes.None);
 
-            foreach (string mapid in Program.InfoManager.Maps.Keys)
+            foreach (string mapid in Program.InfoManager.MapsNameCache.Keys)
             {
                 WzImage mapImage = WzInfoTools.FindMapImage(mapid, Program.WzManager);
                 if (mapImage == null)
@@ -602,7 +605,6 @@ namespace HaCreator.GUI
                     Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
 
                 bLoadedInMap = true;
-                return; // only needs to be loaded once
             }
 
             // Not loaded, try to find it in "tile.wz"
@@ -678,7 +680,7 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Extracts all string.wz map list and places it in Program.InfoManager.Maps dictionary
         /// </summary>
         public void ExtractStringWzMaps()
         {
@@ -690,20 +692,47 @@ namespace HaCreator.GUI
             {
                 foreach (WzSubProperty map in mapCat.WzProperties)
                 {
-                    WzStringProperty streetName = (WzStringProperty)map["streetName"];
-                    WzStringProperty mapName = (WzStringProperty)map["mapName"];
-                    string id;
+                    WzStringProperty streetNameWzProp = (WzStringProperty)map["streetName"];
+                    WzStringProperty mapNameWzProp = (WzStringProperty)map["mapName"];
+                    string mapIdStr;
                     if (map.Name.Length == 9)
-                        id = map.Name;
+                        mapIdStr = map.Name;
                     else
-                        id = WzInfoTools.AddLeadingZeros(map.Name, 9);
+                        mapIdStr = WzInfoTools.AddLeadingZeros(map.Name, 9);
 
-                    if (mapName == null)
-                        Program.InfoManager.Maps[id] = new Tuple<string, string>("", "");
-                    else
-                        Program.InfoManager.Maps[id] = new Tuple<string, string>(streetName?.Value == null ? string.Empty : streetName.Value, mapName.Value);
+                    if (mapNameWzProp == null)
+                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string>("", "");
+                    else {
+                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string>(streetNameWzProp?.Value == null ? string.Empty : streetNameWzProp.Value, mapNameWzProp.Value);
+                    }
                 }
             }
+        }
+
+        /// <summary>
+        /// Pre-load all maps in the memory
+        /// </summary>
+        public void ExtractMaps() {
+            Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
+                int mapid = 0;
+                int.TryParse(val.Key, out mapid);
+
+                WzImage mapImage = WzInfoTools.FindMapImage(mapid.ToString(), Program.WzManager);
+                if (mapImage != null) { // its okay if the image is not found, sometimes there may be strings in String.wz but not the actual maps in Map.wz
+                    WzSubProperty strMapProp = WzInfoTools.GetMapStringProp(val.Key, Program.WzManager);
+                    string mapName = WzInfoTools.GetMapName(strMapProp);
+                    string streetName = WzInfoTools.GetMapStreetName(strMapProp);
+                    string categoryName = WzInfoTools.GetMapCategoryName(strMapProp);
+                    MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
+
+                    // Ensure thread safety when writing to the shared resource
+                    lock (Program.InfoManager.MapsCache) {
+                        Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, WzSubProperty, string, string, string, MapInfo>(
+                            mapImage, strMapProp, mapName, streetName, categoryName, info
+                        );
+                    }
+                }
+            });
         }
 
         public void ExtractPortals()

@@ -945,6 +945,7 @@ namespace HaCreator.Wz
         /// </summary>
         /// <param name="mapId">May be -1 if none. If mapid == -1, it suggest a map that is cloned from a source or loaded from .ham file.</param>
         /// <param name="mapImage"></param>
+        /// <param name="info"></param>
         /// <param name="mapName"></param>
         /// <param name="streetName"></param>
         /// <param name="categoryName"></param>
@@ -952,14 +953,13 @@ namespace HaCreator.Wz
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
         /// <param name="rightClickHandler"></param>
-        public static void CreateMapFromImage(int mapId, WzImage mapImage, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static void CreateMapFromImage(int mapId, WzImage mapImage, MapInfo info, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             if (!mapImage.Parsed)
                 mapImage.ParseImage();
 
             List<string> copyPropNames = VerifyMapPropsKnown(mapImage, false);
 
-            MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
             foreach (string copyPropName in copyPropNames)
             {
                 info.additionalNonInfoProps.Add(mapImage[copyPropName]);

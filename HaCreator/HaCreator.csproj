@@ -760,14 +760,6 @@
     <EmbeddedResource Include="Properties\Resources.zh-CHT.resx" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\MapleLib\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
-      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
-      <Name>spine-csharp 2.1.25</Name>
-    </ProjectReference>
     <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
       <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
       <Name>Harepacker-resurrected</Name>
@@ -775,6 +767,14 @@
     <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj">
+      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
+      <Name>MapleLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
+      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
+      <Name>spine-csharp 2.1.25</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

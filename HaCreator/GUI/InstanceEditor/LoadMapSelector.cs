@@ -58,7 +58,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void Load_Load(object sender, EventArgs e)
         {
-            this.mapBrowser.InitializeMaps(false); // load list of maps without Cash Shop, Login, etc
+            this.mapBrowser.InitializeMapsListboxItem(false); // load list of maps without Cash Shop, Login, etc
         }
 
         /// <summary>
