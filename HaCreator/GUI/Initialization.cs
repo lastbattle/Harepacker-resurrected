@@ -123,7 +123,7 @@ namespace HaCreator.GUI
             // for old maplestory with only Data.wz
             if (Program.WzManager.IsPreBBDataWzFormat) //currently always false
             {
-                UpdateUI_CurrentLoadingWzFile("Data.wz");
+                UpdateUI_CurrentLoadingWzFile("Data.wz", true);
 
                 try
                 {
@@ -156,7 +156,7 @@ namespace HaCreator.GUI
                 List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
                 foreach (string stringWzFileName in stringWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(stringWzFileName);
+                    UpdateUI_CurrentLoadingWzFile(stringWzFileName, true);
 
                     Program.WzManager.LoadWzFile(stringWzFileName, _wzMapleVersion);
                 }
@@ -166,7 +166,7 @@ namespace HaCreator.GUI
                 List<string> mobWzFiles = Program.WzManager.GetWzFileNameListFromBase("mob");
                 foreach (string mobWZFile in mobWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(mobWZFile);
+                    UpdateUI_CurrentLoadingWzFile(mobWZFile, true);
 
                     Program.WzManager.LoadWzFile(mobWZFile, _wzMapleVersion);
                 }
@@ -177,7 +177,7 @@ namespace HaCreator.GUI
                 List<string> npcWzFiles = Program.WzManager.GetWzFileNameListFromBase("npc");
                 foreach (string npc in npcWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(npc);
+                    UpdateUI_CurrentLoadingWzFile(npc, true);
 
                     Program.WzManager.LoadWzFile(npc, _wzMapleVersion);
                 }
@@ -187,7 +187,7 @@ namespace HaCreator.GUI
                 List<string> reactorWzFiles = Program.WzManager.GetWzFileNameListFromBase("reactor");
                 foreach (string reactor in reactorWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(reactor);
+                    UpdateUI_CurrentLoadingWzFile(reactor, true);
 
                     Program.WzManager.LoadWzFile(reactor, _wzMapleVersion);
                 }
@@ -197,7 +197,7 @@ namespace HaCreator.GUI
                 List<string> soundWzDirs = Program.WzManager.GetWzFileNameListFromBase("sound");
                 foreach (string soundDirName in soundWzDirs)
                 {
-                    UpdateUI_CurrentLoadingWzFile(soundDirName);
+                    UpdateUI_CurrentLoadingWzFile(soundDirName, true);
 
                     Program.WzManager.LoadWzFile(soundDirName, _wzMapleVersion);
                 }
@@ -208,7 +208,7 @@ namespace HaCreator.GUI
                 List<string> mapWzFiles = Program.WzManager.GetWzFileNameListFromBase("map");
                 foreach (string mapWzFileName in mapWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(mapWzFileName);
+                    UpdateUI_CurrentLoadingWzFile(mapWzFileName, true);
 
                     Program.WzManager.LoadWzFile(mapWzFileName, _wzMapleVersion);
                 }
@@ -217,7 +217,7 @@ namespace HaCreator.GUI
                     List<string> map_iWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\map\\map" + i_map);
                     foreach (string map_iWzFileName in map_iWzFiles)
                     {
-                        UpdateUI_CurrentLoadingWzFile(map_iWzFileName);
+                        UpdateUI_CurrentLoadingWzFile(map_iWzFileName, true);
 
                         Program.WzManager.LoadWzFile(map_iWzFileName, _wzMapleVersion);
                     }
@@ -225,21 +225,21 @@ namespace HaCreator.GUI
                 List<string> tileWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\tile"); // this doesnt exist before 64-bit client, and is kept in Map.wz
                 foreach (string tileWzFileNames in tileWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(tileWzFileNames);
+                    UpdateUI_CurrentLoadingWzFile(tileWzFileNames, true);
 
                     Program.WzManager.LoadWzFile(tileWzFileNames, _wzMapleVersion);
                 }
                 List<string> objWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\obj"); // this doesnt exist before 64-bit client, and is kept in Map.wz
                 foreach (string objWzFileName in objWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(objWzFileName);
+                    UpdateUI_CurrentLoadingWzFile(objWzFileName, true);
 
                     Program.WzManager.LoadWzFile(objWzFileName, _wzMapleVersion);
                 }
                 List<string> backWzFiles = Program.WzManager.GetWzFileNameListFromBase("map\\back"); // this doesnt exist before 64-bit client, and is kept in Map.wz
                 foreach (string backWzFileName in backWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(backWzFileName);
+                    UpdateUI_CurrentLoadingWzFile(backWzFileName, true);
 
                     Program.WzManager.LoadWzFile(backWzFileName, _wzMapleVersion);
                 }
@@ -254,7 +254,7 @@ namespace HaCreator.GUI
                 List<string> uiWzFiles = Program.WzManager.GetWzFileNameListFromBase("ui");
                 foreach (string uiWzFileNames in uiWzFiles)
                 {
-                    UpdateUI_CurrentLoadingWzFile(uiWzFileNames);
+                    UpdateUI_CurrentLoadingWzFile(uiWzFileNames, true);
 
                     Program.WzManager.LoadWzFile(uiWzFileNames, _wzMapleVersion);
                 }
@@ -262,9 +262,9 @@ namespace HaCreator.GUI
             return true;
         }
 
-        private void UpdateUI_CurrentLoadingWzFile(string fileName)
+        private void UpdateUI_CurrentLoadingWzFile(string fileName, bool isWzFile)
         {
-            textBox2.Text = string.Format("Initializing {0}.wz...", fileName);
+            textBox2.Text = string.Format("Initializing {0}{1}...", fileName, isWzFile ? ".wz" : "");
             Application.DoEvents();
         }
 
@@ -713,6 +713,8 @@ namespace HaCreator.GUI
         /// Pre-load all maps in the memory
         /// </summary>
         public void ExtractMaps() {
+            UpdateUI_CurrentLoadingWzFile(string.Format("{0} Maps data", Program.InfoManager.MapsNameCache.Count), false);
+
             Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
                 int mapid = 0;
                 int.TryParse(val.Key, out mapid);

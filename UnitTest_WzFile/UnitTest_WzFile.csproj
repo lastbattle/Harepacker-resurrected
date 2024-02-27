@@ -109,10 +109,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\MapleLib\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
-    </ProjectReference>
     <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>

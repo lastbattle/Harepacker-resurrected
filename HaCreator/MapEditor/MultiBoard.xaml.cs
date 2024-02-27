@@ -18,6 +18,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -250,7 +251,7 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
-                Board newBoard = new Board(mapSize, centerPoint, this, bIsNewMapDesign, menu, ApplicationSettings.theoreticalVisibleTypes, ApplicationSettings.theoreticalEditedTypes);
+                Board newBoard = new Board(new Point(mapSize.X, mapSize.Y), centerPoint, this, bIsNewMapDesign, menu, ApplicationSettings.theoreticalVisibleTypes, ApplicationSettings.theoreticalEditedTypes);
                 boards.Add(newBoard);
                 newBoard.CreateMapLayers();
                 return newBoard;
@@ -289,6 +290,10 @@ namespace HaCreator.MapEditor
             FillRectangle(sprite, new Rectangle(x - dotW, y - dotW, dotW * 2, dotW * 2), color);
         }
 
+        /// <summary>
+        /// On render per frame update
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RenderFrame()
         {
             if (needsReset)

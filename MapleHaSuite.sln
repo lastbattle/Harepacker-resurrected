@@ -26,9 +26,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Test", "Test", "{55DA028C-3
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_WzFile", "UnitTest_WzFile\UnitTest_WzFile.csproj", "{82A30B11-2700-4F40-B05B-9BE5DEAD522B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib", "..\MapleLib\MapleLib\MapleLib.csproj", "{28AAB36D-942E-4476-A000-0E9DE380F390}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib", "MapleLib\MapleLib\MapleLib.csproj", "{28AAB36D-942E-4476-A000-0E9DE380F390}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "spine-csharp 2.1.25", "..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj", "{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "spine-csharp 2.1.25", "MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj", "{94144E22-2431-4A8F-AC04-DEC22F7EDD8F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

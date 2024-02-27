@@ -74,7 +74,11 @@ namespace HaCreator.GUI
                     WZSelect.Checked = true;
                     break;
             }
+            // Load maplist first
             this.mapBrowser.InitializeMapsListboxItem(true);
+
+            // then load history
+            this.mapBrowser_history.InitialiseHistoryListboxItem();
 
             // after loading
             if (defaultMapNameFilter != null)
@@ -93,10 +97,19 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void checkBox_townOnly_CheckedChanged(object sender, EventArgs e) {
             // set bool
-            this.mapBrowser.EnableIsTownFilter = checkBox_townOnly.Checked;
+            this.mapBrowser.TownOnlyFilter = checkBox_townOnly.Checked;
 
             // search again
             this.mapBrowser.searchMapsInternal(this.searchBox.Text == this.searchBox.WatermarkText ? "" : this.searchBox.Text);
+        }
+
+        /// <summary>
+        /// Clear history map browser
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_clearHistory_Click(object sender, EventArgs e) {
+            this.mapBrowser_history.ClearLoadedMapHistory();
         }
 
         private void SelectionChanged(object sender, EventArgs e)
@@ -126,7 +139,7 @@ namespace HaCreator.GUI
                 XMLBox.Enabled = false;
                 searchBox.Enabled = true;
                 mapBrowser.IsEnabled = true;
-                loadButton.Enabled = mapBrowser.LoadAvailable;
+                loadButton.Enabled = mapBrowser.LoadMapEnabled;
             }
         }
 
@@ -161,8 +174,24 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void LoadButton_Click(object sender, EventArgs e)
-        {
+        private void LoadButton_Click(object sender, EventArgs e) {
+            OnLoadMap(false);
+        }
+
+        /// <summary>
+        /// On click of load history map button 
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_loadHistory_Click(object sender, EventArgs e) {
+            OnLoadMap(true);
+        }
+
+        /// <summary>
+        /// Loads the map from the selected menu
+        /// </summary>
+        /// <param name="bFromHistory"></param>
+        private void OnLoadMap(bool bFromHistory) {
             //Hide();
             WaitWindow ww = new WaitWindow("Loading...");
             ww.Show();
@@ -174,63 +203,57 @@ namespace HaCreator.GUI
             WzSubProperty strMapProp = null;
             MapInfo info = null;
 
-            if (HAMSelect.Checked)
-            {
-                MapLoader.CreateMapFromHam(multiBoard, Tabs, File.ReadAllText(HAMBox.Text), rightClickHandler);
-                DialogResult = DialogResult.OK;
-                ww.EndWait();
-                Close();
-                return;
-            }
-            else if (XMLSelect.Checked)
-            {
-                try
-                {
-                    mapImage = (WzImage)new WzXmlDeserializer(false, null).ParseXML(XMLBox.Text)[0];
-                }
-                catch
-                {
-                    MessageBox.Show("Error while loading XML. Aborted.");
+            if (!bFromHistory) {
+                if (HAMSelect.Checked) {
+                    MapLoader.CreateMapFromHam(multiBoard, Tabs, File.ReadAllText(HAMBox.Text), rightClickHandler);
+                    DialogResult = DialogResult.OK;
                     ww.EndWait();
-                    Show();
+                    Close();
                     return;
                 }
-                info = new MapInfo(mapImage, mapName, streetName, categoryName);
+                else if (XMLSelect.Checked) {
+                    try {
+                        mapImage = (WzImage)new WzXmlDeserializer(false, null).ParseXML(XMLBox.Text)[0];
+                    }
+                    catch {
+                        MessageBox.Show("Error while loading XML. Aborted.");
+                        ww.EndWait();
+                        Show();
+                        return;
+                    }
+                    info = new MapInfo(mapImage, mapName, streetName, categoryName);
+                }
             }
-            else if (WZSelect.Checked)
-            {
-                if (mapBrowser.SelectedItem == null)
+            
+            if (info == null && WZSelect.Checked) {
+                string selectedItem = bFromHistory ? mapBrowser_history.SelectedItem : mapBrowser.SelectedItem;
+
+                if (selectedItem == null)
                     return; // racing event
 
-                string selectedName = mapBrowser.SelectedItem;
-
-                if (selectedName.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
+                if (selectedItem.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
                 {
                     List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                    foreach (WzDirectory uiWzDir in uiWzDirs)
-                    {
-                        mapImage = (WzImage) uiWzDir?[selectedName + ".img"];
+                    foreach (WzDirectory uiWzDir in uiWzDirs) {
+                        mapImage = (WzImage)uiWzDir?[selectedItem + ".img"];
                         if (mapImage != null)
                             break;
                     }
-                    mapName = streetName = categoryName = selectedName;
+                    mapName = streetName = categoryName = selectedItem;
                     info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
-                else if (mapBrowser.SelectedItem == "CashShopPreview")
-                {
+                else if (selectedItem == "CashShopPreview") {
                     List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                    foreach (WzDirectory uiWzDir in uiWzDirs)
-                    {
-                        mapImage = (WzImage) uiWzDir?["CashShopPreview.img"];
+                    foreach (WzDirectory uiWzDir in uiWzDirs) {
+                        mapImage = (WzImage)uiWzDir?["CashShopPreview.img"];
                         if (mapImage != null)
                             break;
                     }
                     mapName = streetName = categoryName = "CashShopPreview";
                     info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
-                else
-                {
-                    string mapid_str = mapBrowser.SelectedItem.Substring(0, 9);
+                else {
+                    string mapid_str = selectedItem.Substring(0, 9);
                     int.TryParse(mapid_str, out mapid);
 
                     if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
@@ -242,10 +265,15 @@ namespace HaCreator.GUI
                         streetName = loadedMap.Item4;
                         categoryName = loadedMap.Item5;
                         info = loadedMap.Item6;
-                    } else {
+                    }
+                    else {
                         MessageBox.Show("Map is missing.", "Error");
                         return; // map isnt available in Map.wz, despite it being listed on String.wz
                     }
+                }
+                if (!bFromHistory) {
+                    // add to history
+                    this.mapBrowser_history.AddLoadedMapToHistory(selectedItem);
                 }
             }
             MapLoader.CreateMapFromImage(mapid, mapImage, info, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
@@ -253,15 +281,26 @@ namespace HaCreator.GUI
             DialogResult = DialogResult.OK;
             ww.EndWait();
 
-            if (_bAutoCloseUponSelection)
+            if (_bAutoCloseUponSelection) {
                 Close();
+            }
         }
 
+        /// <summary>
+        /// On selection changed of the maps on the list
+        /// </summary>
         private void MapBrowser_SelectionChanged()
         {
-            bool bLoadAvailable = mapBrowser.LoadAvailable;
+            bool bLoadAvailable = mapBrowser.LoadMapEnabled;
 
-            loadButton.Enabled = mapBrowser.LoadAvailable;
+            loadButton.Enabled = mapBrowser.LoadMapEnabled;
+        }
+
+        /// <summary>
+        /// On selection changed of the maps on the list
+        /// </summary>
+        private void mapBrowserHistory_OnSelectionChanged() {
+            button_loadHistory.Enabled = mapBrowser_history.LoadMapEnabled;
         }
 
         private void Load_KeyDown(object sender, KeyEventArgs e)
