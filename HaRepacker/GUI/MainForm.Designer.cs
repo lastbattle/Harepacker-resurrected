@@ -628,6 +628,7 @@ namespace HaRepacker.GUI
             // 
             // MainForm
             // 
+            this.AllowDrop = true;
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.Controls.Add(this.button_addTab);

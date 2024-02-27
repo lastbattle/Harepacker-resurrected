@@ -117,7 +117,13 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="EnterValidInput" xml:space="preserve">
+    <value>请输入有效的內容</value>
+  </data>
   <data name="Initialization_Error_MSDirectoryNotExist" xml:space="preserve">
     <value />
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>警告</value>
   </data>
 </root>

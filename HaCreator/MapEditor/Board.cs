@@ -32,6 +32,7 @@ namespace HaCreator.MapEditor
         private MultiBoard parent;
         private readonly Mouse mouse;
         private MapInfo mapInfo = new MapInfo();
+        private bool bIsNewMapDesign = false; // determines if this board is a new map design or editing an existing map.
         private System.Drawing.Bitmap miniMap;
         private System.Drawing.Point miniMapPos;
         private Texture2D miniMapTexture;
@@ -61,12 +62,23 @@ namespace HaCreator.MapEditor
         public ItemTypes VisibleTypes { get { return visibleTypes; } set { visibleTypes = value; } }
         public ItemTypes EditedTypes { get { return editedTypes; } set { editedTypes = value; } }
 
-        public Board(Point mapSize, Point centerPoint, MultiBoard parent, System.Windows.Controls.ContextMenu menu, ItemTypes visibleTypes, ItemTypes editedTypes)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="mapSize"></param>
+        /// <param name="centerPoint"></param>
+        /// <param name="parent"></param>
+        /// <param name="bIsNewMapDesign">Determines if this board is a new map design or editing an existing map.</param>
+        /// <param name="menu"></param>
+        /// <param name="visibleTypes"></param>
+        /// <param name="editedTypes"></param>
+        public Board(Point mapSize, Point centerPoint, MultiBoard parent, bool bIsNewMapDesign, System.Windows.Controls.ContextMenu menu, ItemTypes visibleTypes, ItemTypes editedTypes)
         {
             this.uid = Interlocked.Increment(ref uidCounter);
             this.MapSize = mapSize;
             this.centerPoint = centerPoint;
             this.parent = parent;
+            this.bIsNewMapDesign = bIsNewMapDesign;
             this.visibleTypes = visibleTypes;
             this.editedTypes = editedTypes;
             this.menu = menu;
@@ -270,6 +282,14 @@ namespace HaCreator.MapEditor
                     mapInfo = value; 
                 } 
             }
+        }
+
+        /// <summary>
+        /// Determines if this board is a new map design or editing an existing map.
+        /// </summary>
+        public bool IsNewMapDesign { 
+            get { return bIsNewMapDesign; }
+            private set { }
         }
 
         public System.Drawing.Bitmap MiniMap

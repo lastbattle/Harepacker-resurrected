@@ -16,14 +16,25 @@ using System.Threading.Tasks;
 using System.Windows.Threading;
 using HaCreator.GUI;
 using HaSharedLibrary.Wz;
+using MapleLib.WzLib.WzStructure;
+using System.Data.SQLite;
 
 namespace HaCreator.CustomControls
 {
     public partial class MapBrowser : UserControl
     {
-        private bool loadMapAvailable = false;
-        private readonly List<string> maps = new List<string>();
+        private bool bLoadMapEnabled = false;
 
+        private bool _bMapsLoaded = false;
+        private readonly List<string> maps = new List<string>(); // cache
+        private readonly Dictionary<string, Tuple<WzImage, MapInfo>> mapsMapInfo = new Dictionary<string, Tuple<WzImage, MapInfo>>();
+
+        private bool _bTownOnlyFilter = false;
+        private bool _bIsHistoryMapBrowser = false;
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public MapBrowser()
         {
             InitializeComponent();
@@ -31,22 +42,25 @@ namespace HaCreator.CustomControls
             this.minimapBox.SizeMode = PictureBoxSizeMode.Zoom;
         }
 
-        public bool LoadAvailable
+        /// <summary>
+        /// Determines if loading the selected map is possible
+        /// </summary>
+        public bool LoadMapEnabled
         {
-            get
-            {
-                return loadMapAvailable;
-            }
+            get { return bLoadMapEnabled; }
         }
 
+        /// <summary>
+        /// The selected map in the listbox
+        /// </summary>
         public string SelectedItem
         {
-            get
-            {
-                return (string)mapNamesBox.SelectedItem;
-            }
+            get { return (string)mapNamesBox.SelectedItem; }
         }
 
+        /// <summary>
+        /// Sets the map browser inner contents to be enabled or not.
+        /// </summary>
         public bool IsEnabled
         {
             set
@@ -56,15 +70,31 @@ namespace HaCreator.CustomControls
             }
         }
 
+        /// <summary>
+        /// Sets the 'town' filter for searchbox
+        /// </summary>
+        public bool TownOnlyFilter {
+            get { return _bTownOnlyFilter; }
+            set { 
+                this._bTownOnlyFilter = value;
+            }
+        }
+
         public delegate void MapSelectChangedDelegate();
         public event MapSelectChangedDelegate SelectionChanged;
 
+        #region Initialise
         /// <summary>
         /// Initialise
         /// </summary>
         /// <param name="special">True to include cash shop and login.</param>
-        public void InitializeMaps(bool special)
+        public void InitializeMapsListboxItem(bool special)
         {
+            if (_bMapsLoaded) {
+                return; // already loaded
+            }
+            _bMapsLoaded = true;
+
             // Logins
             List<string> mapLogins = new List<string>();
             for (int i = 0; i < 20; i++) // Not exceeding 20 logins yet.
@@ -87,9 +117,18 @@ namespace HaCreator.CustomControls
             }
 
             // Maps
-            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.Maps)
+            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.MapsNameCache)
             {
-                maps.Add(string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2));
+                string mapid_str = map.Key.Substring(0, 9);
+
+                if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
+                    Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+
+                    string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2);
+
+                    maps.Add(displayMapNameString);
+                    mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                }
             }
             maps.Sort();
 
@@ -105,6 +144,97 @@ namespace HaCreator.CustomControls
             mapNamesBox.Items.AddRange(mapsObjs);
         }
 
+
+        private const string SQLITE_DB_CONNECTION_STRING = "Data Source=hacreator.db;Version=3;";
+        private const string SQLITE_DB_HISTORY_TABLE_NAME = "LoadedMapsHistory";
+
+        /// <summary>
+        /// Initialise the list of history maps
+        /// </summary>
+        public void InitialiseHistoryListboxItem() {
+            if (_bMapsLoaded) {
+                return; // already loaded
+            }
+            _bMapsLoaded = true;
+
+            using (var connection = new SQLiteConnection(SQLITE_DB_CONNECTION_STRING)) {
+                connection.Open();
+
+                string sql_create = 
+                    string.Format(
+                        "CREATE TABLE IF NOT EXISTS {0} (" +
+                        "Id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "OpenedMapName TEXT);", SQLITE_DB_HISTORY_TABLE_NAME);
+
+                SQLiteCommand command = new SQLiteCommand(sql_create, connection);
+                command.ExecuteNonQuery();
+
+                //sql = "INSERT INTO Highscores (Name, Score) VALUES ('Alice', 9001)";
+                //command = new SQLiteCommand(sql, connection);
+                //command.ExecuteNonQuery();
+
+                string sql_select = string.Format("SELECT * FROM {0};", SQLITE_DB_HISTORY_TABLE_NAME);
+                command = new SQLiteCommand(sql_select, connection);
+                SQLiteDataReader reader = command.ExecuteReader();
+
+                int i = 0;
+                while (reader.Read()) {
+                    string OpenedMapName = (string)reader["OpenedMapName"];
+                    Console.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");
+
+                    string mapid_str = OpenedMapName.Substring(0, 9);
+
+                    if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
+                        Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+
+                        maps.Add(OpenedMapName);
+                        mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                    }
+                }
+                object[] mapsObjs = maps.Cast<object>().ToArray();
+                mapNamesBox.Items.AddRange(mapsObjs);
+            }
+        }
+
+        public void AddLoadedMapToHistory(string loadedMapName) {
+            // add to database
+            using (var connection = new SQLiteConnection(SQLITE_DB_CONNECTION_STRING)) {
+                connection.Open();
+
+                // Insert data using parameterized query
+                string sqlInsert = string.Format("INSERT INTO {0} (OpenedMapName) VALUES (@OpenedMapName)", SQLITE_DB_HISTORY_TABLE_NAME);
+                SQLiteCommand insertCommand = new SQLiteCommand(sqlInsert, connection);
+
+                // Adding parameters with values
+                insertCommand.Parameters.AddWithValue("@OpenedMapName", loadedMapName);
+
+                // Execute the command
+                insertCommand.ExecuteNonQuery();
+            }
+            // add to current listbox
+            maps.Add(loadedMapName);
+            mapNamesBox.Items.Add(loadedMapName);
+        }
+
+        public void ClearLoadedMapHistory() {
+            // add to database
+            using (var connection = new SQLiteConnection(SQLITE_DB_CONNECTION_STRING)) {
+                connection.Open();
+
+                // Insert data using parameterized query
+                string sql = string.Format("DELETE FROM {0};", SQLITE_DB_HISTORY_TABLE_NAME);
+                SQLiteCommand sqlDelCommand = new SQLiteCommand(sql, connection);
+
+                // Execute the command
+                sqlDelCommand.ExecuteNonQuery();
+            }
+            // Clear the current list
+            maps.Clear();
+            mapNamesBox.Items.Clear();
+        }
+        #endregion
+
+        #region UI
         private string _previousSeachText = string.Empty;
         private CancellationTokenSource _existingSearchTaskToken = null;
         /// <summary>
@@ -115,30 +245,53 @@ namespace HaCreator.CustomControls
         public void searchBox_TextChanged(object sender, EventArgs e)
         {
             TextBox searchBox = (TextBox)sender;
-            string tosearch = searchBox.Text.ToLower();
+            string searchText = searchBox.Text.ToLower();
 
-            if (_previousSeachText == tosearch)
+            if (_previousSeachText == searchText)
+                return;
+            _previousSeachText = searchText; // set
+            
+            // start searching
+            searchMapsInternal(searchText);
+        }
+
+        /// <summary>
+        /// Search and filters map according to the user's query
+        /// </summary>
+        /// <param name="searchText"></param>
+        public void searchMapsInternal(string searchText) {
+            if (!_bMapsLoaded)
                 return;
 
-            _previousSeachText = tosearch; // set
-
-
             // Cancel existing task if any
-            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested)
-            {
+            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested) {
                 _existingSearchTaskToken.Cancel();
             }
 
             // Clear 
             mapNamesBox.Items.Clear();
-            if (tosearch == string.Empty)
-            {
-                mapNamesBox.Items.AddRange(maps.Cast<object>().ToArray<object>());
+            if (searchText == string.Empty) {
+                var filteredItems = maps.Where(kvp => {
+                    MapInfo mapInfo = null;
+                    if (mapsMapInfo.ContainsKey(kvp)) {
+                        mapInfo = mapsMapInfo[kvp].Item2;
+
+                        if (this._bTownOnlyFilter) {
+                            if (!mapInfo.town)
+                                return false;
+                        }
+                    }
+                    return true;
+                }).Select(kvp => kvp) // or kvp.Value or any transformation you need
+                  .Cast<object>()
+                  .ToArray();
+
+
+                mapNamesBox.Items.AddRange(filteredItems);
 
                 mapNamesBox_SelectedIndexChanged(null, null);
             }
-            else
-            {
+            else {
 
                 Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
 
@@ -146,32 +299,42 @@ namespace HaCreator.CustomControls
                 _existingSearchTaskToken = new CancellationTokenSource();
                 var cancellationToken = _existingSearchTaskToken.Token;
 
-                Task t = Task.Run(() =>
-                {
+                Task t = Task.Run(() => {
                     Thread.Sleep(500); // average key typing speed
 
                     List<string> mapsFiltered = new List<string>();
-                    foreach (string map in maps)
-                    {
+                    foreach (string map in maps) {
                         if (_existingSearchTaskToken.IsCancellationRequested)
                             return; // stop immediately
 
-                        if (map.ToLower().Contains(tosearch))
+                        MapInfo mapInfo = null;
+                        if (mapsMapInfo.ContainsKey(map)) {
+                            mapInfo = mapsMapInfo[map].Item2;
+                        }
+
+                        // Filter by string first
+                        if (map.ToLower().Contains(searchText)) {
+
+                            // Filter again by 'town' if mapInfo is not null.
+                            if (mapInfo != null) {
+                                if (this._bTownOnlyFilter) {
+                                    if (!mapInfo.town)
+                                        continue;
+                                }
+                            }
                             mapsFiltered.Add(map);
+                        }
                     }
 
-                    currentDispatcher.BeginInvoke(new Action(() =>
-                    {
-                        foreach (string map in mapsFiltered) 
-                        { 
+                    currentDispatcher.BeginInvoke(new Action(() => {
+                        foreach (string map in mapsFiltered) {
                             if (_existingSearchTaskToken.IsCancellationRequested)
                                 return; // stop immediately
 
                             mapNamesBox.Items.Add(map);
                         }
 
-                        if (mapNamesBox.Items.Count > 0)
-                        {
+                        if (mapNamesBox.Items.Count > 0) {
                             mapNamesBox.SelectedIndex = 0; // set default selection to reduce clicks
                         }
                     }));
@@ -202,41 +365,46 @@ namespace HaCreator.CustomControls
                 panel_mapExistWarning.Visible = false;
 
                 minimapBox.Image = new Bitmap(1, 1);
-                loadMapAvailable = mapNamesBox.SelectedItem != null;
+                bLoadMapEnabled = mapNamesBox.SelectedItem != null;
             }
             else
             {
                 string mapid = (selectedName).Substring(0, 9);
 
-                WzImage mapImage =  WzInfoTools.FindMapImage(mapid, Program.WzManager);
-                if (mapImage == null)
+                Tuple<WzImage, MapInfo> mapTupleInfo = null;
+                if (mapsMapInfo.ContainsKey(selectedName)) {
+                    mapTupleInfo = mapsMapInfo[selectedName];
+                }
+
+
+                if (mapTupleInfo == null)
                 {
                     panel_linkWarning.Visible = false;
                     panel_mapExistWarning.Visible = true;
 
                     minimapBox.Image = (Image)new Bitmap(1, 1);
-                    loadMapAvailable = false;
+                    bLoadMapEnabled = false;
                 }
                 else
                 {
-                    using (WzImageResource rsrc = new WzImageResource(mapImage))
+                    using (WzImageResource rsrc = new WzImageResource(mapTupleInfo.Item1))
                     {
-                        if (mapImage["info"]["link"] != null)
+                        if (mapTupleInfo.Item1["info"]["link"] != null)
                         {
                             panel_linkWarning.Visible = true;
                             panel_mapExistWarning.Visible = false;
-                            label_linkMapId.Text = mapImage["info"]["link"].ToString();
+                            label_linkMapId.Text = mapTupleInfo.Item1["info"]["link"].ToString();
 
                             minimapBox.Image = new Bitmap(1, 1);
-                            loadMapAvailable = false;
+                            bLoadMapEnabled = false;
                         }
                         else
                         {
                             panel_linkWarning.Visible = false;
                             panel_mapExistWarning.Visible = false;
 
-                            loadMapAvailable = true;
-                            WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
+                            bLoadMapEnabled = true;
+                            WzCanvasProperty minimap = (WzCanvasProperty)mapTupleInfo.Item1.GetFromPath("miniMap/canvas");
                             if (minimap != null)
                             {
                                 minimapBox.Image = minimap.GetLinkedWzCanvasBitmap();
@@ -245,12 +413,13 @@ namespace HaCreator.CustomControls
                             {
                                 minimapBox.Image = new Bitmap(1, 1);
                             }
-                            loadMapAvailable = true;
+                            bLoadMapEnabled = true;
                         }
                     }
                 }
             }
-            SelectionChanged.Invoke();
+            SelectionChanged?.Invoke();
         }
+        #endregion
     }
 }

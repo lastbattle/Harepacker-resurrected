@@ -62,21 +62,31 @@ namespace HaCreator.Wz
             {
                 string mapId = image.Name.Replace(".img", string.Empty);
 
-                WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
-                if (mapImage == null)
-                    throw new Exception("Could not find a suitable Map.wz to place the new map into.");
+                WzDirectory parent;
+                if (board.IsNewMapDesign) {
+                    parent = WzInfoTools.FindMapDirectoryParent(mapId, Program.WzManager);
 
-                WzDirectory parent = (WzDirectory)mapImage.Parent;
-                if (mapImage != null)
+                    if (parent == null) {
+                        throw new Exception("Could not find a suitable Map.wz parent to place the new map into.");
+                    } else if (parent[image.Name] != null) {
+                        throw new Exception("Parent '"+ parent.FullPath+ "' contains an existing map, the new map [Name='"+ image.Name + "'] is attempting to override it.");
+                    }
+                }
+                else {
+                    WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
+                    if (mapImage == null)
+                        throw new Exception("Could not find a suitable Map.wz to place the new map into.");
+
+                    parent = (WzDirectory)mapImage.Parent;
                     mapImage.Remove();
-
+                }
                 parent.AddImage(image);
 
                 Program.WzManager.SetWzFileUpdated(parent.GetTopMostWzDirectory().Name /* "map" */, image);
             }
             else
             {
-                WzDirectory mapDir = (WzDirectory)Program.WzManager["ui"];
+                WzDirectory mapDir = Program.WzManager["ui"];
                 WzImage mapImg = (WzImage)mapDir[image.Name];
                 if (mapImg != null)
                 {
@@ -732,6 +742,9 @@ namespace HaCreator.Wz
             image["foothold"] = fhParent;
         }
 
+        /// <summary>
+        /// Save life object (NPC, mobs)
+        /// </summary>
         public void SaveLife()
         {
             WzSubProperty lifeParent = new WzSubProperty();
@@ -756,7 +769,7 @@ namespace HaCreator.Wz
                 lifeProp["hide"] = InfoTool.SetOptionalBool(lifeInst.Hide);
                 lifeProp["type"] = InfoTool.SetString(mob ? "m" : "n");
                 lifeProp["limitedname"] = InfoTool.SetOptionalString(lifeInst.LimitedName);
-                lifeProp["fh"] = InfoTool.SetInt(GetFootholdBelow(lifeInst.X, lifeInst.Y));
+                lifeProp["fh"] = InfoTool.SetInt(FindFootholdBelowAndAround(lifeInst.X, lifeInst.Y));
                 lifeParent[i.ToString()] = lifeProp;
             }
             image["life"] = lifeParent;
@@ -977,6 +990,12 @@ namespace HaCreator.Wz
             get { return image; }
         }
 
+        /// <summary>
+        /// Gets the precisely foothold below the specified x and y coordinates
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
         private int GetFootholdBelow(int x, int y)
         {
             double bestDistance = double.MaxValue;
@@ -1000,6 +1019,37 @@ namespace HaCreator.Wz
             }
             if (bestFoothold == -1)
             {
+                // 0 stands in the game for flying or nonexistant foothold; I do not know what are the results of putting an NPC there,
+                // however, if the user puts an NPC with no floor under it he should expect weird things to happen.
+                return 0;
+            }
+            return bestFoothold;
+        }
+
+        /// <summary>
+        /// Finds a foothold around the x and y coordinates, or below
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        private int FindFootholdBelowAndAround(int x, int y, int yTolerance = 5) {
+            double bestDistance = double.MaxValue;
+            int bestFoothold = -1;
+            foreach (FootholdLine fh in board.BoardItems.FootholdLines) {
+                if (Math.Min(fh.FirstDot.X, fh.SecondDot.X) <= x && Math.Max(fh.FirstDot.X, fh.SecondDot.X) >= x) {
+                    double fhY = fh.CalculateY(x);
+                    // Check if the foothold is within 5 units above OR below the y-coordinate
+                    if (fhY >= y - yTolerance && (fhY - y) < bestDistance) {
+                        bestDistance = Math.Abs(fhY - y);
+                        bestFoothold = fh.num;
+                        if (bestDistance == 0) {
+                            // Not going to find anything better than 0
+                            return bestFoothold;
+                        }
+                    }
+                }
+            }
+            if (bestFoothold == -1) {
                 // 0 stands in the game for flying or nonexistant foothold; I do not know what are the results of putting an NPC there,
                 // however, if the user puts an NPC with no floor under it he should expect weird things to happen.
                 return 0;
@@ -1225,7 +1275,7 @@ namespace HaCreator.Wz
 
         public void UpdateMapLists()
         {
-            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] =
+            Program.InfoManager.MapsNameCache[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] =
                 new Tuple<string, string>(board.MapInfo.strStreetName, board.MapInfo.strMapName);
         }
     }

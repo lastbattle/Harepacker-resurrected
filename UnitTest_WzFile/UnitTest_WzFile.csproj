@@ -49,6 +49,7 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="UnitTest_MapleLib.cs" />
     <Compile Include="UnitTest1.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -111,10 +112,6 @@
     <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup />

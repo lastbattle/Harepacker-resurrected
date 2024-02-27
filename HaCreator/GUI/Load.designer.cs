@@ -39,20 +39,25 @@ namespace HaCreator.GUI
             this.HAMSelect = new System.Windows.Forms.RadioButton();
             this.tabControl_maps = new System.Windows.Forms.TabControl();
             this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
+            this.checkBox_townOnly = new System.Windows.Forms.CheckBox();
             this.tabPage2 = new System.Windows.Forms.TabPage();
+            this.button_clearHistory = new System.Windows.Forms.Button();
+            this.button_loadHistory = new System.Windows.Forms.Button();
+            this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
+            this.mapBrowser_history = new HaCreator.CustomControls.MapBrowser();
             this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
             this.tabControl_maps.SuspendLayout();
             this.tabPage1.SuspendLayout();
+            this.tabPage2.SuspendLayout();
             this.SuspendLayout();
             // 
             // loadButton
             // 
             this.loadButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             this.loadButton.Enabled = false;
-            this.loadButton.Location = new System.Drawing.Point(8, 601);
+            this.loadButton.Location = new System.Drawing.Point(6, 506);
             this.loadButton.Name = "loadButton";
-            this.loadButton.Size = new System.Drawing.Size(765, 30);
+            this.loadButton.Size = new System.Drawing.Size(753, 30);
             this.loadButton.TabIndex = 9;
             this.loadButton.Text = "Load";
             this.loadButton.Click += new System.EventHandler(this.LoadButton_Click);
@@ -116,23 +121,71 @@ namespace HaCreator.GUI
             this.tabControl_maps.Controls.Add(this.tabPage1);
             this.tabControl_maps.Controls.Add(this.tabPage2);
             this.tabControl_maps.Location = new System.Drawing.Point(8, 86);
-            this.tabControl_maps.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.tabControl_maps.Margin = new System.Windows.Forms.Padding(2);
             this.tabControl_maps.Name = "tabControl_maps";
             this.tabControl_maps.SelectedIndex = 0;
-            this.tabControl_maps.Size = new System.Drawing.Size(769, 510);
+            this.tabControl_maps.Size = new System.Drawing.Size(769, 568);
             this.tabControl_maps.TabIndex = 10;
             // 
             // tabPage1
             // 
+            this.tabPage1.Controls.Add(this.checkBox_townOnly);
             this.tabPage1.Controls.Add(this.mapBrowser);
+            this.tabPage1.Controls.Add(this.loadButton);
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
-            this.tabPage1.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
+            this.tabPage1.Margin = new System.Windows.Forms.Padding(2);
             this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Padding = new System.Windows.Forms.Padding(2, 2, 2, 2);
-            this.tabPage1.Size = new System.Drawing.Size(761, 484);
+            this.tabPage1.Padding = new System.Windows.Forms.Padding(2);
+            this.tabPage1.Size = new System.Drawing.Size(761, 542);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "Maps";
             this.tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // checkBox_townOnly
+            // 
+            this.checkBox_townOnly.AutoSize = true;
+            this.checkBox_townOnly.Location = new System.Drawing.Point(6, 485);
+            this.checkBox_townOnly.Name = "checkBox_townOnly";
+            this.checkBox_townOnly.Size = new System.Drawing.Size(79, 17);
+            this.checkBox_townOnly.TabIndex = 11;
+            this.checkBox_townOnly.Text = "Town only";
+            this.checkBox_townOnly.UseVisualStyleBackColor = true;
+            this.checkBox_townOnly.CheckedChanged += new System.EventHandler(this.checkBox_townOnly_CheckedChanged);
+            // 
+            // tabPage2
+            // 
+            this.tabPage2.Controls.Add(this.button_loadHistory);
+            this.tabPage2.Controls.Add(this.mapBrowser_history);
+            this.tabPage2.Controls.Add(this.button_clearHistory);
+            this.tabPage2.Location = new System.Drawing.Point(4, 22);
+            this.tabPage2.Margin = new System.Windows.Forms.Padding(2);
+            this.tabPage2.Name = "tabPage2";
+            this.tabPage2.Padding = new System.Windows.Forms.Padding(2);
+            this.tabPage2.Size = new System.Drawing.Size(761, 542);
+            this.tabPage2.TabIndex = 1;
+            this.tabPage2.Text = "History";
+            this.tabPage2.UseVisualStyleBackColor = true;
+            // 
+            // button_clearHistory
+            // 
+            this.button_clearHistory.Location = new System.Drawing.Point(6, 484);
+            this.button_clearHistory.Name = "button_clearHistory";
+            this.button_clearHistory.Size = new System.Drawing.Size(89, 23);
+            this.button_clearHistory.TabIndex = 0;
+            this.button_clearHistory.Text = "Clear history";
+            this.button_clearHistory.UseVisualStyleBackColor = true;
+            this.button_clearHistory.Click += new System.EventHandler(this.button_clearHistory_Click);
+            // 
+            // button_loadHistory
+            // 
+            this.button_loadHistory.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            this.button_loadHistory.Enabled = false;
+            this.button_loadHistory.Location = new System.Drawing.Point(6, 507);
+            this.button_loadHistory.Name = "button_loadHistory";
+            this.button_loadHistory.Size = new System.Drawing.Size(753, 30);
+            this.button_loadHistory.TabIndex = 10;
+            this.button_loadHistory.Text = "Load";
+            this.button_loadHistory.Click += new System.EventHandler(this.button_loadHistory_Click);
             // 
             // mapBrowser
             // 
@@ -140,20 +193,21 @@ namespace HaCreator.GUI
             this.mapBrowser.Location = new System.Drawing.Point(6, 5);
             this.mapBrowser.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
             this.mapBrowser.Name = "mapBrowser";
-            this.mapBrowser.Size = new System.Drawing.Size(746, 465);
+            this.mapBrowser.Size = new System.Drawing.Size(746, 479);
             this.mapBrowser.TabIndex = 8;
+            this.mapBrowser.TownOnlyFilter = false;
             this.mapBrowser.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.MapBrowser_SelectionChanged);
             // 
-            // tabPage2
+            // mapBrowser_history
             // 
-            this.tabPage2.Location = new System.Drawing.Point(4, 22);
-            this.tabPage2.Margin = new System.Windows.Forms.Padding(2, 2, 2, 2);
-            this.tabPage2.Name = "tabPage2";
-            this.tabPage2.Padding = new System.Windows.Forms.Padding(2, 2, 2, 2);
-            this.tabPage2.Size = new System.Drawing.Size(761, 484);
-            this.tabPage2.TabIndex = 1;
-            this.tabPage2.Text = "History";
-            this.tabPage2.UseVisualStyleBackColor = true;
+            this.mapBrowser_history.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.mapBrowser_history.Location = new System.Drawing.Point(6, 5);
+            this.mapBrowser_history.Margin = new System.Windows.Forms.Padding(4, 5, 4, 5);
+            this.mapBrowser_history.Name = "mapBrowser_history";
+            this.mapBrowser_history.Size = new System.Drawing.Size(746, 479);
+            this.mapBrowser_history.TabIndex = 9;
+            this.mapBrowser_history.TownOnlyFilter = false;
+            this.mapBrowser_history.SelectionChanged += new HaCreator.CustomControls.MapBrowser.MapSelectChangedDelegate(this.mapBrowserHistory_OnSelectionChanged);
             // 
             // searchBox
             // 
@@ -162,15 +216,15 @@ namespace HaCreator.GUI
             this.searchBox.Name = "searchBox";
             this.searchBox.Size = new System.Drawing.Size(692, 22);
             this.searchBox.TabIndex = 7;
-            this.searchBox.Text = "Type here to search";
+            this.searchBox.Text = "Type here";
             this.searchBox.WatermarkActive = true;
             this.searchBox.WatermarkText = "Type here";
             // 
-            // Load
+            // FieldSelector
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(783, 637);
+            this.ClientSize = new System.Drawing.Size(783, 656);
             this.Controls.Add(this.tabControl_maps);
             this.Controls.Add(this.HAMBox);
             this.Controls.Add(this.HAMSelect);
@@ -178,20 +232,21 @@ namespace HaCreator.GUI
             this.Controls.Add(this.XMLBox);
             this.Controls.Add(this.XMLSelect);
             this.Controls.Add(this.WZSelect);
-            this.Controls.Add(this.loadButton);
             this.DoubleBuffered = true;
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.KeyPreview = true;
             this.MaximizeBox = false;
-            this.Name = "Load";
+            this.Name = "FieldSelector";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Load";
             this.Load += new System.EventHandler(this.Load_Load);
             this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Load_KeyDown);
             this.tabControl_maps.ResumeLayout(false);
             this.tabPage1.ResumeLayout(false);
+            this.tabPage1.PerformLayout();
+            this.tabPage2.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -210,5 +265,9 @@ namespace HaCreator.GUI
         private System.Windows.Forms.TabControl tabControl_maps;
         private System.Windows.Forms.TabPage tabPage1;
         private System.Windows.Forms.TabPage tabPage2;
+        private System.Windows.Forms.CheckBox checkBox_townOnly;
+        private System.Windows.Forms.Button button_clearHistory;
+        private MapBrowser mapBrowser_history;
+        private System.Windows.Forms.Button button_loadHistory;
     }
 }

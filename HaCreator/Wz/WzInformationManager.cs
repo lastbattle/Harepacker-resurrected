@@ -7,6 +7,7 @@
 using HaCreator.MapEditor.Info;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
@@ -29,7 +30,8 @@ namespace HaCreator.Wz
         public Dictionary<string, WzBinaryProperty> BGMs = new Dictionary<string, WzBinaryProperty>();
 
         public Dictionary<string, Bitmap> MapMarks = new Dictionary<string, Bitmap>();
-        public Dictionary<string, Tuple<string, string>> Maps = new Dictionary<string, Tuple<string, string>>();
+        public Dictionary<string, Tuple<string, string>> MapsNameCache = new Dictionary<string, Tuple<string, string>>();
+        public Dictionary<string, Tuple<WzImage, WzSubProperty, string, string, string, MapInfo>> MapsCache = new Dictionary<string, Tuple<WzImage, WzSubProperty, string, string, string, MapInfo>>(); // mapImage, strMapProp, mapName, streetName, categoryName, info
 
         public Dictionary<string, PortalInfo> Portals = new Dictionary<string, PortalInfo>();
         public List<string> PortalTypeById = new List<string>();
@@ -49,7 +51,8 @@ namespace HaCreator.Wz
             BackgroundSets.Clear();
             BGMs.Clear();
             MapMarks.Clear();
-            Maps.Clear();
+            MapsNameCache.Clear();
+            MapsCache.Clear();
             Portals.Clear();
             PortalTypeById.Clear();
             PortalIdByType.Clear();

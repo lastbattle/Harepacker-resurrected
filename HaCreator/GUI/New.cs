@@ -10,7 +10,9 @@ using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using System;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Windows.Forms;
 using XNA = Microsoft.Xna.Framework;
 
@@ -42,6 +44,11 @@ namespace HaCreator.GUI
         }
 
         #region Create new
+        /// <summary>
+        /// Creates a new default map to work from
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void newButton_Click(object sender, EventArgs e)
         {
             int w = int.Parse(newWidth.Text);
@@ -103,8 +110,9 @@ namespace HaCreator.GUI
             string cloneMapName = WzInfoTools.GetMapName(strMapProp);
             string cloneStreetName = WzInfoTools.GetMapStreetName(strMapProp);
             string cloneCategoryName = WzInfoTools.GetMapCategoryName(strMapProp);
-            
-            MapLoader.CreateMapFromImage(-1 /*mapid*/, mapImage.DeepClone(), cloneMapName, cloneStreetName, cloneCategoryName, (WzSubProperty) strMapProp.DeepClone(), Tabs, multiBoard, rightClickHandler);
+            MapInfo info = new MapInfo(mapImage, cloneMapName, cloneStreetName, cloneCategoryName);
+
+            MapLoader.CreateMapFromImage(-1 /*mapid*/, mapImage.DeepClone(), info, cloneMapName, cloneStreetName, cloneCategoryName, (WzSubProperty) strMapProp.DeepClone(), Tabs, multiBoard, rightClickHandler);
 
             Close();
         }

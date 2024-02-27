@@ -633,6 +633,11 @@ namespace HaCreator.MapEditor.Input
             }
         }
         
+        /// <summary>
+        /// Navigating around the editor via mouse clicks on the minimap.
+        /// </summary>
+        /// <param name="selectedBoard"></param>
+        /// <param name="realPosition"></param>
         private void HandleMinimapBrowse(Board selectedBoard, XNA.Point realPosition)
         {
             int h = realPosition.X * selectedBoard.mag - (int)parentBoard.ActualWidth / 2;

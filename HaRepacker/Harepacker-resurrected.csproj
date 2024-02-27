@@ -758,12 +758,11 @@
       <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
       <Name>HaSharedLibrary</Name>
     </ProjectReference>
-    <ProjectReference Include="..\MapleLib\MapleLib.csproj">
-      <Project>{28AAB36D-942E-4476-A000-0E9DE380F390}</Project>
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj">
+      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
       <Name>MapleLib</Name>
-      <Private>True</Private>
     </ProjectReference>
-    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
       <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
       <Name>spine-csharp 2.1.25</Name>
     </ProjectReference>

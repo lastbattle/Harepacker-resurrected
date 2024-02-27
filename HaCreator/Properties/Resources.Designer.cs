@@ -61,6 +61,15 @@ namespace HaCreator.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Please enter valid input.
+        /// </summary>
+        internal static string EnterValidInput {
+            get {
+                return ResourceManager.GetString("EnterValidInput", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The MapleStory directory {0} provided does not exist..
         /// </summary>
         internal static string Initialization_Error_MSDirectoryNotExist {
@@ -86,6 +95,15 @@ namespace HaCreator.Properties {
             get {
                 object obj = ResourceManager.GetObject("placeholder", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Warning.
+        /// </summary>
+        internal static string Warning {
+            get {
+                return ResourceManager.GetString("Warning", resourceCulture);
             }
         }
     }
