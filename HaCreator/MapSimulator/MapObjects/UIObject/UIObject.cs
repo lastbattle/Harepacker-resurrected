@@ -115,12 +115,12 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// Constructor. Create by the WzSubProperty object
         /// </summary>
         /// <param name="uiButtonProperty"></param>
-        /// <param name="BtMouseClickProperty"></param>
-        /// <param name="BtMouseOverProperty"></param>
+        /// <param name="btMouseClickSoundProperty">The sound property for mouse click</param>
+        /// <param name="btMouseOverSoundProperty">The sound property for mouse over.</param>
         /// <param name="flip"></param>
         /// <param name="relativePositionXY">The relative position of the button to be overlaid on top of the main BaseDXDrawableItem</param>
         /// <param name="graphicsDevice"></param>
-        public UIObject(WzSubProperty uiButtonProperty, WzBinaryProperty BtMouseClickProperty, WzBinaryProperty BtMouseOverProperty,
+        public UIObject(WzSubProperty uiButtonProperty, WzBinaryProperty btMouseClickSoundProperty, WzBinaryProperty btMouseOverSoundProperty,
             bool flip,
             Point relativePositionXY,
             GraphicsDevice graphicsDevice)
@@ -135,8 +135,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             this.pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
             this.mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
 
-            this.seBtMouseClick = CreateSoundEffectWithWzProperty(BtMouseClickProperty);
-            this.seBtMouseOver = CreateSoundEffectWithWzProperty(BtMouseOverProperty);
+            this.seBtMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
+            this.seBtMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
         }
 
         #region Init
@@ -217,8 +217,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                         _CanvasSnapshotWidth = btImage.Width;
                     }
 
-                    IDXObject dxObj_miniMapPixel = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
-                    drawableImages.Add(dxObj_miniMapPixel);
+                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
+                    drawableImages.Add(dxObj);
                 }
                 i++;
             }
@@ -254,12 +254,17 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             if (this.currentState == UIObjectState.Disabled)
                 return false; // disabled buttons dont react
 
-            // The position of the button relative to the minimap
-            int minimapButtonRelativeX = -(containerParentX) - X; // Left to right
-            int minimapButtonRelativeY = -(containerParentY) - Y; // Top to bottom
+            BaseDXDrawableItem buttonToDraw = GetBaseDXDrawableItemByState();
+            IDXObject lastFrameDrawn = buttonToDraw.LastFrameDrawn;
+            if (lastFrameDrawn == null)
+                return false;
 
-            int buttonPositionXToMap = shiftCenteredX - minimapButtonRelativeX;
-            int buttonPositionYToMap = shiftCenteredY - minimapButtonRelativeY;
+            // The position of the button relative to the minimap
+            int buttonRelativeX = -(containerParentX) - X - lastFrameDrawn.X; // Left to right
+            int buttonRelativeY = -(containerParentY) - Y - lastFrameDrawn.Y; // Top to bottom
+
+            int buttonPositionXToMap = shiftCenteredX - buttonRelativeX;
+            int buttonPositionYToMap = shiftCenteredY - buttonRelativeY;
 
             // The position of the mouse relative to the game
             Rectangle rect = new Rectangle(
