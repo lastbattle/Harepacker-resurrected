@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.Render.DX;
+﻿using HaSharedLibrary;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -9,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using NAudio.Wave;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using static HaCreator.MapSimulator.MapObjects.UIObject.UIObjectButtonEvent;
 
 namespace HaCreator.MapSimulator.MapObjects.UIObject
@@ -21,7 +23,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         #region Fields
         private UIObjectState currentState = UIObjectState.Normal;
 
-        private SoundEffect seBtMouseClick, seBtMouseOver;
+        private WzSoundResourceStreamer seBtMouseClick, seBtMouseOver;
 
         private readonly BaseDXDrawableItem normalState;
         private readonly BaseDXDrawableItem disabledState;
@@ -144,24 +146,33 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// Create SoundEffect from WzBinaryProperty
         /// TODO: combined cache
         /// </summary>
-        /// <param name="BtMouseProperty"></param>
+        /// <param name="wzSoundProperty"></param>
         /// <returns></returns>
-        private SoundEffect CreateSoundEffectWithWzProperty(WzBinaryProperty BtMouseProperty)
+        private WzSoundResourceStreamer CreateSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
         {
-            /*using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
+            WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
+                Volume = 1.0f
+            };
+            return currAudio;
+
+            /*using (MemoryStream ms = new MemoryStream(wzSoundProperty.GetBytes(true)))  // dont dispose until its no longer needed
             {
+                SoundEffect soundEffect = null;
+
                 WaveFormat wavFmt = BtMouseProperty.WavFormat;
                 if (wavFmt.Encoding == WaveFormatEncoding.MpegLayer3)
-                {
-                    Mp3FileReader mpegStream = new Mp3FileReader(ms);
-                    SoundEffect effect = SoundEffect.FromStream(mpegStream);
-                }
-                else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
-                {
-                    WaveFileReader waveFileStream = new WaveFileReader(ms);
-                    SoundEffect effect = SoundEffect.FromStream(waveFileStream);
-                }
-            }*/
+                 {
+                     Mp3FileReader mpegStream = new Mp3FileReader(ms);
+                     soundEffect = SoundEffect.FromStream(mpegStream);
+                 }
+                 else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
+                 {
+                     WaveFileReader waveFileStream = new WaveFileReader(ms);
+                     soundEffect = SoundEffect.FromStream(waveFileStream);
+                 }
+                return soundEffect;
+            }
+
           /*      using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
                 {
                     using (Mp3FileReader reader = new Mp3FileReader(ms))
@@ -186,8 +197,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                             return effect; // TODO: dispose this later
                         }
                     }
-                }*/
-            return null;
+                }
+            return null;*/
         }
 
         /// <summary>
@@ -277,6 +288,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
 
             if (rect.Contains(mouseState.X, mouseState.Y))
             {
+                UIObjectState priorState = this.currentState;
+
                 if (mouseState.LeftButton == ButtonState.Pressed)
                 {
                     SetButtonState(UIObjectState.Pressed);
@@ -284,10 +297,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                     if (seBtMouseClick != null) // play mouse click sound
                         seBtMouseClick.Play();
                 }
-                else if (mouseState.LeftButton == ButtonState.Released)
+                else if (mouseState.LeftButton == ButtonState.Released && priorState == UIObjectState.Pressed)
                 {
-                    UIObjectState priorState = this.currentState;
-
                     SetButtonState(UIObjectState.MouseOver);
 
                     if (priorState == UIObjectState.Pressed) // this after setting the MouseOver state, so user-code does not get override
@@ -298,10 +309,14 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                 }
                 else
                 {
+                    // hover over sound effect
+                    if (priorState != UIObjectState.Pressed && priorState != UIObjectState.Disabled && priorState != UIObjectState.MouseOver) {
+                        if (seBtMouseOver != null) // play mouse over sound
+                            seBtMouseOver.Play();
+                    }
+
                     SetButtonState(UIObjectState.MouseOver);
 
-                    if (seBtMouseOver != null) // play mouse over sound
-                        seBtMouseOver.Play();
                 }
                 return true;
             }

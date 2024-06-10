@@ -13,48 +13,68 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using NAudio.Wave;
 using System.IO;
+using System.Diagnostics;
+using MapleLib.PacketLib;
 
 namespace HaSharedLibrary
 {
-    public class WzMp3Streamer
+    /// <summary>
+    /// Streams wav, or mp3.
+    /// </summary>
+    public class WzSoundResourceStreamer
     {
         private readonly Stream byteStream;
 
         private Mp3FileReader mpegStream;
         private WaveFileReader waveFileStream;
 
-        private readonly bool bIsMP3File = true;
-
         private readonly WaveOut wavePlayer;
         private readonly WzBinaryProperty sound;
         private bool repeat;
 
-        private bool playbackSuccessfully = true;
+        private bool bPlaybackLoadedSuccess = true;
 
-        public WzMp3Streamer(WzBinaryProperty sound, bool repeat)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="sound"></param>
+        /// <param name="repeat"></param>
+        public WzSoundResourceStreamer(WzBinaryProperty sound, bool repeat)
         {
             this.repeat = repeat;
             this.sound = sound;
-            byteStream = new MemoryStream(sound.GetBytes(false));
-
-            this.bIsMP3File = !sound.Name.EndsWith("wav"); // mp3 file does not end with any extension
 
             wavePlayer = new WaveOut(WaveCallbackInfo.FunctionCallback());
             try
             {
-                if (bIsMP3File)
+                if (sound.WavFormat.Encoding == WaveFormatEncoding.MpegLayer3)
                 {
+                    this.byteStream = new MemoryStream(sound.GetBytes(false));
                     mpegStream = new Mp3FileReader(byteStream);
+                    
                     wavePlayer.Init(mpegStream);
-                } else
+                } 
+                else if (sound.WavFormat.Encoding == WaveFormatEncoding.Pcm)
                 {
+                    /*byte[] wavSoundBytes = sound.GetBytesForWAVPlayback();
+
+                    this.byteStream = new MemoryStream(wavSoundBytes);
+                    Debug.WriteLine(HexTool.ByteArrayToString(wavSoundBytes));
+
                     waveFileStream = new WaveFileReader(byteStream);
-                    wavePlayer.Init(waveFileStream);
+                    
+                    wavePlayer.Init(waveFileStream);*/
+                }
+                else
+                {
+                    bPlaybackLoadedSuccess = false;
                 }
             }
-            catch (Exception)
+            catch (Exception exp)
             {
-                playbackSuccessfully = false;
+                bPlaybackLoadedSuccess = false;
+                
+                Debug.WriteLine(exp.ToString());
                 //InvalidDataException
                 // Message = "Not a WAVE file - no RIFF header"
             }
@@ -64,8 +84,11 @@ namespace HaSharedLibrary
 
         void wavePlayer_PlaybackStopped(object sender, StoppedEventArgs e)
         {
-            if (repeat && !disposed)
+            if (repeat)
             {
+                if (disposed) {
+                    return;
+                }
                 if (mpegStream != null)
                     mpegStream.Seek(0, SeekOrigin.Begin);
                 else
@@ -73,6 +96,8 @@ namespace HaSharedLibrary
 
                 wavePlayer.Pause();
                 wavePlayer.Play();
+            } else {
+                Position = 0;
             }
         }
 
@@ -83,7 +108,7 @@ namespace HaSharedLibrary
         }
         public void Dispose()
         {
-            if (!playbackSuccessfully)
+            if (!bPlaybackLoadedSuccess)
                 return;
 
             disposed = true;
@@ -103,7 +128,7 @@ namespace HaSharedLibrary
 
         public void Play()
         {
-            if (!playbackSuccessfully)
+            if (!bPlaybackLoadedSuccess)
                 return;
 
             wavePlayer.Play();
@@ -111,7 +136,7 @@ namespace HaSharedLibrary
 
         public void Pause()
         {
-            if (!playbackSuccessfully)
+            if (!bPlaybackLoadedSuccess)
                 return;
 
             wavePlayer.Pause();
@@ -119,7 +144,7 @@ namespace HaSharedLibrary
 
         public void Stop()
         {
-            if (!playbackSuccessfully) return;
+            if (!bPlaybackLoadedSuccess) return;
             wavePlayer.Stop();
         }
 
