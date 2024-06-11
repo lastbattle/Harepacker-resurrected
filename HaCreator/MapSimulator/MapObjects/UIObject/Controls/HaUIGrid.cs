@@ -96,7 +96,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
                     Point subUIKey = pair.Key;
 
                     int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(contentSize.Width, cellWidth, subUIInfo.HorizontalAlignment);
-                    int alignmentYOffset = HaUIHelper.CalculateAlignmentOffset(contentSize.Width, cellWidth, subUIInfo.VerticalAlignment);
+                    int alignmentYOffset = HaUIHelper.CalculateAlignmentOffset(contentSize.Height, cellHeight, subUIInfo.VerticalAlignment);
 
                     int x = subUIKey.X * cellWidth - alignmentXOffset;
                     int y = subUIKey.Y * cellHeight - alignmentYOffset;

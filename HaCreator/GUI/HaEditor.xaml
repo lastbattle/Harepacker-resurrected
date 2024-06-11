@@ -23,8 +23,8 @@
         </Grid.RowDefinitions>
 
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="7*"/>
-            <ColumnDefinition Width="3*" MaxWidth="400"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="350"/>
         </Grid.ColumnDefinitions>
 
         <local:HaRibbon x:Name="ribbon"
@@ -105,13 +105,13 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <TextBlock Text="Physical Cursor: X = " />
+                        <TextBlock Text="Game Cursor: X = " />
                         <TextBlock x:Name="textblock_CursorX" Text="0" />
                         <TextBlock Text=", Y = " />
                         <TextBlock x:Name="textblock_CursorY" Text="0" />
 
                         <TextBlock Text="|" Margin="20,0,20,0"/>
-                        <TextBlock Text="Cursor: X = " />
+                        <TextBlock Text="Monitor cursor: X = " />
                         <TextBlock x:Name="textblock_RCursorX" Text="0" />
                         <TextBlock Text=", Y = " />
                         <TextBlock x:Name="textblock_RCursorY" Text="0" />

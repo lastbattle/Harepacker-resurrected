@@ -52,14 +52,27 @@ namespace HaSharedLibrary.Render.DX
 
         /// <summary>
         /// The last frame drawn
+        /// Returns the default frame if none
         /// </summary>
         private IDXObject _LastFrameDrawn = null;
         public IDXObject LastFrameDrawn
         {
-            get { return this._LastFrameDrawn; }
+            get { 
+                if (_LastFrameDrawn == null) {
+                    if (frame0 != null) 
+                        return frame0;
+                    else if (frames != null && frames.Count > 0)
+                        return frames[0];
+                }
+                return this._LastFrameDrawn; 
+            }
             private set { }
         }
 
+        public IDXObject Frame0 {
+            get { return frame0; }
+            private set { }
+        }
 
         private Point _Position;
         /// <summary>
@@ -104,7 +117,7 @@ namespace HaSharedLibrary.Render.DX
             notAnimated = true;
             this.flip = flip;
 
-            this._Position = new Point(0, 0);
+           this._Position = new Point(0, 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -129,8 +142,8 @@ namespace HaSharedLibrary.Render.DX
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
-        /// <param name="mapShiftX"></param>
-        /// <param name="mapShiftY"></param>
+        /// <param name="mapShiftX">The relative x position</param>
+        /// <param name="mapShiftY">The relative y position</param>
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
         /// <param name="drawReflectionInfo">The reflection info to draw for this object. Null if none.</param>
@@ -178,10 +191,10 @@ namespace HaSharedLibrary.Render.DX
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height)
         {
-            return (frame.X - shiftCenteredX + frame.Width > 0 &&
-                frame.Y - shiftCenteredY + frame.Height > 0 &&
-                frame.X - shiftCenteredX < width &&
-                frame.Y - shiftCenteredY < height);
+            return (frame.X - shiftCenteredX + frame.Width >= 0 &&
+                frame.Y - shiftCenteredY + frame.Height >= 0 &&
+                frame.X - shiftCenteredX <= width &&
+                frame.Y - shiftCenteredY <= height);
         }
 
         /// <summary>

@@ -139,6 +139,9 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
 
             this.seBtMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
             this.seBtMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
+
+            X = this.normalState.Position.X; // origin xy
+            Y = this.normalState.Position.Y;
         }
 
         #region Init
@@ -209,8 +212,11 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// <param name="relativePositionXY">The relative position of the button to be overlaid on top of the main BaseDXDrawableItem</param>
         /// <param name="graphicsDevice"></param>
         /// <returns></returns>
-        private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY, GraphicsDevice graphicsDevice)
+        private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY_, GraphicsDevice graphicsDevice)
         {
+            bool bAddedOriginXY = false;
+            Point relativePositionXY = new Point(relativePositionXY_.X, relativePositionXY_.Y);
+
             List<IDXObject> drawableImages = new List<IDXObject>();
             int i = 0;
             WzImageProperty imgProperty;
@@ -230,24 +236,33 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
 
                     IDXObject dxObj = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
                     drawableImages.Add(dxObj);
+
+                    // the origin X Y needed to update to this UIObject object
+                    if (!bAddedOriginXY) {
+                        bAddedOriginXY = true;
+
+                        // This object's X and Y coordinates must be in sync with render origin x and y!
+                        relativePositionXY.X -= (int) origin.X;
+                        relativePositionXY.Y -= (int) origin.Y;
+                    }
                 }
                 i++;
             }
             if (drawableImages.Count == 0) // oh noz u sux
                 throw new Exception("Error creating BaseDXDrawableItem from WzSubProperty.");
 
-            if (drawableImages.Count > 0)
-            {
-                BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(drawableImages, flip)
-                {
+            BaseDXDrawableItem ret;
+            if (drawableImages.Count > 0) {
+                ret = new BaseDXDrawableItem(drawableImages, flip) {
                     Position = relativePositionXY
                 };
-                return item_pixelDot;
             }
-            return new BaseDXDrawableItem(drawableImages[0], flip)
-            {
-                Position = relativePositionXY
-            };
+            else {
+                ret = new BaseDXDrawableItem(drawableImages[0], flip) {
+                    Position = relativePositionXY
+                };
+            }
+            return ret;
         }
         #endregion
 
@@ -265,14 +280,14 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             if (this.currentState == UIObjectState.Disabled)
                 return false; // disabled buttons dont react
 
-            BaseDXDrawableItem buttonToDraw = GetBaseDXDrawableItemByState();
+           /* BaseDXDrawableItem buttonToDraw = GetBaseDXDrawableItemByState();
             IDXObject lastFrameDrawn = buttonToDraw.LastFrameDrawn;
             if (lastFrameDrawn == null)
                 return false;
-
+         */
             // The position of the button relative to the minimap
-            int buttonRelativeX = -(containerParentX) - X - lastFrameDrawn.X; // Left to right
-            int buttonRelativeY = -(containerParentY) - Y - lastFrameDrawn.Y; // Top to bottom
+            int buttonRelativeX = -(containerParentX) - X/* - lastFrameDrawn.X*/; // Left to right
+            int buttonRelativeY = -(containerParentY) - Y/* - lastFrameDrawn.Y*/; // Top to bottom
 
             int buttonPositionXToMap = shiftCenteredX - buttonRelativeX;
             int buttonPositionYToMap = shiftCenteredY - buttonRelativeY;
