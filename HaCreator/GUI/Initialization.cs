@@ -55,6 +55,7 @@ namespace HaCreator.GUI
             return false;
         }
 
+        private bool _bIsInitialising = false;
         /// <summary>
         /// Initialise
         /// </summary>
@@ -62,28 +63,34 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void button_initialise_Click(object sender, EventArgs e)
         {
-            ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
-            ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
-            string wzPath = pathBox.Text;
-
-            if (wzPath == "Select MapleStory Folder")
-            {
-                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (_bIsInitialising) {
                 return;
             }
-            if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
-            {
-                ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
-            }
-            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            if (InitializeWzFiles(wzPath, fileVersion))
-            {
-                Hide();
-                Application.DoEvents();
-                editor = new HaEditor();
-                editor.ShowDialog();
+            _bIsInitialising = true;
 
-                Application.Exit();
+            try {
+                ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
+                ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
+                string wzPath = pathBox.Text;
+
+                if (wzPath == "Select MapleStory Folder") {
+                    MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath)) {
+                    ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
+                }
+                WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
+                if (InitializeWzFiles(wzPath, fileVersion)) {
+                    Hide();
+                    Application.DoEvents();
+                    editor = new HaEditor();
+                    editor.ShowDialog();
+
+                    Application.Exit();
+                }
+            } finally {
+                _bIsInitialising = false;
             }
         }
 
