@@ -479,97 +479,133 @@ namespace HaCreator.MapSimulator {
         /// <param name="soundUIImage"></param>
         /// <param name="bBigBang"></param>
         /// <returns></returns>
-        public static StatusBarUI CreateStatusBarFromProperty(WzImage uiStatusBar, WzImage uiStatusBar2, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, int RenderWidth, int RenderHeight, WzImage soundUIImage, bool bBigBang) {
-            WzSubProperty mainBarProperties = (uiStatusBar2?["mainBar"] as WzSubProperty);
-            if (mainBarProperties != null) {
-                HaUIGrid grid = new HaUIGrid(1, 1);
+        public static Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBarFromProperty(WzImage uiStatusBar, WzImage uiStatusBar2, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, int RenderWidth, int RenderHeight, WzImage soundUIImage, bool bBigBang) {
+            // Pre-big bang maplestory status bar
+            if (bBigBang) {
+                WzSubProperty mainBarProperties = (uiStatusBar2?["mainBar"] as WzSubProperty);
+                if (mainBarProperties != null) {
+                    HaUIGrid grid = new HaUIGrid(1, 1);
 
-                System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)mainBarProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)mainBarProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
 
-                grid.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() 
-                {
-                    Bitmap = backgrnd, 
-                    VerticalAlignment = HaUIAlignment.Start, 
-                    HorizontalAlignment = HaUIAlignment.Start
-                }));
+                    grid.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() {
+                        Bitmap = backgrnd,
+                        VerticalAlignment = HaUIAlignment.Start,
+                        HorizontalAlignment = HaUIAlignment.Start
+                    }));
 
-                // Draw level, name, job area
-                HaUIStackPanel stackPanel_charStats = new HaUIStackPanel(HaUIStackOrientation.Horizontal);
-                stackPanel_charStats.GetInfo().VerticalAlignment = HaUIAlignment.End;
+                    const int UI_PADDING_PX = 2;
 
-                System.Drawing.Bitmap bitmap_lvBacktrnd = ((WzCanvasProperty)mainBarProperties?["lvBacktrnd"])?.GetLinkedWzCanvasBitmap();
+                    // Draw level, name, job area
+                    HaUIStackPanel stackPanel_charStats = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo() {
+                        VerticalAlignment = HaUIAlignment.End
+                    });
 
-                stackPanel_charStats.AddRenderable(new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvBacktrnd}));
+                    System.Drawing.Bitmap bitmap_lvBacktrnd = ((WzCanvasProperty)mainBarProperties?["lvBacktrnd"])?.GetLinkedWzCanvasBitmap();
 
-                // Draw HP, MP, EXP area
-                System.Drawing.Bitmap bitmap_gaugeBackgrd = ((WzCanvasProperty)mainBarProperties?["gaugeBackgrd"])?.GetLinkedWzCanvasBitmap();
-                System.Drawing.Bitmap bitmap_gaugeCover = ((WzCanvasProperty)mainBarProperties?["gaugeCover"])?.GetLinkedWzCanvasBitmap();
+                    stackPanel_charStats.AddRenderable(new HaUIImage(new HaUIInfo() { Bitmap = bitmap_lvBacktrnd }));
 
-                HaUIGrid grid_hpMpExp = new HaUIGrid(1, 1);
-                grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeCover }));
-                grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeBackgrd }));
+                    // Draw HP, MP, EXP area
+                    System.Drawing.Bitmap bitmap_gaugeBackgrd = ((WzCanvasProperty)mainBarProperties?["gaugeBackgrd"])?.GetLinkedWzCanvasBitmap();
+                    System.Drawing.Bitmap bitmap_gaugeCover = ((WzCanvasProperty)mainBarProperties?["gaugeCover"])?.GetLinkedWzCanvasBitmap();
 
-                // Add HP, MP, EXP area to the [level, name, job area stackpanel]
-                stackPanel_charStats.AddRenderable(grid_hpMpExp);
+                    HaUIGrid grid_hpMpExp = new HaUIGrid(1, 1);
+                    grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeCover }));
+                    grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeBackgrd }));
 
-                // Cash shop, MTS, menu, system, channel UI
-                const int CS_MTS_MENU_SYS_CHANNEL_PADDING = 2;
+                    // add HP, MP, EXP area to the [level, name, job area stackpanel]
+                    stackPanel_charStats.AddRenderable(grid_hpMpExp);
 
-                WzBinaryProperty binaryProp_BtMouseClickSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseClick"];
-                WzBinaryProperty binaryProp_BtMouseOverSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseOver"];
+                    // Cash shop, MTS, menu, system, channel UI
+                    WzBinaryProperty binaryProp_BtMouseClickSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseClick"];
+                    WzBinaryProperty binaryProp_BtMouseOverSoundProperty = (WzBinaryProperty)soundUIImage["BtMouseOver"];
 
-                WzSubProperty subProperty_BtCashShop = (WzSubProperty)mainBarProperties?["BtCashShop"]; // cash shop
-                UIObject obj_Ui_BtCashShop = new UIObject(subProperty_BtCashShop, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                    false,
-                    new Point(0, 0), device) {
-                    X = 9 + bitmap_lvBacktrnd.Width + bitmap_gaugeBackgrd.Width + CS_MTS_MENU_SYS_CHANNEL_PADDING,
-                };
-                obj_Ui_BtCashShop.Y += backgrnd.Height;
+                    WzSubProperty subProperty_BtCashShop = (WzSubProperty)mainBarProperties?["BtCashShop"]; // cash shop
+                    UIObject obj_Ui_BtCashShop = new UIObject(subProperty_BtCashShop, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                        X = 9 + bitmap_lvBacktrnd.Width + bitmap_gaugeBackgrd.Width + UI_PADDING_PX,
+                    };
+                    obj_Ui_BtCashShop.Y += backgrnd.Height;
 
-                WzSubProperty subProperty_BtMTS = (WzSubProperty)mainBarProperties?["BtMTS"]; // MTS
-                UIObject obj_Ui_BtMTS = new UIObject(subProperty_BtMTS, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                    false,
-                    new Point(0, 0), device) {
-                };
-                obj_Ui_BtMTS.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                obj_Ui_BtMTS.Y += backgrnd.Height;
+                    WzSubProperty subProperty_BtMTS = (WzSubProperty)mainBarProperties?["BtMTS"]; // MTS
+                    UIObject obj_Ui_BtMTS = new UIObject(subProperty_BtMTS, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtMTS.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
+                    obj_Ui_BtMTS.Y += backgrnd.Height;
 
-                WzSubProperty subProperty_BtMenu = (WzSubProperty)mainBarProperties?["BtMenu"]; // Menu
-                UIObject obj_Ui_BtMenu = new UIObject(subProperty_BtMenu, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                    false,
-                    new Point(0, 0), device) {
-                };
-                obj_Ui_BtMenu.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                obj_Ui_BtMenu.Y += backgrnd.Height;
+                    WzSubProperty subProperty_BtMenu = (WzSubProperty)mainBarProperties?["BtMenu"]; // Menu
+                    UIObject obj_Ui_BtMenu = new UIObject(subProperty_BtMenu, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtMenu.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
+                    obj_Ui_BtMenu.Y += backgrnd.Height;
 
-                WzSubProperty subProperty_BtSystem = (WzSubProperty)mainBarProperties?["BtSystem"]; // System
-                UIObject obj_Ui_BtSystem = new UIObject(subProperty_BtSystem, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                    false,
-                    new Point(0, 0), device) {
-                };
-                obj_Ui_BtSystem.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                obj_Ui_BtSystem.Y += backgrnd.Height;
+                    WzSubProperty subProperty_BtSystem = (WzSubProperty)mainBarProperties?["BtSystem"]; // System
+                    UIObject obj_Ui_BtSystem = new UIObject(subProperty_BtSystem, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtSystem.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
+                    obj_Ui_BtSystem.Y += backgrnd.Height;
 
-                WzSubProperty subProperty_BtChannel = (WzSubProperty)mainBarProperties?["BtChannel"]; // System
-                UIObject obj_Ui_BtChannel = new UIObject(subProperty_BtChannel, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                    false,
-                    new Point(0, 0), device) {
-                };
-                obj_Ui_BtChannel.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                obj_Ui_BtChannel.Y += backgrnd.Height;
+                    WzSubProperty subProperty_BtChannel = (WzSubProperty)mainBarProperties?["BtChannel"]; // System
+                    UIObject obj_Ui_BtChannel = new UIObject(subProperty_BtChannel, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtChannel.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
+                    obj_Ui_BtChannel.Y += backgrnd.Height;
 
-                // Add all items to the main grid
-                grid.AddRenderable(0, 0, stackPanel_charStats);
 
-                Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
+                    // Draw Chat UI
+                    System.Drawing.Bitmap bitmap_chatSpace = ((WzCanvasProperty)mainBarProperties?["chatSpace"])?.GetLinkedWzCanvasBitmap(); // chat foreground
+                    System.Drawing.Bitmap bitmap_chatSpace2 = ((WzCanvasProperty)mainBarProperties?["chatSpace2"])?.GetLinkedWzCanvasBitmap(); // chat background
 
-                IDXObject dxObj_backgrnd = new DXObject(0, RenderHeight - grid.GetSize().Height, texture_backgrnd, 0);
-                StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
-                    new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y));
+                    HaUIGrid grid_chat = new HaUIGrid(1, 1, new HaUIInfo() {
+                        Margins = new HaUIMargin() {
+                            //Bottom = 50, // Add this line to move it lower
+                        }
+                    });
+                    grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() {
+                        Bitmap = bitmap_chatSpace2,
+                        VerticalAlignment = HaUIAlignment.Center,
+                        HorizontalAlignment = HaUIAlignment.Center,
+                        Padding = new HaUIMargin() {
+                        }
+                    }));
+                    grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() {
+                        Bitmap = bitmap_chatSpace,
+                        VerticalAlignment = HaUIAlignment.Center,
+                        HorizontalAlignment = HaUIAlignment.Center,
+                        Padding = new HaUIMargin() {
+                        }
+                    }));
 
-                statusBar.InitializeButtons();
+                    Texture2D texture_chatUI = grid_chat.Render().ToTexture2D(device);
+                    IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, RenderHeight - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
 
-                return statusBar;
+                    StatusBarChatUI chatUI = new StatusBarChatUI(dxObj_chatUI, new Point(dxObj_chatUI.X, dxObj_chatUI.Y));
+                    chatUI.InitializeButtons();
+
+                    // Scroll up+down, Chat, report/ claim, notice, stat, quest, inventory, equip, skill, key set
+
+
+                    // Add all items to the main grid
+                    grid.AddRenderable(0, 0, stackPanel_charStats);
+
+                    Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
+
+                    IDXObject dxObj_backgrnd = new DXObject(0, RenderHeight - grid.GetSize().Height, texture_backgrnd, 0);
+                    StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
+                        new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y));
+                    statusBar.InitializeButtons();
+
+                    return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
+                }
             }
             return null;
         }

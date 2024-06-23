@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator
 
         // Status bar
         private StatusBarUI statusBarUi;
+        private StatusBarChatUI statusBarChatUI;
 
         // Cursor, mouse
         private MouseCursorItem mouseCursor;
@@ -432,7 +433,9 @@ namespace HaCreator.MapSimulator
             // Statusbar
             Task t_statusBar = Task.Run(() => {
                 if (!this.bIsLoginMap) {
-                    statusBarUi = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, RenderWidth, RenderHeight, soundUIImage, bBigBangUpdate);
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, RenderWidth, RenderHeight, soundUIImage, bBigBangUpdate);
+                    statusBarUi = statusBar.Item1;
+                    statusBarChatUI = statusBar.Item2;
                 }
             });
 
@@ -939,14 +942,19 @@ namespace HaCreator.MapSimulator
 
             // Status bar [layer below minimap]
             if (statusBarUi != null) {
-                    statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
                             RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                             TickCount);
+                statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
 
-                    statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
-
+                statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                            null,
+                            RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                            TickCount);
+                statusBarChatUI.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
             }
 
             // Minimap
