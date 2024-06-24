@@ -97,6 +97,7 @@ namespace HaCreator.MapSimulator
         private readonly Board mapBoard;
         private bool bBigBangUpdate = true, bBigBang2Update = true;
         private bool bIsLoginMap = false; // if the simulated map is the Login map.
+        private bool bIsCashShopMap = false; 
 
         // Spine
         private SkeletonMeshRenderer skeletonMeshRenderer;
@@ -122,6 +123,7 @@ namespace HaCreator.MapSimulator
             // Check if the simulated map is the Login map. 'MapLogin1:MapLogin1'
             string[] titleNameParts = titleName.Split(':');
             this.bIsLoginMap = titleNameParts.All(part => part.Contains("MapLogin"));
+            this.bIsCashShopMap = titleNameParts.All(part => part.Contains("CashShopPreview"));
 
             this.mapRenderResolution = UserSettings.SimulateResolution;
             InitialiseWindowAndMap_WidthHeight();
@@ -425,7 +427,7 @@ namespace HaCreator.MapSimulator
             // Minimap
             Task t_minimap = Task.Run(() =>
             {
-                if (!this.bIsLoginMap && !mapBoard.MapInfo.hideMinimap)
+                if (!this.bIsLoginMap && !mapBoard.MapInfo.hideMinimap && !this.bIsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, soundUIImage, bBigBangUpdate);
                 }
@@ -433,10 +435,12 @@ namespace HaCreator.MapSimulator
 
             // Statusbar
             Task t_statusBar = Task.Run(() => {
-                if (!this.bIsLoginMap) {
+                if (!this.bIsLoginMap && !this.bIsCashShopMap) {
                     Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, RenderWidth, RenderHeight, soundUIImage, bBigBangUpdate);
-                    statusBarUi = statusBar.Item1;
-                    statusBarChatUI = statusBar.Item2;
+                    if (statusBar != null) {
+                        statusBarUi = statusBar.Item1;
+                        statusBarChatUI = statusBar.Item2;
+                    }
                 }
             });
 
