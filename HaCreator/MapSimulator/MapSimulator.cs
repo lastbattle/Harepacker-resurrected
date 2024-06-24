@@ -108,6 +108,7 @@ namespace HaCreator.MapSimulator
         // Debug
         private Texture2D texture_debugBoundaryRect;
         private bool bShowDebugMode = false;
+        private bool bHideUIMode = false;
 
         /// <summary>
         /// MapSimulator Constructor
@@ -662,6 +663,11 @@ namespace HaCreator.MapSimulator
                     miniMapUi.MinimiseOrMaximiseMinimap(currTickCount);
             }
 
+            // Hide UI
+            if (newKeyboardState.IsKeyUp(Keys.H) && oldKeyboardState.IsKeyDown(Keys.H)) {
+                this.bHideUIMode = !this.bHideUIMode;
+            }
+
             // Debug keys
             if (newKeyboardState.IsKeyUp(Keys.F5) && oldKeyboardState.IsKeyDown(Keys.F5))
             {
@@ -941,7 +947,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Status bar [layer below minimap]
-            if (statusBarUi != null) {
+            if (statusBarUi != null && !bHideUIMode) {
                 statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
@@ -958,7 +964,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Minimap
-            if (miniMapUi != null)
+            if (miniMapUi != null && !bHideUIMode)
             {
                 miniMapUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
@@ -971,9 +977,9 @@ namespace HaCreator.MapSimulator
 
             if (gameTime.TotalGameTime.TotalSeconds < 4)
                 spriteBatch.DrawString(font_navigationKeysHelper, 
-                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot", 
-                    Environment.NewLine, Environment.NewLine, Environment.NewLine), 
-                    new Vector2(20, Height - 140), Color.White);
+                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot{3}[H] Hide UI", 
+                    Environment.NewLine, Environment.NewLine, Environment.NewLine, Environment.NewLine), 
+                    new Vector2(20, Height - 190), Color.White);
             
             if (!bSaveScreenshot && bShowDebugMode)
             {
