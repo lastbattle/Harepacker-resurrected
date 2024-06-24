@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.Render.DX;
+﻿using HaSharedLibrary;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -9,6 +10,7 @@ using Microsoft.Xna.Framework.Input;
 using NAudio.Wave;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using static HaCreator.MapSimulator.MapObjects.UIObject.UIObjectButtonEvent;
 
 namespace HaCreator.MapSimulator.MapObjects.UIObject
@@ -21,7 +23,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         #region Fields
         private UIObjectState currentState = UIObjectState.Normal;
 
-        private SoundEffect seBtMouseClick, seBtMouseOver;
+        private WzSoundResourceStreamer seBtMouseClick, seBtMouseOver;
 
         private readonly BaseDXDrawableItem normalState;
         private readonly BaseDXDrawableItem disabledState;
@@ -115,12 +117,12 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// Constructor. Create by the WzSubProperty object
         /// </summary>
         /// <param name="uiButtonProperty"></param>
-        /// <param name="BtMouseClickProperty"></param>
-        /// <param name="BtMouseOverProperty"></param>
+        /// <param name="btMouseClickSoundProperty">The sound property for mouse click</param>
+        /// <param name="btMouseOverSoundProperty">The sound property for mouse over.</param>
         /// <param name="flip"></param>
         /// <param name="relativePositionXY">The relative position of the button to be overlaid on top of the main BaseDXDrawableItem</param>
         /// <param name="graphicsDevice"></param>
-        public UIObject(WzSubProperty uiButtonProperty, WzBinaryProperty BtMouseClickProperty, WzBinaryProperty BtMouseOverProperty,
+        public UIObject(WzSubProperty uiButtonProperty, WzBinaryProperty btMouseClickSoundProperty, WzBinaryProperty btMouseOverSoundProperty,
             bool flip,
             Point relativePositionXY,
             GraphicsDevice graphicsDevice)
@@ -135,8 +137,11 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             this.pressedState = CreateBaseDXDrawableItemWithWzProperty(pressedStateProperty, flip, relativePositionXY, graphicsDevice);
             this.mouseOverState = CreateBaseDXDrawableItemWithWzProperty(mouseOverStateProperty, flip, relativePositionXY, graphicsDevice);
 
-            this.seBtMouseClick = CreateSoundEffectWithWzProperty(BtMouseClickProperty);
-            this.seBtMouseOver = CreateSoundEffectWithWzProperty(BtMouseOverProperty);
+            this.seBtMouseClick = CreateSoundEffectWithWzProperty(btMouseClickSoundProperty);
+            this.seBtMouseOver = CreateSoundEffectWithWzProperty(btMouseOverSoundProperty);
+
+            X = this.normalState.Position.X; // origin xy
+            Y = this.normalState.Position.Y;
         }
 
         #region Init
@@ -144,24 +149,33 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// Create SoundEffect from WzBinaryProperty
         /// TODO: combined cache
         /// </summary>
-        /// <param name="BtMouseProperty"></param>
+        /// <param name="wzSoundProperty"></param>
         /// <returns></returns>
-        private SoundEffect CreateSoundEffectWithWzProperty(WzBinaryProperty BtMouseProperty)
+        private WzSoundResourceStreamer CreateSoundEffectWithWzProperty(WzBinaryProperty wzSoundProperty)
         {
-            /*using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
+            WzSoundResourceStreamer currAudio = new WzSoundResourceStreamer(wzSoundProperty, false) {
+                Volume = 1.0f
+            };
+            return currAudio;
+
+            /*using (MemoryStream ms = new MemoryStream(wzSoundProperty.GetBytes(true)))  // dont dispose until its no longer needed
             {
+                SoundEffect soundEffect = null;
+
                 WaveFormat wavFmt = BtMouseProperty.WavFormat;
                 if (wavFmt.Encoding == WaveFormatEncoding.MpegLayer3)
-                {
-                    Mp3FileReader mpegStream = new Mp3FileReader(ms);
-                    SoundEffect effect = SoundEffect.FromStream(mpegStream);
-                }
-                else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
-                {
-                    WaveFileReader waveFileStream = new WaveFileReader(ms);
-                    SoundEffect effect = SoundEffect.FromStream(waveFileStream);
-                }
-            }*/
+                 {
+                     Mp3FileReader mpegStream = new Mp3FileReader(ms);
+                     soundEffect = SoundEffect.FromStream(mpegStream);
+                 }
+                 else if (wavFmt.Encoding == WaveFormatEncoding.Pcm)
+                 {
+                     WaveFileReader waveFileStream = new WaveFileReader(ms);
+                     soundEffect = SoundEffect.FromStream(waveFileStream);
+                 }
+                return soundEffect;
+            }
+
           /*      using (MemoryStream ms = new MemoryStream(BtMouseProperty.GetBytes(true)))  // dont dispose until its no longer needed
                 {
                     using (Mp3FileReader reader = new Mp3FileReader(ms))
@@ -186,8 +200,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                             return effect; // TODO: dispose this later
                         }
                     }
-                }*/
-            return null;
+                }
+            return null;*/
         }
 
         /// <summary>
@@ -198,8 +212,11 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// <param name="relativePositionXY">The relative position of the button to be overlaid on top of the main BaseDXDrawableItem</param>
         /// <param name="graphicsDevice"></param>
         /// <returns></returns>
-        private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY, GraphicsDevice graphicsDevice)
+        private BaseDXDrawableItem CreateBaseDXDrawableItemWithWzProperty(WzSubProperty subProperty, bool flip, Point relativePositionXY_, GraphicsDevice graphicsDevice)
         {
+            bool bAddedOriginXY = false;
+            Point relativePositionXY = new Point(relativePositionXY_.X, relativePositionXY_.Y);
+
             List<IDXObject> drawableImages = new List<IDXObject>();
             int i = 0;
             WzImageProperty imgProperty;
@@ -217,26 +234,35 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                         _CanvasSnapshotWidth = btImage.Width;
                     }
 
-                    IDXObject dxObj_miniMapPixel = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
-                    drawableImages.Add(dxObj_miniMapPixel);
+                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
+                    drawableImages.Add(dxObj);
+
+                    // the origin X Y needed to update to this UIObject object
+                    if (!bAddedOriginXY) {
+                        bAddedOriginXY = true;
+
+                        // This object's X and Y coordinates must be in sync with render origin x and y!
+                        relativePositionXY.X -= (int) origin.X;
+                        relativePositionXY.Y -= (int) origin.Y;
+                    }
                 }
                 i++;
             }
             if (drawableImages.Count == 0) // oh noz u sux
                 throw new Exception("Error creating BaseDXDrawableItem from WzSubProperty.");
 
-            if (drawableImages.Count > 0)
-            {
-                BaseDXDrawableItem item_pixelDot = new BaseDXDrawableItem(drawableImages, flip)
-                {
+            BaseDXDrawableItem ret;
+            if (drawableImages.Count > 0) {
+                ret = new BaseDXDrawableItem(drawableImages, flip) {
                     Position = relativePositionXY
                 };
-                return item_pixelDot;
             }
-            return new BaseDXDrawableItem(drawableImages[0], flip)
-            {
-                Position = relativePositionXY
-            };
+            else {
+                ret = new BaseDXDrawableItem(drawableImages[0], flip) {
+                    Position = relativePositionXY
+                };
+            }
+            return ret;
         }
         #endregion
 
@@ -254,12 +280,17 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             if (this.currentState == UIObjectState.Disabled)
                 return false; // disabled buttons dont react
 
+           /* BaseDXDrawableItem buttonToDraw = GetBaseDXDrawableItemByState();
+            IDXObject lastFrameDrawn = buttonToDraw.LastFrameDrawn;
+            if (lastFrameDrawn == null)
+                return false;
+         */
             // The position of the button relative to the minimap
-            int minimapButtonRelativeX = -(containerParentX) - X; // Left to right
-            int minimapButtonRelativeY = -(containerParentY) - Y; // Top to bottom
+            int buttonRelativeX = -(containerParentX) - X/* - lastFrameDrawn.X*/; // Left to right
+            int buttonRelativeY = -(containerParentY) - Y/* - lastFrameDrawn.Y*/; // Top to bottom
 
-            int buttonPositionXToMap = shiftCenteredX - minimapButtonRelativeX;
-            int buttonPositionYToMap = shiftCenteredY - minimapButtonRelativeY;
+            int buttonPositionXToMap = shiftCenteredX - buttonRelativeX;
+            int buttonPositionYToMap = shiftCenteredY - buttonRelativeY;
 
             // The position of the mouse relative to the game
             Rectangle rect = new Rectangle(
@@ -272,6 +303,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
 
             if (rect.Contains(mouseState.X, mouseState.Y))
             {
+                UIObjectState priorState = this.currentState;
+
                 if (mouseState.LeftButton == ButtonState.Pressed)
                 {
                     SetButtonState(UIObjectState.Pressed);
@@ -279,10 +312,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                     if (seBtMouseClick != null) // play mouse click sound
                         seBtMouseClick.Play();
                 }
-                else if (mouseState.LeftButton == ButtonState.Released)
+                else if (mouseState.LeftButton == ButtonState.Released && priorState == UIObjectState.Pressed)
                 {
-                    UIObjectState priorState = this.currentState;
-
                     SetButtonState(UIObjectState.MouseOver);
 
                     if (priorState == UIObjectState.Pressed) // this after setting the MouseOver state, so user-code does not get override
@@ -293,10 +324,14 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
                 }
                 else
                 {
+                    // hover over sound effect
+                    if (priorState != UIObjectState.Pressed && priorState != UIObjectState.Disabled && priorState != UIObjectState.MouseOver) {
+                        if (seBtMouseOver != null) // play mouse over sound
+                            seBtMouseOver.Play();
+                    }
+
                     SetButtonState(UIObjectState.MouseOver);
 
-                    if (seBtMouseOver != null) // play mouse over sound
-                        seBtMouseOver.Play();
                 }
                 return true;
             }

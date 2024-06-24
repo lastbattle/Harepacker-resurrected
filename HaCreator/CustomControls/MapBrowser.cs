@@ -169,10 +169,6 @@ namespace HaCreator.CustomControls
                 SQLiteCommand command = new SQLiteCommand(sql_create, connection);
                 command.ExecuteNonQuery();
 
-                //sql = "INSERT INTO Highscores (Name, Score) VALUES ('Alice', 9001)";
-                //command = new SQLiteCommand(sql, connection);
-                //command.ExecuteNonQuery();
-
                 string sql_select = string.Format("SELECT * FROM {0};", SQLITE_DB_HISTORY_TABLE_NAME);
                 command = new SQLiteCommand(sql_select, connection);
                 SQLiteDataReader reader = command.ExecuteReader();
@@ -188,7 +184,8 @@ namespace HaCreator.CustomControls
                         Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
                         maps.Add(OpenedMapName);
-                        mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                        if (!mapsMapInfo.ContainsKey(OpenedMapName))
+                            mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
                     }
                 }
                 object[] mapsObjs = maps.Cast<object>().ToArray();

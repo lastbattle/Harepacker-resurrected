@@ -3,6 +3,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.MapObjects.UIObject;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
 using HaRepacker.Utils;
@@ -23,6 +24,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
@@ -79,7 +81,11 @@ namespace HaCreator.MapSimulator
         private ReflectionDrawableBoundary mirrorBottomReflection;
 
         // Minimap
-        private MinimapItem miniMap;
+        private MinimapUI miniMapUi;
+
+        // Status bar
+        private StatusBarUI statusBarUi;
+        private StatusBarChatUI statusBarChatUI;
 
         // Cursor, mouse
         private MouseCursorItem mouseCursor;
@@ -90,6 +96,7 @@ namespace HaCreator.MapSimulator
         // Etc
         private readonly Board mapBoard;
         private bool bBigBangUpdate = true, bBigBang2Update = true;
+        private bool bIsLoginMap = false; // if the simulated map is the Login map.
 
         // Spine
         private SkeletonMeshRenderer skeletonMeshRenderer;
@@ -101,6 +108,7 @@ namespace HaCreator.MapSimulator
         // Debug
         private Texture2D texture_debugBoundaryRect;
         private bool bShowDebugMode = false;
+        private bool bHideUIMode = false;
 
         /// <summary>
         /// MapSimulator Constructor
@@ -110,6 +118,10 @@ namespace HaCreator.MapSimulator
         public MapSimulator(Board mapBoard, string titleName)
         {
             this.mapBoard = mapBoard;
+
+            // Check if the simulated map is the Login map. 'MapLogin1:MapLogin1'
+            string[] titleNameParts = titleName.Split(':');
+            this.bIsLoginMap = titleNameParts.All(part => part.Contains("MapLogin"));
 
             this.mapRenderResolution = UserSettings.SimulateResolution;
             InitialiseWindowAndMap_WidthHeight();
@@ -256,7 +268,10 @@ namespace HaCreator.MapSimulator
             WzImage uiBasicImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "Basic.img");
             WzImage uiWindow1Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow.img"); //
             WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // doesnt exist before big-bang
-                                     
+
+            WzImage uiStatusBarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar.img");
+            WzImage uiStatus2BarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar2.img");
+
             this.bBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
             this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // chaos update
 
@@ -410,14 +425,23 @@ namespace HaCreator.MapSimulator
             // Minimap
             Task t_minimap = Task.Run(() =>
             {
-                if (!mapBoard.MapInfo.hideMinimap)
+                if (!this.bIsLoginMap && !mapBoard.MapInfo.hideMinimap)
                 {
-                    miniMap = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, soundUIImage, bBigBangUpdate);
+                    miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, soundUIImage, bBigBangUpdate);
+                }
+            });
+
+            // Statusbar
+            Task t_statusBar = Task.Run(() => {
+                if (!this.bIsLoginMap) {
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, RenderWidth, RenderHeight, soundUIImage, bBigBangUpdate);
+                    statusBarUi = statusBar.Item1;
+                    statusBarChatUI = statusBar.Item2;
                 }
             });
 
             while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted || 
-                !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted)
+                !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted || !t_statusBar.IsCompleted)
             {
                 Thread.Sleep(100);
             }
@@ -635,7 +659,13 @@ namespace HaCreator.MapSimulator
             // Minimap M
             if (newKeyboardState.IsKeyDown(Keys.M))
             {
-                miniMap.MinimiseOrMaximiseMinimap();
+                if (miniMapUi != null)
+                    miniMapUi.MinimiseOrMaximiseMinimap(currTickCount);
+            }
+
+            // Hide UI
+            if (newKeyboardState.IsKeyUp(Keys.H) && oldKeyboardState.IsKeyDown(Keys.H)) {
+                this.bHideUIMode = !this.bHideUIMode;
             }
 
             // Debug keys
@@ -916,30 +946,47 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            // Status bar [layer below minimap]
+            if (statusBarUi != null && !bHideUIMode) {
+                statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                            null,
+                            RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                            TickCount);
+                statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+
+                statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                            null,
+                            RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                            TickCount);
+                statusBarChatUI.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+            }
+
             // Minimap
-            if (miniMap != null)
+            if (miniMapUi != null && !bHideUIMode)
             {
-                miniMap.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                miniMapUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                         null,
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 
-                miniMap.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+                miniMapUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 4)
                 spriteBatch.DrawString(font_navigationKeysHelper, 
-                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot", 
-                    Environment.NewLine, Environment.NewLine, Environment.NewLine), 
-                    new Vector2(20, Height - 140), Color.White);
+                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot{3}[H] Hide UI", 
+                    Environment.NewLine, Environment.NewLine, Environment.NewLine, Environment.NewLine), 
+                    new Vector2(20, Height - 190), Color.White);
             
             if (!bSaveScreenshot && bShowDebugMode)
             {
                 StringBuilder sb = new StringBuilder();
                 sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
-                sb.Append("Game Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append(Environment.NewLine);
-                sb.Append("Monitor Cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
+                sb.Append("Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append(Environment.NewLine);
+                sb.Append("Relative cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
 
                 spriteBatch.DrawString(font_DebugValues, sb.ToString(), 
                     new Vector2(Width - 270, 10), Color.White); // use the original width to render text

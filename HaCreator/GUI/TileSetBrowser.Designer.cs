@@ -2,8 +2,7 @@
 
 namespace HaCreator.GUI
 {
-    partial class TileSetBrowser
-    {
+    partial class TileSetBrowser {
         /// <summary>
         /// Required designer variable.
         /// </summary>
@@ -13,10 +12,8 @@ namespace HaCreator.GUI
         /// Clean up any resources being used.
         /// </summary>
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null))
-            {
+        protected override void Dispose(bool disposing) {
+            if (disposing && (components != null)) {
                 components.Dispose();
             }
             base.Dispose(disposing);
@@ -28,8 +25,7 @@ namespace HaCreator.GUI
         /// Required method for Designer support - do not modify
         /// the contents of this method with the code editor.
         /// </summary>
-        private void InitializeComponent()
-        {
+        private void InitializeComponent() {
             this.koolkLVContainer = new ThumbnailFlowLayoutPanel();
             this.SuspendLayout();
             // 
@@ -45,11 +41,10 @@ namespace HaCreator.GUI
             // 
             // TileSetBrowser
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(600, 267);
             this.Controls.Add(this.koolkLVContainer);
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.KeyPreview = true;
             this.Name = "TileSetBrowser";

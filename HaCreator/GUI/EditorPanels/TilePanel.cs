@@ -35,17 +35,18 @@ namespace HaCreator.GUI.EditorPanels
             InitializeComponent();
         }
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="hcsm"></param>
         public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
             hcsm.SetTilePanel(this);
 
-            List<string> sortedTileSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
-                sortedTileSets.Add(tS.Key);
-            sortedTileSets.Sort();
-            foreach (string tS in sortedTileSets)
-                tileSetList.Items.Add(tS);
+            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets) {
+                tileSetList.Items.Add(tS.Key);
+            }
         }
 
         private void searchResultsBox_SelectedIndexChanged(object sender, EventArgs e)

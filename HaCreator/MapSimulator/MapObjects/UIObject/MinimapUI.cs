@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
+using System;
 using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Objects.UIObject
@@ -12,7 +13,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
     /// <summary>
     /// Mini map window item
     /// </summary>
-    public class MinimapItem : BaseDXDrawableItem, IUIObjectEvents
+    public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
         private readonly BaseDXDrawableItem item_pixelDot;
         private readonly List<MapObjects.UIObject.UIObject> uiButtons = new List<MapObjects.UIObject.UIObject>();
@@ -25,18 +26,23 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         private bool _bIsCollapsedState = false; // minimised minimap state
         private readonly BaseDXDrawableItem frame_collapsedState;
 
+        private int mapWidth, mapHeight;
+
+        private int lastMinimapToggleTime = 0;
+        private const int MINIMAP_TOGGLE_COOLDOWN_MS = 200; // Cooldown in milliseconds
+
         /// <summary>
         /// Constructor for the minimap window
         /// </summary>
         /// <param name="frame"></param>
         /// <param name="item_pixelDot"></param>
-        public MinimapItem(IDXObject frame, BaseDXDrawableItem item_pixelDot, BaseDXDrawableItem frame_collapsedState)
+        public MinimapUI(IDXObject frame, BaseDXDrawableItem item_pixelDot, BaseDXDrawableItem frame_collapsedState, int mapWidth, int mapHeight)
             : base(frame, false)
         {
             this.item_pixelDot = item_pixelDot;
             this.frame_collapsedState = frame_collapsedState;
-
-            this.Position = new Point(10, 10); // starting position
+            this.mapWidth = mapWidth;
+            this.mapHeight = mapHeight;
         }
 
         /// <summary>
@@ -126,11 +132,20 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             }
         }
 
-        public void MinimiseOrMaximiseMinimap() {
-            if (!this._bIsCollapsedState) {
-                ObjUIBtMin_ButtonClickReleased(null);
-            } else {
-                ObjUIBtMax_ButtonClickReleased(null);
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="currTickCount"></param>
+        public void MinimiseOrMaximiseMinimap(int currTickCount) {
+            if (currTickCount - lastMinimapToggleTime > MINIMAP_TOGGLE_COOLDOWN_MS) {
+                lastMinimapToggleTime = currTickCount;
+
+                if (!this._bIsCollapsedState) {
+                    ObjUIBtMin_ButtonClickReleased(null);
+                }
+                else {
+                    ObjUIBtMax_ButtonClickReleased(null);
+                }
             }
         }
 
@@ -162,12 +177,18 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                 // Calculate the mouse position relative to the minimap
                 // and move the minimap Position
                 this.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                if (_bIsCollapsedState) {
+                    this.frame_collapsedState.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                }
                 //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
                 //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
             }
             else {
                 // if the mouse button is not pressed, reset the initial drag offset
                 mouseOffsetOnDragStart = null;
+
+                // If the window is outside at the end of mouse click + move
+                // move it slightly back to the nearest X and Y coordinate
             }
         }
         #endregion
@@ -175,12 +196,18 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         #region Events
         /// <summary>
         /// On 'BtMin' clicked
+        /// Map minimised mode
         /// </summary>
         /// <param name="sender"></param>
         private void ObjUIBtMin_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
         {
             objUIBtMin.SetButtonState(UIObjectState.Disabled);
             objUIBtMax.SetButtonState(UIObjectState.Normal);
+
+            objUIBtMap.X = this.frame_collapsedState.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+            objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
             BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
             frame_collapsedState.CopyObjectPosition(baseItem);
@@ -189,13 +216,19 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         }
 
         /// <summary>
-        /// On 'BtMax' clicked
+        /// On 'BtMax' clicked.
+        /// Map maximised mode
         /// </summary>
         /// <param name="sender"></param>
         private void ObjUIBtMax_ButtonClickReleased(MapObjects.UIObject.UIObject sender)
         {
             objUIBtMin.SetButtonState(UIObjectState.Normal);
             objUIBtMax.SetButtonState(UIObjectState.Disabled);
+
+            objUIBtMap.X = this.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+            objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
 
             this.CopyObjectPosition(frame_collapsedState);
 

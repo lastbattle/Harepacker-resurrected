@@ -16,6 +16,7 @@ using System.Collections;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.CustomControls;
+using System.Diagnostics;
 
 namespace HaCreator.GUI
 {
@@ -24,38 +25,61 @@ namespace HaCreator.GUI
         private ListBox targetListBox;
         public ImageViewer selectedItem = null;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="target"></param>
         public TileSetBrowser(ListBox target)
         {
             InitializeComponent();
             targetListBox = target;
-            List<string> sortedTileSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
-                sortedTileSets.Add(tS.Key);
-            sortedTileSets.Sort();
-            foreach (string tS in sortedTileSets)
-            {
-                WzImage tSImage = Program.InfoManager.TileSets[tS];
-                if (!tSImage.Parsed) tSImage.ParseImage();
+
+            Load += TileSetBrowser_Load;
+        }
+
+        /// <summary>
+        /// On load
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void TileSetBrowser_Load(object sender, EventArgs e) {
+            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets) {
+                WzImage tSImage = Program.InfoManager.TileSets[tS.Key];
+                if (!tSImage.Parsed) 
+                    tSImage.ParseImage();
                 WzImageProperty enh0 = tSImage["enH0"];
-                if (enh0 == null) 
+                if (enh0 == null)
                     continue;
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
-                if (image == null) 
+                if (image == null)
                     continue;
 
-                ImageViewer item = koolkLVContainer.Add(image.GetLinkedWzCanvasBitmap(), tS, true);
+                Bitmap bitmap = image.GetLinkedWzCanvasBitmap();
+
+                ImageViewer item = koolkLVContainer.Add(bitmap, tS.Key, true); // add to container and get back the ImageViewer object
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
             }
         }
 
+        /// <summary>
+        /// Tile item double click
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         void item_DoubleClick(object sender, MouseEventArgs e)
         {
-            if (selectedItem == null) return;
+            if (selectedItem == null) 
+                return;
             targetListBox.SelectedItem = selectedItem.Name;
             Close();
         }
 
+        /// <summary>
+        /// Tile itme click
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         void item_Click(object sender, MouseEventArgs e)
         {
             if (selectedItem != null)
@@ -64,6 +88,11 @@ namespace HaCreator.GUI
             selectedItem.IsActive = true;
         }
 
+        /// <summary>
+        /// On keydown
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void TileSetBrowser_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)

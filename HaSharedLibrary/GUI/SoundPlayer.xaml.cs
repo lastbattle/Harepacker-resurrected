@@ -22,7 +22,7 @@ namespace HaSharedLibrary.GUI
     /// </summary>
     public partial class SoundPlayer : UserControl
     {
-        private WzMp3Streamer currAudio;
+        private WzSoundResourceStreamer currAudio;
         private WzBinaryProperty soundProp;
 
         private readonly DispatcherTimer timer;
@@ -150,8 +150,10 @@ namespace HaSharedLibrary.GUI
         {
             if (currAudio == null && soundProp != null)
             {
-                currAudio = new WzMp3Streamer(soundProp, checkbox_Replay.IsChecked == true);
-                currAudio.Volume = (float)(slider_volume.Value / 100f);
+                currAudio = new WzSoundResourceStreamer(soundProp, checkbox_Replay.IsChecked == true)
+                {
+                    Volume = (float)(slider_volume.Value / 100f)
+                };
             }
         }
         #endregion

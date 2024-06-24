@@ -146,7 +146,7 @@
     <Compile Include="user32.cs" />
     <Compile Include="Util\BitmapHelper.cs" />
     <Compile Include="Util\ScreenDPIUtil.cs" />
-    <Compile Include="WzMp3Streamer.cs" />
+    <Compile Include="WzSoundResourceStreamer.cs" />
     <Compile Include="Wz\WzInfoTools.cs" />
     <Service Include="{94E38DFF-614B-4cbd-B67C-F211BB35CE8B}" />
   </ItemGroup>
@@ -176,16 +176,6 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
-      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
-      <Name>spine-csharp 2.1.25</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
     <Content Include="Content\XnaFont_Debug.xnb">
@@ -194,6 +184,16 @@
     <Content Include="Content\XnaDefaultFont.xnb">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj">
+      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
+      <Name>MapleLib</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
+      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
+      <Name>spine-csharp 2.1.25</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Project="..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets" Condition="Exists('..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets')" />

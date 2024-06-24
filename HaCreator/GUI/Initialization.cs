@@ -55,6 +55,7 @@ namespace HaCreator.GUI
             return false;
         }
 
+        private bool _bIsInitialising = false;
         /// <summary>
         /// Initialise
         /// </summary>
@@ -62,28 +63,34 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void button_initialise_Click(object sender, EventArgs e)
         {
-            ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
-            ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
-            string wzPath = pathBox.Text;
-
-            if (wzPath == "Select MapleStory Folder")
-            {
-                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (_bIsInitialising) {
                 return;
             }
-            if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
-            {
-                ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
-            }
-            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            if (InitializeWzFiles(wzPath, fileVersion))
-            {
-                Hide();
-                Application.DoEvents();
-                editor = new HaEditor();
-                editor.ShowDialog();
+            _bIsInitialising = true;
 
-                Application.Exit();
+            try {
+                ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
+                ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
+                string wzPath = pathBox.Text;
+
+                if (wzPath == "Select MapleStory Folder") {
+                    MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath)) {
+                    ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
+                }
+                WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
+                if (InitializeWzFiles(wzPath, fileVersion)) {
+                    Hide();
+                    Application.DoEvents();
+                    editor = new HaEditor();
+                    editor.ShowDialog();
+
+                    Application.Exit();
+                }
+            } finally {
+                _bIsInitialising = false;
             }
         }
 
@@ -115,7 +122,7 @@ namespace HaCreator.GUI
             _wzMapleVersion = fileVersion; // set version to static vars
 
             bool bIs64BitDirectoryWzFileFormat = WzFileManager.Detect64BitDirectoryWzFileFormat(wzPath); // set
-            bool bIsPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFormat(wzPath); // set
+            bool bIsPreBBDataWzFormat = WzFileManager.DetectIsPreBBDataWZFileFormat(wzPath); // set
 
             Program.WzManager = new WzFileManager(wzPath, bIs64BitDirectoryWzFileFormat, bIsPreBBDataWzFormat);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
@@ -152,6 +159,11 @@ namespace HaCreator.GUI
             }
             else // for versions beyond v30x
             {
+                // Check if this wz is list.wz, and load if possible
+                // this is only available in pre-bb variants of the client.
+                // and contains the possible path of .img that uses a different encryption
+                Program.WzManager.LoadListWzFile(_wzMapleVersion);
+
                 // String.wz
                 List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase("string");
                 foreach (string stringWzFileName in stringWzFiles)
@@ -618,6 +630,11 @@ namespace HaCreator.GUI
                         Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
                 }
             }
+
+            // Finally
+            // Sort order in advance
+            Program.InfoManager.TileSets = Program.InfoManager.TileSets.OrderBy(kvp => kvp.Key)
+                   .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         }
 
         /// <summary>
@@ -713,7 +730,7 @@ namespace HaCreator.GUI
         /// Pre-load all maps in the memory
         /// </summary>
         public void ExtractMaps() {
-            UpdateUI_CurrentLoadingWzFile(string.Format("{0} Maps data", Program.InfoManager.MapsNameCache.Count), false);
+            UpdateUI_CurrentLoadingWzFile(string.Format("{0} map data", Program.InfoManager.MapsNameCache.Count), false);
 
             Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
                 int mapid = 0;

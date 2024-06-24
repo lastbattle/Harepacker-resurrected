@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
     public class HaUIInfo {
         public Bitmap Bitmap;
         public HaUIMargin Margins;
-        public HaUIPadding Padding;
+        public HaUIMargin Padding;
         public HaUIAlignment HorizontalAlignment = HaUIAlignment.Start;
         public HaUIAlignment VerticalAlignment = HaUIAlignment.Start;
 
