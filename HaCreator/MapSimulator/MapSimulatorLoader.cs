@@ -199,7 +199,11 @@ namespace HaCreator.MapSimulator {
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BaseDXDrawableItem CreateMapItemFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
+        public static BaseDXDrawableItem CreateMapItemFromProperty(TexturePool texturePool, 
+            WzImageProperty source, 
+            int x, int y, 
+            Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
+
             BaseDXDrawableItem mapItem = new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, ref usedProps), flip);
             return mapItem;
         }
@@ -1026,13 +1030,29 @@ namespace HaCreator.MapSimulator {
         /// <param name="flip"></param>
         /// <returns></returns>
         public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
-            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"];
-            WzSubProperty cursorPressedCanvas = (WzSubProperty)source?["1"]; // click
+            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"]; // normal
+            WzSubProperty cursorClickable = (WzSubProperty)source?["1"]; // click-able item
+            WzSubProperty cursorClickableOmok = (WzSubProperty)source?["2"]; // click-able item
+            WzSubProperty cursorClickableHouse = (WzSubProperty)source?["3"]; // click-able item
+            WzSubProperty cursorClickable2 = (WzSubProperty)source?["4"]; // click-able item
+            WzSubProperty cursorPickable = (WzSubProperty)source?["5"]; // pickable inventory
+            WzSubProperty cursorGift = (WzSubProperty)source?["6"]; // 
+            WzSubProperty cursorVerticalScrollable = (WzSubProperty)source?["7"]; // 
+            WzSubProperty cursorHorizontalScrollable = (WzSubProperty)source?["8"]; // 
+            WzSubProperty cursorVerticalScrollable2 = (WzSubProperty)source?["9"]; // 
+            WzSubProperty cursorHorizontalScrollable2 = (WzSubProperty)source?["10"]; // 
+            WzSubProperty cursorPickable2 = (WzSubProperty)source?["11"]; // pickable inventory
+            WzSubProperty cursorHold = (WzSubProperty)source?["12"]; // pickable inventory
 
             List<IDXObject> frames = LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
 
-            BaseDXDrawableItem clickedState = CreateMapItemFromProperty(texturePool, cursorPressedCanvas, 0, 0, new Point(0, 0), device, ref usedProps, false);
-            return new MouseCursorItem(frames, clickedState);
+            // Mouse hold state
+            BaseDXDrawableItem holdState = CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+
+            // Mouse clicked item state
+            BaseDXDrawableItem clickableButtonState = CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+
+            return new MouseCursorItem(frames, holdState, clickableButtonState);
         }
         #endregion
 

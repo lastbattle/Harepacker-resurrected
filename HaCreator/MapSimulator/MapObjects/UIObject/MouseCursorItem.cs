@@ -25,21 +25,42 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         }
 
         private int mouseCursorItemStates; // enum
+        private bool bIsHoveringToClickableButton = false;
 
         private readonly BaseDXDrawableItem cursorItemPressedState; // default state of the cursor = this instance
+        private readonly BaseDXDrawableItem cursorClickableButtonState; 
 
-
-        public MouseCursorItem(List<IDXObject> frames, BaseDXDrawableItem cursorItemPressedState)
+        /// <summary>
+        /// Mouse cursor constructor
+        /// </summary>
+        /// <param name="frames"></param>
+        /// <param name="cursorItemPressedState"></param>
+        /// <param name="cursorClickableButtonState"></param>
+        public MouseCursorItem(List<IDXObject> frames, BaseDXDrawableItem cursorItemPressedState, BaseDXDrawableItem cursorClickableButtonState)
             : base(frames, false)
         {
             previousMouseState = Mouse.GetState();
 
             this.mouseCursorItemStates = (int)MouseCursorItemStates.Normal;
             this.cursorItemPressedState = cursorItemPressedState;
+            this.cursorClickableButtonState = cursorClickableButtonState;
         }
 
+        /// <summary>
+        /// Sets the mouse hovering to a clickable button state to true
+        /// </summary>
+        public void SetMouseCursorMovedToClickableItem() {
+            this.bIsHoveringToClickableButton = true;
+        }
+
+        /// <summary>
+        /// Updates the cursor state
+        /// </summary>
         public void UpdateCursorState()
         {
+            // reset
+            this.bIsHoveringToClickableButton = false;
+
             int newSetState = (int)MouseCursorItemStates.Normal; // 0
 
             // Left buttpn
@@ -92,11 +113,20 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             if ((mouseCursorItemStates & (int)MouseCursorItemStates.LeftPress) != (int) MouseCursorItemStates.LeftPress
                  && (mouseCursorItemStates & (int)MouseCursorItemStates.RightPress) != (int)MouseCursorItemStates.RightPress)  // default
             {
-                base.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -MousePos.X, -MousePos.Y, centerX, centerY,
-                    drawReflectionInfo,
-                    renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
+                if (bIsHoveringToClickableButton) {
+                    cursorClickableButtonState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -MousePos.X, -MousePos.Y, centerX, centerY,
+                        drawReflectionInfo,
+                        renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
+                }
+                else {
+                    base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -MousePos.X, -MousePos.Y, centerX, centerY,
+                        drawReflectionInfo,
+                        renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                        TickCount);
+                }
             }
             else // if left or right press is active, draw pressed state
             {

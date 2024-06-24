@@ -957,14 +957,18 @@ namespace HaCreator.MapSimulator
                             null,
                             RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                             TickCount);
-                statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+                if (statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState)) {
+                    mouseCursor.SetMouseCursorMovedToClickableItem();
+                }
 
                 statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
                             RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                             TickCount);
-                statusBarChatUI.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+                if (statusBarChatUI.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState)) {
+                    mouseCursor.SetMouseCursorMovedToClickableItem();
+                }
             }
 
             // Minimap
@@ -976,7 +980,9 @@ namespace HaCreator.MapSimulator
                         RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
                         TickCount);
                 
-                miniMapUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState);
+                if (miniMapUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState)) {
+                    mouseCursor.SetMouseCursorMovedToClickableItem();
+                }
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 4)

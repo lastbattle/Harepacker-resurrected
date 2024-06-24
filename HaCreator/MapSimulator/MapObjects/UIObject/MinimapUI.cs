@@ -151,11 +151,11 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
-        public void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
             foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons) {
                 bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
                 if (bHandled)
-                    return;
+                    return true;
             }
 
             // handle UI movement
@@ -169,7 +169,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                         this.Position.Y,
                         this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
                     if (!rect.Contains(mouseState.X, mouseState.Y)) {
-                        return;
+                        return false;
                     }
                     mouseOffsetOnDragStart = new Point(mouseState.X - this.Position.X, mouseState.Y - this.Position.Y);
                 }
@@ -190,6 +190,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                 // If the window is outside at the end of mouse click + move
                 // move it slightly back to the nearest X and Y coordinate
             }
+            return false;
         }
         #endregion
 

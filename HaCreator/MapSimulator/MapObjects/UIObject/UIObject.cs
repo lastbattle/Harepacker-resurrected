@@ -267,6 +267,10 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         #endregion
 
         #region Events
+        public static bool CheckBitfieldState(UIObjectState currentOrPriorState, UIObjectState stateToCheck) {
+            return (currentOrPriorState & stateToCheck) == stateToCheck;
+        }
+
         /// <summary>
         /// Check if the button is in this boundary when the user clicks.
         /// </summary>
@@ -305,7 +309,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
             {
                 UIObjectState priorState = this.currentState;
 
-                if (mouseState.LeftButton == ButtonState.Pressed)
+                if (mouseState.LeftButton == ButtonState.Pressed && CheckBitfieldState(priorState, UIObjectState.Pressed))
                 {
                     SetButtonState(UIObjectState.Pressed);
 

@@ -9,6 +9,6 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
 {
     public interface IUIObjectEvents
     {
-        void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState);
+        bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState);
     }
 }
