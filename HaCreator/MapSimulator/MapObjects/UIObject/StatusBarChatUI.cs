@@ -22,9 +22,11 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
         /// Constructor for the status bar chat window
         /// </summary>
         /// <param name="frame"></param>
-        public StatusBarChatUI(IDXObject frame, Point setPosition)
+        public StatusBarChatUI(IDXObject frame, Point setPosition,
+            List<UIObject> otherUI)
             : base(frame, false) {
 
+            uiButtons.AddRange(otherUI);
 
             this.Position = setPosition;
         }

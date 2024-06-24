@@ -24,7 +24,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
         /// <param name="obj_Ui_BtMenu"></param>
         /// <param name="obj_Ui_BtSystem">The System button</param>
         /// <param name="obj_Ui_BtChannel">The Channel button</param>
-        public StatusBarUI(IDXObject frame, UIObject obj_Ui_BtCashShop, UIObject obj_Ui_BtMTS, UIObject obj_Ui_BtMenu, UIObject obj_Ui_BtSystem, UIObject obj_Ui_BtChannel, Point setPosition)
+        public StatusBarUI(IDXObject frame, UIObject obj_Ui_BtCashShop, UIObject obj_Ui_BtMTS, UIObject obj_Ui_BtMenu, UIObject obj_Ui_BtSystem, UIObject obj_Ui_BtChannel, Point setPosition,
+            List<UIObject> otherUI)
             : base(frame, false) {
 
             uiButtons.Add(obj_Ui_BtCashShop);
@@ -32,6 +33,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
             uiButtons.Add(obj_Ui_BtMenu);
             uiButtons.Add(obj_Ui_BtSystem);
             uiButtons.Add(obj_Ui_BtChannel);
+
+            uiButtons.AddRange(otherUI);
 
             this.Position = setPosition;
         }

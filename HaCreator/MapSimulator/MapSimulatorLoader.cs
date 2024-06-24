@@ -573,8 +573,9 @@ namespace HaCreator.MapSimulator {
                     grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() {
                         Bitmap = bitmap_chatSpace2,
                         VerticalAlignment = HaUIAlignment.Center,
-                        HorizontalAlignment = HaUIAlignment.Center,
-                        Padding = new HaUIMargin() {
+                        HorizontalAlignment = HaUIAlignment.Start,
+                        Margins = new HaUIMargin() {
+                            Left = 4,
                         }
                     }));
                     grid_chat.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() {
@@ -585,14 +586,134 @@ namespace HaCreator.MapSimulator {
                         }
                     }));
 
+                    // notice
+                    System.Drawing.Bitmap bitmap_notice = ((WzCanvasProperty)mainBarProperties?["notice"])?.GetLinkedWzCanvasBitmap();
+                    HaUIImage uiImage_notice = new HaUIImage(new HaUIInfo() {
+                        Bitmap = bitmap_notice,
+                        VerticalAlignment = HaUIAlignment.Start,
+                        HorizontalAlignment = HaUIAlignment.End,
+                        Margins = new HaUIMargin() {
+                            //Left= grid_chat.GetSize().Width,
+                        }
+                    });
+                    grid_chat.AddRenderable(0, 0, uiImage_notice);
+
                     Texture2D texture_chatUI = grid_chat.Render().ToTexture2D(device);
                     IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, RenderHeight - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
 
-                    StatusBarChatUI chatUI = new StatusBarChatUI(dxObj_chatUI, new Point(dxObj_chatUI.X, dxObj_chatUI.Y));
-                    chatUI.InitializeButtons();
-
                     // Scroll up+down, Chat, report/ claim, notice, stat, quest, inventory, equip, skill, key set
+                    System.Drawing.Bitmap bitmap_lvNumber1 = ((WzCanvasProperty)mainBarProperties?["lvNumber/1"])?.GetLinkedWzCanvasBitmap();
 
+                    // chat
+                    WzSubProperty subProperty_chatOpen = (WzSubProperty)mainBarProperties?["chatOpen"];
+                    WzSubProperty subProperty_chatClose = (WzSubProperty)mainBarProperties?["chatClose"];
+                    UIObject obj_Ui_chatOpen = new UIObject(subProperty_chatOpen, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_chatOpen.X = dxObj_chatUI.Width - obj_Ui_chatOpen.CanvasSnapshotWidth - 5;
+                    obj_Ui_chatOpen.Y -= obj_Ui_chatOpen.Y - 4;
+
+                    // chat scroll up/ down
+                    WzSubProperty subProperty_scrollUp = (WzSubProperty)mainBarProperties?["scrollUp"];
+                    WzSubProperty subProperty_scrollDown = (WzSubProperty)mainBarProperties?["scrollDown"];
+                    UIObject obj_Ui_scrollUp = new UIObject(subProperty_scrollUp, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_scrollUp.X = obj_Ui_chatOpen.X + obj_Ui_scrollUp.CanvasSnapshotWidth + 8;
+                    obj_Ui_scrollUp.Y = obj_Ui_chatOpen.Y - 2;
+                    UIObject obj_Ui_scrollDown = new UIObject(subProperty_scrollDown, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_scrollDown.X = obj_Ui_scrollUp.X;
+                    obj_Ui_scrollDown.Y = obj_Ui_scrollUp.Y + obj_Ui_scrollDown.CanvasSnapshotHeight + UI_PADDING_PX;
+
+                    // chat
+                    WzSubProperty subProperty_BtChat = (WzSubProperty)mainBarProperties?["BtChat"];
+                    UIObject obj_Ui_BtChat = new UIObject(subProperty_BtChat, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtChat.X = obj_Ui_chatOpen.X + obj_Ui_BtChat.CanvasSnapshotWidth + 4;
+                    obj_Ui_BtChat.Y = obj_Ui_chatOpen.Y - 2;
+
+                    // report
+                    WzSubProperty subProperty_BtClaim = (WzSubProperty)mainBarProperties?["BtClaim"]; // report
+                    UIObject obj_Ui_BtClaim = new UIObject(subProperty_BtClaim, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtClaim.X = obj_Ui_BtChat.X + obj_Ui_BtClaim.CanvasSnapshotWidth;
+                    obj_Ui_BtClaim.Y = obj_Ui_BtChat.Y;
+
+                    // notice
+                    // this is rendered above
+
+
+                    // character
+                    WzSubProperty subProperty_BtCharacter = (WzSubProperty)mainBarProperties?["BtCharacter"];
+                    UIObject obj_Ui_BtCharacter = new UIObject(subProperty_BtCharacter, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtCharacter.X = obj_Ui_BtClaim.X + obj_Ui_BtCharacter.CanvasSnapshotWidth + bitmap_notice.Width - 7;
+                    obj_Ui_BtCharacter.Y = obj_Ui_BtClaim.Y;
+
+                    // stat
+                    WzSubProperty subProperty_BtStat = (WzSubProperty)mainBarProperties?["BtStat"];
+                    UIObject obj_Ui_BtStat = new UIObject(subProperty_BtStat, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtStat.X = obj_Ui_BtCharacter.X + obj_Ui_BtStat.CanvasSnapshotWidth;
+                    obj_Ui_BtStat.Y = obj_Ui_BtCharacter.Y;
+
+                    // quest
+                    WzSubProperty subProperty_BtQuest = (WzSubProperty)mainBarProperties?["BtQuest"];
+                    UIObject obj_Ui_BtQuest = new UIObject(subProperty_BtQuest, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtQuest.X = obj_Ui_BtStat.X + obj_Ui_BtQuest.CanvasSnapshotWidth;
+                    obj_Ui_BtQuest.Y = obj_Ui_BtStat.Y;
+
+                    // inventory
+                    WzSubProperty subProperty_BtInven = (WzSubProperty)mainBarProperties?["BtInven"];
+                    UIObject obj_Ui_BtInven = new UIObject(subProperty_BtInven, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtInven.X = obj_Ui_BtQuest.X + obj_Ui_BtInven.CanvasSnapshotWidth;
+                    obj_Ui_BtInven.Y = obj_Ui_BtQuest.Y;
+
+                    // equipment
+                    WzSubProperty subProperty_BtEquip = (WzSubProperty)mainBarProperties?["BtEquip"];
+                    UIObject obj_Ui_BtEquip = new UIObject(subProperty_BtEquip, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtEquip.X = obj_Ui_BtInven.X + obj_Ui_BtEquip.CanvasSnapshotWidth;
+                    obj_Ui_BtEquip.Y = obj_Ui_BtInven.Y;
+
+                    // skill
+                    WzSubProperty subProperty_BtSkill = (WzSubProperty)mainBarProperties?["BtSkill"];
+                    UIObject obj_Ui_BtSkill = new UIObject(subProperty_BtSkill, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtSkill.X = obj_Ui_BtEquip.X + obj_Ui_BtSkill.CanvasSnapshotWidth;
+                    obj_Ui_BtSkill.Y = obj_Ui_BtEquip.Y;
+
+                    // key setting
+                    WzSubProperty subProperty_BtKeysetting = (WzSubProperty)mainBarProperties?["BtKeysetting"];
+                    UIObject obj_Ui_BtKeysetting = new UIObject(subProperty_BtKeysetting, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device) {
+                    };
+                    obj_Ui_BtKeysetting.X = obj_Ui_BtSkill.X + obj_Ui_BtSkill.CanvasSnapshotWidth + 4;/* + obj_Ui_BtKeysetting.CanvasSnapshotWidth*/;
+                    obj_Ui_BtKeysetting.Y = obj_Ui_BtSkill.Y;
 
                     // Add all items to the main grid
                     grid.AddRenderable(0, 0, stackPanel_charStats);
@@ -601,8 +722,19 @@ namespace HaCreator.MapSimulator {
 
                     IDXObject dxObj_backgrnd = new DXObject(0, RenderHeight - grid.GetSize().Height, texture_backgrnd, 0);
                     StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
-                        new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y));
+                        new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
+                        new List<UIObject> {  });
                     statusBar.InitializeButtons();
+
+                    StatusBarChatUI chatUI = new StatusBarChatUI(dxObj_chatUI, new Point(dxObj_chatUI.X, dxObj_chatUI.Y),
+                         new List<UIObject> { 
+                             obj_Ui_chatOpen, 
+                             obj_Ui_scrollUp, obj_Ui_scrollDown,
+                             obj_Ui_BtChat, obj_Ui_BtClaim,
+                             obj_Ui_BtCharacter, obj_Ui_BtStat, obj_Ui_BtQuest, obj_Ui_BtInven, obj_Ui_BtEquip, obj_Ui_BtSkill, obj_Ui_BtKeysetting
+                         }
+                        );
+                    chatUI.InitializeButtons();
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
