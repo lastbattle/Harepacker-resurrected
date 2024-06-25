@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.Render;
+﻿using HaCreator.MapSimulator.Objects.UIObject;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -74,8 +75,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
 
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
-            return UIMouseEventHandler.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState, uiButtons, false);
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor) {
+            return UIMouseEventHandler.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState, mouseCursor, uiButtons, false);
 
             // handle UI movement
             /*  if (mouseState.LeftButton == ButtonState.Pressed) {

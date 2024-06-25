@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary;
+﻿using HaCreator.MapSimulator.Objects.UIObject;
+using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -279,6 +280,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject
         /// <param name="containerParentX"></param>
         /// <param name="containerParentY"></param>
         /// <param name="mouseState"></param>
+        /// <param name="mouseCursor"></param>
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, int containerParentX, int containerParentY, MouseState mouseState)
         {
             if (this.currentState == UIObjectState.Disabled)

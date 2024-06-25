@@ -151,11 +151,13 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor) {
             foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons) {
                 bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
-                if (bHandled)
+                if (bHandled) {
+                    mouseCursor.SetMouseCursorMovedToClickableItem();
                     return true;
+                }
             }
 
             // handle UI movement
