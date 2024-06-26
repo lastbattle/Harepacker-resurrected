@@ -806,6 +806,7 @@
     <None Include="Resources\collapse.png" />
     <None Include="Resources\ladyboss_test_attack2_0.png" />
     <None Include="Resources\copyFile.png" />
+    <None Include="Resources\batch_edit_icon.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <None Include="Resources\pasteFile.png" />
