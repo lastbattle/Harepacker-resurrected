@@ -33,6 +33,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.IO;
 using System.Net;
+using HaRepacker.GUI.Panels.SubPanels;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -949,7 +950,7 @@ namespace HaRepacker.GUI.Panels
             {
                 WzCanvasProperty selectedWzCanvas = property;
 
-                if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
+                if (selectedWzCanvas.ContainsInlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
 
@@ -963,7 +964,7 @@ namespace HaRepacker.GUI.Panels
                     // TODO: changing _Inlink image crashes
                     // Mob2.wz/9400121/hit/0
                 }
-                else if (selectedWzCanvas.HaveOutlinkProperty()) // if its an inlink property, remove that before updating base image.
+                else if (selectedWzCanvas.ContainsOutlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
 
@@ -987,55 +988,21 @@ namespace HaRepacker.GUI.Panels
             }
         }
 
-
-        private void FixLinkForOldMS(WzCanvasProperty selectedWzCanvas, WzNode parentCanvasNode)
-        {
-            WzImageProperty linkedTarget = selectedWzCanvas.GetLinkedWzImageProperty();
-            if (selectedWzCanvas.HaveInlinkProperty()) // if its an inlink property, remove that before updating base image.
+        #region Batch Edit
+        /// <summary>
+        /// Check for image updates to the ImageRenderViewer that the user is currently selecting, after batch operation
+        /// </summary>
+        /// <param name="selectedTreeNode"></param>
+        /// <param name="canvasPropBox"></param>
+        private void RefreshSelectedImageToImageRenderviewer(object selectedTreeNode, ImageRenderViewer canvasPropBox) {
+            // Check for updates to the changed canvas image that the user is currently selecting
+            if (selectedTreeNode is WzCanvasProperty) // only allow button click if its an image property
             {
-                selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
-                WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
-
-                childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
+                System.Drawing.Image img = ((WzCanvasProperty)(selectedTreeNode))?.GetLinkedWzCanvasBitmap();
+                if (img != null)
+                    canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
             }
-            if (selectedWzCanvas.HaveOutlinkProperty()) // if its an outlink property, remove that before updating base image.
-            {
-                selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
-                WzNode childOutlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.OutlinkPropertyName);
-
-                childOutlinkNode.DeleteWzNode(); // Delete '_outlink' node
-            }
-
-            selectedWzCanvas.PngProperty.SetImage(linkedTarget.GetBitmap());
-
-            // Updates
-            selectedWzCanvas.ParentImage.Changed = true;
         }
-
-        private void CheckImageNodeRecursively(WzNode node)
-        {
-            if (node.Tag is WzImage img)
-            {
-                if (!img.Parsed)
-                {
-                    img.ParseImage();
-                }
-                node.Reparse();
-            }
-
-            if (node.Tag is WzCanvasProperty property)
-            {
-                FixLinkForOldMS(property, node);
-            }
-            else
-            {
-                foreach (WzNode child in node.Nodes)
-                    CheckImageNodeRecursively(child);
-            }
-            WzNode hash = WzNode.GetChildNode(node, "_hash");
-            if (hash != null) { hash.DeleteWzNode(); }
-        }
-
 
         /// <summary>
         /// Fix the '_inlink' and '_outlink' image property for compatibility to old MapleStory ver.
@@ -1047,20 +1014,207 @@ namespace HaRepacker.GUI.Panels
             DateTime t0 = DateTime.Now;
             foreach (WzNode node in DataTree.SelectedNodes)
             {
-                CheckImageNodeRecursively(node);
+                CheckImageNodeRecursively_linkRepair(node);
             }
 
-            // Check for updates to the changed canvas image that the user is currently selecting
-            if (DataTree.SelectedNode.Tag is WzCanvasProperty) // only allow button click if its an image property
-            {
-                System.Drawing.Image img = ((WzCanvasProperty) (DataTree.SelectedNode.Tag)).GetLinkedWzCanvasBitmap();
-                if (img != null)
-                    canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
-            }
+            RefreshSelectedImageToImageRenderviewer(DataTree.SelectedNode.Tag, canvasPropBox);
 
             double ms = (DateTime.Now - t0).TotalMilliseconds;
-            MessageBox.Show("Done.\r\nElapsed time: " + ms + " ms (avg: " + (ms / nodeCount) + ")");
+            MessageBox.Show("Completed.\r\nElapsed time: " + ms + " ms (avg: " + (ms / nodeCount) + ")");
         }
+
+        /// <summary>
+        /// Check image node recursively, if it needs repairs for '_inlink' or '_outlink'
+        /// </summary>
+        /// <param name="node"></param>
+        private void CheckImageNodeRecursively_linkRepair(WzNode node) {
+            if (node.Tag is WzImage img) {
+                if (!img.Parsed) {
+                    img.ParseImage();
+                }
+                node.Reparse();
+            }
+
+            if (node.Tag is WzCanvasProperty property) {
+                WzImageProperty linkedTarget = property.GetLinkedWzImageProperty();
+                if (property.ContainsInlinkProperty() || property.ContainsOutlinkProperty()) // if its an inlink property, remove that before updating base image.
+                {
+                    if (property.ContainsInlinkProperty()) {
+                        property.RemoveProperty(property[WzCanvasProperty.InlinkPropertyName]);
+                        WzNode childInlinkNode = WzNode.GetChildNode(node, WzCanvasProperty.InlinkPropertyName);
+
+                        childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
+                    }
+
+                    if (property.ContainsOutlinkProperty()) // if its an outlink property, remove that before updating base image.
+{
+                        property.RemoveProperty(property[WzCanvasProperty.OutlinkPropertyName]);
+                        WzNode childOutlinkNode = WzNode.GetChildNode(node, WzCanvasProperty.OutlinkPropertyName);
+
+                        childOutlinkNode.DeleteWzNode(); // Delete '_outlink' node
+                    }
+
+                    property.PngProperty.SetImage(linkedTarget.GetBitmap());
+
+                    // Updates
+                    node.ChangedNodeProperty();
+                }
+            }
+            else {
+                foreach (WzNode child in node.Nodes) {
+                    CheckImageNodeRecursively_linkRepair(child);
+                }
+            }
+            WzNode hash = WzNode.GetChildNode(node, "_hash");
+            if (hash != null) { 
+                hash.DeleteWzNode(); 
+            }
+        }
+
+        /// <summary>
+        /// AI Upscale all image currently in the selected node 
+        /// by 4x with AI, then down-scale it by 50%.
+        /// 
+        /// if there is an 'origin' x & y coordinate in the WzNode, update that by x2
+        /// </summary>
+        public async void AiBatchImageUpscaleEdit() {
+            const int SCALE_FACTOR = 4;
+
+            // Image key = <image path>.GetHashCode().ToString()
+            Dictionary<string, Tuple<Bitmap, WzCanvasProperty, WzNode>> toUpscaleImageDictionary = new Dictionary<string, Tuple<Bitmap, WzCanvasProperty, WzNode>>();
+
+            // handle multiple nodes...
+            int nodeCount = DataTree.SelectedNodes.Count;
+            DateTime t0 = DateTime.Now;
+            foreach (WzNode node in DataTree.SelectedNodes) {
+                UpscaleImageNodesRecursively(node, toUpscaleImageDictionary);
+            }
+
+            // Save all of the bitmap to a folder
+            const string FILE_IN = "HaRepacker_ImageUpscaleInput";
+            const string FILE_OUT = "HaRepacker_ImageUpscaleOutput";
+
+            string pathIn = System.IO.Path.Combine(System.IO.Path.GetTempPath(), FILE_IN);
+            string pathOut = System.IO.Path.Combine(System.IO.Path.GetTempPath(), FILE_OUT);
+
+            try {
+                if (Directory.Exists(pathIn)) { // clear existing first
+                    Directory.Delete(pathIn, true);
+                }
+                if (Directory.Exists(pathOut)) { // clear existing first
+                    Directory.Delete(pathOut, true);
+                }
+                Directory.CreateDirectory(pathIn);
+                Directory.CreateDirectory(pathOut);
+
+                foreach (var kvp in toUpscaleImageDictionary) {
+                    string fileName = System.IO.Path.GetFileName(kvp.Key) + ".png";
+                    string filePath = System.IO.Path.Combine(pathIn, fileName);
+
+                    kvp.Value.Item1.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+
+                // Upscale all image saved in the folder
+                await RealESRGAN_AI_Upscale.EsrganNcnn.Run(pathIn, pathOut, SCALE_FACTOR);
+
+                foreach (KeyValuePair<string, Tuple<Bitmap, WzCanvasProperty, WzNode>> img in toUpscaleImageDictionary) {
+                    string fileName = System.IO.Path.GetFileName(img.Key) + ".png";
+                    string filePath = System.IO.Path.Combine(pathOut, fileName);
+
+                    // Get the bitmap from the output folder
+                    using (System.Drawing.Bitmap originalBitmap = new System.Drawing.Bitmap(filePath)) {
+                        // Calculate new dimensions (50% of original)
+                        int newWidth = originalBitmap.Width / (SCALE_FACTOR/2);
+                        int newHeight = originalBitmap.Height / (SCALE_FACTOR/2);
+
+                        // Create a new bitmap with the reduced size
+                        using (System.Drawing.Bitmap downscaledBitmap = new System.Drawing.Bitmap(newWidth, newHeight)) {
+                            // Use high quality downscaling
+                            using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(downscaledBitmap)) {
+                                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+                                g.DrawImage(originalBitmap, 0, 0, newWidth, newHeight);
+                            }
+                            // Convert downscaled Bitmap to byte array
+                            byte[] bitmapBytes;
+                            using (MemoryStream ms = new MemoryStream()) {
+                                downscaledBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                                bitmapBytes = ms.ToArray();
+                            }
+
+                            // Create a new Bitmap from the byte array
+                            using (MemoryStream ms = new MemoryStream(bitmapBytes)) {
+                                System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
+
+                                img.Value.Item2.PngProperty.SetImage(newBitmap);
+
+                                // Update 'origin' x/y if it exist
+                                PointF pointXY = img.Value.Item2.GetCanvasOriginPosition();
+                                if (pointXY != null && pointXY.X != 0 && pointXY.Y != 0) {
+                                    pointXY.X *= (SCALE_FACTOR / 2);
+                                    pointXY.Y *= (SCALE_FACTOR / 2);
+                                }
+
+                                // Update 'changed'
+                                img.Value.Item3.ChangedNodeProperty();
+                            }
+                        }
+                    }
+                }
+
+                double ms_runtime = (DateTime.Now - t0).TotalSeconds;
+                MessageBox.Show("Completed.\r\nElapsed time: " + ms_runtime.ToString("N2") + " sec(s) (avg: " + (ms_runtime / nodeCount).ToString("N2") + ")");
+            } 
+            catch (Exception exp) 
+            {
+                MessageBox.Show("Error", "Unable to upscale image, error:\r\n"+exp.ToString());
+            } finally {
+                // Clean-up
+                if (Directory.Exists(pathIn)) { // clear existing first
+                    Directory.Delete(pathIn, true);
+                }
+                if (Directory.Exists(pathOut)) { // clear existing first
+                    Directory.Delete(pathOut, true);
+                }
+
+                toUpscaleImageDictionary.Clear();
+                GC.Collect();
+
+                RefreshSelectedImageToImageRenderviewer(DataTree.SelectedNode.Tag, canvasPropBox);
+            }
+        }
+
+        /// <summary>
+        /// AI Upscale all image currently in the selected node (internal)
+        /// </summary>
+        /// <param name="node"></param>
+        private void UpscaleImageNodesRecursively(WzNode node, Dictionary<string, Tuple<Bitmap, WzCanvasProperty, WzNode>> toUpscaleImageDictionary) {
+            if (node.Tag is WzImage img) {
+                if (!img.Parsed) {
+                    img.ParseImage();
+                }
+                node.Reparse();
+            }
+
+            if (node.Tag is WzCanvasProperty property) {
+                WzImageProperty linkedTarget = property.GetLinkedWzImageProperty();
+                if (!property.ContainsInlinkProperty() && !property.ContainsOutlinkProperty()) // skip link properties
+                {
+                    Bitmap bitmap = linkedTarget.GetBitmap();
+
+                    toUpscaleImageDictionary.Add(property.FullPath.GetHashCode().ToString(), new Tuple<Bitmap, WzCanvasProperty, WzNode>(bitmap, property, node));
+                }
+            }
+            else {
+                foreach (WzNode child in node.Nodes) {
+                    UpscaleImageNodesRecursively(child, toUpscaleImageDictionary);
+                }
+            }
+        }
+        #endregion
 
         /// <summary>
         /// 
@@ -1526,7 +1680,7 @@ namespace HaRepacker.GUI.Panels
                 menuItem_saveImage.Visibility = Visibility.Visible;
 
                 // Image
-                if (canvasProp.HaveInlinkProperty() || canvasProp.HaveOutlinkProperty())
+                if (canvasProp.ContainsInlinkProperty() || canvasProp.ContainsOutlinkProperty())
                 {
                     System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                     if (img != null)

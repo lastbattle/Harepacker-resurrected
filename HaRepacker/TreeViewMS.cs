@@ -234,7 +234,7 @@ namespace HaRepacker
 
                 WzNode node = (WzNode)n;
                 if (node.IsWzObjectAddedManually)
-                    n.ForeColor = WzNode.NewObjectForeColor;
+                    n.ForeColor = WzNode.CHANGED_NODE_FOREGROUND_COLOR;
                 else
                     n.ForeColor = fore;
 			}

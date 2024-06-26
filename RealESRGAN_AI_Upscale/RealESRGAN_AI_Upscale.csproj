@@ -47,6 +47,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="prereq.txt" />
     <Content Include="RealESRGAN\realesrgan-ncnn-vulkan.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

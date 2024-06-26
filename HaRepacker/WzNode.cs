@@ -20,15 +20,22 @@ namespace HaRepacker
         public static ContextMenuBuilderDelegate ContextMenuBuilder = null;
 
         private bool isWzObjectAddedManually = false;
-        public static Color NewObjectForeColor = Color.Red;
 
+        // constants
+        public static Color CHANGED_NODE_FOREGROUND_COLOR = Color.Red;
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="SourceObject"></param>
+        /// <param name="isWzObjectAddedManually"></param>
         public WzNode(WzObject SourceObject, bool isWzObjectAddedManually = false)
             : base(SourceObject.Name)
         {
             this.isWzObjectAddedManually = isWzObjectAddedManually;
             if (isWzObjectAddedManually)
             {
-                ForeColor = NewObjectForeColor;
+                ForeColor = CHANGED_NODE_FOREGROUND_COLOR;
             }
             // Childs
             ParseChilds(SourceObject);
@@ -251,11 +258,19 @@ namespace HaRepacker
         {
             Text = name;
             ((WzObject)Tag).Name = name;
+
+            ChangedNodeProperty();
+        }
+
+        /// <summary>
+        /// Flags this node as changed
+        /// </summary>
+        public void ChangedNodeProperty() {
             if (Tag is WzImageProperty property)
                 property.ParentImage.Changed = true;
 
             isWzObjectAddedManually = true;
-            ForeColor = NewObjectForeColor;
+            ForeColor = CHANGED_NODE_FOREGROUND_COLOR;
         }
 
         public WzNode TopLevelNode

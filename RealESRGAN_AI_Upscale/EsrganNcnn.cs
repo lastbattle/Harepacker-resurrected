@@ -27,10 +27,8 @@ namespace RealESRGAN_AI_Upscale {
             if (!File.Exists(Path.Combine(folderPath, EXEC_NAME))) {
                 return;
             }
-            string inPath = Path.Combine(folderPath, in_pathFolder);
-            string outPath = Path.Combine(folderPath, out_pathFolder);
 
-            string cmd = $"/C cd /D {folderPath} & {EXEC_NAME} -i \"{inPath}\" -o \"{outPath}\" -s {upscaleRatio} -m \"models\"";
+            string cmd = $"/C cd /D {folderPath} & {EXEC_NAME} -i \"{in_pathFolder}\" -o \"{out_pathFolder}\" -s {upscaleRatio} -m \"models\"";
 
             Console.WriteLine($"[CMD] {cmd}");
 

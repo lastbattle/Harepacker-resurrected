@@ -36,7 +36,7 @@ namespace HaRepacker
 
         private ToolStripMenuItem AddPropsSubMenu;
         private ToolStripMenuItem AddDirsSubMenu;
-        private ToolStripMenuItem AddEtcMenu;
+        private ToolStripMenuItem AddBatchMenu;
         private ToolStripMenuItem AddSortMenu;
         private ToolStripMenuItem AddSortMenu_WithoutPropSort;
         private ToolStripMenuItem AddImage;
@@ -55,7 +55,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
         private ToolStripMenuItem Rename;
-        private ToolStripMenuItem FixLink;
+        private ToolStripMenuItem FixInlink, AiUpscaleImage;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
         private ToolStripMenuItem ExportAnimationSubMenu;
@@ -339,20 +339,25 @@ namespace HaRepacker
                     haRepackerMainPanel.AddWzVectorPropertyToSelectedIndex(nodes[0]);
                 }));
 
-            FixLink = new ToolStripMenuItem("Fix linked image for old MapleStory ver.", null, new EventHandler(
+            FixInlink = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_EditInlink, null, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
                     haRepackerMainPanel.FixLinkForOldMapleStory_OnClick();
                 }));
+            AiUpscaleImage = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage, null, new EventHandler(
+                delegate (object sender, EventArgs e) {
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit();
+                }));
 
+            // Menu
             AddDirsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 
                 AddDirectory, AddImage);
 
             AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 
                 AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
 
-            AddEtcMenu = new ToolStripMenuItem("Etc", Properties.Resources.add, 
-                FixLink);
+            AddBatchMenu = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch, Properties.Resources.add, 
+                FixInlink, AiUpscaleImage);
 
             AddSortMenu = new ToolStripMenuItem("Sort", Properties.Resources.sort, SortAllChildViewNode, SortPropertiesByName);
 
@@ -402,7 +407,7 @@ namespace HaRepacker
 
             toolStripmenuItems.Add(ExpandAllChildNode);
             toolStripmenuItems.Add(CollapseAllChildNode);
-            toolStripmenuItems.Add(AddEtcMenu);
+            toolStripmenuItems.Add(AddBatchMenu);
 
             if (Tag.GetType() == typeof(WzSubProperty)) {
                 toolStripmenuItems.Add(AddSortMenu);
