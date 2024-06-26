@@ -1,4 +1,5 @@
-﻿using HaSharedLibrary.Render;
+﻿using HaCreator.MapSimulator.Objects.UIObject;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -82,46 +83,38 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
 
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
-        public void CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState) {
-            foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons) {
-                // Position drawn is relative to this UI
-                //int drawRelativeX = -(this.Position.X) - uiBtn.X; // Left to right
-                //int drawRelativeY = -(this.Position.Y) - uiBtn.Y; // Top to bottom
-
-                bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
-                if (bHandled)
-                    return;
-            }
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor) {
+            return UIMouseEventHandler.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState, mouseCursor, uiButtons, false);
 
             // handle UI movement
-          /*  if (mouseState.LeftButton == ButtonState.Pressed) {
-                // The rectangle of the MinimapItem UI object
+            /*  if (mouseState.LeftButton == ButtonState.Pressed) {
+                  // The rectangle of the MinimapItem UI object
 
-                // if drag has not started, initialize the offset
-                if (mouseOffsetOnDragStart == null) {
-                    Rectangle rect = new Rectangle(
-                        this.Position.X,
-                        this.Position.Y,
-                        this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
-                    if (!rect.Contains(mouseState.X, mouseState.Y)) {
-                        return;
-                    }
-                    mouseOffsetOnDragStart = new Point(mouseState.X - this.Position.X, mouseState.Y - this.Position.Y);
-                }
+                  // if drag has not started, initialize the offset
+                  if (mouseOffsetOnDragStart == null) {
+                      Rectangle rect = new Rectangle(
+                          this.Position.X,
+                          this.Position.Y,
+                          this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
+                      if (!rect.Contains(mouseState.X, mouseState.Y)) {
+                          return;
+                      }
+                      mouseOffsetOnDragStart = new Point(mouseState.X - this.Position.X, mouseState.Y - this.Position.Y);
+                  }
 
-                // Calculate the mouse position relative to the minimap
-                // and move the minimap Position
-                this.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
-                //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
-                //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
-            }
-            else {
-                // if the mouse button is not pressed, reset the initial drag offset
-                mouseOffsetOnDragStart = null;
+                  // Calculate the mouse position relative to the minimap
+                  // and move the minimap Position
+                  this.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                  //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
+                  //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
+              }
+              else {
+                  // if the mouse button is not pressed, reset the initial drag offset
+                  mouseOffsetOnDragStart = null;
 
-                // If the window is outside at the end of mouse click + move
-                // move it slightly back to the nearest X and Y coordinate
-            }*/
+                  // If the window is outside at the end of mouse click + move
+                  // move it slightly back to the nearest X and Y coordinate
+              }*/
         }
         #endregion
     }

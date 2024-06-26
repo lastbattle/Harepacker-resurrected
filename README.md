@@ -16,6 +16,7 @@ A collection of tools for MapleStory, including a .wz file and level/field/map e
 * HaRepacker - MapleStory .wz file editor
 * HaSharedLibrary - A shared library between HaRepacker & HaCreator for mostly GUI
 * squish-1.11\apng - (Unused for now, might consider .NET Core implementation of SIMD for images in future releases) [info](https://sjbrown.co.uk/?code=squish)
+* Real-ESRGAN - For AI 2D image up-scaling. [Official website](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) |  [Official website ](https://github.com/xinntao/Real-ESRGAN)
 * spine-csharp 2.1.25 - 2D animation library [official website](https://github.com/EsotericSoftware/spine-runtimes) | [official website, spine demo](http://esotericsoftware.com/spine-demos) | [MapleStory dev's note](https://orangemushroom.net/2015/06/17/developers-note-maplestory-reboot-update-introduction-2-and-3/)
 * UnitTest_WzFile - For testing of wz file across versions.
 

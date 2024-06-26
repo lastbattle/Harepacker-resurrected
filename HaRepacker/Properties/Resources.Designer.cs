@@ -19,7 +19,7 @@ namespace HaRepacker.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class Resources {
@@ -133,6 +133,16 @@ namespace HaRepacker.Properties {
         public static System.Drawing.Bitmap arrow_right {
             get {
                 object obj = ResourceManager.GetObject("arrow_right", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap batch_edit {
+            get {
+                object obj = ResourceManager.GetObject("batch_edit", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -709,6 +719,33 @@ namespace HaRepacker.Properties {
         public static string MainConfirmRename {
             get {
                 return ResourceManager.GetString("MainConfirmRename", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Batch.
+        /// </summary>
+        public static string MainContextMenu_Batch {
+            get {
+                return ResourceManager.GetString("MainContextMenu_Batch", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Upscale image by 2x with AI.
+        /// </summary>
+        public static string MainContextMenu_Batch_AIUpscaleImage {
+            get {
+                return ResourceManager.GetString("MainContextMenu_Batch_AIUpscaleImage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Fix &apos;_inlink&apos;, &apos;_outlink&apos; nodes for old MapleStory.
+        /// </summary>
+        public static string MainContextMenu_Batch_EditInlink {
+            get {
+                return ResourceManager.GetString("MainContextMenu_Batch_EditInlink", resourceCulture);
             }
         }
         

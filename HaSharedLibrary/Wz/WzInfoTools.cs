@@ -4,17 +4,12 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using HaSharedLibrary;
 using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using XNA = Microsoft.Xna.Framework;
 
 namespace HaSharedLibrary.Wz
 {
@@ -260,23 +255,25 @@ namespace HaSharedLibrary.Wz
             if (mapParent == null) 
                 return null;
 
-            if (fileManager.Is64Bit) {
-                return (WzImage)mapParent;
-            }
             string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
+
+            if (fileManager.Is64Bit) { // is WzFile
+                return (WzImage)mapParent?[mapIdNamePadded];
+            }
+            // is WzDirectory
             return (WzImage)mapParent?[mapIdNamePadded];
         }
 
         /// <summary>
         /// Finds a map directory from the list of Map.wzs
         /// On pre-bb client (BETA)
-        /// Data.wz/Map/Map/Map1/10000000.img
+        /// Data.wz/Map/Map/Map1/10000000.img (WzDirectory)
         /// 
         /// On pre 64-bit client:
-        /// Map.wz/Map/Map1/10000000.img
+        /// Map.wz/Map/Map1/10000000.img (WzDirectory)
         /// 
         /// On post 64-bit client:
-        /// Map/Map/Map1/Map1_000.wz/10000000.img
+        /// Map/Map/Map1/Map1_000.wz/10000000.img (WzFile)
         /// </summary>
         /// <param name="mapid"></param>
         /// <returns></returns>
@@ -285,20 +282,21 @@ namespace HaSharedLibrary.Wz
             string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
             string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 
-            WzObject mapObject = fileManager.FindWzImageByName(baseDir, fileManager.Is64Bit ? mapIdNamePadded : "Map");
+            WzObject mapObjectWzDir = fileManager.FindWzImageByName(baseDir, fileManager.Is64Bit ? string.Empty : "Map");
 
             if (fileManager.Is64Bit) {
-                return (WzDirectory)mapObject;
+                //Debug.WriteLine("Init map: {0}\\{1}", baseDir, mapIdNamePadded);
+                return (WzDirectory)mapObjectWzDir;
             }
             else {
-                WzDirectory mapImage = (WzDirectory) mapObject?[mapcat];
+                WzDirectory mapImage = (WzDirectory)mapObjectWzDir?[mapcat];
                 return mapImage;
             }
         }
 
-        public static Color XNAToDrawingColor(XNA.Color c)
+        public static Color XNAToDrawingColor(Microsoft.Xna.Framework.Color c)
         {
-            return Color.FromArgb(c.A, c.R, c.G, c.B);
+            return System.Drawing.Color.FromArgb(c.A, c.R, c.G, c.B);
         }
     }
 }

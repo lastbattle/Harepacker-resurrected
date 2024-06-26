@@ -766,6 +766,10 @@
       <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
       <Name>spine-csharp 2.1.25</Name>
     </ProjectReference>
+    <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj">
+      <Project>{2abc5d88-2f6c-4721-a0a7-ca15970ac999}</Project>
+      <Name>RealESRGAN_AI_Upscale</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
@@ -802,6 +806,7 @@
     <None Include="Resources\collapse.png" />
     <None Include="Resources\ladyboss_test_attack2_0.png" />
     <None Include="Resources\copyFile.png" />
+    <None Include="Resources\batch_edit_icon.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <None Include="Resources\pasteFile.png" />
