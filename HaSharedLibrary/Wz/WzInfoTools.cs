@@ -255,11 +255,12 @@ namespace HaSharedLibrary.Wz
             if (mapParent == null) 
                 return null;
 
+            string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
+
             if (fileManager.Is64Bit) { // is WzFile
-                return (WzImage)mapParent;
+                return (WzImage)mapParent?[mapIdNamePadded];
             }
             // is WzDirectory
-            string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
             return (WzImage)mapParent?[mapIdNamePadded];
         }
 
@@ -284,8 +285,8 @@ namespace HaSharedLibrary.Wz
             WzObject mapObjectWzDir = fileManager.FindWzImageByName(baseDir, fileManager.Is64Bit ? string.Empty : "Map");
 
             if (fileManager.Is64Bit) {
-                Debug.WriteLine("Init map: {0}\\{1}", baseDir, mapIdNamePadded);
-                return (WzDirectory)mapObjectWzDir?[mapcat];
+                //Debug.WriteLine("Init map: {0}\\{1}", baseDir, mapIdNamePadded);
+                return (WzDirectory)mapObjectWzDir;
             }
             else {
                 WzDirectory mapImage = (WzDirectory)mapObjectWzDir?[mapcat];

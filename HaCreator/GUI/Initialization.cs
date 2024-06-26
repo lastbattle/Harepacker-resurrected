@@ -732,7 +732,8 @@ namespace HaCreator.GUI
         public void ExtractMaps() {
             UpdateUI_CurrentLoadingWzFile(string.Format("{0} map data", Program.InfoManager.MapsNameCache.Count), false);
 
-            Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
+            //foreach (KeyValuePair<string, Tuple<string, string>> val in Program.InfoManager.MapsNameCache) {
+                Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
                 int mapid = 0;
                 int.TryParse(val.Key, out mapid);
 
@@ -751,6 +752,7 @@ namespace HaCreator.GUI
                         );
                     }
                 }
+            //}
             });
         }
 
