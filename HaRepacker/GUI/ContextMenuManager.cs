@@ -356,7 +356,7 @@ namespace HaRepacker
             AddPropsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 
                 AddCanvas, AddConvex, AddDouble, AddByteFloat, AddLong, AddInt, AddNull, AddUshort, AddSound, AddString, AddSub, AddUOL, AddVector);
 
-            AddBatchMenu = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch, Properties.Resources.add, 
+            AddBatchMenu = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch, Properties.Resources.batch_edit, 
                 FixInlink, AiUpscaleImage);
 
             AddSortMenu = new ToolStripMenuItem("Sort", Properties.Resources.sort, SortAllChildViewNode, SortPropertiesByName);
