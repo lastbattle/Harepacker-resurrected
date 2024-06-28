@@ -1076,15 +1076,17 @@ namespace HaRepacker.GUI.Panels
         /// by 4x with AI, then down-scale it by 50%.
         /// 
         /// if there is an 'origin' x & y coordinate in the WzNode, update that by x2
+        /// <param name="downscaleFactor">The factor to downscale the image after upscaling.  0.5 = 50%, 0.375 = 37.5%</param>
         /// </summary>
-        public async void AiBatchImageUpscaleEdit() {
-            const int AI_SCALE_FACTOR = 4;
+        public async void AiBatchImageUpscaleEdit(float downscaleFactorAfter) {
+            const float SCALE_UP_FACTOR = 4; // faactor to scale up to with neural networks
 
             // Reset progress bar
             mainProgressBar.Value = 0;
             secondaryProgressBar.Value = 0;
 
-            gridMain.IsEnabled = false; // disable inputs in the main UI from the user.
+            // disable inputs in the main UI from the user.
+            gridMain.IsEnabled = false;
 
             Dispatcher currentDispatcher = this.Dispatcher;
 
@@ -1124,7 +1126,7 @@ namespace HaRepacker.GUI.Panels
                     }
 
                     // Upscale all image saved in the folder
-                    await RealESRGAN_AI_Upscale.EsrganNcnn.Run(pathIn, pathOut, AI_SCALE_FACTOR);
+                    await RealESRGAN_AI_Upscale.EsrganNcnn.Run(pathIn, pathOut, (int) SCALE_UP_FACTOR);
 
                     // Update main progress bar to 50% once AI upscaling is done
                     mainProgressBar.Dispatcher.BeginInvoke(new Action(() => {
@@ -1146,30 +1148,50 @@ namespace HaRepacker.GUI.Panels
 
                         // Get the bitmap from the output folder
                         using (System.Drawing.Bitmap originalBitmap = new System.Drawing.Bitmap(filePath)) {
-                            // Calculate new dimensions (50% of original)
-                            int newWidth = originalBitmap.Width / (AI_SCALE_FACTOR / 2);
-                            int newHeight = originalBitmap.Height / (AI_SCALE_FACTOR / 2);
 
-                            // Create a new bitmap with the reduced size
-                            using (System.Drawing.Bitmap downscaledBitmap = new System.Drawing.Bitmap(newWidth, newHeight)) {
-                                // Update secondary progress bar
-                                // at the beginning of this loop, it should be 30%
-                                // 60% once image is loaded
-                                // then 90% once it is done downscaling image
-                                secondaryProgressBar.Dispatcher.BeginInvoke(new Action(() => {
-                                    secondaryProgressBar.Value = 60;
-                                }));
+                            byte[] bitmapBytes;
+                            if (downscaleFactorAfter != 1) { // re-sizing is not necessary if its the same
 
-                                // Use high quality downscaling
-                                using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(downscaledBitmap)) {
-                                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                                    g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                                // Calculate new dimensions (50% of original)
+                                int newWidth = (int)(originalBitmap.Width * downscaleFactorAfter);
+                                int newHeight = (int)(originalBitmap.Height * downscaleFactorAfter);
 
-                                    g.DrawImage(originalBitmap, 0, 0, newWidth, newHeight);
+                                // Create a new bitmap with the reduced size
+                                using (System.Drawing.Bitmap downscaledBitmap = new System.Drawing.Bitmap(newWidth, newHeight)) {
+                                    // Update secondary progress bar
+                                    // at the beginning of this loop, it should be 30%
+                                    // 60% once image is loaded
+                                    // then 90% once it is done downscaling image
+                                    secondaryProgressBar.Dispatcher.BeginInvoke(new Action(() => {
+                                        secondaryProgressBar.Value = 60;
+                                    }));
+
+                                    // Use high quality downscaling
+                                    using (System.Drawing.Graphics g = System.Drawing.Graphics.FromImage(downscaledBitmap)) {
+                                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                                        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                                        g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                                        g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+                                        g.DrawImage(originalBitmap, 0, 0, newWidth, newHeight);
+                                    }
+
+                                    // Update secondary progress bar
+                                    // at the beginning of this loop, it should be 30%
+                                    // 60% once image is loaded
+                                    // then 90% once it is done downscaling image
+                                    secondaryProgressBar.Dispatcher.BeginInvoke(new Action(() => {
+                                        secondaryProgressBar.Value = 90;
+                                    }));
+
+                                    // Convert downscaled Bitmap to byte array
+                                    using (MemoryStream ms = new MemoryStream()) {
+                                        downscaledBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                                        bitmapBytes = ms.ToArray();
+                                    }
                                 }
-
+                            }
+                            else {
                                 // Update secondary progress bar
                                 // at the beginning of this loop, it should be 30%
                                 // 60% once image is loaded
@@ -1179,28 +1201,27 @@ namespace HaRepacker.GUI.Panels
                                 }));
 
                                 // Convert downscaled Bitmap to byte array
-                                byte[] bitmapBytes;
                                 using (MemoryStream ms = new MemoryStream()) {
-                                    downscaledBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                                    originalBitmap.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
                                     bitmapBytes = ms.ToArray();
                                 }
+                            }
 
-                                // Create a new Bitmap from the byte array
-                                using (MemoryStream ms = new MemoryStream(bitmapBytes)) {
-                                    System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
+                            // Create a new Bitmap from the byte array
+                            using (MemoryStream ms = new MemoryStream(bitmapBytes)) {
+                                System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
 
-                                    img.Value.Item2.PngProperty.SetImage(newBitmap);
+                                img.Value.Item2.PngProperty.SetImage(newBitmap);
 
-                                    // Update 'origin' x/y if it exist
-                                    PointF pointXY = img.Value.Item2.GetCanvasOriginPosition();
-                                    if (pointXY != null && pointXY.X != 0 && pointXY.Y != 0) {
-                                        pointXY.X *= (AI_SCALE_FACTOR / 2);
-                                        pointXY.Y *= (AI_SCALE_FACTOR / 2);
-                                    }
-
-                                    // Update 'changed'
-                                    img.Value.Item3.ChangedNodeProperty();
+                                // Update 'origin' x/y if it exist
+                                PointF pointXY = img.Value.Item2.GetCanvasOriginPosition();
+                                if (pointXY != null && pointXY.X != 0 && pointXY.Y != 0) {
+                                    pointXY.X *= (SCALE_UP_FACTOR / 2);
+                                    pointXY.Y *= (SCALE_UP_FACTOR / 2);
                                 }
+
+                                // Update 'changed'
+                                img.Value.Item3.ChangedNodeProperty();
                             }
                         }
                         // for each image completed thereafter, add main progress bar
@@ -1216,17 +1237,6 @@ namespace HaRepacker.GUI.Panels
                     MessageBox.Show("Error", "Unable to upscale image, error:\r\n" + exp.ToString());
                 }
                 finally {
-                    // Clean-up
-                    if (Directory.Exists(pathIn)) { // clear existing first
-                        Directory.Delete(pathIn, true);
-                    }
-                    if (Directory.Exists(pathOut)) { // clear existing first
-                        Directory.Delete(pathOut, true);
-                    }
-
-                    toUpscaleImageDictionary.Clear();
-                    GC.Collect();
-
                     await canvasPropBox.Dispatcher.BeginInvoke(new Action(() => {
                         RefreshSelectedImageToImageRenderviewer(DataTree.SelectedNode.Tag, canvasPropBox);
                     }));
@@ -1237,6 +1247,17 @@ namespace HaRepacker.GUI.Panels
 
                         gridMain.IsEnabled = true; // disable inputs in the main UI from the user.
                     }));
+
+                    // Clean-up
+                    if (Directory.Exists(pathIn)) { // clear existing first
+                        Directory.Delete(pathIn, true);
+                    }
+                    if (Directory.Exists(pathOut)) { // clear existing first
+                        Directory.Delete(pathOut, true);
+                    }
+
+                    toUpscaleImageDictionary.Clear();
+                    GC.Collect();
                 }
             });
         }

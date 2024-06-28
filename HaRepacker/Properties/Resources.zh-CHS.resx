@@ -409,7 +409,7 @@
     <value>Batch</value>
   </data>
   <data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
-    <value>Upscale image by 2x with AI</value>
+    <value>Upscale image</value>
   </data>
   <data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
     <value>Fix '_inlink', '_outlink' nodes for old MapleStory</value>
