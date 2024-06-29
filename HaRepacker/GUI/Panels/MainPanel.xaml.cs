@@ -1216,8 +1216,8 @@ namespace HaRepacker.GUI.Panels
                                 // Update 'origin' x/y if it exist
                                 PointF pointXY = img.Value.Item2.GetCanvasOriginPosition();
                                 if (pointXY != null && pointXY.X != 0 && pointXY.Y != 0) {
-                                    pointXY.X *= (SCALE_UP_FACTOR / 2);
-                                    pointXY.Y *= (SCALE_UP_FACTOR / 2);
+                                    pointXY.X *= (SCALE_UP_FACTOR * downscaleFactorAfter); // 4 * 0.25 = 1, 4 * 0.5 = 2
+                                    pointXY.Y *= (SCALE_UP_FACTOR * downscaleFactorAfter);
                                 }
 
                                 // Update 'changed'

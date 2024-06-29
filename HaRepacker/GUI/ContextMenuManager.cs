@@ -55,7 +55,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
         private ToolStripMenuItem Rename;
-        private ToolStripMenuItem FixInlink, AiUpscaleImage, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x;
+        private ToolStripMenuItem FixInlink, AiUpscaleImage, AiUpscaleImageSubMenu_QualityOnly, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
         private ToolStripMenuItem ExportAnimationSubMenu;
@@ -346,6 +346,10 @@ namespace HaRepacker
                 }));
 
             // Batch edit
+            AiUpscaleImageSubMenu_QualityOnly = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage_QualityOnly, null, new EventHandler(
+                delegate (object sender, EventArgs e) {
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit(0.25f);
+                }));
             AiUpscaleImageSubMenu_1_5x = new ToolStripMenuItem("1.5x", null, new EventHandler(
                 delegate (object sender, EventArgs e) {
                     haRepackerMainPanel.AiBatchImageUpscaleEdit(0.375f);
@@ -359,7 +363,7 @@ namespace HaRepacker
                     haRepackerMainPanel.AiBatchImageUpscaleEdit(1f);
             }));
             AiUpscaleImage = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage, null,
-                AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x
+                AiUpscaleImageSubMenu_QualityOnly, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x
             );
 
 

@@ -741,6 +741,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Quality-only.
+        /// </summary>
+        public static string MainContextMenu_Batch_AIUpscaleImage_QualityOnly {
+            get {
+                return ResourceManager.GetString("MainContextMenu_Batch_AIUpscaleImage_QualityOnly", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Fix &apos;_inlink&apos;, &apos;_outlink&apos; nodes for old MapleStory.
         /// </summary>
         public static string MainContextMenu_Batch_EditInlink {
