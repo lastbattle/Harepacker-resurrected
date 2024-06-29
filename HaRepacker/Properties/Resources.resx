@@ -516,7 +516,7 @@ Click "Yes" to download the new version.</value>
     <value>Batch</value>
   </data>
   <data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
-    <value>Upscale image by 2x with AI</value>
+    <value>Upscale image</value>
   </data>
   <data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
     <value>Fix '_inlink', '_outlink' nodes for old MapleStory</value>
@@ -526,5 +526,8 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="batch_edit" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\batch_edit_icon.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MainContextMenu_Batch_AIUpscaleImage_QualityOnly" xml:space="preserve">
+    <value>Quality-only</value>
   </data>
 </root>

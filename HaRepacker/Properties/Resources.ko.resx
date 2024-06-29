@@ -117,295 +117,301 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="AnimCompatMessage" xml:space="preserve">
-    <value>Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox.</value>
-  </data>
-  <data name="AnimError" xml:space="preserve">
-    <value>Error at animation builder, frame {0}</value>
-  </data>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>Animated Portable Network Graphics (*.png)</value>
-  </data>
-  <data name="EditFoothold" xml:space="preserve">
-    <value>Foothold</value>
-  </data>
-  <data name="EditPortal" xml:space="preserve">
-    <value>Portal</value>
-  </data>
-  <data name="EditSP" xml:space="preserve">
-    <value>Mob spawnpoint</value>
-  </data>
-  <data name="EncTypeGMS" xml:space="preserve">
-    <value>GMS (늙은)</value>
-  </data>
-  <data name="EncTypeMSEA" xml:space="preserve">
-    <value>MSEA/ EMS/ Taiwan (늙은)</value>
-  </data>
-  <data name="EncTypeNone" xml:space="preserve">
-    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
-  </data>
-  <data name="EnterValidInput" xml:space="preserve">
-    <value>Please enter valid input</value>
-  </data>
-  <data name="Error" xml:space="preserve">
-    <value>Error</value>
-  </data>
-  <data name="FHMapperInvalidInput" xml:space="preserve">
-    <value>Input was invalid.</value>
-  </data>
-  <data name="FHSettingsForceValue" xml:space="preserve">
-    <value>force value</value>
-  </data>
-  <data name="FHSettingsInvalidMessage" xml:space="preserve">
-    <value>The {0} was invalid.</value>
-  </data>
-  <data name="FHSettingsNextValue" xml:space="preserve">
-    <value>next value</value>
-  </data>
-  <data name="FHSettingsPortalValue" xml:space="preserve">
-    <value>portal type value</value>
-  </data>
-  <data name="FHSettingsPrevValue" xml:space="preserve">
-    <value>prev value</value>
-  </data>
-  <data name="FHSettingsXValue" xml:space="preserve">
-    <value>X value</value>
-  </data>
-  <data name="FHSettingsYValue" xml:space="preserve">
-    <value>Y value</value>
-  </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>Images (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
-  </data>
-  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
-    <value>Select the WZ encryption used:</value>
-  </data>
-  <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
-    <value>WZ Encryption</value>
-  </data>
-  <data name="MainAddCanvas" xml:space="preserve">
-    <value>Add canvas</value>
-  </data>
-  <data name="MainAddConvex" xml:space="preserve">
-    <value>Add convex</value>
-  </data>
-  <data name="MainAddDir" xml:space="preserve">
-    <value>Add directory</value>
-  </data>
-  <data name="MainAddDouble" xml:space="preserve">
-    <value>Add double</value>
-  </data>
-  <data name="MainAddFloat" xml:space="preserve">
-    <value>Add float</value>
-  </data>
-  <data name="MainAddImg" xml:space="preserve">
-    <value>Add image</value>
-  </data>
-  <data name="MainAddInt" xml:space="preserve">
-    <value>Add int</value>
-  </data>
-  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
-    <value>포털 유형 : {0}</value>
-  </data>
-  <data name="MainAddLink" xml:space="preserve">
-    <value>Add link</value>
-  </data>
-  <data name="MainAddNull" xml:space="preserve">
-    <value>Add null</value>
-  </data>
-  <data name="MainAddShort" xml:space="preserve">
-    <value>Add short</value>
-  </data>
-  <data name="MainAddSound" xml:space="preserve">
-    <value>Add sound</value>
-  </data>
-  <data name="MainAddString" xml:space="preserve">
-    <value>Add string</value>
-  </data>
-  <data name="MainAddSub" xml:space="preserve">
-    <value>Add sub</value>
-  </data>
-  <data name="MainAddTabTitle" xml:space="preserve">
-    <value>Add tab</value>
-  </data>
-  <data name="MainAddVec" xml:space="preserve">
-    <value>Add vector</value>
-  </data>
-  <data name="MainCannotInsertToNode" xml:space="preserve">
-    <value>Cannot insert selected object into this type of wz node.</value>
-  </data>
-  <data name="MainConfirmAbort" xml:space="preserve">
-    <value>Are you sure you want to abort the current operation?</value>
-  </data>
-  <data name="MainConfirmCopy" xml:space="preserve">
-    <value>Copy WZ nodes to clipboard? (warning - can take a lot of time if many nodes are selected)</value>
-  </data>
-  <data name="MainConfirmExit" xml:space="preserve">
-    <value>Are you sure you want to exit?</value>
-  </data>
-  <data name="MainConfirmPaste" xml:space="preserve">
-    <value>Paste WZ nodes from clipboard? (warning - can take a lot of time if many nodes are pasted)</value>
-  </data>
-  <data name="MainConfirmRemove" xml:space="preserve">
-    <value>이걸 제거 하시겠습니까?</value>
-  </data>
-  <data name="MainConfirmRemoveNode" xml:space="preserve">
-    <value>Are you sure you want to remove this node?</value>
-  </data>
-  <data name="MainConfirmRename" xml:space="preserve">
-    <value>이름 바꾸기</value>
-  </data>
-  <data name="MainCopyDirError" xml:space="preserve">
-    <value>You can't copy directories because they require too much memory</value>
-  </data>
-  <data name="MainCouldntOpenWZ" xml:space="preserve">
-    <value>Could not open WZ file "{0}"</value>
-  </data>
-  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>Error importing {0}.img file. Are you sure you have selected the correct WZ encryption?</value>
-  </data>
-  <data name="MainFileOpenFail" xml:space="preserve">
-    <value>Unable to open/save to the specified file path. Please run as an Administrator instead.</value>
-  </data>
-  <data name="MainHelpOpenFail" xml:space="preserve">
-    <value>Help could not be shown because the help file ({0}) was not found</value>
-  </data>
-  <data name="MainImageLoadError" xml:space="preserve">
-    <value>이미지를로드 할 수 없습니다.</value>
-  </data>
-  <data name="MainInvalidFileError" xml:space="preserve">
-    <value>The file "{0}" is invalid and will be skipped. Error: {1}</value>
-  </data>
-  <data name="MainListWzDetected" xml:space="preserve">
-    <value>The file at {0} is a List.wz file and will be skipped.</value>
-  </data>
-  <data name="MainNodeExists" xml:space="preserve">
-    <value>A node with that name already exists. Please choose a different name</value>
-  </data>
-  <data name="MainReloadAll" xml:space="preserve">
-    <value>Are you sure you want to reload all files?</value>
-  </data>
-  <data name="MainSelectWzFolder" xml:space="preserve">
-    <value>Please select the WZ file to save</value>
-  </data>
-  <data name="MainTreeAddDirError" xml:space="preserve">
-    <value>Couldn't find a parent WzFile to add this WzDirectoryProperty.</value>
-  </data>
-  <data name="MainTreeEnd" xml:space="preserve">
-    <value>Reached the end of the tree</value>
-  </data>
-  <data name="MainUnloadAll" xml:space="preserve">
-    <value>Are you sure you want to unload all files?</value>
-  </data>
-  <data name="MainUpdateAvailable" xml:space="preserve">
-    <value>{0}</value>
-  </data>
-  <data name="MainUpdateTitle" xml:space="preserve">
-    <value>New Version</value>
-  </data>
-  <data name="MainWzExportError" xml:space="preserve">
-    <value>Export directory not found. Please specify it under Tools -&gt; Options</value>
-  </data>
-  <data name="Mp3Filter" xml:space="preserve">
-    <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
-  </data>
-  <data name="OptionsIndentError" xml:space="preserve">
-    <value>Indent must be above 0</value>
-  </data>
-  <data name="ReplaceConfirm" xml:space="preserve">
-    <value>The node "{0}" already exists. Do you want it to be replaced?</value>
-  </data>
-  <data name="SaveVersionError" xml:space="preserve">
-    <value>Version must be above 0</value>
-  </data>
-  <data name="SelectDefaultXmlFolder" xml:space="preserve">
-    <value>Select default XML folder</value>
-  </data>
-  <data name="SelectImage" xml:space="preserve">
-    <value>Select the image</value>
-  </data>
-  <data name="SelectionType" xml:space="preserve">
-    <value>Selection Type: {0}</value>
-  </data>
-  <data name="SelectMp3" xml:space="preserve">
-    <value>Select MP3 File</value>
-  </data>
-  <data name="SelectOutApng" xml:space="preserve">
-    <value>Select where to save the animation</value>
-  </data>
-  <data name="SelectOutDir" xml:space="preserve">
-    <value>Select the output directory</value>
-  </data>
-  <data name="SelectOutWz" xml:space="preserve">
-    <value>Select where to save the file</value>
-  </data>
-  <data name="SelectOutXml" xml:space="preserve">
-    <value>Select where to save the XML</value>
-  </data>
-  <data name="SelectWz" xml:space="preserve">
-    <value>Select the WZ File</value>
-  </data>
-  <data name="SelectWzImg" xml:space="preserve">
-    <value>Select the IMG files</value>
-  </data>
-  <data name="SelectXml" xml:space="preserve">
-    <value>Select the XML files</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>Warning</value>
-  </data>
-  <data name="WzFilter" xml:space="preserve">
-    <value>WZ File (*.wz)</value>
-  </data>
-  <data name="WzImgFilter" xml:space="preserve">
-    <value>WZ Image Files (*.img)</value>
-  </data>
-  <data name="XmlFilter" xml:space="preserve">
-    <value>eXtended Markup Language (*.xml)</value>
-  </data>
-  <data name="Subpanel_Loading" xml:space="preserve">
-    <value>로딩</value>
-  </data>
-  <data name="ExecutingAssemblyError" xml:space="preserve">
-    <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>
-  </data>
-  <data name="EncTypeCustom" xml:space="preserve">
-    <value>Use custom encryption key</value>
-  </data>
-  <data name="EncTypeGenerate" xml:space="preserve">
-    <value>Bruteforce AES key (Generate)</value>
-  </data>
-  <data name="RelativeTime_DaysAgo" xml:space="preserve">
-    <value>{0} day(s) ago</value>
-  </data>
-  <data name="RelativeTime_HoursAgo" xml:space="preserve">
-    <value>{0} hour(s) ago</value>
-  </data>
-  <data name="RelativeTime_MinutesAgo" xml:space="preserve">
-    <value>{0} minute(s) ago</value>
-  </data>
-  <data name="RelativeTime_MonthsAgo" xml:space="preserve">
-    <value>{0} month(s) ago</value>
-  </data>
-  <data name="RelativeTime_SecondsAgo" xml:space="preserve">
-    <value>{0} second(s) ago</value>
-  </data>
-  <data name="RelativeTime_YearsAgo" xml:space="preserve">
-    <value>{0} years(s) ago</value>
-  </data>
-  <data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
-    <value>Would you like to include the base64 data of image, mp3 &amp; other binary data in the json?</value>
-  </data>
-  <data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
-    <value>Data</value>
-  </data>
-  <data name="MainContextMenu_Batch" xml:space="preserve">
-    <value>Batch</value>
-  </data>
-  <data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
-    <value>Upscale image by 2x with AI</value>
-  </data>
-  <data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
-    <value>Fix '_inlink', '_outlink' nodes for old MapleStory</value>
-  </data>
+<data name="AnimCompatMessage" xml:space="preserve">
+  <value>브라우저나 이미지 뷰어가 너무 오래되어 이 이미지를 볼 수 없습니다. Firefox와 같은 새로운 브라우저를 다운로드해 주세요.</value>
+</data>
+<data name="AnimError" xml:space="preserve">
+  <value>애니메이션 빌더에서 오류 발생, 프레임 {0}</value>
+</data>
+<data name="ApngFilter" xml:space="preserve">
+  <value>애니메이션 포터블 네트워크 그래픽스 (*.png)</value>
+</data>
+<data name="EditFoothold" xml:space="preserve">
+  <value>발판</value>
+</data>
+<data name="EditPortal" xml:space="preserve">
+  <value>포털</value>
+</data>
+<data name="EditSP" xml:space="preserve">
+  <value>몬스터 스폰 포인트</value>
+</data>
+<data name="EncTypeGMS" xml:space="preserve">
+  <value>글로벌 메이플스토리 (구)</value>
+</data>
+<data name="EncTypeMSEA" xml:space="preserve">
+  <value>MSEA/ EMS/ 대만 (구)</value>
+</data>
+<data name="EncTypeNone" xml:space="preserve">
+  <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
+</data>
+<data name="EnterValidInput" xml:space="preserve">
+  <value>유효한 입력을 입력해주세요</value>
+</data>
+<data name="Error" xml:space="preserve">
+  <value>오류</value>
+</data>
+<data name="FHMapperInvalidInput" xml:space="preserve">
+  <value>입력이 유효하지 않습니다.</value>
+</data>
+<data name="FHSettingsForceValue" xml:space="preserve">
+  <value>힘 값</value>
+</data>
+<data name="FHSettingsInvalidMessage" xml:space="preserve">
+  <value>{0}이(가) 유효하지 않습니다.</value>
+</data>
+<data name="FHSettingsNextValue" xml:space="preserve">
+  <value>다음 값</value>
+</data>
+<data name="FHSettingsPortalValue" xml:space="preserve">
+  <value>포털 유형 값</value>
+</data>
+<data name="FHSettingsPrevValue" xml:space="preserve">
+  <value>이전 값</value>
+</data>
+<data name="FHSettingsXValue" xml:space="preserve">
+  <value>X 값</value>
+</data>
+<data name="FHSettingsYValue" xml:space="preserve">
+  <value>Y 값</value>
+</data>
+<data name="ImagesFilter" xml:space="preserve">
+  <value>이미지 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+</data>
+<data name="InteractionWzMapleVersionInfo" xml:space="preserve">
+  <value>사용할 WZ 암호화를 선택하세요:</value>
+</data>
+<data name="InteractionWzMapleVersionTitle" xml:space="preserve">
+  <value>WZ 암호화</value>
+</data>
+<data name="MainAddCanvas" xml:space="preserve">
+  <value>캔버스 추가</value>
+</data>
+<data name="MainAddConvex" xml:space="preserve">
+  <value>볼록 추가</value>
+</data>
+<data name="MainAddDir" xml:space="preserve">
+  <value>디렉토리 추가</value>
+</data>
+<data name="MainAddDouble" xml:space="preserve">
+  <value>double 추가</value>
+</data>
+<data name="MainAddFloat" xml:space="preserve">
+  <value>float 추가</value>
+</data>
+<data name="MainAddImg" xml:space="preserve">
+  <value>이미지 추가</value>
+</data>
+<data name="MainAddInt" xml:space="preserve">
+  <value>int 추가</value>
+</data>
+<data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+  <value>포털 유형: {0}</value>
+</data>
+<data name="MainAddLink" xml:space="preserve">
+  <value>링크 추가</value>
+</data>
+<data name="MainAddNull" xml:space="preserve">
+  <value>null 추가</value>
+</data>
+<data name="MainAddShort" xml:space="preserve">
+  <value>short 추가</value>
+</data>
+<data name="MainAddSound" xml:space="preserve">
+  <value>소리 추가</value>
+</data>
+<data name="MainAddString" xml:space="preserve">
+  <value>문자열 추가</value>
+</data>
+<data name="MainAddSub" xml:space="preserve">
+  <value>하위 항목 추가</value>
+</data>
+<data name="MainAddTabTitle" xml:space="preserve">
+  <value>탭 추가</value>
+</data>
+<data name="MainAddVec" xml:space="preserve">
+  <value>벡터 추가</value>
+</data>
+<data name="MainCannotInsertToNode" xml:space="preserve">
+  <value>선택한 객체를 이 유형의 wz 노드에 삽입할 수 없습니다.</value>
+</data>
+<data name="MainConfirmAbort" xml:space="preserve">
+  <value>현재 작업을 중단하시겠습니까?</value>
+</data>
+<data name="MainConfirmCopy" xml:space="preserve">
+  <value>WZ 노드를 클립보드에 복사하시겠습니까? (경고 - 많은 노드가 선택된 경우 시간이 오래 걸릴 수 있습니다)</value>
+</data>
+<data name="MainConfirmExit" xml:space="preserve">
+  <value>종료하시겠습니까?</value>
+</data>
+<data name="MainConfirmPaste" xml:space="preserve">
+  <value>클립보드에서 WZ 노드를 붙여넣기하시겠습니까? (경고 - 많은 노드가 붙여넣기되는 경우 시간이 오래 걸릴 수 있습니다)</value>
+</data>
+<data name="MainConfirmRemove" xml:space="preserve">
+  <value>이것을 삭제하시겠습니까?</value>
+</data>
+<data name="MainConfirmRemoveNode" xml:space="preserve">
+  <value>이 노드를 제거하시겠습니까?</value>
+</data>
+<data name="MainConfirmRename" xml:space="preserve">
+  <value>이름 바꾸기</value>
+</data>
+<data name="MainConversionError" xml:space="preserve">
+  <value>'{0}'을(를) 필요한 유형으로 변환할 수 없었습니다</value>
+</data>
+<data name="MainCopyDirError" xml:space="preserve">
+  <value>디렉토리는 너무 많은 메모리를 필요로 하므로 복사할 수 없습니다</value>
+</data>
+<data name="MainCouldntOpenWZ" xml:space="preserve">
+  <value>WZ 파일 "{0}"을(를) 열 수 없었습니다</value>
+</data>
+<data name="MainErrorImportingWzImageFile" xml:space="preserve">
+  <value>{0}.img 파일을 가져오는 중 오류가 발생했습니다. 올바른 WZ 암호화를 선택하셨습니까?</value>
+</data>
+<data name="MainFileOpenFail" xml:space="preserve">
+  <value>지정된 파일 경로를 열거나 저장할 수 없습니다. 대신 관리자 권한으로 실행해 주세요.</value>
+</data>
+<data name="MainHelpOpenFail" xml:space="preserve">
+  <value>도움말 파일({0})을 찾을 수 없어 도움말을 표시할 수 없습니다</value>
+</data>
+<data name="MainImageLoadError" xml:space="preserve">
+  <value>이미지를 로드할 수 없었습니다</value>
+</data>
+<data name="MainInvalidFileError" xml:space="preserve">
+  <value>파일 "{0}"이(가) 유효하지 않아 건너뛰게 됩니다. 오류: {1}</value>
+</data>
+<data name="MainListWzDetected" xml:space="preserve">
+  <value>{0}에 있는 파일은 List.wz 파일이므로 건너뛰게 됩니다.</value>
+</data>
+<data name="MainNodeExists" xml:space="preserve">
+  <value>해당 이름의 노드가 이미 존재합니다. 다른 이름을 선택해 주세요</value>
+</data>
+<data name="MainReloadAll" xml:space="preserve">
+  <value>모든 파일을 다시 로드하시겠습니까?</value>
+</data>
+<data name="MainSelectWzFolder" xml:space="preserve">
+  <value>저장할 WZ 파일을 선택해 주세요</value>
+</data>
+<data name="MainTreeAddDirError" xml:space="preserve">
+  <value>이 WzDirectoryProperty를 추가할 부모 WzFile을 찾을 수 없습니다.</value>
+</data>
+<data name="MainTreeEnd" xml:space="preserve">
+  <value>트리의 끝에 도달했습니다</value>
+</data>
+<data name="MainUnloadAll" xml:space="preserve">
+  <value>모든 파일을 언로드하시겠습니까?</value>
+</data>
+<data name="MainUpdateAvailable" xml:space="preserve">
+  <value>{0}</value>
+</data>
+<data name="MainUpdateTitle" xml:space="preserve">
+  <value>새 버전</value>
+</data>
+<data name="MainWzExportError" xml:space="preserve">
+  <value>내보내기 디렉토리를 찾을 수 없습니다. 도구 -> 옵션에서 지정해 주세요</value>
+</data>
+<data name="Mp3Filter" xml:space="preserve">
+  <value>MPEG-1 오디오 레이어 3 (*.mp3)</value>
+</data>
+<data name="OptionsIndentError" xml:space="preserve">
+  <value>들여쓰기는 0보다 커야 합니다</value>
+</data>
+<data name="ReplaceConfirm" xml:space="preserve">
+  <value>노드 "{0}"이(가) 이미 존재합니다. 교체하시겠습니까?</value>
+</data>
+<data name="SaveVersionError" xml:space="preserve">
+  <value>버전은 0보다 커야 합니다</value>
+</data>
+<data name="SelectDefaultXmlFolder" xml:space="preserve">
+  <value>기본 XML 폴더 선택</value>
+</data>
+<data name="SelectImage" xml:space="preserve">
+  <value>이미지 선택</value>
+</data>
+<data name="SelectionType" xml:space="preserve">
+  <value>선택 유형: {0}</value>
+</data>
+<data name="SelectMp3" xml:space="preserve">
+  <value>MP3 파일 선택</value>
+</data>
+<data name="SelectOutApng" xml:space="preserve">
+  <value>애니메이션을 저장할 위치 선택</value>
+</data>
+<data name="SelectOutDir" xml:space="preserve">
+  <value>출력 디렉토리 선택</value>
+</data>
+<data name="SelectOutWz" xml:space="preserve">
+  <value>파일을 저장할 위치 선택</value>
+</data>
+<data name="SelectOutXml" xml:space="preserve">
+  <value>XML을 저장할 위치 선택</value>
+</data>
+<data name="SelectWz" xml:space="preserve">
+  <value>WZ 파일 선택</value>
+</data>
+<data name="SelectWzImg" xml:space="preserve">
+  <value>IMG 파일 선택</value>
+</data>
+<data name="SelectXml" xml:space="preserve">
+  <value>XML 파일 선택</value>
+</data>
+<data name="Warning" xml:space="preserve">
+  <value>경고</value>
+</data>
+<data name="WzFilter" xml:space="preserve">
+  <value>WZ 파일 (*.wz)</value>
+</data>
+<data name="WzImgFilter" xml:space="preserve">
+  <value>WZ 이미지 파일 (*.img)</value>
+</data>
+<data name="XmlFilter" xml:space="preserve">
+  <value>확장 마크업 언어 (*.xml)</value>
+</data>
+<data name="Subpanel_Loading" xml:space="preserve">
+  <value>로딩 중</value>
+</data>
+<data name="ExecutingAssemblyError" xml:space="preserve">
+  <value>이것은 HaRepacker의 x86 버전에서만 사용할 수 있습니다. 대체 버전을 구해주세요.</value>
+</data>
+<data name="EncTypeCustom" xml:space="preserve">
+  <value>사용자 정의 암호화 사용</value>
+</data>
+<data name="EncTypeGenerate" xml:space="preserve">
+  <value>Bruteforce AES 키 (생성)</value>
+</data>
+<data name="RelativeTime_DaysAgo" xml:space="preserve">
+  <value>{0}일 전</value>
+</data>
+<data name="RelativeTime_HoursAgo" xml:space="preserve">
+  <value>{0}시간 전</value>
+</data>
+<data name="RelativeTime_MinutesAgo" xml:space="preserve">
+  <value>{0}분 전</value>
+</data>
+<data name="RelativeTime_MonthsAgo" xml:space="preserve">
+  <value>{0}개월 전</value>
+</data>
+<data name="RelativeTime_SecondsAgo" xml:space="preserve">
+  <value>{0}초 전</value>
+</data>
+<data name="RelativeTime_YearsAgo" xml:space="preserve">
+  <value>{0}년 전</value>
+</data>
+<data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
+  <value>JSON에 이미지, MP3 및 기타 이진 데이터의 base64 데이터를 포함하시겠습니까?</value>
+</data>
+<data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
+  <value>데이터</value>
+</data>
+<data name="MainContextMenu_Batch" xml:space="preserve">
+  <value>일괄 처리</value>
+</data>
+<data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
+  <value>이미지 업스케일</value>
+</data>
+<data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
+  <value>구 메이플스토리용 '_inlink', '_outlink' 노드 수정</value>
+</data>
+<data name="MainContextMenu_Batch_AIUpscaleImage_QualityOnly" xml:space="preserve">
+  <value>품질만</value>
+</data>
 </root>

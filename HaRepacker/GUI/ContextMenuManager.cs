@@ -55,7 +55,7 @@ namespace HaRepacker
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
         private ToolStripMenuItem Rename;
-        private ToolStripMenuItem FixInlink, AiUpscaleImage;
+        private ToolStripMenuItem FixInlink, AiUpscaleImage, AiUpscaleImageSubMenu_QualityOnly, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
         private ToolStripMenuItem ExportAnimationSubMenu;
@@ -344,10 +344,28 @@ namespace HaRepacker
                 {
                     haRepackerMainPanel.FixLinkForOldMapleStory_OnClick();
                 }));
-            AiUpscaleImage = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage, null, new EventHandler(
+
+            // Batch edit
+            AiUpscaleImageSubMenu_QualityOnly = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage_QualityOnly, null, new EventHandler(
                 delegate (object sender, EventArgs e) {
-                    haRepackerMainPanel.AiBatchImageUpscaleEdit();
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit(0.25f);
                 }));
+            AiUpscaleImageSubMenu_1_5x = new ToolStripMenuItem("1.5x", null, new EventHandler(
+                delegate (object sender, EventArgs e) {
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit(0.375f);
+                }));
+            AiUpscaleImageSubMenu_2x = new ToolStripMenuItem("2x", null, new EventHandler(
+                delegate (object sender, EventArgs e) {
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit(0.5f);
+                }));
+            AiUpscaleImageSubMenu_4x = new ToolStripMenuItem("4x", null, new EventHandler(
+                delegate (object sender, EventArgs e) {
+                    haRepackerMainPanel.AiBatchImageUpscaleEdit(1f);
+            }));
+            AiUpscaleImage = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_AIUpscaleImage, null,
+                AiUpscaleImageSubMenu_QualityOnly, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x
+            );
+
 
             // Menu
             AddDirsSubMenu = new ToolStripMenuItem("Add", Properties.Resources.add, 

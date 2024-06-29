@@ -732,11 +732,20 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Upscale image by 2x with AI.
+        ///   Looks up a localized string similar to Upscale image.
         /// </summary>
         public static string MainContextMenu_Batch_AIUpscaleImage {
             get {
                 return ResourceManager.GetString("MainContextMenu_Batch_AIUpscaleImage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Quality-only.
+        /// </summary>
+        public static string MainContextMenu_Batch_AIUpscaleImage_QualityOnly {
+            get {
+                return ResourceManager.GetString("MainContextMenu_Batch_AIUpscaleImage_QualityOnly", resourceCulture);
             }
         }
         
