@@ -1289,9 +1289,12 @@ namespace HaRepacker.GUI.Panels
                 WzImageProperty linkedTarget = property.GetLinkedWzImageProperty();
                 if (!property.ContainsInlinkProperty() && !property.ContainsOutlinkProperty()) // skip link properties
                 {
-                    Bitmap bitmap = linkedTarget.GetBitmap();
+                    string key = property.FullPath.GetHashCode().ToString(); // happens when multiple nodes are selected while expanded
+                    if (!toUpscaleImageDictionary.ContainsKey(key)) {
+                        Bitmap bitmap = linkedTarget.GetBitmap();
 
-                    toUpscaleImageDictionary.Add(property.FullPath.GetHashCode().ToString(), new Tuple<Bitmap, WzCanvasProperty, WzNode>(bitmap, property, node));
+                        toUpscaleImageDictionary.Add(property.FullPath.GetHashCode().ToString(), new Tuple<Bitmap, WzCanvasProperty, WzNode>(bitmap, property, node));
+                    }
                 }
             }
             else {
