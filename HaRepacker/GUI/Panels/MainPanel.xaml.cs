@@ -923,19 +923,28 @@ namespace HaRepacker.GUI.Panels
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
-                System.Drawing.Bitmap bmp;
-                try
-                {
-                    bmp = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(dialog.FileName);
+
+                byte[] bitmapBytes = null;
+                try {
+                    using (System.Drawing.Bitmap originalBitmap = new System.Drawing.Bitmap(dialog.FileName)) {
+                        using (MemoryStream ms = new MemoryStream()) {
+                            originalBitmap.Save(ms, originalBitmap.RawFormat);
+                            bitmapBytes = ms.ToArray();
+                        }
+                    }
                 }
-                catch
-                {
+                catch {
                     Warning.Error(Properties.Resources.MainImageLoadError);
                     return;
                 }
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
-                ChangeCanvasPropBoxImage(bmp);
+                if (bitmapBytes != null) {
+                    using (MemoryStream ms = new MemoryStream(bitmapBytes)) {
+                        System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
+                        ChangeCanvasPropBoxImage(newBitmap);
+                    }
+                }
             }
         }
 
