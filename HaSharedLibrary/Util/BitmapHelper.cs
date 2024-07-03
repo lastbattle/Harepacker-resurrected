@@ -1,6 +1,10 @@
 ﻿using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Windows.Media.Imaging;
 
 namespace HaSharedLibrary.Util
@@ -40,6 +44,27 @@ namespace HaSharedLibrary.Util
                 s.Seek(0, System.IO.SeekOrigin.Begin);
                 return Texture2D.FromStream(device, s);
             }
+        }
+
+        /// <summary>
+        /// Gets the image format extention from ImageFormat object i.e Png returns "png"
+        /// </summary>
+        /// <param name="imageFormat"></param>
+        /// <returns></returns>
+        public static string GetImageFormatExtension(ImageFormat imageFormat) {
+            // Get all image encoders
+            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
+
+            // Find the codec with the matching format
+            foreach (ImageCodecInfo codec in codecs) {
+                //Debug.WriteLine(codec.FormatID.ToString() + ", " + imageFormat.Guid.ToString());
+                if (codec.FormatID.ToString() == imageFormat.Guid.ToString()) {
+                    // Extract the file extension from the codec's FilenameExtension property
+                    string extension = codec.FilenameExtension.Split(';').First().TrimStart('*');
+                    return extension;
+                }
+            }
+            return "unknown";
         }
     }
 }

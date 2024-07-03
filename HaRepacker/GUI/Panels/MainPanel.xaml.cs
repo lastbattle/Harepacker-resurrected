@@ -940,10 +940,10 @@ namespace HaRepacker.GUI.Panels
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
                 if (bitmapBytes != null) {
-                    using (MemoryStream ms = new MemoryStream(bitmapBytes)) {
-                        System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
-                        ChangeCanvasPropBoxImage(newBitmap);
-                    }
+                    MemoryStream ms = new MemoryStream(bitmapBytes); // dont close this
+                    System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
+                    
+                    ChangeCanvasPropBoxImage(newBitmap);
                 }
             }
         }
