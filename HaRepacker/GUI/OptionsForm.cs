@@ -32,9 +32,6 @@ namespace HaRepacker.GUI
 
             // Theme color
             themeColor__comboBox.SelectedIndex = Program.ConfigurationManager.UserSettings.ThemeColor;
-
-            // API Key
-            openAI_apiKey_textBox.Text = Program.ConfigurationManager.ApplicationSettings.OpenAI_ApiKey;
         }
 
 
@@ -79,9 +76,6 @@ namespace HaRepacker.GUI
             Program.ConfigurationManager.UserSettings.Indentation = indentBox.Value;
             Program.ConfigurationManager.UserSettings.LineBreakType = (LineBreak)lineBreakBox.SelectedIndex;
             Program.ConfigurationManager.UserSettings.ThemeColor = themeColor__comboBox.SelectedIndex;
-
-            // APi key
-            Program.ConfigurationManager.ApplicationSettings.OpenAI_ApiKey = openAI_apiKey_textBox.Text;
 
             Program.ConfigurationManager.Save();
             Close();
