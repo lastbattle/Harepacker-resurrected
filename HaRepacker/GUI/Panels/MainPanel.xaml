@@ -272,9 +272,9 @@
 
         <Grid Name="gridMain">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
                 <ColumnDefinition Width="4" />
-                <ColumnDefinition Width="7*"/>
+                <ColumnDefinition Width="8*"/>
             </Grid.ColumnDefinitions>
 
             <!-- Main panel-->
@@ -371,7 +371,7 @@
                     <localSubPanels:AvalonTextEditor x:Name="textEditor" Visibility="Collapsed"/>
 
                     <!-- Image render -->
-                    <Grid x:Name="Grid_ImageRender" Margin="10">
+                    <Grid x:Name="Grid_ImageRender" Margin="10,0,0,10">
                         <localSubPanels:ImageRenderViewer x:Name="canvasPropBox"
                                                           Margin="0,40,0,0"
                                                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"

@@ -5,6 +5,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.GUI.Controls;
 using HaRepacker.Utils;
 using System;
 using System.Collections.Generic;
@@ -26,7 +27,7 @@ namespace HaRepacker.Converter
 
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			PointF originValue = (PointF)value;
+			NotifyPointF originValue = (NotifyPointF)value;
 
 			// converted
 			// its always -50, as it is 50px wide, as specified in the xaml
@@ -41,7 +42,7 @@ namespace HaRepacker.Converter
 			Thickness value_ = (Thickness)value;
 
 			// converted
-			PointF originValue = new PointF((float) ((value_.Left) * ScreenDPIUtil.GetScreenScaleFactor()), (float) ((value_.Top + fCrossHairWidthHeight) * ScreenDPIUtil.GetScreenScaleFactor()));
+			PointF originValue = new NotifyPointF((float) ((value_.Left) * ScreenDPIUtil.GetScreenScaleFactor()), (float) ((value_.Top + fCrossHairWidthHeight) * ScreenDPIUtil.GetScreenScaleFactor()));
 			return originValue;
 		}
 	}

@@ -4,10 +4,12 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
+             xmlns:guiControls="clr-namespace:HaRepacker.GUI.Controls"
+             xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
              xmlns:converter="clr-namespace:HaRepacker.Converter"
              mc:Ignorable="d" 
              
-             d:DesignHeight="250" d:DesignWidth="400">
+             d:DesignHeight="400" d:DesignWidth="600">
 
     <UserControl.Resources>
         <converter:ImageSizeDoubleToIntegerConverter x:Key="imageSizeConverter" />
@@ -466,6 +468,24 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <Style TargetType="{x:Type guiControls:PointFEditorControl}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type guiControls:PointFEditorControl}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="X:" Margin="0,0,2,0"/>
+                            <TextBox Text="{Binding PointF.X, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
+                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <TextBlock Text="Y:" Margin="5,0,2,0"/>
+                            <TextBox Text="{Binding PointF.Y, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
+                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </UserControl.Resources>
 
 
@@ -495,12 +515,6 @@
                         <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock5">
                             <EasingColorKeyFrame KeyTime="0" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="checkbox_crosshair">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="checkbox_border">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
-                        </ColorAnimationUsingKeyFrames>
                     </Storyboard>
                 </VisualState>
             </VisualStateGroup>
@@ -510,8 +524,12 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="30"/>
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="280"/>
+        </Grid.ColumnDefinitions>
 
-        <ScrollViewer Grid.Row="0" 
+        <ScrollViewer Grid.Row="0" Grid.Column="0" Margin="0,0,10,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}"
                       >
             
@@ -521,7 +539,7 @@
                   Height="{Binding ImageHeight, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
                 VerticalAlignment="Top" HorizontalAlignment="Left" Margin="80,50,0,0">
 
-                    <Border BorderBrush="{Binding ElementName=checkbox_border, Path=IsChecked, Converter={StaticResource checkboxToBorderTransparencyConverter}}"
+                    <Border BorderBrush="{Binding ShowImageBorder, Converter={StaticResource checkboxToBorderTransparencyConverter}}"
                             BorderThickness="0.5" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <Border.RenderTransform>
                             <ScaleTransform 
@@ -541,7 +559,7 @@
 
                             <!-- Click draggable borders-->
                             <Grid
-                                Visibility="{Binding ElementName=checkbox_border, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}">
+                                Visibility="{Binding ShowImageBorder, Converter={StaticResource checkboxToVisibilityConverter}}">
                                 <!-- Top-Left -->
                                 <Rectangle x:Name="Rectangle_TopLeft" 
                                            Stroke="Black" Height="1" Width="1"
@@ -555,14 +573,14 @@
                                             VerticalAlignment="Top" HorizontalAlignment="Right"
                                            MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
                                            />
-                                
+
                                 <!-- Bottom-Left -->
                                 <Rectangle x:Name="Rectangle_BottomLeft"
                                             Stroke="Black" Height="1" Width="1"
                                             VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                           MouseLeftButtonDown="Rectangle_MouseLeftButtonDown" MouseMove="Rectangle_MouseMove" MouseLeftButtonUp="Rectangle_MouseLeftButtonUp"
                                            />
-                                
+
                                 <!-- Bottom-Right -->
                                 <Rectangle x:Name="Rectangle_BottomRight"
                                             Stroke="Black" Height="1" Width="1"
@@ -571,11 +589,9 @@
                                            />
                             </Grid>
 
-                            <!-- Crosshair for vector origin-->
-                            <!-- Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"
-                        -->
+
                             <Grid 
-                              Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                              Visibility="{Binding ShowCrosshair, Converter={StaticResource checkboxToVisibilityConverter}}"
                               HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorOrigin, Converter={StaticResource vectorOriginConverter}}"  >
 
@@ -590,7 +606,7 @@
 
                             <!-- Grid for head crosshair-->
                             <Grid 
-                              Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                              Visibility="{Binding ShowCrosshair, Converter={StaticResource checkboxToVisibilityConverter}}"
                               HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorHead, Converter={StaticResource vectorOriginConverter}}"  >
 
@@ -605,7 +621,7 @@
 
                             <!-- Grid for head lt-->
                             <Grid 
-                              Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
+                              Visibility="{Binding ShowCrosshair, Converter={StaticResource checkboxToVisibilityConverter}}"
                               HorizontalAlignment="Left" VerticalAlignment="Top"
                               Margin="{Binding CanvasVectorLt, Converter={StaticResource vectorOriginConverter}}"  >
 
@@ -620,174 +636,49 @@
                         </Grid>
                     </Border>
                 </Grid>
-
-                <!-- Image width-->
-                <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                    Margin="0,80,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="textBlock" Text="Width: " FontSize="10" FontWeight="Bold"/>
-                        <TextBlock x:Name="textBlock1" Text="{Binding ImageWidth, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
-                        <TextBlock x:Name="textBlock2" Text="px " Margin="3,0,0,0" FontSize="10"/>
-                    </StackPanel>
-                </StackPanel>
-
-                <!-- Image height -->
-                <StackPanel Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                Margin="80,0,0,0" VerticalAlignment="Top" HorizontalAlignment="Left">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="textBlock3" Text="Height: " FontSize="10" FontWeight="Bold"/>
-                        <TextBlock x:Name="textBlock4" Text="{Binding ImageHeight, Converter={StaticResource imageSizeConverter}}" FontSize="10"/>
-                        <TextBlock x:Name="textBlock5" Text="px " Margin="3,0,0,0" FontSize="10"/>
-                    </StackPanel>
-                </StackPanel>
             </Grid>
         </ScrollViewer>
 
-        <!-- Checkbox to enable crosshair or not-->
-        <Grid Grid.Row="0" Margin="15">
-            
-            <!-- Displays the origin, delay, head and lt-->
-            <Grid VerticalAlignment="Bottom" HorizontalAlignment="Right" 
-                        Visibility="{Binding ElementName=checkbox_crosshair, Path=IsChecked, Converter={StaticResource checkboxToVisibilityConverter}}"
-                        Margin="0,70,0,0">
+        <Grid Grid.Column="1" Grid.RowSpan="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="310"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                <Border BorderThickness="0.6">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="15"/>
-                            <RowDefinition Height="15"/>
-                            <RowDefinition Height="15"/>
-                            <RowDefinition Height="15"/>
-                        </Grid.RowDefinitions>
+            <Grid Grid.Row="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+                
+                <!-- https://github.com/xceedsoftware/wpftoolkit/wiki/ColorCanvas -->
+                <xctk:ColorCanvas x:Name="MyColorCanvas" 
+                                Grid.Row="0"
+                                Background="Transparent"
+                                  A="0" R="0" G="0" B="0"
+                                SelectedColorChanged="MyColorCanvas_SelectedColorChanged"/>
 
-                        <!-- 'delay' -->
-                        <Grid Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="50"/>
-                                <ColumnDefinition Width="75"/>
-                                <ColumnDefinition Width="33"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Text="Delay:" Margin="0,0,0,0" FontSize="10" Foreground="Gray" FontWeight="Bold"
-                                    Grid.Column="0"/>
-
-                            <TextBox x:Name="textbox_delay" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
-                                        Grid.Column="1"
-                                         TextChanged="textbox_delay_TextChanged"/>
-                            <!--<TextBlock Text="{Binding Delay}" Margin="3,0,0,0" FontSize="10"  Foreground="Gray"
-                                    Grid.Column="1"/>-->
-
-                            <Button x:Name="button_delayEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
-                                    Grid.Column="2" Click="button_delayEdit_Click" HorizontalAlignment="Left"/>
-                        </Grid>
-
-
-                        <!-- 'origin' -->
-                        <Grid Grid.Row="1"
-                            Visibility="{Binding CanvasVectorOrigin, Converter={StaticResource pointFToVisiblityConverter}}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="50"/>
-                                <ColumnDefinition Width="75"/>
-                                <ColumnDefinition Width="33"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Text="Origin XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkCyan" FontWeight="Bold"
-                                       Grid.Column="0"/>
-                            <Grid Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="5*"/>
-                                    <ColumnDefinition Width="5*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBox x:Name="textbox_originX" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
-                                        Grid.Column="0"
-                                         TextChanged="textbox_origin_TextChanged"/>
-                                <TextBox x:Name="textbox_originY" Text="0" Margin="3,0,0,0" FontSize="10"  InputScope="Number" 
-                                        Grid.Column="1"
-                                         TextChanged="textbox_origin_TextChanged"/>
-                            </Grid>
-                            <!--<TextBlock Text="{Binding CanvasVectorOrigin, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkCyan"
-                                        Grid.Column="1"/>-->
-
-                            <Button x:Name="button_originEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30" IsEnabled="False"
-                                        Grid.Column="2" Click="button_originEdit_Click"/>
-                        </Grid>
-
-                        <!-- 'head' -->
-                        <Grid Grid.Row="2"
-                            Visibility="{Binding CanvasVectorHead, Converter={StaticResource pointFToVisiblityConverter}}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="50"/>
-                                <ColumnDefinition Width="75"/>
-                                <ColumnDefinition Width="33"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Text="Head XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkOrange" FontWeight="Bold"
-                                        Grid.Column="0"/>
-                            <Grid Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="5*"/>
-                                    <ColumnDefinition Width="5*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBox x:Name="textbox_headX" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
-                                        Grid.Column="0"
-                                         TextChanged="textbox_head_TextChanged"/>
-                                <TextBox x:Name="textbox_headY" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
-                                        Grid.Column="1"
-                                         TextChanged="textbox_head_TextChanged"/>
-                            </Grid>
-                            <!-- <TextBlock Text="{Binding CanvasVectorHead, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkOrange"
-                                        Grid.Column="1"/>-->
-
-                            <Button x:Name="button_headEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
-                                        Grid.Column="2" Click="button_headEdit_Click"/>
-                        </Grid>
-
-                        <!-- 'lt' -->
-                        <Grid Grid.Row="3"
-                            Visibility="{Binding CanvasVectorLt, Converter={StaticResource pointFToVisiblityConverter}}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="50"/>
-                                <ColumnDefinition Width="75"/>
-                                <ColumnDefinition Width="33"/>
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Text="lt XY:" Margin="0,0,0,0" FontSize="10" Foreground="DarkMagenta" FontWeight="Bold"
-                                        Grid.Column="0"/>
-                            <Grid Grid.Column="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="5*"/>
-                                    <ColumnDefinition Width="5*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBox x:Name="textbox_ltX" Text="0" Margin="3,0,0,0" FontSize="10"  InputScope="Number"
-                                        Grid.Column="0"
-                                         TextChanged="textbox_lt_TextChanged"/>
-                                <TextBox x:Name="textbox_ltY" Text="0" Margin="3,0,0,0" FontSize="10" InputScope="Number"
-                                        Grid.Column="1"
-                                         TextChanged="textbox_lt_TextChanged"/>
-                            </Grid>
-                          <!--  <TextBlock Text="{Binding CanvasVectorLt, Converter={StaticResource pointFOriginToStringConverter}}" Margin="3,0,0,0" FontSize="10"  Foreground="DarkMagenta"
-                                        Grid.Column="1"/>-->
-
-                            <Button x:Name="button_ltEdit" Content="Save" Margin="3,0,0,0" FontSize="8" Width="30"  IsEnabled="False"
-                                        Grid.Column="2" Click="button_ltEdit_Click"/>
-                        </Grid>
-                    </Grid>
-                </Border>
+                <StackPanel Grid.Row="1" 
+                            Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Button Width="130" Margin="0,5,5,5" Content="Apply" x:Name="button_filter_apply"
+                            Click="button_filter_apply_Click"/>
+                    <Button Width="130" Margin="0,5,0,5" Content="Reset" x:Name="button_filter_reset"
+                            Click="button_filter_reset_Click"/>
+                </StackPanel>
             </Grid>
-
-            <StackPanel VerticalAlignment="Top" HorizontalAlignment="Right" Margin="0,5,10,0">
-                <CheckBox x:Name="checkbox_crosshair" Content="Crosshair"
-                          Checked="checkbox_crosshair_Checked" Unchecked="checkbox_crosshair_Checked"/>
-                <CheckBox x:Name="checkbox_border" Content="Border"
-                          Checked="checkbox_border_Checked" Unchecked="checkbox_border_Checked"/>
-            </StackPanel>
+        
+            <!-- https://github.com/xceedsoftware/wpftoolkit/wiki/PropertyGrid -->
+            <xctk:PropertyGrid x:Name="propertyGrid" 
+                           Grid.Row="1"
+                               IsCategorized="True"
+                               SelectedObject="{Binding }"
+                               ShowTitle="False"
+                               />
         </Grid>
-
-
-        <Grid x:Name="grid_zoom" Grid.Row="1" VerticalAlignment="Bottom">
+            
+        <Grid x:Name="grid_zoom" 
+              Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="1"
+              VerticalAlignment="Bottom" >
             <Slider Name="ZoomSlider"
                         Margin="10,0,10,0"
                         Minimum="0.1"

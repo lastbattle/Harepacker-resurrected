@@ -23,16 +23,16 @@ namespace HaRepacker.Converter
 	{
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double widthOrHeight = (double)value;
-			double realWidthOrHeightToDisplay = widthOrHeight * ScreenDPIUtil.GetScreenScaleFactor();
+			int widthOrHeight = (int)value;
+			int realWidthOrHeightToDisplay = (int) ((double) widthOrHeight * ScreenDPIUtil.GetScreenScaleFactor());
 
 			return realWidthOrHeightToDisplay;
 		}
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double value_ = (double)value;
-			double imageWidthOrHeight = value_ / ScreenDPIUtil.GetScreenScaleFactor();
+            int value_ = (int)value;
+            int imageWidthOrHeight = (int) ((double)value_ / ScreenDPIUtil.GetScreenScaleFactor());
 
 			return imageWidthOrHeight;
 		}

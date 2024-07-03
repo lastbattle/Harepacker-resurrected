@@ -5,6 +5,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaRepacker.GUI.Controls;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -25,7 +26,7 @@ namespace HaRepacker.Converter
 	{
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			PointF point = (PointF)value;
+            NotifyPointF point = (NotifyPointF)value;
 
 			if (point.X == 0 && point.Y == 0)
 				return Visibility.Collapsed;
@@ -35,7 +36,7 @@ namespace HaRepacker.Converter
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			return new PointF(0, 0); // anyway wtf
+			return new NotifyPointF(0, 0); // anyway wtf
 		}
 	}
 }
