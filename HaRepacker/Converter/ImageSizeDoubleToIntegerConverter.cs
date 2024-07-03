@@ -21,16 +21,16 @@ namespace HaRepacker.Converter
     {
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double value_ = (double)value;
+			int value_ = (int)value;
 
-			return (int)value_;
+			return value_;
 		}
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double value_ = (double)value;
+            int value_ = (int)value;
 
-			return (int)value_;
+			return value_;
 		}
 	}
 }

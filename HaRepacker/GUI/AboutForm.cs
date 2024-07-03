@@ -42,5 +42,19 @@ namespace HaRepacker.GUI
         {
             Close();
         }
+
+        /// <summary>
+        /// Hyperlink
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
+            try {
+                System.Diagnostics.Process.Start(linkLabel1.Text);
+            }
+            catch (Exception ex) {
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
     }
 }

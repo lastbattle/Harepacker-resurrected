@@ -34,6 +34,7 @@ using System.Text.RegularExpressions;
 using System.IO;
 using System.Net;
 using HaRepacker.GUI.Panels.SubPanels;
+using HaRepacker.GUI.Controls;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -923,19 +924,28 @@ namespace HaRepacker.GUI.Panels
                 };
                 if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
-                System.Drawing.Bitmap bmp;
-                try
-                {
-                    bmp = (System.Drawing.Bitmap)System.Drawing.Image.FromFile(dialog.FileName);
+
+                byte[] bitmapBytes = null;
+                try {
+                    using (System.Drawing.Bitmap originalBitmap = new System.Drawing.Bitmap(dialog.FileName)) {
+                        using (MemoryStream ms = new MemoryStream()) {
+                            originalBitmap.Save(ms, originalBitmap.RawFormat);
+                            bitmapBytes = ms.ToArray();
+                        }
+                    }
                 }
-                catch
-                {
+                catch {
                     Warning.Error(Properties.Resources.MainImageLoadError);
                     return;
                 }
                 //List<UndoRedoAction> actions = new List<UndoRedoAction>(); // Undo action
 
-                ChangeCanvasPropBoxImage(bmp);
+                if (bitmapBytes != null) {
+                    MemoryStream ms = new MemoryStream(bitmapBytes); // dont close this
+                    System.Drawing.Bitmap newBitmap = new System.Drawing.Bitmap(ms);
+                    
+                    ChangeCanvasPropBoxImage(newBitmap);
+                }
             }
         }
 
@@ -944,17 +954,18 @@ namespace HaRepacker.GUI.Panels
         /// </summary>
         /// <param name="image"></param>
         /// <param name=""></param>
-        private void ChangeCanvasPropBoxImage(Bitmap bmp)
+        public void ChangeCanvasPropBoxImage(Bitmap bmp)
         {
             if (DataTree.SelectedNode.Tag is WzCanvasProperty property)
             {
+                WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
+
                 WzCanvasProperty selectedWzCanvas = property;
 
                 if (selectedWzCanvas.ContainsInlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.InlinkPropertyName]);
 
-                    WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
                     WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.InlinkPropertyName);
 
                     // Add undo actions
@@ -968,7 +979,6 @@ namespace HaRepacker.GUI.Panels
                 {
                     selectedWzCanvas.RemoveProperty(selectedWzCanvas[WzCanvasProperty.OutlinkPropertyName]);
 
-                    WzNode parentCanvasNode = (WzNode)DataTree.SelectedNode;
                     WzNode childInlinkNode = WzNode.GetChildNode(parentCanvasNode, WzCanvasProperty.OutlinkPropertyName);
 
                     // Add undo actions
@@ -978,10 +988,18 @@ namespace HaRepacker.GUI.Panels
 
                 selectedWzCanvas.PngProperty.SetImage(bmp);
 
-                // Updates
-                selectedWzCanvas.ParentImage.Changed = true;
+                canvasPropBox.SetIsLoading(true);
+                try {
+                    canvasPropBox.BindingPropertyItem.Bitmap = bmp;
+                    canvasPropBox.BindingPropertyItem.BitmapBackup = bmp;
+                }
+                finally {
+                    canvasPropBox.SetIsLoading(false);
+                }
 
-                canvasPropBox.Image = bmp.ToWpfBitmap();
+                // flag changed for saving updates
+                // and also node foreground color
+                parentCanvasNode.ChangedNodeProperty();
 
                 // Add undo actions
                 //UndoRedoMan.AddUndoBatch(actions);
@@ -999,8 +1017,10 @@ namespace HaRepacker.GUI.Panels
             if (selectedTreeNode is WzCanvasProperty) // only allow button click if its an image property
             {
                 System.Drawing.Image img = ((WzCanvasProperty)(selectedTreeNode))?.GetLinkedWzCanvasBitmap();
-                if (img != null)
-                    canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
+                if (img != null) {
+                    canvasPropBox.BindingPropertyItem.Bitmap = (Bitmap)img;
+                    canvasPropBox.BindingPropertyItem.BitmapBackup = (Bitmap)img;
+                }
             }
         }
 
@@ -1289,9 +1309,12 @@ namespace HaRepacker.GUI.Panels
                 WzImageProperty linkedTarget = property.GetLinkedWzImageProperty();
                 if (!property.ContainsInlinkProperty() && !property.ContainsOutlinkProperty()) // skip link properties
                 {
-                    Bitmap bitmap = linkedTarget.GetBitmap();
+                    string key = property.FullPath.GetHashCode().ToString(); // happens when multiple nodes are selected while expanded
+                    if (!toUpscaleImageDictionary.ContainsKey(key)) {
+                        Bitmap bitmap = linkedTarget.GetBitmap();
 
-                    toUpscaleImageDictionary.Add(property.FullPath.GetHashCode().ToString(), new Tuple<Bitmap, WzCanvasProperty, WzNode>(bitmap, property, node));
+                        toUpscaleImageDictionary.Add(property.FullPath.GetHashCode().ToString(), new Tuple<Bitmap, WzCanvasProperty, WzNode>(bitmap, property, node));
+                    }
                 }
             }
             else {
@@ -1766,15 +1789,18 @@ namespace HaRepacker.GUI.Panels
                 menuItem_saveImage.Visibility = Visibility.Visible;
 
                 // Image
-                if (canvasProp.ContainsInlinkProperty() || canvasProp.ContainsOutlinkProperty())
-                {
+                if (canvasProp.ContainsInlinkProperty() || canvasProp.ContainsOutlinkProperty()) {
                     System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
-                    if (img != null)
-                        canvasPropBox.Image = ((System.Drawing.Bitmap)img).ToWpfBitmap();
+                    if (img != null) {
+                        canvasPropBox.BindingPropertyItem.Bitmap = (System.Drawing.Bitmap)img;
+                        canvasPropBox.BindingPropertyItem.BitmapBackup = (System.Drawing.Bitmap)img;
+                    }
                 }
-                else
-                    canvasPropBox.Image = canvasProp.GetLinkedWzCanvasBitmap().ToWpfBitmap();
-
+                else {
+                    Bitmap bmp = canvasProp.GetLinkedWzCanvasBitmap();
+                    canvasPropBox.BindingPropertyItem.Bitmap = bmp;
+                    canvasPropBox.BindingPropertyItem.BitmapBackup = bmp;
+                }
                 SetImageRenderView(canvasProp);
             }
             else if (obj is WzUOLProperty uolProperty)
@@ -1786,7 +1812,11 @@ namespace HaRepacker.GUI.Panels
                 if (linkValue is WzCanvasProperty canvasUOL)
                 {
                     canvasPropBox.Visibility = Visibility.Visible;
-                    canvasPropBox.Image = canvasUOL.GetLinkedWzCanvasBitmap().ToWpfBitmap(); // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+
+                    Bitmap bmp = canvasUOL.GetLinkedWzCanvasBitmap();
+                    canvasPropBox.BindingPropertyItem.Bitmap = bmp; // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+                    canvasPropBox.BindingPropertyItem.BitmapBackup = bmp; // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
+
                     menuItem_saveImage.Visibility = Visibility.Visible; // dont show change image, as its a UOL
 
                     SetImageRenderView(canvasUOL);
@@ -2007,15 +2037,23 @@ namespace HaRepacker.GUI.Panels
             PointF headVector = canvas.GetCanvasHeadPosition();
             PointF ltVector = canvas.GetCanvasLtPosition();
 
-            // Set XY point to canvas xaml
-            canvasPropBox.ParentWzCanvasProperty = canvas;
-            canvasPropBox.Delay = delay ?? 0;
-            canvasPropBox.CanvasVectorOrigin = originVector;
-            canvasPropBox.CanvasVectorHead = headVector;
-            canvasPropBox.CanvasVectorLt = ltVector;
+            canvasPropBox.SetIsLoading(true);
+            try {
+                canvasPropBox.SetParentMainPanel(this);
 
-            if (canvasPropBox.Visibility != Visibility.Visible)
-                canvasPropBox.Visibility = Visibility.Visible;
+                // Set XY point to canvas xaml
+                canvasPropBox.BindingPropertyItem.ParentWzCanvasProperty = canvas;
+                canvasPropBox.BindingPropertyItem.Delay = delay ?? 0;
+                canvasPropBox.BindingPropertyItem.CanvasVectorOrigin = new NotifyPointF(originVector);
+                canvasPropBox.BindingPropertyItem.CanvasVectorHead = new NotifyPointF(headVector);
+                canvasPropBox.BindingPropertyItem.CanvasVectorLt = new NotifyPointF(ltVector);
+
+                if (canvasPropBox.Visibility != Visibility.Visible)
+                    canvasPropBox.Visibility = Visibility.Visible;
+            }
+            finally {
+                canvasPropBox.SetIsLoading(false);
+            }
         }
         #endregion
 

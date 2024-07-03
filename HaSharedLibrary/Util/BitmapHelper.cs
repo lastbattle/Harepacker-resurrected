@@ -1,6 +1,12 @@
 ﻿using Microsoft.Xna.Framework.Graphics;
+using System;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace HaSharedLibrary.Util
@@ -27,6 +33,28 @@ namespace HaSharedLibrary.Util
             }
         }
 
+        /// <summary>
+        /// Takes a System.Windows.Media.ImageSource and converts it back to System.Drawing.Bitmap
+        /// </summary>
+        /// <param name="imageSource"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException"></exception>
+        public static Bitmap ConvertImageSourceToBitmap(this ImageSource imageSource) {
+            BitmapSource bitmapSource = imageSource as BitmapSource;
+            if (bitmapSource == null) {
+                throw new ArgumentException("ImageSource must be of type BitmapSource");
+            }
+
+            Bitmap bitmap;
+            using (MemoryStream outStream = new MemoryStream()) {
+                BitmapEncoder enc = new BmpBitmapEncoder();
+                enc.Frames.Add(BitmapFrame.Create(bitmapSource));
+                enc.Save(outStream);
+                bitmap = new Bitmap(outStream);
+            }
+            return bitmap;
+        }
+
         public static Texture2D ToTexture2D(this System.Drawing.Bitmap bitmap, GraphicsDevice device)
         {
             if (bitmap == null)
@@ -40,6 +68,61 @@ namespace HaSharedLibrary.Util
                 s.Seek(0, System.IO.SeekOrigin.Begin);
                 return Texture2D.FromStream(device, s);
             }
+        }
+
+        /// <summary>
+        /// Gets the image format extention from ImageFormat object i.e Png returns "png"
+        /// </summary>
+        /// <param name="imageFormat"></param>
+        /// <returns></returns>
+        public static string GetImageFormatExtension(ImageFormat imageFormat) {
+            // Get all image encoders
+            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
+
+            // Find the codec with the matching format
+            foreach (ImageCodecInfo codec in codecs) {
+                //Debug.WriteLine(codec.FormatID.ToString() + ", " + imageFormat.Guid.ToString());
+                if (codec.FormatID.ToString() == imageFormat.Guid.ToString()) {
+                    // Extract the file extension from the codec's FilenameExtension property
+                    string extension = codec.FilenameExtension.Split(';').First().TrimStart('*');
+                    return extension;
+                }
+            }
+            return "unknown";
+        }
+
+        /// <summary>
+        /// Applies a color filter to a bitmap
+        /// </summary>
+        /// <param name="originalBitmap"></param>
+        /// <param name="filterColor"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Bitmap ApplyColorFilter(Bitmap originalBitmap, System.Windows.Media.Color filterColor) {
+            // Create a copy of the original bitmap
+            Bitmap filteredBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height);
+
+            // Create a ColorMatrix object
+            ColorMatrix colorMatrix = new ColorMatrix(new float[][]
+            {
+                new float[] {filterColor.R / 255f, 0, 0, 0, 0},
+                new float[] {0, filterColor.G / 255f, 0, 0, 0},
+                new float[] {0, 0, filterColor.B / 255f, 0, 0},
+                new float[] {0, 0, 0, 1, 0},
+                new float[] {0, 0, 0, 0, 1}
+            });
+
+            // Create ImageAttributes
+            using (ImageAttributes attributes = new ImageAttributes()) {
+                attributes.SetColorMatrix(colorMatrix);
+
+                // Draw the filtered image
+                using (Graphics g = Graphics.FromImage(filteredBitmap)) {
+                    g.DrawImage(originalBitmap, new Rectangle(0, 0, originalBitmap.Width, originalBitmap.Height),
+                        0, 0, originalBitmap.Width, originalBitmap.Height, GraphicsUnit.Pixel, attributes);
+                }
+            }
+            return filteredBitmap;
         }
     }
 }
