@@ -228,6 +228,7 @@
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
+    <Compile Include="Converter\BooleanToVisibilityConverter.cs" />
     <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
     <Compile Include="Converter\PointFConverter.cs" />
     <Compile Include="Converter\PointFValueConverter.cs" />
@@ -401,6 +402,7 @@
     <Compile Include="GUI\Panels\MainPanel.xaml.cs">
       <DependentUpon>MainPanel.xaml</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Panels\MainPanelPropertyItems.cs" />
     <Compile Include="GUI\Panels\SubPanels\AvalonTextEditor.xaml.cs">
       <DependentUpon>AvalonTextEditor.xaml</DependentUpon>
     </Compile>

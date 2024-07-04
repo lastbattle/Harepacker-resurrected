@@ -316,7 +316,7 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
-        
+
         <Style x:Key="ScrollBarStyle_Horizontal" TargetType="{x:Type ScrollBar}">
             <Setter Property="Stylus.IsPressAndHoldEnabled" Value="false"/>
             <Setter Property="Stylus.IsFlicksEnabled" Value="false"/>
@@ -396,7 +396,7 @@
                 <Trigger Property="Orientation" Value="Horizontal">
                     <Setter Property="Width" Value="Auto"/>
                     <Setter Property="MinWidth" Value="0"/>
-                    
+
                     <Setter Property="Height" Value="3.5"/>
                     <Setter Property="MinHeight" Value="3.5"/>
                     <Setter Property="BorderThickness" Value="0,1"/>
@@ -485,6 +485,61 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        
+        <Style x:Key="FocusVisual1">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="2" StrokeDashArray="1 2" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" SnapsToDevicePixels="true" StrokeThickness="1"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <SolidColorBrush x:Key="Button.Static.Background" Color="#FFDDDDDD"/>
+        <SolidColorBrush x:Key="Button.Static.Border" Color="#FF707070"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#FFBEE6FD"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#FF3C7FB1"/>
+        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#FFC4E5F6"/>
+        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#FF2C628B"/>
+        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
+        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
+        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+        <Style x:Key="ButtonStyle_Borderless" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual1}"/>
+            <Setter Property="Background" Value="{StaticResource Button.Static.Background}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Button.Static.Border}"/>
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" SnapsToDevicePixels="true">
+                            <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDefaulted" Value="true">
+                                <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.MouseOver.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.MouseOver.Border}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Pressed.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Pressed.Border}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
     </UserControl.Resources>
 
@@ -497,23 +552,29 @@
 
                 <VisualState x:Name="BlackTheme">
                     <Storyboard>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="MyColorCanvas" Storyboard.TargetProperty="(Control.Foreground).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock1">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="MyColorCanvas" Storyboard.TargetProperty="(Control.Background).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="#FF4C4C4C"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock2">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="propertyGrid" Storyboard.TargetProperty="(Control.Background).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="#FF5B5B5B"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock3">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="propertyGrid" Storyboard.TargetProperty="(Control.Foreground).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock4">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="button_filter_apply" Storyboard.TargetProperty="(Control.Background).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="#FFBFBFBF"/>
                         </ColorAnimationUsingKeyFrames>
-                        <ColorAnimationUsingKeyFrames Storyboard.TargetProperty="(TextElement.Foreground).(SolidColorBrush.Color)" Storyboard.TargetName="textBlock5">
-                            <EasingColorKeyFrame KeyTime="0" Value="White"/>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="button_filter_reset" Storyboard.TargetProperty="(Control.Background).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="#FFBFBFBF"/>
+                        </ColorAnimationUsingKeyFrames>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="button_filter_reset" Storyboard.TargetProperty="(Control.Foreground).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="White"/>
+                        </ColorAnimationUsingKeyFrames>
+                        <ColorAnimationUsingKeyFrames Storyboard.TargetName="button_filter_apply" Storyboard.TargetProperty="(Control.Foreground).(SolidColorBrush.Color)">
+                            <EasingColorKeyFrame KeyTime="00:00:00" Value="White"/>
                         </ColorAnimationUsingKeyFrames>
                     </Storyboard>
                 </VisualState>
@@ -532,7 +593,7 @@
         <ScrollViewer Grid.Row="0" Grid.Column="0" Margin="0,0,10,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}"
                       >
-            
+
             <Grid Height="4000" Width="4000" Margin="200,100,0,0">
                 <!-- Image and borders-->
                 <Grid Width="{Binding ImageWidth, Converter={StaticResource imageWidthOrHeightToScreenDPIConverter}}" 
@@ -650,32 +711,41 @@
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="30"/>
                 </Grid.RowDefinitions>
-                
+
                 <!-- https://github.com/xceedsoftware/wpftoolkit/wiki/ColorCanvas -->
                 <xctk:ColorCanvas x:Name="MyColorCanvas" 
                                 Grid.Row="0"
-                                Background="Transparent"
-                                  A="0" R="0" G="0" B="0"
+                                  Background="White"
+                                  Foreground="Black"
+                                  A="255" R="0" G="0" B="0"
                                 SelectedColorChanged="MyColorCanvas_SelectedColorChanged"/>
 
-                <StackPanel Grid.Row="1" 
-                            Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button Width="130" Margin="0,5,5,5" Content="Apply" x:Name="button_filter_apply"
-                            Click="button_filter_apply_Click"/>
-                    <Button Width="130" Margin="0,5,0,5" Content="Reset" x:Name="button_filter_reset"
-                            Click="button_filter_reset_Click"/>
-                </StackPanel>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="5*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Width="130" Margin="0,5,5,5" Content="Apply" x:Name="button_filter_apply" 
+                            Grid.Column="0"
+                            Style="{DynamicResource ButtonStyle_Borderless}"
+                            Click="button_filter_apply_Click" Background="#FFDDDDDD" Foreground="Black"/>
+                    <Button Width="130" Margin="0,5,0,5" Content="Reset" x:Name="button_filter_reset" 
+                            Grid.Column="1"
+                            Style="{DynamicResource ButtonStyle_Borderless}"
+                            Click="button_filter_reset_Click" Background="#FFDDDDDD" Foreground="Black"/>
+                </Grid>
             </Grid>
-        
+
             <!-- https://github.com/xceedsoftware/wpftoolkit/wiki/PropertyGrid -->
             <xctk:PropertyGrid x:Name="propertyGrid" 
                            Grid.Row="1"
                                IsCategorized="True"
                                SelectedObject="{Binding }"
-                               ShowTitle="False"
+                               ShowTitle="False" Background="#FFDDDDDD" Foreground="Black" 
                                />
         </Grid>
-            
+
         <Grid x:Name="grid_zoom" 
               Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="1"
               VerticalAlignment="Bottom" >

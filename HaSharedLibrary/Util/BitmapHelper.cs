@@ -55,6 +55,12 @@ namespace HaSharedLibrary.Util
             return bitmap;
         }
 
+        /// <summary>
+        /// Converts a System.Drawing.Bitmap bitmap to Texture2D
+        /// </summary>
+        /// <param name="bitmap"></param>
+        /// <param name="device"></param>
+        /// <returns></returns>
         public static Texture2D ToTexture2D(this System.Drawing.Bitmap bitmap, GraphicsDevice device)
         {
             if (bitmap == null)
@@ -67,6 +73,30 @@ namespace HaSharedLibrary.Util
                 bitmap.Save(s, System.Drawing.Imaging.ImageFormat.Png);
                 s.Seek(0, System.IO.SeekOrigin.Begin);
                 return Texture2D.FromStream(device, s);
+            }
+        }
+
+        /// <summary>
+        /// Get the size of an image in Kilobytes
+        /// </summary>
+        /// <param name="imageSource"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double GetImageSizeInKB(ImageSource imageSource) {
+            if (imageSource == null)
+                throw new ArgumentNullException(nameof(imageSource));
+
+            if (!(imageSource is BitmapSource bitmapSource))
+                throw new ArgumentException("ImageSource must be a BitmapSource", nameof(imageSource));
+
+            using (MemoryStream stream = new MemoryStream()) {
+                BitmapEncoder encoder = new PngBitmapEncoder(); // You can change this to other formats if needed
+                encoder.Frames.Add(BitmapFrame.Create(bitmapSource));
+                encoder.Save(stream);
+
+                return stream.Length / 1024.0; // Convert bytes to kilobytes
             }
         }
 
@@ -108,7 +138,7 @@ namespace HaSharedLibrary.Util
                 new float[] {filterColor.R / 255f, 0, 0, 0, 0},
                 new float[] {0, filterColor.G / 255f, 0, 0, 0},
                 new float[] {0, 0, filterColor.B / 255f, 0, 0},
-                new float[] {0, 0, 0, 1, 0},
+                new float[] {0, 0, 0, filterColor.A / 255f, 0},
                 new float[] {0, 0, 0, 0, 1}
             });
 

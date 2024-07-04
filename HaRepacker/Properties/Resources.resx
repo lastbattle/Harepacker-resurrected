@@ -437,9 +437,6 @@ Click "Yes" to download the new version.</value>
   <data name="SelectImage" xml:space="preserve">
     <value>Select the image</value>
   </data>
-  <data name="SelectionType" xml:space="preserve">
-    <value>Selection Type: {0}</value>
-  </data>
   <data name="SelectMp3" xml:space="preserve">
     <value>Select MP3 File</value>
   </data>

@@ -1179,15 +1179,6 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Selection Type: {0}.
-        /// </summary>
-        public static string SelectionType {
-            get {
-                return ResourceManager.GetString("SelectionType", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Select MP3 File.
         /// </summary>
         public static string SelectMp3 {
