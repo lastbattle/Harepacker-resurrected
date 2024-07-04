@@ -38,6 +38,7 @@ using HaRepacker.GUI.Controls;
 using Newtonsoft.Json.Linq;
 using Xceed.Wpf.Toolkit.Core;
 using System.Diagnostics;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -148,7 +149,7 @@ namespace HaRepacker.GUI.Panels
             {
                 return;
             }
-            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag, Get_bindingPropertyItem());
+            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);
 
             _bindingPropertyItem.WzFileType = ((WzNode)DataTree.SelectedNode).GetTypeName();
             //selectionLabel.Text = string.Format(Properties.Resources.SelectionType, ((WzNode)DataTree.SelectedNode).GetTypeName());
@@ -1576,10 +1577,6 @@ namespace HaRepacker.GUI.Panels
                 bPasteTaskActive = false;
             }
         }
-
-        private MainPanelPropertyItems Get_bindingPropertyItem() {
-            return _bindingPropertyItem;
-        }
         #endregion
 
         #region UI layout
@@ -1587,7 +1584,7 @@ namespace HaRepacker.GUI.Panels
         /// Shows the selected data treeview object to UI
         /// </summary>
         /// <param name="obj"></param>
-        private void ShowObjectValue(WzObject obj, MainPanelPropertyItems _bindingPropertyItem)
+        private void ShowObjectValue(WzObject obj)
         {
             if (obj.WzFileParent != null && obj.WzFileParent.IsUnloaded) // this WZ is already unloaded from memory, dont attempt to display it (when the user clicks "reload" button while selection is on that)
                 return;
@@ -1598,7 +1595,7 @@ namespace HaRepacker.GUI.Panels
                 mp3Player.SoundProperty = null;
 
                 // Set file name binding
-                _bindingPropertyItem.WzFileName = obj is WzFile file ? file.Header.Copyright : obj.Name;
+                _bindingPropertyItem.WzFileName = obj.Name;
 
                 toolStripStatusLabel_additionalInfo.Text = "-"; // Reset additional info to default
                 if (isSelectingWzMapFieldLimit) // previously already selected. update again
@@ -1652,6 +1649,9 @@ namespace HaRepacker.GUI.Panels
                 textEditor.Visibility = Visibility.Collapsed;
 
                 // vars
+                bool bIsWzFile = obj is WzFile file;
+                bool bIsWzDirectory = obj is WzDirectory;
+                bool bIsWzImage = obj is WzImage;
                 bool bIsWzLuaProperty = obj is WzLuaProperty;
                 bool bIsWzSoundProperty = obj is WzBinaryProperty;
                 bool bIsWzStringProperty = obj is WzStringProperty;
@@ -1660,11 +1660,14 @@ namespace HaRepacker.GUI.Panels
                 bool bIsWzDoubleProperty = obj is WzDoubleProperty;
                 bool bIsWzFloatProperty = obj is WzFloatProperty;
                 bool bIsWzShortProperty = obj is WzShortProperty;
+                bool bIsWzNullProperty = obj is WzNullProperty;
+                bool bIsWzSubProperty = obj is WzSubProperty;
+                bool bIsWzConvexProperty = obj is WzConvexProperty;
 
                 bool bAnimateMoreButton = false; // The button to animate when there is more option under button_MoreOption
 
                 // Set layout visibility
-                if (obj is WzFile || obj is WzDirectory || obj is WzImage || obj is WzNullProperty || obj is WzSubProperty || obj is WzConvexProperty) {
+                if (bIsWzFile || bIsWzDirectory || bIsWzImage || bIsWzNullProperty || bIsWzSubProperty || bIsWzConvexProperty) {
                     /*if (obj is WzSubProperty) { // detect String.wz/Npc.img/ directory for AI related tools
                          if (obj.Parent.Name == "Npc.img") 
                          {
@@ -1674,6 +1677,11 @@ namespace HaRepacker.GUI.Panels
                              }
                          }
                      }*/
+
+                    if (bIsWzFile) {
+                        _bindingPropertyItem.WzFileValue = (obj as WzFile).Header.Copyright;
+                        _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // dont allow user to change fieldLimit manually
+                    }
                 }
                 else if (obj is WzCanvasProperty canvasProp) {
                     bAnimateMoreButton = true; // flag
@@ -1945,11 +1953,8 @@ namespace HaRepacker.GUI.Panels
 
                         WzNode node = (WzNode)DataTree.SelectedNode;
 
-                        if (DataTree.SelectedNode.Tag is WzFile) {
-                            ((WzFile)DataTree.SelectedNode.Tag).Header.Copyright = setText;
-                            ((WzFile)DataTree.SelectedNode.Tag).Header.RecalculateFileStart();
+                        if (node.Tag is WzFile) {
 
-                            node.ChangedNodeProperty();
                         }
                         else if (WzNode.CanNodeBeInserted((WzNode)node.Parent, setText)) {
                             node.ChangeName(setText);
@@ -1970,7 +1975,27 @@ namespace HaRepacker.GUI.Panels
                         WzNode node = (WzNode) DataTree.SelectedNode;
                         WzObject obj = (WzObject)DataTree.SelectedNode.Tag;
 
-                        if (obj is WzVectorProperty vectorProperty) {
+                        bool bIsWzFile = obj is WzFile file;
+                        bool bIsWzDirectory = obj is WzDirectory;
+                        bool bIsWzImage = obj is WzImage;
+                        bool bIsWzLuaProperty = obj is WzLuaProperty;
+                        bool bIsWzSoundProperty = obj is WzBinaryProperty;
+                        bool bIsWzStringProperty = obj is WzStringProperty;
+                        bool bIsWzIntProperty = obj is WzIntProperty;
+                        bool bIsWzLongProperty = obj is WzLongProperty;
+                        bool bIsWzDoubleProperty = obj is WzDoubleProperty;
+                        bool bIsWzFloatProperty = obj is WzFloatProperty;
+                        bool bIsWzShortProperty = obj is WzShortProperty;
+                        bool bIsWzNullProperty = obj is WzNullProperty;
+                        bool bIsWzSubProperty = obj is WzSubProperty;
+                        bool bIsWzConvexProperty = obj is WzConvexProperty;
+
+
+                        if (bIsWzFile) {
+                            ((WzFile)node.Tag).Header.Copyright = setText;
+                            ((WzFile)node.Tag).Header.RecalculateFileStart();
+                        }
+                        else if (obj is WzVectorProperty vectorProperty) {
                             vectorProperty.X.Value = (int) _bindingPropertyItem.XYVector.X;
                             vectorProperty.Y.Value = (int) _bindingPropertyItem.XYVector.Y;
 
