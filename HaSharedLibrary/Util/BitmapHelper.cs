@@ -138,7 +138,7 @@ namespace HaSharedLibrary.Util
                 new float[] {filterColor.R / 255f, 0, 0, 0, 0},
                 new float[] {0, filterColor.G / 255f, 0, 0, 0},
                 new float[] {0, 0, filterColor.B / 255f, 0, 0},
-                new float[] {0, 0, 0, 1, 0},
+                new float[] {0, 0, 0, filterColor.A / 255f, 0},
                 new float[] {0, 0, 0, 0, 1}
             });
 
