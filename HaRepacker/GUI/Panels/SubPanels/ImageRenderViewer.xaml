@@ -716,7 +716,7 @@
                                 Grid.Row="0"
                                   Background="White"
                                   Foreground="Black"
-                                  A="0" R="0" G="0" B="0"
+                                  A="255" R="0" G="0" B="0"
                                 SelectedColorChanged="MyColorCanvas_SelectedColorChanged"/>
 
                 <Grid Grid.Row="1">
