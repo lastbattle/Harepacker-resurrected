@@ -1,5 +1,6 @@
 ﻿using HaRepacker.Converter;
 using HaRepacker.GUI.Controls;
+using HaSharedLibrary.Util;
 using MapleLib.Converters;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -90,6 +91,7 @@ namespace HaRepacker.GUI.Panels.SubPanels {
                 // Update image width and height too.
                 ImageWidth = (int) _Image.Width;
                 ImageHeight = (int)_Image.Height;
+                ImageSizeKiloByte = BitmapHelper.GetImageSizeInKB(_Image);
             }
         }
 
@@ -148,6 +150,21 @@ namespace HaRepacker.GUI.Panels.SubPanels {
             set {
                 this._ImageHeight = value;
                 OnPropertyChanged(nameof(ImageHeight));
+            }
+        }
+
+        private double _ImageSizeKiloByte = 0;
+        /// <summary>
+        /// The Size of the image currently displayed on the canvas
+        /// </summary>
+        [ReadOnly(true)] // This makes the Name property read-only
+        [DisplayName("Size (Kb)")]
+        [Category(CATEGORY_IMAGEINFO)]
+        public double ImageSizeKiloByte {
+            get { return _ImageSizeKiloByte; }
+            set {
+                this._ImageSizeKiloByte = value;
+                OnPropertyChanged(nameof(ImageSizeKiloByte));
             }
         }
         #endregion
