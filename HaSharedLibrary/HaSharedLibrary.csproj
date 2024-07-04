@@ -115,6 +115,7 @@
     <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="GUI\FieldLimitChangedEventArgs.cs" />
     <Compile Include="GUI\FieldTypePanel.xaml.cs">
       <DependentUpon>FieldTypePanel.xaml</DependentUpon>
     </Compile>

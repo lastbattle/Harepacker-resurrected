@@ -741,7 +741,7 @@
                            Grid.Row="1"
                                IsCategorized="True"
                                SelectedObject="{Binding }"
-                               ShowTitle="False" Background="#FFDDDDDD" Foreground="Black"
+                               ShowTitle="False" Background="#FFDDDDDD" Foreground="Black" 
                                />
         </Grid>
 

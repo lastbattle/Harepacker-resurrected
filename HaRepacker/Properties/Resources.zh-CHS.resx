@@ -117,301 +117,298 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-<data name="AnimCompatMessage" xml:space="preserve">
-  <value>您的浏览器或图像查看器太旧，无法查看此图像。请下载较新的浏览器，如Firefox。</value>
-</data>
-<data name="AnimError" xml:space="preserve">
-  <value>动画生成器出错，帧 {0}</value>
-</data>
-<data name="ApngFilter" xml:space="preserve">
-  <value>动画便携式网络图形 (*.png)</value>
-</data>
-<data name="EditFoothold" xml:space="preserve">
-  <value>立足点</value>
-</data>
-<data name="EditPortal" xml:space="preserve">
-  <value>传送门</value>
-</data>
-<data name="EditSP" xml:space="preserve">
-  <value>怪物刷新点</value>
-</data>
-<data name="EncTypeGMS" xml:space="preserve">
-  <value>全球冒险岛 (旧)</value>
-</data>
-<data name="EncTypeMSEA" xml:space="preserve">
-  <value>MSEA/ EMS/ 台湾 (旧)</value>
-</data>
-<data name="EncTypeNone" xml:space="preserve">
-  <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
-</data>
-<data name="EnterValidInput" xml:space="preserve">
-  <value>请输入有效的内容</value>
-</data>
-<data name="Error" xml:space="preserve">
-  <value>错误</value>
-</data>
-<data name="FHMapperInvalidInput" xml:space="preserve">
-  <value>输入无效。</value>
-</data>
-<data name="FHSettingsForceValue" xml:space="preserve">
-  <value>力值</value>
-</data>
-<data name="FHSettingsInvalidMessage" xml:space="preserve">
-  <value>{0}无效。</value>
-</data>
-<data name="FHSettingsNextValue" xml:space="preserve">
-  <value>下一个值</value>
-</data>
-<data name="FHSettingsPortalValue" xml:space="preserve">
-  <value>传送门类型值</value>
-</data>
-<data name="FHSettingsPrevValue" xml:space="preserve">
-  <value>前一个值</value>
-</data>
-<data name="FHSettingsXValue" xml:space="preserve">
-  <value>X值</value>
-</data>
-<data name="FHSettingsYValue" xml:space="preserve">
-  <value>Y值</value>
-</data>
-<data name="ImagesFilter" xml:space="preserve">
-  <value>图像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
-</data>
-<data name="InteractionWzMapleVersionInfo" xml:space="preserve">
-  <value>选择要使用的WZ加密：</value>
-</data>
-<data name="InteractionWzMapleVersionTitle" xml:space="preserve">
-  <value>WZ加密</value>
-</data>
-<data name="MainAddCanvas" xml:space="preserve">
-  <value>添加画布</value>
-</data>
-<data name="MainAddConvex" xml:space="preserve">
-  <value>添加凸形</value>
-</data>
-<data name="MainAddDir" xml:space="preserve">
-  <value>添加目录</value>
-</data>
-<data name="MainAddDouble" xml:space="preserve">
-  <value>添加双精度浮点数</value>
-</data>
-<data name="MainAddFloat" xml:space="preserve">
-  <value>添加浮点数</value>
-</data>
-<data name="MainAddImg" xml:space="preserve">
-  <value>添加图像</value>
-</data>
-<data name="MainAddInt" xml:space="preserve">
-  <value>添加整数</value>
-</data>
-<data name="MainAdditionalInfo_PortalType" xml:space="preserve">
-  <value>传送门类型：{0}</value>
-</data>
-<data name="MainAddLink" xml:space="preserve">
-  <value>添加链接</value>
-</data>
-<data name="MainAddNull" xml:space="preserve">
-  <value>添加空值</value>
-</data>
-<data name="MainAddShort" xml:space="preserve">
-  <value>添加短整数</value>
-</data>
-<data name="MainAddSound" xml:space="preserve">
-  <value>添加声音</value>
-</data>
-<data name="MainAddString" xml:space="preserve">
-  <value>添加字符串</value>
-</data>
-<data name="MainAddSub" xml:space="preserve">
-  <value>添加子项</value>
-</data>
-<data name="MainAddTabTitle" xml:space="preserve">
-  <value>添加标签</value>
-</data>
-<data name="MainAddVec" xml:space="preserve">
-  <value>添加向量</value>
-</data>
-<data name="MainCannotInsertToNode" xml:space="preserve">
-  <value>无法将选定的对象插入到这种类型的wz节点中。</value>
-</data>
-<data name="MainConfirmAbort" xml:space="preserve">
-  <value>您确定要中止当前操作吗？</value>
-</data>
-<data name="MainConfirmCopy" xml:space="preserve">
-  <value>将WZ节点复制到剪贴板？（警告 - 如果选择了许多节点，可能需要很长时间）</value>
-</data>
-<data name="MainConfirmExit" xml:space="preserve">
-  <value>您确定要退出吗？</value>
-</data>
-<data name="MainConfirmPaste" xml:space="preserve">
-  <value>从剪贴板粘贴WZ节点？（警告 - 如果粘贴了许多节点，可能需要很长时间）</value>
-</data>
-<data name="MainConfirmRemove" xml:space="preserve">
-  <value>您确定要删除这个吗？</value>
-</data>
-<data name="MainConfirmRemoveNode" xml:space="preserve">
-  <value>您确定要删除这个节点吗？</value>
-</data>
-<data name="MainConfirmRename" xml:space="preserve">
-  <value>重命名</value>
-</data>
-<data name="MainConversionError" xml:space="preserve">
-  <value>无法将"{0}"转换为所需的类型</value>
-</data>
-<data name="MainCopyDirError" xml:space="preserve">
-  <value>您不能复制目录，因为它们需要太多内存</value>
-</data>
-<data name="MainCouldntOpenWZ" xml:space="preserve">
-  <value>无法打开WZ文件"{0}"</value>
-</data>
-<data name="MainErrorImportingWzImageFile" xml:space="preserve">
-  <value>导入{0}.img文件时出错。您确定选择了正确的WZ加密吗？</value>
-</data>
-<data name="MainFileOpenFail" xml:space="preserve">
-  <value>无法打开/保存到指定的文件路径。请以管理员身份运行。</value>
-</data>
-<data name="MainHelpOpenFail" xml:space="preserve">
-  <value>无法显示帮助，因为找不到帮助文件（{0}）</value>
-</data>
-<data name="MainImageLoadError" xml:space="preserve">
-  <value>无法加载图像</value>
-</data>
-<data name="MainInvalidFileError" xml:space="preserve">
-  <value>文件"{0}"无效，将被跳过。错误：{1}</value>
-</data>
-<data name="MainListWzDetected" xml:space="preserve">
-  <value>在{0}的文件是List.wz文件，将被跳过。</value>
-</data>
-<data name="MainNodeExists" xml:space="preserve">
-  <value>已存在具有该名称的节点。请选择一个不同的名称</value>
-</data>
-<data name="MainReloadAll" xml:space="preserve">
-  <value>您确定要重新加载所有文件吗？</value>
-</data>
-<data name="MainSelectWzFolder" xml:space="preserve">
-  <value>请选择要保存的WZ文件</value>
-</data>
-<data name="MainTreeAddDirError" xml:space="preserve">
-  <value>找不到父WzFile来添加这个WzDirectoryProperty。</value>
-</data>
-<data name="MainTreeEnd" xml:space="preserve">
-  <value>已到达树的末端</value>
-</data>
-<data name="MainUnloadAll" xml:space="preserve">
-  <value>您确定要卸载所有文件吗？</value>
-</data>
-<data name="MainUpdateAvailable" xml:space="preserve">
-  <value>{0}</value>
-</data>
-<data name="MainUpdateTitle" xml:space="preserve">
-  <value>新版本</value>
-</data>
-<data name="MainWzExportError" xml:space="preserve">
-  <value>找不到导出目录。请在工具 -> 选项中指定它</value>
-</data>
-<data name="Mp3Filter" xml:space="preserve">
-  <value>MPEG-1音频层3 (*.mp3)</value>
-</data>
-<data name="OptionsIndentError" xml:space="preserve">
-  <value>缩进必须大于0</value>
-</data>
-<data name="ReplaceConfirm" xml:space="preserve">
-  <value>节点"{0}"已存在。您想替换它吗？</value>
-</data>
-<data name="SaveVersionError" xml:space="preserve">
-  <value>版本必须大于0</value>
-</data>
-<data name="SelectDefaultXmlFolder" xml:space="preserve">
-  <value>选择默认XML文件夹</value>
-</data>
-<data name="SelectImage" xml:space="preserve">
-  <value>选择图像</value>
-</data>
-<data name="SelectionType" xml:space="preserve">
-  <value>选择类型：{0}</value>
-</data>
-<data name="SelectMp3" xml:space="preserve">
-  <value>选择MP3文件</value>
-</data>
-<data name="SelectOutApng" xml:space="preserve">
-  <value>选择保存动画的位置</value>
-</data>
-<data name="SelectOutDir" xml:space="preserve">
-  <value>选择输出目录</value>
-</data>
-<data name="SelectOutWz" xml:space="preserve">
-  <value>选择保存文件的位置</value>
-</data>
-<data name="SelectOutXml" xml:space="preserve">
-  <value>选择保存XML的位置</value>
-</data>
-<data name="SelectWz" xml:space="preserve">
-  <value>选择WZ文件</value>
-</data>
-<data name="SelectWzImg" xml:space="preserve">
-  <value>选择IMG文件</value>
-</data>
-<data name="SelectXml" xml:space="preserve">
-  <value>选择XML文件</value>
-</data>
-<data name="Warning" xml:space="preserve">
-  <value>警告</value>
-</data>
-<data name="WzFilter" xml:space="preserve">
-  <value>WZ文件 (*.wz)</value>
-</data>
-<data name="WzImgFilter" xml:space="preserve">
-  <value>WZ图像文件 (*.img)</value>
-</data>
-<data name="XmlFilter" xml:space="preserve">
-  <value>可扩展标记语言 (*.xml)</value>
-</data>
-<data name="Subpanel_Loading" xml:space="preserve">
-  <value>加载中</value>
-</data>
-<data name="ExecutingAssemblyError" xml:space="preserve">
-  <value>这只在HaRepacker的x86版本下可用，请获取替代版本。</value>
-</data>
-<data name="EncTypeCustom" xml:space="preserve">
-  <value>使用自定义加密</value>
-</data>
-<data name="EncTypeGenerate" xml:space="preserve">
-  <value>暴力破解AES密钥（生成）</value>
-</data>
-<data name="RelativeTime_DaysAgo" xml:space="preserve">
-  <value>{0} 天前</value>
-</data>
-<data name="RelativeTime_HoursAgo" xml:space="preserve">
-  <value>{0} 小时前</value>
-</data>
-<data name="RelativeTime_MinutesAgo" xml:space="preserve">
-  <value>{0} 分钟前</value>
-</data>
-<data name="RelativeTime_MonthsAgo" xml:space="preserve">
-  <value>{0} 个月前</value>
-</data>
-<data name="RelativeTime_SecondsAgo" xml:space="preserve">
-  <value>{0} 秒前</value>
-</data>
-<data name="RelativeTime_YearsAgo" xml:space="preserve">
-  <value>{0} 年前</value>
-</data>
-<data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
-  <value>您想在JSON中包含图像、MP3和其他二进制数据的base64数据吗？</value>
-</data>
-<data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
-  <value>数据</value>
-</data>
-<data name="MainContextMenu_Batch" xml:space="preserve">
-  <value>批处理</value>
-</data>
-<data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
-  <value>图像放大</value>
-</data>
-<data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
-  <value>修复旧版冒险岛的'_inlink'、'_outlink'节点</value>
-</data>
-<data name="MainContextMenu_Batch_AIUpscaleImage_QualityOnly" xml:space="preserve">
-  <value>仅质量</value>
-</data>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>您的浏览器或图像查看器太旧，无法查看此图像。请下载较新的浏览器，如Firefox。</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>动画生成器出错，帧 {0}</value>
+  </data>
+  <data name="ApngFilter" xml:space="preserve">
+    <value>动画便携式网络图形 (*.png)</value>
+  </data>
+  <data name="EditFoothold" xml:space="preserve">
+    <value>立足点</value>
+  </data>
+  <data name="EditPortal" xml:space="preserve">
+    <value>传送门</value>
+  </data>
+  <data name="EditSP" xml:space="preserve">
+    <value>怪物刷新点</value>
+  </data>
+  <data name="EncTypeGMS" xml:space="preserve">
+    <value>全球冒险岛 (旧)</value>
+  </data>
+  <data name="EncTypeMSEA" xml:space="preserve">
+    <value>MSEA/ EMS/ 台湾 (旧)</value>
+  </data>
+  <data name="EncTypeNone" xml:space="preserve">
+    <value>BMS / GMS / MapleSEA / メイプルストーリー / 메이플스토리</value>
+  </data>
+  <data name="EnterValidInput" xml:space="preserve">
+    <value>请输入有效的内容</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="FHMapperInvalidInput" xml:space="preserve">
+    <value>输入无效。</value>
+  </data>
+  <data name="FHSettingsForceValue" xml:space="preserve">
+    <value>力值</value>
+  </data>
+  <data name="FHSettingsInvalidMessage" xml:space="preserve">
+    <value>{0}无效。</value>
+  </data>
+  <data name="FHSettingsNextValue" xml:space="preserve">
+    <value>下一个值</value>
+  </data>
+  <data name="FHSettingsPortalValue" xml:space="preserve">
+    <value>传送门类型值</value>
+  </data>
+  <data name="FHSettingsPrevValue" xml:space="preserve">
+    <value>前一个值</value>
+  </data>
+  <data name="FHSettingsXValue" xml:space="preserve">
+    <value>X值</value>
+  </data>
+  <data name="FHSettingsYValue" xml:space="preserve">
+    <value>Y值</value>
+  </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>图像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  </data>
+  <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
+    <value>选择要使用的WZ加密：</value>
+  </data>
+  <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
+    <value>WZ加密</value>
+  </data>
+  <data name="MainAddCanvas" xml:space="preserve">
+    <value>添加画布</value>
+  </data>
+  <data name="MainAddConvex" xml:space="preserve">
+    <value>添加凸形</value>
+  </data>
+  <data name="MainAddDir" xml:space="preserve">
+    <value>添加目录</value>
+  </data>
+  <data name="MainAddDouble" xml:space="preserve">
+    <value>添加双精度浮点数</value>
+  </data>
+  <data name="MainAddFloat" xml:space="preserve">
+    <value>添加浮点数</value>
+  </data>
+  <data name="MainAddImg" xml:space="preserve">
+    <value>添加图像</value>
+  </data>
+  <data name="MainAddInt" xml:space="preserve">
+    <value>添加整数</value>
+  </data>
+  <data name="MainAdditionalInfo_PortalType" xml:space="preserve">
+    <value>传送门类型：{0}</value>
+  </data>
+  <data name="MainAddLink" xml:space="preserve">
+    <value>添加链接</value>
+  </data>
+  <data name="MainAddNull" xml:space="preserve">
+    <value>添加空值</value>
+  </data>
+  <data name="MainAddShort" xml:space="preserve">
+    <value>添加短整数</value>
+  </data>
+  <data name="MainAddSound" xml:space="preserve">
+    <value>添加声音</value>
+  </data>
+  <data name="MainAddString" xml:space="preserve">
+    <value>添加字符串</value>
+  </data>
+  <data name="MainAddSub" xml:space="preserve">
+    <value>添加子项</value>
+  </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>添加标签</value>
+  </data>
+  <data name="MainAddVec" xml:space="preserve">
+    <value>添加向量</value>
+  </data>
+  <data name="MainCannotInsertToNode" xml:space="preserve">
+    <value>无法将选定的对象插入到这种类型的wz节点中。</value>
+  </data>
+  <data name="MainConfirmAbort" xml:space="preserve">
+    <value>您确定要中止当前操作吗？</value>
+  </data>
+  <data name="MainConfirmCopy" xml:space="preserve">
+    <value>将WZ节点复制到剪贴板？（警告 - 如果选择了许多节点，可能需要很长时间）</value>
+  </data>
+  <data name="MainConfirmExit" xml:space="preserve">
+    <value>您确定要退出吗？</value>
+  </data>
+  <data name="MainConfirmPaste" xml:space="preserve">
+    <value>从剪贴板粘贴WZ节点？（警告 - 如果粘贴了许多节点，可能需要很长时间）</value>
+  </data>
+  <data name="MainConfirmRemove" xml:space="preserve">
+    <value>您确定要删除这个吗？</value>
+  </data>
+  <data name="MainConfirmRemoveNode" xml:space="preserve">
+    <value>您确定要删除这个节点吗？</value>
+  </data>
+  <data name="MainConfirmRename" xml:space="preserve">
+    <value>重命名</value>
+  </data>
+  <data name="MainConversionError" xml:space="preserve">
+    <value>无法将"{0}"转换为所需的类型</value>
+  </data>
+  <data name="MainCopyDirError" xml:space="preserve">
+    <value>您不能复制目录，因为它们需要太多内存</value>
+  </data>
+  <data name="MainCouldntOpenWZ" xml:space="preserve">
+    <value>无法打开WZ文件"{0}"</value>
+  </data>
+  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
+    <value>导入{0}.img文件时出错。您确定选择了正确的WZ加密吗？</value>
+  </data>
+  <data name="MainFileOpenFail" xml:space="preserve">
+    <value>无法打开/保存到指定的文件路径。请以管理员身份运行。</value>
+  </data>
+  <data name="MainHelpOpenFail" xml:space="preserve">
+    <value>无法显示帮助，因为找不到帮助文件（{0}）</value>
+  </data>
+  <data name="MainImageLoadError" xml:space="preserve">
+    <value>无法加载图像</value>
+  </data>
+  <data name="MainInvalidFileError" xml:space="preserve">
+    <value>文件"{0}"无效，将被跳过。错误：{1}</value>
+  </data>
+  <data name="MainListWzDetected" xml:space="preserve">
+    <value>在{0}的文件是List.wz文件，将被跳过。</value>
+  </data>
+  <data name="MainNodeExists" xml:space="preserve">
+    <value>已存在具有该名称的节点。请选择一个不同的名称</value>
+  </data>
+  <data name="MainReloadAll" xml:space="preserve">
+    <value>您确定要重新加载所有文件吗？</value>
+  </data>
+  <data name="MainSelectWzFolder" xml:space="preserve">
+    <value>请选择要保存的WZ文件</value>
+  </data>
+  <data name="MainTreeAddDirError" xml:space="preserve">
+    <value>找不到父WzFile来添加这个WzDirectoryProperty。</value>
+  </data>
+  <data name="MainTreeEnd" xml:space="preserve">
+    <value>已到达树的末端</value>
+  </data>
+  <data name="MainUnloadAll" xml:space="preserve">
+    <value>您确定要卸载所有文件吗？</value>
+  </data>
+  <data name="MainUpdateAvailable" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="MainUpdateTitle" xml:space="preserve">
+    <value>新版本</value>
+  </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>找不到导出目录。请在工具 -&gt; 选项中指定它</value>
+  </data>
+  <data name="Mp3Filter" xml:space="preserve">
+    <value>MPEG-1音频层3 (*.mp3)</value>
+  </data>
+  <data name="OptionsIndentError" xml:space="preserve">
+    <value>缩进必须大于0</value>
+  </data>
+  <data name="ReplaceConfirm" xml:space="preserve">
+    <value>节点"{0}"已存在。您想替换它吗？</value>
+  </data>
+  <data name="SaveVersionError" xml:space="preserve">
+    <value>版本必须大于0</value>
+  </data>
+  <data name="SelectDefaultXmlFolder" xml:space="preserve">
+    <value>选择默认XML文件夹</value>
+  </data>
+  <data name="SelectImage" xml:space="preserve">
+    <value>选择图像</value>
+  </data>
+  <data name="SelectMp3" xml:space="preserve">
+    <value>选择MP3文件</value>
+  </data>
+  <data name="SelectOutApng" xml:space="preserve">
+    <value>选择保存动画的位置</value>
+  </data>
+  <data name="SelectOutDir" xml:space="preserve">
+    <value>选择输出目录</value>
+  </data>
+  <data name="SelectOutWz" xml:space="preserve">
+    <value>选择保存文件的位置</value>
+  </data>
+  <data name="SelectOutXml" xml:space="preserve">
+    <value>选择保存XML的位置</value>
+  </data>
+  <data name="SelectWz" xml:space="preserve">
+    <value>选择WZ文件</value>
+  </data>
+  <data name="SelectWzImg" xml:space="preserve">
+    <value>选择IMG文件</value>
+  </data>
+  <data name="SelectXml" xml:space="preserve">
+    <value>选择XML文件</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="WzFilter" xml:space="preserve">
+    <value>WZ文件 (*.wz)</value>
+  </data>
+  <data name="WzImgFilter" xml:space="preserve">
+    <value>WZ图像文件 (*.img)</value>
+  </data>
+  <data name="XmlFilter" xml:space="preserve">
+    <value>可扩展标记语言 (*.xml)</value>
+  </data>
+  <data name="Subpanel_Loading" xml:space="preserve">
+    <value>加载中</value>
+  </data>
+  <data name="ExecutingAssemblyError" xml:space="preserve">
+    <value>这只在HaRepacker的x86版本下可用，请获取替代版本。</value>
+  </data>
+  <data name="EncTypeCustom" xml:space="preserve">
+    <value>使用自定义加密</value>
+  </data>
+  <data name="EncTypeGenerate" xml:space="preserve">
+    <value>暴力破解AES密钥（生成）</value>
+  </data>
+  <data name="RelativeTime_DaysAgo" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="RelativeTime_HoursAgo" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="RelativeTime_MinutesAgo" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="RelativeTime_MonthsAgo" xml:space="preserve">
+    <value>{0} 个月前</value>
+  </data>
+  <data name="RelativeTime_SecondsAgo" xml:space="preserve">
+    <value>{0} 秒前</value>
+  </data>
+  <data name="RelativeTime_YearsAgo" xml:space="preserve">
+    <value>{0} 年前</value>
+  </data>
+  <data name="MainWzExportJson_IncludeBase64" xml:space="preserve">
+    <value>您想在JSON中包含图像、MP3和其他二进制数据的base64数据吗？</value>
+  </data>
+  <data name="MainWzExportJson_IncludeBase64_Title" xml:space="preserve">
+    <value>数据</value>
+  </data>
+  <data name="MainContextMenu_Batch" xml:space="preserve">
+    <value>批处理</value>
+  </data>
+  <data name="MainContextMenu_Batch_AIUpscaleImage" xml:space="preserve">
+    <value>图像放大</value>
+  </data>
+  <data name="MainContextMenu_Batch_EditInlink" xml:space="preserve">
+    <value>修复旧版冒险岛的'_inlink'、'_outlink'节点</value>
+  </data>
+  <data name="MainContextMenu_Batch_AIUpscaleImage_QualityOnly" xml:space="preserve">
+    <value>仅质量</value>
+  </data>
 </root>

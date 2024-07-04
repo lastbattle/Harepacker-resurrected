@@ -8,11 +8,11 @@ using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaSharedLibrary.GUI
 {
+
     public partial class FieldLimitPanel : UserControl
     {
-        // UI
-        private TextBox setTextboxOnFieldLimitChange = null;
-        private ChangeableTextBox setTextboxOnFieldLimitChange_wpf = null;
+        // Event handler
+        public event EventHandler<FieldLimitChangedEventArgs> FieldLimitChanged;
 
         // misc
         private bool initializingListViewForFieldLimit = false;
@@ -37,14 +37,6 @@ namespace HaSharedLibrary.GUI
             PopulateDefaultListView();
         }
 
-        public void SetTextboxOnFieldLimitChange(TextBox setTextboxOnFieldLimitChange)
-        {
-            this.setTextboxOnFieldLimitChange = setTextboxOnFieldLimitChange;
-        }
-        public void SetTextboxOnFieldLimitChange(ChangeableTextBox setTextboxOnFieldLimitChange_wpf)
-        {
-            this.setTextboxOnFieldLimitChange_wpf = setTextboxOnFieldLimitChange_wpf;
-        }
 
         /// <summary>
         /// Update the checkboxes upon selection of a 'fieldLimit' WzIntProperty
@@ -139,13 +131,15 @@ namespace HaSharedLibrary.GUI
                 }
             }
             //System.Diagnostics.Debug.WriteLine("Result " + fieldLimit);
-            if (setTextboxOnFieldLimitChange != null)
+        /*    if (setTextboxOnFieldLimitChange != null)
                 setTextboxOnFieldLimitChange.Text = fieldLimit.ToString();
             if (setTextboxOnFieldLimitChange_wpf != null)
                 setTextboxOnFieldLimitChange_wpf.Text = fieldLimit.ToString();
-
+        */
             // set value
             this._fieldLimit = fieldLimit;
+
+            FieldLimitChanged?.Invoke(this, new FieldLimitChangedEventArgs(this._fieldLimit));
         }
         #endregion
 

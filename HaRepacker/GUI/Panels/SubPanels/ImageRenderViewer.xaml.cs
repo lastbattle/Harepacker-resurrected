@@ -51,8 +51,7 @@ namespace HaRepacker.GUI.Panels.SubPanels
             }
 
             this.DataContext = _bindingPropertyItem; // set data binding
-            _bindingPropertyItem.PropertyChanged += ImgPropertyItem_PropertyChanged; // on propertygrid property changed
-
+            _bindingPropertyItem.PropertyChanged += ImgPropertyItem_PropertyChanged;
 
             Loaded += ImageRenderViewer_Loaded;
         }

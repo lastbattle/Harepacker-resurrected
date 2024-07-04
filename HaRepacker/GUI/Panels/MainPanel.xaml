@@ -3,15 +3,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             
+             xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
+             
              xmlns:local="clr-namespace:HaRepacker"
-
+             xmlns:converter="clr-namespace:HaRepacker.Converter"
              xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+             xmlns:guiControls="clr-namespace:HaRepacker.GUI.Controls"
               xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
-             xmlns:wf="clr-namespace:System.Windows.Forms;assembly=System.Windows.Forms"  
+             
+             xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
 
              mc:Ignorable="d" 
-             
              d:DesignHeight="661" d:DesignWidth="1599">
 
     <UserControl.Resources>
@@ -60,6 +65,8 @@
         <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
         <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
         <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+
+        <converter:BooleanToVisibilityConverter x:Key="booleanToVisibilityConverter"/>
 
         <Style x:Key="ButtonStyle_MoreOption" TargetType="{x:Type Button}">
             <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
@@ -130,6 +137,24 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style TargetType="{x:Type guiControls:PointFEditorControl}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type guiControls:PointFEditorControl}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="X:" Margin="0,0,2,0"/>
+                            <TextBox Text="{Binding PointF.X, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
+                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <TextBlock Text="Y:" Margin="5,0,2,0"/>
+                            <TextBox Text="{Binding PointF.Y, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
+                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        
         <Storyboard x:Key="Storyboard_TreeviewItemSelectedAnimation">
             <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)" Storyboard.TargetName="button_MoreOption">
                 <EasingDoubleKeyFrame KeyTime="0:0:0.2" Value="1.5"/>
@@ -141,6 +166,7 @@
             </DoubleAnimationUsingKeyFrames>
         </Storyboard>
     </UserControl.Resources>
+    
     <UserControl.Triggers>
         <EventTrigger RoutedEvent="FrameworkElement.Loaded">
             <BeginStoryboard Storyboard="{StaticResource Storyboard_Find_FadeIn}"/>
@@ -226,13 +252,12 @@
                 <ItemsPanelTemplate>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="5" />
                             <ColumnDefinition Width="105" />
                             <ColumnDefinition Width="105" />
 
                             <ColumnDefinition Width="5" />
-                            
+
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="*" />
@@ -241,30 +266,26 @@
                 </ItemsPanelTemplate>
             </StatusBar.ItemsPanel>
 
-            <StatusBarItem Grid.Column="0">
-                <TextBlock x:Name="selectionLabel" Text="Selection Type: None" />
-            </StatusBarItem>
+            <Separator Grid.Column="0" />
 
-            <Separator Grid.Column="1" />
-
-            <StatusBarItem Grid.Column="2">
+            <StatusBarItem Grid.Column="1">
                 <ProgressBar x:Name="mainProgressBar" Height="15" Width="100"/>
             </StatusBarItem>
-            <StatusBarItem Grid.Column="3">
+            <StatusBarItem Grid.Column="2">
                 <ProgressBar x:Name="secondaryProgressBar" Height="15" Width="100"/>
             </StatusBarItem>
 
-            <Separator x:Name="separator" Grid.Column="4" />
+            <Separator x:Name="separator" Grid.Column="3" />
 
-            <StatusBarItem Grid.Column="5">
+            <StatusBarItem Grid.Column="4">
                 <TextBlock x:Name="toolStripStatusLabel_debugMode" Width="90" Text="DEBUG MODE"/>
             </StatusBarItem>
 
-            <StatusBarItem Grid.Column="6">
+            <StatusBarItem Grid.Column="5">
                 <TextBlock x:Name="toolStripStatusLabel_additionalInfo" Text="-"/>
             </StatusBarItem>
 
-            <StatusBarItem Grid.Column="7" HorizontalAlignment="Right">
+            <StatusBarItem Grid.Column="6" HorizontalAlignment="Right">
                 <TextBlock x:Name="statusBarItemLabel_Others" Text="-" Margin="0,0,30,0"/>
             </StatusBarItem>
         </StatusBar>
@@ -281,6 +302,7 @@
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="300"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
@@ -292,8 +314,30 @@
                                       DoubleClick="DataTree_DoubleClick"/>
                 </WindowsFormsHost>
 
+                <xctk:PropertyGrid x:Name="propertyGrid" 
+                           Grid.Row="1"
+                               IsCategorized="True"
+                               SelectedObject="{Binding }"
+                               ShowTitle="False" Background="#FFDDDDDD" Foreground="Black">
+                    <xctk:PropertyGrid.EditorDefinitions>
+                        <xctk:EditorTemplateDefinition TargetProperties="WzFileValue">
+                            <xctk:EditorTemplateDefinition.EditingTemplate>
+                                <DataTemplate>
+                                    <!--<TextBox Text="{Binding Value}" IsReadOnly="{Binding Path=Value.IsReadOnly,  RelativeSource={RelativeSource AncestorType=xctk:PropertyItem}}"/> -->
+                                    <!--Visibility="{Binding DataContext.IsWzValueReadOnly, RelativeSource={RelativeSource AncestorType=xctk:PropertyGrid}, Converter={StaticResource booleanToVisibilityConverter}}"-->
+                                    <TextBox 
+                                        Text="{Binding Value}" 
+                                        IsReadOnly="{Binding DataContext.IsWzValueReadOnly, RelativeSource={RelativeSource AncestorType=xctk:PropertyGrid}}"
+                                        BorderBrush="Transparent"
+                                        />
+                                </DataTemplate>
+                            </xctk:EditorTemplateDefinition.EditingTemplate>
+                        </xctk:EditorTemplateDefinition>
+                    </xctk:PropertyGrid.EditorDefinitions>
+                </xctk:PropertyGrid>
+
                 <!-- Find panel -->
-                <Grid x:Name="grid_FindPanel" Grid.Row="1" Grid.RowSpan="2" Opacity="1"
+                <Grid x:Name="grid_FindPanel" Grid.Row="2" Grid.RowSpan="2" Opacity="1"
                       Margin="0,0,0,0" Background="White" Height="40" VerticalAlignment="Top"
                       Visibility="Collapsed" RenderTransformOrigin="0.5,0.5">
                     <Grid.RenderTransform>
@@ -338,7 +382,6 @@
             <Grid x:Name="grid" Grid.Column="2" Background="#FFF1F1F1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="40"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
@@ -346,15 +389,7 @@
                     <ColumnDefinition Width="0.5*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Text box -->
-                <sharedLib:ChangeableTextBox x:Name="nameBox" Grid.Row="0"
-                                                  AcceptsReturn="False" Margin="20,0,20,0"
-                                                      ButtonClicked="nameBox_ButtonClicked"/>
-                <sharedLib:ChangeableTextBox x:Name="textPropBox" Grid.Row="1" Height="40"
-                                                  TextWrap="Wrap" Margin="20,0,20,0" />
-
-
-                <Grid x:Name="grid1" Grid.Row="2" Grid.RowSpan="2" Grid.ColumnSpan="2">
+                <Grid x:Name="grid1" Grid.Row="0" Grid.RowSpan="2" Grid.ColumnSpan="2">
                     <!-- Map.wz/../fieldLimit-->
                     <WindowsFormsHost x:Name="fieldLimitPanelHost" Visibility="Collapsed" Margin="0,37,0,0">
                         <sharedLib:FieldLimitPanel x:Name="fieldLimitPanel1" />
@@ -363,7 +398,8 @@
                     <!-- Map.wz/../fieldType -->
                     <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
 
-                    <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"/>
+                    <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"
+                                             ButtonClicked="VectorPanel_ButtonClicked"/>
 
                     <sharedLib:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 
@@ -431,7 +467,4 @@
         </Grid>
 
     </DockPanel>
-
-
-
 </UserControl>
