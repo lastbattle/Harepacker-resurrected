@@ -148,7 +148,7 @@ namespace HaRepacker.GUI.Panels
             {
                 return;
             }
-            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag);
+            ShowObjectValue((WzObject)DataTree.SelectedNode.Tag, Get_bindingPropertyItem());
 
             _bindingPropertyItem.WzFileType = ((WzNode)DataTree.SelectedNode).GetTypeName();
             //selectionLabel.Text = string.Format(Properties.Resources.SelectionType, ((WzNode)DataTree.SelectedNode).GetTypeName());
@@ -707,17 +707,6 @@ namespace HaRepacker.GUI.Panels
         #endregion
 
         #region Buttons
-        /// <summary>
-        /// On vector panel 'apply' button clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void VectorPanel_ButtonClicked(object sender, EventArgs e)
-        {
-            //applyChangesButton_Click(null, null);
-            // TODO
-        }
-
         /// <summary>
         /// On texteditor save button clicked
         /// </summary>
@@ -1587,6 +1576,10 @@ namespace HaRepacker.GUI.Panels
                 bPasteTaskActive = false;
             }
         }
+
+        private MainPanelPropertyItems Get_bindingPropertyItem() {
+            return _bindingPropertyItem;
+        }
         #endregion
 
         #region UI layout
@@ -1594,7 +1587,7 @@ namespace HaRepacker.GUI.Panels
         /// Shows the selected data treeview object to UI
         /// </summary>
         /// <param name="obj"></param>
-        private void ShowObjectValue(WzObject obj)
+        private void ShowObjectValue(WzObject obj, MainPanelPropertyItems _bindingPropertyItem)
         {
             if (obj.WzFileParent != null && obj.WzFileParent.IsUnloaded) // this WZ is already unloaded from memory, dont attempt to display it (when the user clicks "reload" button while selection is on that)
                 return;
@@ -1642,9 +1635,9 @@ namespace HaRepacker.GUI.Panels
                 // Canvas collapsed state
                 canvasPropBox.Visibility = Visibility.Collapsed;
 
-                // Value
+                // Value`
                 _bindingPropertyItem.WzFileValue = string.Empty;
-                _bindingPropertyItem.ChangeReadOnlyAttribute(true, "WzFileValue");
+                _bindingPropertyItem.ChangeReadOnlyAttribute(true, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue);
 
                 // Field limit panel Map.wz/../fieldLimit
                 fieldLimitPanelHost.Visibility = Visibility.Collapsed;
@@ -1652,7 +1645,8 @@ namespace HaRepacker.GUI.Panels
                 fieldTypePanel.Visibility = Visibility.Collapsed;
 
                 // Vector panel
-                vectorPanel.Visibility = Visibility.Collapsed;
+                //_bindingPropertyItem.XYVector = new NotifyPointF(0, 0);
+                _bindingPropertyItem.ChangeReadOnlyAttribute(true, _bindingPropertyItem, o => o.IsXYPanelReadOnly, o => o.XYVector);
 
                 // Avalon Text editor
                 textEditor.Visibility = Visibility.Collapsed;
@@ -1730,7 +1724,7 @@ namespace HaRepacker.GUI.Panels
                     // Value
                     // set wz file value binding
                     _bindingPropertyItem.WzFileValue = obj.ToString();
-                    _bindingPropertyItem.ChangeReadOnlyAttribute(false, "WzFileValue"); // can be changed
+                    _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // can be changed
                 }
                 else if (bIsWzSoundProperty) {
                     bAnimateMoreButton = true; // flag
@@ -1791,7 +1785,7 @@ namespace HaRepacker.GUI.Panels
                         else {
                             // Value
                             _bindingPropertyItem.WzFileValue = obj.ToString();
-                            _bindingPropertyItem.ChangeReadOnlyAttribute(false, "WzFileValue"); // can be changed
+                            _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // can be changed
 
                             if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                             {
@@ -1830,7 +1824,7 @@ namespace HaRepacker.GUI.Panels
                             fieldLimitPanel1.UpdateFieldLimitCheckboxes(value_);
 
                             _bindingPropertyItem.WzFileValue = value_.ToString();
-                            _bindingPropertyItem.ChangeReadOnlyAttribute(true, "WzFileValue"); // dont allow user to change fieldLimit manually
+                            _bindingPropertyItem.ChangeReadOnlyAttribute(true, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // dont allow user to change fieldLimit manually
 
                             // Set visibility
                             fieldLimitPanelHost.Visibility = Visibility.Visible;
@@ -1847,11 +1841,11 @@ namespace HaRepacker.GUI.Panels
                                 value_ = ((WzShortProperty)obj).GetLong();
                             }
                             _bindingPropertyItem.WzFileValue = value_.ToString();
-                            _bindingPropertyItem.ChangeReadOnlyAttribute(false, "WzFileValue"); // can be changed
+                            _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // can be changed
                         }
                     }
                     else if (bIsWzDoubleProperty || bIsWzFloatProperty) {
-                        _bindingPropertyItem.ChangeReadOnlyAttribute(false, "WzFileValue"); // can be changed
+                        _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsWzValueReadOnly, o => o.WzFileValue); // can be changed
 
                         if (bIsWzFloatProperty) {
                             _bindingPropertyItem.WzFileValue = ((WzFloatProperty)obj).GetFloat().ToString();
@@ -1866,10 +1860,10 @@ namespace HaRepacker.GUI.Panels
                     }
                 }
                 else if (obj is WzVectorProperty property) {
-                    vectorPanel.Visibility = Visibility.Visible;
+                    _bindingPropertyItem.XYVector.X = property.X.Value;
+                    _bindingPropertyItem.XYVector.Y = property.Y.Value;
 
-                    vectorPanel.X = property.X.Value;
-                    vectorPanel.Y = property.Y.Value;
+                    _bindingPropertyItem.ChangeReadOnlyAttribute(false, _bindingPropertyItem, o => o.IsXYPanelReadOnly, o => o.XYVector);
                 }
                 else {
                 }
@@ -1964,6 +1958,7 @@ namespace HaRepacker.GUI.Panels
                             Warning.Error(Properties.Resources.MainNodeExists);
                         break;
                     }
+                case "XYVector":
                 case "WzFileValue": {
                         if (DataTree.SelectedNode == null)
                             return;
@@ -1976,8 +1971,8 @@ namespace HaRepacker.GUI.Panels
                         WzObject obj = (WzObject)DataTree.SelectedNode.Tag;
 
                         if (obj is WzVectorProperty vectorProperty) {
-                            vectorProperty.X.Value = vectorPanel.X;
-                            vectorProperty.Y.Value = vectorPanel.Y;
+                            vectorProperty.X.Value = (int) _bindingPropertyItem.XYVector.X;
+                            vectorProperty.Y.Value = (int) _bindingPropertyItem.XYVector.Y;
 
                             bChangedNode = true;
                         }

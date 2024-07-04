@@ -138,21 +138,31 @@
             </Setter>
         </Style>
 
+ 
         <Style TargetType="{x:Type guiControls:PointFEditorControl}">
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type guiControls:PointFEditorControl}">
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding DataContext.IsXYPanelReadOnly, RelativeSource={RelativeSource AncestorType=xctk:PropertyGrid},Converter={StaticResource booleanToVisibilityConverter}}">
                             <TextBlock Text="X:" Margin="0,0,2,0"/>
                             <TextBox Text="{Binding PointF.X, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
-                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                Width="40"/>
                             <TextBlock Text="Y:" Margin="5,0,2,0"/>
                             <TextBox Text="{Binding PointF.Y, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" 
-                                Width="40" IsReadOnly="{Binding IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                Width="40"/>
                         </StackPanel>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DataContext.IsXYPanelReadOnly, RelativeSource={RelativeSource AncestorType=xctk:PropertyGrid}}" Value="True">
+                    <Setter Property="IsReadOnly" Value="True"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding DataContext.IsXYPanelReadOnly, RelativeSource={RelativeSource AncestorType=xctk:PropertyGrid}}" Value="False">
+                    <Setter Property="IsReadOnly" Value="False"/>
+                </DataTrigger>
+            </Style.Triggers>
+
         </Style>
         
         <Storyboard x:Key="Storyboard_TreeviewItemSelectedAnimation">
@@ -333,6 +343,8 @@
                                 </DataTemplate>
                             </xctk:EditorTemplateDefinition.EditingTemplate>
                         </xctk:EditorTemplateDefinition>
+
+                       
                     </xctk:PropertyGrid.EditorDefinitions>
                 </xctk:PropertyGrid>
 
@@ -397,9 +409,6 @@
 
                     <!-- Map.wz/../fieldType -->
                     <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
-
-                    <localSubPanels:XYPanel  x:Name="vectorPanel" Visibility="Collapsed"
-                                             ButtonClicked="VectorPanel_ButtonClicked"/>
 
                     <sharedLib:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
 

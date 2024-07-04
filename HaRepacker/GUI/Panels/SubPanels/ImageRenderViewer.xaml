@@ -485,6 +485,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        
         <Style x:Key="FocusVisual1">
             <Setter Property="Control.Template">
                 <Setter.Value>
