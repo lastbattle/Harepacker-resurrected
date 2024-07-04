@@ -1994,6 +1994,8 @@ namespace HaRepacker.GUI.Panels
                         if (bIsWzFile) {
                             ((WzFile)node.Tag).Header.Copyright = setText;
                             ((WzFile)node.Tag).Header.RecalculateFileStart();
+
+                            bChangedNode = true;
                         }
                         else if (obj is WzVectorProperty vectorProperty) {
                             vectorProperty.X.Value = (int) _bindingPropertyItem.XYVector.X;
