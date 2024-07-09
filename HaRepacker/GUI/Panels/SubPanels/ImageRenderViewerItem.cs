@@ -3,6 +3,7 @@ using HaRepacker.GUI.Controls;
 using HaSharedLibrary.Util;
 using MapleLib.Converters;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -165,6 +166,22 @@ namespace HaRepacker.GUI.Panels.SubPanels {
             set {
                 this._ImageSizeKiloByte = value;
                 OnPropertyChanged(nameof(ImageSizeKiloByte));
+            }
+        }
+
+        private SurfaceFormat _SurfaceFormat = SurfaceFormat.Color;
+        /// <summary>
+        /// The Size of the image currently displayed on the canvas
+        /// </summary>
+        [ReadOnly(true)] // This makes the Name property read-only
+        [DisplayName("Surface Format")]
+        [Description("The surface format of the image.")]
+        [Category(CATEGORY_IMAGEINFO)]
+        public SurfaceFormat SurfaceFormat {
+            get { return _SurfaceFormat; }
+            set {
+                this._SurfaceFormat = value;
+                OnPropertyChanged(nameof(SurfaceFormat));
             }
         }
         #endregion
