@@ -878,13 +878,10 @@
       <Version>3.8.0.1641</Version>
     </PackageReference>
     <PackageReference Include="NAudio">
-      <Version>2.1.0</Version>
+      <Version>2.2.1</Version>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json">
-      <Version>13.0.2</Version>
-    </PackageReference>
-    <PackageReference Include="OpenAI">
-      <Version>1.7.2</Version>
+      <Version>13.0.3</Version>
     </PackageReference>
     <PackageReference Include="SharpDX">
       <Version>4.2.0</Version>
