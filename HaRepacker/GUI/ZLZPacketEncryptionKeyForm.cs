@@ -74,7 +74,7 @@ namespace HaRepacker.GUI {
                 //MessageBox.Show("Read address: " + readAddress.ToString("X8"));
 
                 byte value = (byte)Marshal.ReadByte(readAddress);
-                sb.Append("(byte) 0x" + value.ToString("X") + ", (byte) 0x00, (byte) 0x00, (byte) 0x00");
+                sb.Append("(byte) 0x" + value.ToString("X"));
                 sb.Append(", ");
             }
             sb = sb.Remove(sb.Length - 2, 2);
