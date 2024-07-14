@@ -1233,7 +1233,7 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Select the WZ File.
+        ///   Looks up a localized string similar to Select WZ, or ZLZ.dll File.
         /// </summary>
         public static string SelectWz {
             get {

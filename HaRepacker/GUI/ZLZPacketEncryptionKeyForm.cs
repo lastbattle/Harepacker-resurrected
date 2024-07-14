@@ -1,9 +1,33 @@
-﻿using HaSharedLibrary.SystemInterop;
+﻿/*Copyright(c) 2024, LastBattle https://github.com/lastbattle/Harepacker-resurrected
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+
+using HaSharedLibrary.SystemInterop;
+using HaSharedLibrary.Util;
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -23,8 +47,10 @@ namespace HaRepacker.GUI {
         }
 
         #region 64Bit ZLZ
+
         /// <summary>
         /// Opens the ZLZ64.DLL file
+        /// https://forum.ragezone.com/threads/release-packet-encryption-key-for-64-bit-maplestory-in-disassembly.1230765/
         /// </summary>
         /// <returns></returns>
         public bool OpenZLZDllFile_64Bit(string filePath) {
@@ -43,30 +69,59 @@ namespace HaRepacker.GUI {
                 MessageBox.Show($"Unable to load DLL Library. Kernel32 GetLastError() : {lastError}", "Error");
             }
             else {
+                bool bError = true;
+                IntPtr func_setEncryptionKey = (IntPtr)0;
+                IntPtr encryptionKeyLoc = (IntPtr) 0;
+
                 try {
-                    System.IntPtr functionAddress = (System.IntPtr)(module.ToInt64() + 0x3A40); // sub_0000000180003A40
+                    var currentProcess = Process.GetCurrentProcess().Handle;
 
-                    var Method = Marshal.GetDelegateForFunctionPointer(functionAddress, typeof(ZLZGenerateKey.GenerateKey)) as ZLZGenerateKey.GenerateKey;
-                    Method();
+                    // The function where the keys are set
+                    // 83 3D AD 26 07 00 00 0F 85 4A 01 00 00 C7 05 D9 // MSEA 234
+                    // 83 3D ED 45 0D 00 00 0F 85 4A 01 00 00 C7 05 39 // KMS 
+                    const string SEARCH_PATTERN_SET_ENC = "83 3D ?? ?? ?? 00 00 0F 85 ?? 01 00 00 C7 ?? ?? ?? ?? ?? ??";
+                    func_setEncryptionKey = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, module.ToInt64(), module.ToInt64() + 0x10000, SEARCH_PATTERN_SET_ENC);
 
-                    ShowKey_64Bit(module, 0x74030);
-                    return true;
-                }
+                    // The location where the keys are set
+                    const string SEARCH_PATTERN_ENC_KEY = "13 00 00 00 52 00 00 00 2A 00 00 00";
+                    encryptionKeyLoc = MemoryScannerHelper.ScanCurrentProcessMemory(currentProcess, module.ToInt64(), module.ToInt64() + 0x100000, SEARCH_PATTERN_ENC_KEY);
+
+                    //MessageBox.Show(func_setEncryptionKey.ToString("X8"));
+
+                    if ((long)func_setEncryptionKey != 0) { // function for setting the encKey
+                        //System.IntPtr functionAddress = (System.IntPtr)(module.ToInt64() + 0x3A40); // sub_0000000180003A40
+
+                        var Method = Marshal.GetDelegateForFunctionPointer((IntPtr)func_setEncryptionKey, typeof(ZLZGenerateKey.GenerateKey)) as ZLZGenerateKey.GenerateKey;
+                        Method();
+
+                        ShowKey_64Bit(module, (int)(encryptionKeyLoc.ToInt64() - module.ToInt64()));//ShowKey_64Bit(module, 0x74030);
+                        bError = false;
+                    }                }
                 catch (Exception exp) {
                     MessageBox.Show($"Invalid KeyGen position. This version of MapleStory may be unsupported.\r\n{exp}", "Error");
                 }
                 finally {
                     kernel32.FreeLibrary(module);
                 }
+
+                if (bError) {
+                    MessageBox.Show(String.Format("Invalid KeyGen position. This version of MapleStory may be unsupported.\r\nfunc_setEncryptionKey = {0}, encryptionKeyLoc = {1}", func_setEncryptionKey.ToString("X8"), encryptionKeyLoc.ToString("X8")), "Error");
+                }
+                else
+                    return true;
             }
             return false;
         }
 
         /// <summary>
         /// Display the Aes key used for the maplestory encryption.
+        /// https://forum.ragezone.com/threads/release-packet-encryption-key-for-64-bit-maplestory-in-disassembly.1230765/
         /// </summary>
         private void ShowKey_64Bit(IntPtr module, int baseKeyPosition) {
             // OdinMS format
+            //MessageBox.Show("Module address: " + (module).ToString("X8"));
+            //MessageBox.Show("Show key at : " + (module + baseKeyPosition).ToString("X8"));
+
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < 128; i += 4) {
                 IntPtr readAddress = (IntPtr)(module.ToInt64() + baseKeyPosition + i);

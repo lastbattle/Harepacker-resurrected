@@ -147,6 +147,7 @@
     <Compile Include="SystemInterop\user32.cs" />
     <Compile Include="SystemInterop\ZLZGenerateKey.cs" />
     <Compile Include="Util\BitmapHelper.cs" />
+    <Compile Include="Util\MemoryScannerHelper.cs" />
     <Compile Include="Util\ScreenDPIUtil.cs" />
     <Compile Include="WzSoundResourceStreamer.cs" />
     <Compile Include="Wz\WzInfoTools.cs" />

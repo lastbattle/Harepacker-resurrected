@@ -343,7 +343,7 @@
     <value>XMLの保存先を選択</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>WZファイルを選択</value>
+    <value>WZ/ZLZ ファイルを選択</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>IMGファイルを選択</value>

@@ -343,7 +343,7 @@
     <value>選擇儲存XML的位置</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>選擇WZ檔案</value>
+    <value>選擇WZ/ZLZ檔案</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>選擇IMG檔案</value>
