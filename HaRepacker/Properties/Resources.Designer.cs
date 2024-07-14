@@ -306,6 +306,15 @@ namespace HaRepacker.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to This is only available inder the x64 version of HaRepacker, please get the alternative version..
+        /// </summary>
+        public static string ExecutingAssemblyError_64BitRequired {
+            get {
+                return ResourceManager.GetString("ExecutingAssemblyError_64BitRequired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap expand {

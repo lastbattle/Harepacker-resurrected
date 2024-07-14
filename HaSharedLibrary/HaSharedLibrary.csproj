@@ -133,7 +133,7 @@
       <DependentUpon>SoundPlayer.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\SpineAnimationWindow.cs" />
-    <Compile Include="kernel32.cs" />
+    <Compile Include="SystemInterop\kernel32.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Render\DX\DXObject.cs" />
     <Compile Include="Render\DX\DXSpineObject.cs" />
@@ -144,7 +144,8 @@
     <Compile Include="SharpApng\SharpApng.cs" />
     <Compile Include="SharpApng\SharpApngBasicWrapper.cs" />
     <Compile Include="SharpApng\SharpApngFrame.cs" />
-    <Compile Include="user32.cs" />
+    <Compile Include="SystemInterop\user32.cs" />
+    <Compile Include="SystemInterop\ZLZGenerateKey.cs" />
     <Compile Include="Util\BitmapHelper.cs" />
     <Compile Include="Util\ScreenDPIUtil.cs" />
     <Compile Include="WzSoundResourceStreamer.cs" />

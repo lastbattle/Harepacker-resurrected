@@ -6,8 +6,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaSharedLibrary
-{
+namespace HaSharedLibrary.SystemInterop 
+    {
     public class user32
     {
         [DllImport("user32.dll")]
