@@ -34,6 +34,7 @@ using HaRepacker.Comparer;
 
 using HaSharedLibrary;
 using MapleLib.WzLib.WzProperties;
+using HaSharedLibrary.SystemInterop;
 
 namespace HaRepacker.GUI
 {
@@ -924,13 +925,31 @@ namespace HaRepacker.GUI
 
                     if (assemblyArchitecture == ProcessorArchitecture.X86) {
                         ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                        bool opened = form.OpenZLZDllFile();
+                        bool opened = form.OpenZLZDllFile_32Bit(filePath);
 
                         if (opened)
                             form.Show();
                     }
                     else {
                         MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
+                    }
+                    return;
+                }
+                else if (filePathLowerCase.EndsWith("zlz64.dll")) // ZLZ.dll encryption keys
+                {
+                    AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
+                    //similarly to find process architecture  
+                    var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
+
+                    if (Environment.Is64BitProcess) {
+                        ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
+                        bool opened = form.OpenZLZDllFile_64Bit(filePath);
+
+                        if (opened)
+                            form.Show();
+                    }
+                    else {
+                        MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
                     }
                     return;
                 }
@@ -1028,7 +1047,7 @@ namespace HaRepacker.GUI
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|*.wz;ZLZ.dll",
+                Filter = string.Format("{0}|*.wz;ZLZ.dll;ZLZ64.dll",
                 HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
             })
@@ -1324,6 +1343,8 @@ namespace HaRepacker.GUI
             MainPanel.PromptRemoveSelectedTreeNodes();
         }
 
+        private const string WZ_EXTRACT_ERROR_FILE = "WzExtract_Errors.txt";
+
         private void RunWzFilesExtraction(object param)
         {
             ChangeApplicationState(false);
@@ -1356,7 +1377,7 @@ namespace HaRepacker.GUI
                 f.Dispose();
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
-            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
 
             // Reset progress bar to 0
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
@@ -1397,7 +1418,7 @@ namespace HaRepacker.GUI
                 serializer.SerializeDirectory(dir, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
-            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
 
             // Reset progress bar to 0
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
@@ -1436,7 +1457,7 @@ namespace HaRepacker.GUI
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
 
             }
-            MapleLib.Helpers.ErrorLogger.SaveToFile("WzExtract_Errors.txt");
+            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
 #if DEBUG
             // test benchmark
             watch.Stop();

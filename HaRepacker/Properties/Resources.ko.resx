@@ -343,7 +343,7 @@
     <value>XML을 저장할 위치 선택</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>WZ 파일 선택</value>
+    <value>WZ/ZLZ 파일 선택</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>IMG 파일 선택</value>
@@ -410,5 +410,8 @@
   </data>
   <data name="MainContextMenu_Batch_AIUpscaleImage_QualityOnly" xml:space="preserve">
     <value>품질만</value>
+  </data>
+  <data name="ExecutingAssemblyError_64BitRequired" xml:space="preserve">
+    <value>This is only available inder the x64 version of HaRepacker, please get the alternative version.</value>
   </data>
 </root>
