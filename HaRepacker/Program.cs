@@ -70,9 +70,6 @@ namespace HaRepacker
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
-            // Load WZFileManager
-            _wzFileManager = new WzFileManager();
-
             // Parameters
             bool firstRun = PrepareApplication(true);
             string wzToLoad = null;

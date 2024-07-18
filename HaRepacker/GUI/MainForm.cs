@@ -35,6 +35,8 @@ using HaRepacker.Comparer;
 using HaSharedLibrary;
 using MapleLib.WzLib.WzProperties;
 using HaSharedLibrary.SystemInterop;
+using MapleLib;
+using System.Text.RegularExpressions;
 
 namespace HaRepacker.GUI
 {
@@ -952,47 +954,72 @@ namespace HaRepacker.GUI
                         MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
                     }
                     return;
-                }
-                // List.wz file (pre-bb maplestory enc)
-                else if (WzTool.IsListFile(filePath)) {
-                    new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
-                }
-                // Other WZs
-                else if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
-                    WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
-                    if (img == null) {
-                        MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
-                        break;
+                } else {
+                    // Load WZFileManager here if its not loaded
+                    if (Program.WzFileManager == null) {
+                        // Pattern 1: Match paths containing "Data" directory, but capture up to "Data" (for post 64-bit wz files after V-Update)
+                        string PATTERN_REGEX_DATADIR = @"^(.*?)\\Data\\.*$";
+                        // Pattern 2: Match paths ending with .wz file without "Data" directory (for beta maplestory, pre-bb and post-bb MapleStory)
+                        string PATTERN_REGEX_NORMAL_WZ = @"^(.*\\)[\w]+\.wz$";
+
+                        string maplestoryBaseDirectory = string.Empty;
+
+                        Match match = Regex.Match(filePath, PATTERN_REGEX_DATADIR);
+                        if (match.Success) {
+                            maplestoryBaseDirectory = match.Groups[1].Value;
+                        }
+                        else {
+                            Match match2 = Regex.Match(filePath, PATTERN_REGEX_NORMAL_WZ);
+                            if (match2.Success) {
+                                maplestoryBaseDirectory = match2.Groups[1].Value.TrimEnd('\\');
+                            }
+                        }
+
+                        Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory);
+                        Program.WzFileManager.BuildWzFileList();
                     }
-                    AddLoadedWzObjectToMainPanel(img);
 
-                }
-                else {
-                    if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
-                        StartWzKeyBruteforcing(currentDispatcher); // find needles in a haystack
-                        return;
+                    // List.wz file (pre-bb maplestory enc)
+                    if (WzTool.IsListFile(filePath)) {
+                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
                     }
-
-                    wzfilePathsToLoad.Add(filePath); // add to list, so we can load it concurrently
-
-                    // Check if there are any related files
-                    string[] wzsWithRelatedFiles = { "Map", "Mob", "Skill", "Sound" };
-                    bool bWithRelated = false;
-                    string relatedFileName = null;
-
-                    foreach (string wz in wzsWithRelatedFiles) {
-                        if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz")) {
-                            bWithRelated = true;
-                            relatedFileName = wz;
+                    // Other WZs
+                    else if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
+                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
+                        if (img == null) {
+                            MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
                             break;
                         }
+                        AddLoadedWzObjectToMainPanel(img);
+
                     }
-                    if (bWithRelated) {
-                        if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles) {
-                            string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), relatedFileName + "*.wz");
-                            foreach (string filePath_Others in otherMapWzFiles) {
-                                if (filePath_Others != filePath)
-                                    wzfilePathsToLoad.Add(filePath_Others);
+                    else {
+                        if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
+                            StartWzKeyBruteforcing(currentDispatcher); // find needles in a haystack
+                            return;
+                        }
+
+                        wzfilePathsToLoad.Add(filePath); // add to list, so we can load it concurrently
+
+                        // Check if there are any related files
+                        string[] wzsWithRelatedFiles = { "Map", "Mob", "Skill", "Sound" };
+                        bool bWithRelated = false;
+                        string relatedFileName = null;
+
+                        foreach (string wz in wzsWithRelatedFiles) {
+                            if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz")) {
+                                bWithRelated = true;
+                                relatedFileName = wz;
+                                break;
+                            }
+                        }
+                        if (bWithRelated) {
+                            if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles) {
+                                string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), relatedFileName + "*.wz");
+                                foreach (string filePath_Others in otherMapWzFiles) {
+                                    if (filePath_Others != filePath)
+                                        wzfilePathsToLoad.Add(filePath_Others);
+                                }
                             }
                         }
                     }

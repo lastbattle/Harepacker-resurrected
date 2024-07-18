@@ -588,7 +588,7 @@ namespace HaCreator.MapEditor
             ww.Show();
             Application.DoEvents();
 
-            HaRepacker.Program.WzFileManager = new WzFileManager();
+            HaRepacker.Program.WzFileManager = new WzFileManager(); // this will be over-written later at Initialization.cs. just temporary placeholder
             bool firstRun = HaRepacker.Program.PrepareApplication(false);
             HaRepacker.GUI.MainForm mf = new HaRepacker.GUI.MainForm(null, false, firstRun);
             mf.unloadAllToolStripMenuItem.Visible = false;
