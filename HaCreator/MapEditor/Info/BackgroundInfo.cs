@@ -5,7 +5,6 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaCreator.MapEditor.Instance;
-using HaCreator.Properties;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.Helpers;

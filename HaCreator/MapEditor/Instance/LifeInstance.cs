@@ -47,7 +47,13 @@ namespace HaCreator.MapEditor.Instance
         {
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
             //if (baseInfo.Texture == null) baseInfo.CreateTexture(sprite.GraphicsDevice);
-            sprite.Draw(BaseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 1f);
+            sprite.Draw(BaseInfo.GetTexture(sprite), destinationRectangle, 
+                null, 
+                color, 
+                0f, 
+                new XNA.Vector2(0f, 0f), 
+                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 
+                1f);
             base.Draw(sprite, color, xShift, yShift);
         }
 
@@ -59,11 +65,14 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
-                if ((flip == true) == value) return;
+                if ((flip == true) == value) 
+                    return;
                 flip = value;
                 int xFlipShift = Width - 2 * Origin.X;
-                if (flip == true) X -= xFlipShift;
-                else X += xFlipShift;
+                if (flip == true) 
+                    X -= xFlipShift;
+                else 
+                    X += xFlipShift;
             }
         }
 
