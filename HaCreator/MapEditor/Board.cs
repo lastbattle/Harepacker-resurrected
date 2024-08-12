@@ -95,7 +95,6 @@ namespace HaCreator.MapEditor
             {
                 foreach (BoardItem item in list)
                 {
-                    
                     if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
                         item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
                 }
@@ -137,6 +136,10 @@ namespace HaCreator.MapEditor
         }
 
 
+        /// <summary>
+        /// Re-generates the minimap image from the board
+        /// </summary>
+        /// <returns></returns>
         public bool RegenerateMinimap()
         {
             try
@@ -151,9 +154,28 @@ namespace HaCreator.MapEditor
                     {
                         System.Drawing.Bitmap bmp = new System.Drawing.Bitmap(mapSize.X, mapSize.Y);
                         System.Drawing.Graphics processor = System.Drawing.Graphics.FromImage(bmp);
+
                         foreach (BoardItem item in BoardItems.TileObjs)
                         {
-                            processor.DrawImage(item.Image, new System.Drawing.Point(item.X + centerPoint.X - item.Origin.X, item.Y + centerPoint.Y - item.Origin.Y));
+                            bool isFlippedBoardItem = item.IsFlipped();
+                            System.Drawing.Rectangle destRect = new System.Drawing.Rectangle(
+                                item.X + centerPoint.X - item.Origin.X,
+                                item.Y + centerPoint.Y - item.Origin.Y,
+                                item.Image.Width,
+                                item.Image.Height
+                                );
+
+                            if (isFlippedBoardItem)
+                            {
+                                processor.DrawImage(item.Image,
+                                    destRect,
+                                    item.Image.Width, 0, -item.Image.Width, item.Image.Height,
+                                    System.Drawing.GraphicsUnit.Pixel);
+                            }
+                            else
+                            {
+                                processor.DrawImage(item.Image, destRect);
+                            }
                         }
                         bmp = CropImage(bmp, new System.Drawing.Rectangle(MinimapRectangle.X + centerPoint.X, MinimapRectangle.Y + centerPoint.Y, MinimapRectangle.Width, MinimapRectangle.Height));
                         MiniMap = ResizeImage(bmp, (float)_mag);

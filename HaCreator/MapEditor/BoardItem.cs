@@ -194,6 +194,11 @@ namespace HaCreator.MapEditor
             }
         }
 
+        public bool IsFlipped()
+        {
+            return this is IFlippable && ((IFlippable)this).Flip;
+        }
+
         public bool BoundToSelectedItem(Board board)
         {
             lock (Board.ParentControl)

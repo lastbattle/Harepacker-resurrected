@@ -208,9 +208,14 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             objUIBtMax.SetButtonState(UIObjectState.Normal);
 
             objUIBtMap.X = this.frame_collapsedState.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
-            objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            if (objUIBtBig != null) {
+                objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            } else { // beta maplestory
+                objUIBtMax.X = objUIBtMap.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            }
 
             BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
             frame_collapsedState.CopyObjectPosition(baseItem);
@@ -228,11 +233,16 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             objUIBtMin.SetButtonState(UIObjectState.Normal);
             objUIBtMax.SetButtonState(UIObjectState.Disabled);
 
-            objUIBtMap.X = this.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
-            objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-            objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
-
+            if (objUIBtBig != null) {
+                objUIBtMap.X = this.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+                objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            } else { // beta maplestory
+                objUIBtMap.X = this.Frame0.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+                objUIBtMax.X = objUIBtMap.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+            }
             this.CopyObjectPosition(frame_collapsedState);
 
             this._bIsCollapsedState = false;
