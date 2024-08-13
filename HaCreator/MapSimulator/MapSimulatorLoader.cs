@@ -849,6 +849,7 @@ namespace HaCreator.MapSimulator {
             System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
 
             HaUIGrid minimapUiGrid = new HaUIGrid(1, 1);
+            minimapUiGrid.GetInfo().Margins.Top = 10;
             minimapUiGrid.GetInfo().HorizontalAlignment = HaUIAlignment.Center;
             minimapUiGrid.GetInfo().VerticalAlignment = HaUIAlignment.Center;
             minimapUiGrid.AddRenderable(minimapUiImage);
