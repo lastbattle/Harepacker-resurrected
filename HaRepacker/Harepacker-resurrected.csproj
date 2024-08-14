@@ -228,7 +228,6 @@
     <Compile Include="AnimationBuilder.cs" />
     <Compile Include="Comparer\SemiNumericComparer.cs" />
     <Compile Include="Comparer\TreeViewNodeSorter.cs" />
-    <Compile Include="Converter\BooleanToVisibilityConverter.cs" />
     <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
     <Compile Include="Converter\PointFConverter.cs" />
     <Compile Include="Converter\PointFValueConverter.cs" />

@@ -156,9 +156,36 @@ namespace HaCreator.GUI
         public static readonly RoutedUICommand PhysicsEdit = new RoutedUICommand("PhysicsEdit", "PhysicsEdit", typeof(HaRibbon),
             new InputGestureCollection() { });
 
+        #region Etc
+        public static readonly RoutedUICommand ShowQuestEditorWindow = new RoutedUICommand("ShowQuestEditorWindow", "ShowQuestEditorWindow", typeof(HaRibbon),
+            new InputGestureCollection() { });
+
+        /// <summary>
+        /// Shows the quest editor window
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ShowQuestEditorWindow_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ShowQuestEditorWindowClicked != null)
+                ShowQuestEditorWindowClicked.Invoke();
+        }
+        #endregion
+
         #region Debug Items
         public static readonly RoutedUICommand ShowMapProperties = new RoutedUICommand("ShowMapProperties", "ShowMapProperties", typeof(HaRibbon),
             new InputGestureCollection() { });
+
+        /// <summary>
+        /// Show map 'info' properties clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ShowMapProperties_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ShowMapPropertiesClicked != null)
+                ShowMapPropertiesClicked.Invoke();
+        }
         #endregion
 
         private void AlwaysExecute(object sender, CanExecuteRoutedEventArgs e)
@@ -294,18 +321,6 @@ namespace HaCreator.GUI
         {
             if (MapPhysicsClicked != null)
                 MapPhysicsClicked.Invoke();
-        }
-
-
-        /// <summary>
-        /// Show map 'info' properties clicked
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void ShowMapProperties_Executed(object sender, ExecutedRoutedEventArgs e)
-        {
-            if (ShowMapPropertiesClicked != null)
-                ShowMapPropertiesClicked.Invoke();
         }
 
 
@@ -521,6 +536,7 @@ namespace HaCreator.GUI
         public event EmptyEvent NewPlatformClicked;
         public event EmptyEvent UserObjsClicked;
         public event EmptyEvent MapPhysicsClicked;
+        public event EmptyEvent ShowQuestEditorWindowClicked;
         public event EmptyEvent ShowMapPropertiesClicked;
         public event EventHandler<System.Windows.Forms.KeyEventArgs> RibbonKeyDown;
 

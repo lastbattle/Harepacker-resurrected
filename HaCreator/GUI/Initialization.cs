@@ -146,6 +146,7 @@ namespace HaCreator.GUI
                 ExtractNpcFile();
                 ExtractReactorFile();
                 ExtractSoundFile();
+                ExtractQuestFile();
                 ExtractMapMarks();
                 ExtractPortals();
                 ExtractTileSets();
@@ -212,6 +213,15 @@ namespace HaCreator.GUI
                 }
                 ExtractSoundFile();
 
+                // Load quests
+                List<string> questWzDirs = Program.WzManager.GetWzFileNameListFromBase("quest");
+                foreach (string questWzDir in questWzDirs)
+                {
+                    UpdateUI_CurrentLoadingWzFile(questWzDir, true);
+
+                    Program.WzManager.LoadWzFile(questWzDir, _wzMapleVersion);
+                }
+                ExtractQuestFile();
 
                 // Load maps
                 List<string> mapWzFiles = Program.WzManager.GetWzFileNameListFromBase("map");
@@ -461,10 +471,13 @@ namespace HaCreator.GUI
 
         #region Extractor
         /// <summary>
-        /// 
+        /// Mob.wz
         /// </summary>
         public void ExtractMobFile()
         {
+            if (Program.InfoManager.Mobs.Count != 0)
+                return;
+
             // Mob.wz
             List<WzDirectory> mobWzDirs = Program.WzManager.GetWzDirectoriesFromBase("mob");
 
@@ -493,10 +506,13 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// NPC.wz
         /// </summary>
         public void ExtractNpcFile()
         {
+            if (Program.InfoManager.NPCs.Count != 0)
+                return;
+
             // Npc.wz
             List<WzDirectory> npcWzDirs = Program.WzManager.GetWzDirectoriesFromBase("npc");
 
@@ -525,10 +541,13 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Reactor.wz
         /// </summary>
         public void ExtractReactorFile()
         {
+            if (Program.InfoManager.Reactors.Count != 0)
+                return;
+
             List<WzDirectory> reactorWzDirs = Program.WzManager.GetWzDirectoriesFromBase("reactor");
             foreach (WzDirectory reactorWzDir in reactorWzDirs)
             {
@@ -541,9 +560,65 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Quest.wz
+        /// </summary>
+        public void ExtractQuestFile()
+        {
+            if (Program.InfoManager.QuestActs.Count != 0)
+                return;
+
+            List<WzDirectory> questWzDirs = Program.WzManager.GetWzDirectoriesFromBase("quest");
+            foreach (WzDirectory questWzDir in questWzDirs)
+            {
+                foreach (WzImage questImage in questWzDir.WzImages)
+                {
+                    switch (questImage.Name)
+                    {
+                        case "Act.img":
+                            foreach (WzImageProperty questActImage in questImage.WzProperties)
+                            {
+                                Program.InfoManager.QuestActs.Add(questActImage.Name, questActImage as WzSubProperty);
+                            }
+                            break;
+                        case "Check.img":
+                            foreach (WzImageProperty questCheckImage in questImage.WzProperties)
+                            {
+                                Program.InfoManager.QuestChecks.Add(questCheckImage.Name, questCheckImage as WzSubProperty);
+                            }
+                            break;
+                        case "QuestInfo.img":
+                            foreach (WzImageProperty questInfoImage in questImage.WzProperties)
+                            {
+                                Program.InfoManager.QuestInfos.Add(questInfoImage.Name, questInfoImage as WzSubProperty);
+                            }
+                            break;
+                        case "Say.img":
+                            foreach (WzImageProperty questSayImage in questImage.WzProperties)
+                            {
+                                Program.InfoManager.QuestSays.Add(questSayImage.Name, questSayImage as WzSubProperty);
+                            }
+                            break;
+
+                        case "ChangeableQExpTable.img": // later ver of maplestory
+                        case "Exclusive.img":
+                        case "PQuest.img":
+                        case "PQuestSearch.img":
+                        case "QuestDestination.img":
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Sound.wz
         /// </summary>
         public void ExtractSoundFile() {
+            if (Program.InfoManager.BGMs.Count != 0)
+                return;
+
             List<WzDirectory> soundWzDirs = Program.WzManager.GetWzDirectoriesFromBase("sound");
 
             foreach (WzDirectory soundWzDir in soundWzDirs) 
@@ -586,10 +661,13 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Map marks
         /// </summary>
         public void ExtractMapMarks()
         {
+            if (Program.InfoManager.MapMarks.Count != 0)
+                return;
+
             WzImage mapWzImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
             if (mapWzImg == null)
                 throw new Exception("MapHelper.img not found in map.wz.");
@@ -601,10 +679,13 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Map tiles
         /// </summary>
         public void ExtractTileSets()
         {
+            if (Program.InfoManager.TileSets.Count != 0)
+                return;
+
             bool bLoadedInMap = false;
 
             WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Tile");
@@ -639,6 +720,9 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractObjSets()
         {
+            if (Program.InfoManager.ObjectSets.Count != 0)
+                return;
+
             bool bLoadedInMap = false;
 
             WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Obj");
@@ -665,10 +749,13 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Map background sets
         /// </summary>
         public void ExtractBackgroundSets()
         {
+            if (Program.InfoManager.BackgroundSets.Count != 0)
+                return;
+
             bool bLoadedInMap = false;
 
             WzDirectory mapWzDirs = (WzDirectory)Program.WzManager.FindWzImageByName("map", "Back");
@@ -698,6 +785,9 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractStringWzMaps()
         {
+            if (Program.InfoManager.MapsNameCache.Count != 0)
+                return;
+
             WzImage stringWzImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
 
             if (!stringWzImg.Parsed)
@@ -727,6 +817,9 @@ namespace HaCreator.GUI
         /// Pre-load all maps in the memory
         /// </summary>
         public void ExtractMaps() {
+            if (Program.InfoManager.MapsCache.Count != 0)
+                return;
+
             UpdateUI_CurrentLoadingWzFile(string.Format("{0} map data", Program.InfoManager.MapsNameCache.Count), false);
 
             //foreach (KeyValuePair<string, Tuple<string, string>> val in Program.InfoManager.MapsNameCache) {
@@ -753,8 +846,15 @@ namespace HaCreator.GUI
             });
         }
 
+        /// <summary>
+        /// Map portals
+        /// </summary>
+        /// <exception cref="Exception"></exception>
         public void ExtractPortals()
         {
+            if (Program.InfoManager.GamePortals.Count != 0)
+                return;
+
             WzImage mapImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
             if (mapImg == null)
                 throw new Exception("Couldnt extract portals. MapHelper.img not found.");

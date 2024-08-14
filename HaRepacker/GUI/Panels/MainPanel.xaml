@@ -10,6 +10,7 @@
              xmlns:local="clr-namespace:HaRepacker"
              xmlns:converter="clr-namespace:HaRepacker.Converter"
              xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+              xmlns:sharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
              xmlns:guiControls="clr-namespace:HaRepacker.GUI.Controls"
               xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
@@ -66,7 +67,7 @@
         <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
         <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
 
-        <converter:BooleanToVisibilityConverter x:Key="booleanToVisibilityConverter"/>
+        <sharedLibConverter:BooleanToVisibilityConverter x:Key="booleanToVisibilityConverter"/>
 
         <Style x:Key="ButtonStyle_MoreOption" TargetType="{x:Type Button}">
             <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>

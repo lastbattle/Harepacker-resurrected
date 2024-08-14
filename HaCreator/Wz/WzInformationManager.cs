@@ -38,6 +38,11 @@ namespace HaCreator.Wz
         public Dictionary<string, int> PortalIdByType = new Dictionary<string,int>();
         public Dictionary<string, PortalGameImageInfo> GamePortals = new Dictionary<string, PortalGameImageInfo>();
 
+        public Dictionary<string, WzSubProperty> QuestActs = new Dictionary<string, WzSubProperty>();
+        public Dictionary<string, WzSubProperty> QuestChecks = new Dictionary<string, WzSubProperty>();
+        public Dictionary<string, WzSubProperty> QuestInfos = new Dictionary<string, WzSubProperty>();
+        public Dictionary<string, WzSubProperty> QuestSays = new Dictionary<string, WzSubProperty>();
+
         /// <summary>
         /// Clears existing data loaded
         /// </summary>

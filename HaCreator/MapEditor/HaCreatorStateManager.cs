@@ -33,6 +33,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using SystemWinCtl = System.Windows.Controls;
 using HaSharedLibrary;
 using MapleLib;
+using System.Windows.Forms.Integration;
 
 namespace HaCreator.MapEditor
 {
@@ -99,6 +100,10 @@ namespace HaCreator.MapEditor
             this.ribbon.ExportClicked += Ribbon_ExportClicked;
             this.ribbon.RibbonKeyDown += multiBoard.DxContainer_KeyDown;
             this.ribbon.MapPhysicsClicked += Ribbon_EditMapPhysicsClicked;
+
+            // Etc
+            this.ribbon.ShowQuestEditorWindowClicked += Ribbon_ShowQuestEditorWindowClicked;
+            //
 
             // Debug
             this.ribbon.ShowMapPropertiesClicked += Ribbon_ShowMapPropertiesClicked;
@@ -511,6 +516,19 @@ namespace HaCreator.MapEditor
                 }
                 multiBoard.Focus();
             }
+        }
+        #endregion
+
+        #region Ribbon Etc Handlers
+
+        /// <summary>
+        /// Show quest editor window
+        /// </summary>
+        /// <exception cref="NotImplementedException"></exception>
+        private void Ribbon_ShowQuestEditorWindowClicked()
+        {
+            QuestEditor questEditor = new QuestEditor();
+            questEditor.ShowDialog();
         }
         #endregion
 

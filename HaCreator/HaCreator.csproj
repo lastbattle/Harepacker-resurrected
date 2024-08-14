@@ -306,6 +306,12 @@
     <Compile Include="GUI\NewPlatform.Designer.cs">
       <DependentUpon>NewPlatform.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\QuestEditor\QuestEditor.xaml.cs">
+      <DependentUpon>QuestEditor.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\QuestEditor\QuestEditorActInfoModel.cs" />
+    <Compile Include="GUI\QuestEditor\QuestEditorCheckInfoModel.cs" />
+    <Compile Include="GUI\QuestEditor\QuestEditorModel.cs" />
     <Compile Include="GUI\Repack.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -574,6 +580,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Collections\AnchorEnumerator.cs" />
+    <Compile Include="GUI\QuestEditor\QuestEditorSayModel.cs" />
     <Compile Include="Wz\PortalGameImageInfo.cs" />
     <Compile Include="Collections\FootholdEnumerator.cs" />
     <Compile Include="Wz\MapLoader.cs" />
@@ -838,6 +845,10 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="GUI\QuestEditor\QuestEditor.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="MapEditor\MultiBoard.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
@@ -926,6 +937,7 @@
     <Content Include="HaLogo\HaLogo48.png" />
     <Content Include="HaLogo\HaLogo512.png" />
     <Content Include="HaLogo\HaLogo64.png" />
+    <Resource Include="Images\questIcon_0.png" />
     <Resource Include="Images\box_edit-big.png" />
     <None Include="Resources\placeholder.bmp" />
   </ItemGroup>

@@ -1,0 +1,320 @@
+﻿<Window x:Class="HaCreator.GUI.QuestEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:HaCreator.GUI"
+        xmlns:haSharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+        xmlns:haSharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
+             mc:Ignorable="d" 
+        Title="HaCreator's MapleStory Quest editor"
+        
+        d:DesignHeight="768" d:DesignWidth="1366"
+        Height="768" Width="1366">
+    
+    <Window.Resources>
+        <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
+        
+        <Style x:Key="FocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="2" StrokeDashArray="1 2" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" SnapsToDevicePixels="true" StrokeThickness="1"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <SolidColorBrush x:Key="Button.Static.Background" Color="#FFDDDDDD"/>
+        <SolidColorBrush x:Key="Button.Static.Border" Color="#FF707070"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#FFBEE6FD"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#FF3C7FB1"/>
+        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#FFC4E5F6"/>
+        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#FF2C628B"/>
+        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
+        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
+        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+
+        <Style x:Key="ButtonStyle_DeleteQuest" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="Background" Value="Gray"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                            <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDefaulted" Value="true">
+                                <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FFA0A0A0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="Gainsboro"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ButtonStyle_Black" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="Background" Value="Black"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                            <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDefaulted" Value="true">
+                                <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FF464545"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FFA29C9C"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Quest List -->
+        <GroupBox Header="Quest List" Grid.Column="0" Margin="10" FontWeight="Bold">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+
+                <TextBox x:Name="searchBox" Grid.Row="0" Margin="0,0,0,5" 
+                         TextChanged="SearchBox_TextChanged"/>
+                <ListBox x:Name="listbox_Quest" Grid.Row="1" ItemsSource="{Binding FilteredQuests}" Margin="0,0,0,5"
+                         SelectionChanged="QuestListBox_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="[" FontWeight="Normal"/>
+                                <TextBlock Text="{Binding Id}" FontWeight="Normal"/>
+                                <TextBlock Text="]" FontWeight="Normal"/>
+                                <TextBlock Margin="5,0,0,0" Text="{Binding Name}" FontWeight="Normal"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30" Grid.Row="2" 
+                        Style="{DynamicResource ButtonStyle_Black}"
+                        Click="button_addNewQuest_Click"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Quest Editor -->
+        <GroupBox Header="Quest Editor" Grid.Column="1" Margin="10" FontWeight="Bold">
+            <TabControl>
+                <!-- Quest Info Tab -->
+                <TabItem Header="Quest Info" FontWeight="Normal">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="25"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="30"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="The quest information, such as quest name, parent name." Foreground="Gray" Margin="0,0,0,10"/>
+                        
+                        <ScrollViewer Grid.Row="1">
+                            <StackPanel>
+                                <!-- Quest name -->
+                                <TextBlock Text="Name:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Name}"/>
+                                
+                                <!-- Parent quest-->
+                                <TextBlock Text="Parent quest:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Parent}"/>
+                                
+                                <!-- Quest area -->
+                                <TextBlock Text="Area:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Area}"/>
+                                
+                                <!-- Quest order -->
+                                <TextBlock Text="Order:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Order}"/>
+                                
+                                <!-- Other boolean properties-->
+                                <CheckBox x:Name="checkbox_blocked" Content="Blocked" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
+                                <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
+                                <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
+                                <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+
+                                <!-- paddings -->
+                                <Grid Margin="0,0,0,20"/>
+                                
+                                <!-- For quest descriptions -->
+                                <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
+
+                                <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
+
+                                <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
+
+                                <!-- paddings -->
+                                <Grid Margin="0,0,0,10"/>
+                                
+                                <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
+
+                                <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
+                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
+
+                                <!-- paddings -->
+                                <Grid Margin="0,0,0,10"/>
+
+                                <!-- For medals -->
+                                <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
+                                <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
+                                <StackPanel Margin="20,0,0,0" Visibility="{Binding SelectedQuest.IsMedal, Converter={StaticResource booleanToVisibility2Converter}}">
+                                    <TextBlock Text="Medal Category:"/>
+                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.MedalCategory}"/>
+                                    <TextBlock Text="View medal Item Id:"/>
+                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.ViewMedalItem}"/>
+                                </StackPanel>
+
+                                <!-- bottom padding-->
+                                <Grid Margin="0,0,0,30"/>
+                            </StackPanel>
+                        </ScrollViewer>
+
+
+                        <StackPanel Orientation="Horizontal" Grid.Row="2" HorizontalAlignment="Right">
+                            <Button x:Name="button_deleteQuest" Content="Delete Quest" Margin="5,0,0,0" Width="120"
+                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
+                                    Click="button_deleteQuest_Click"/>
+                            <Button x:Name="button_saveQuest" Content="Save Quest" Margin="5,0,0,0"  Width="120"
+                                    Style="{DynamicResource ButtonStyle_Black}"
+                                    Click="button_saveQuest_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </TabItem>
+
+                <!-- Say Info Tab -->
+                <TabItem Header="Say Info"  FontWeight="Normal">
+                    <ScrollViewer>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="30"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <TextBlock Text="What the NPC would say in a conversation when starting, or completing the quest." Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
+
+                            <ItemsControl Grid.Row="1" ItemsSource="{Binding SelectedQuest.SayInfo}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <GroupBox Header="Say Info" Margin="0,10" FontWeight="Bold" >
+                                            <StackPanel >
+                                                <ItemsControl ItemsSource="{Binding Messages}" FontWeight="Normal">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <DockPanel Margin="0,5">
+                                                                <Button DockPanel.Dock="Right" Content="X" 
+                                                                        Height="20" Width="20" VerticalAlignment="Top" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}"/>
+                                                                <TextBox Text="{Binding .}" AcceptsReturn="True" MinHeight="50"/>
+                                                                <!--<haSharedLib:NpcRichTextBox  FormattedText="{Binding .}" AcceptsReturn="True" MinHeight="50"/>-->
+                                                            </DockPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <ComboBox SelectedItem="{Binding Type}" Margin="0,5" SelectedIndex="0" FontWeight="Normal">
+                                                    <ComboBoxItem Content="Regular"/>
+                                                    <ComboBoxItem Content="Yes/No"/>
+                                                </ComboBox>
+                                                <Button Content="Add new message" Margin="0,5"  Width="150" HorizontalAlignment="Left" FontWeight="Normal"
+                                                        Style="{DynamicResource ButtonStyle_Black}"/>
+
+                                                <TextBox Text="{Binding Yes}" Margin="0,5" Visibility="{Binding IsYesNo}" FontWeight="Normal"/>
+                                                <TextBox Text="{Binding No}" Margin="0,5" Visibility="{Binding IsYesNo}" FontWeight="Normal"/>
+                                                <TextBox Text="{Binding Stop}" Margin="0,5" FontWeight="Normal"  MinHeight="50"/>
+
+                                                <Button Content="Remove Say Info" Margin="0,5"  Width="150" HorizontalAlignment="Left" FontWeight="Normal"
+                                                        Style="{DynamicResource ButtonStyle_Black}"/>
+                                            </StackPanel>
+                                        </GroupBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                        
+                       
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Check Conditions Tab -->
+                <TabItem Header="Check Conditions" FontWeight="Normal" >
+                    <StackPanel>
+                        <TextBlock Text="The conditions needed to start, or complete the quest." Foreground="Gray" Margin="0,0,0,10"/>
+                        
+                        <TextBlock Text="NPC ID:" FontWeight="Bold"/>
+                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.NpcId}" 
+                                 InputScope="Number"/>
+
+                        <TextBlock Text="Min Level:" FontWeight="Bold"/>
+                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.MinLevel}" 
+                                 InputScope="Number" MaxLines="4"/>
+
+                        <TextBlock Text="End date:" FontWeight="Bold"/>
+                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.EndDate}" />
+                    </StackPanel>
+                </TabItem>
+
+                <!-- Act Requirements Tab -->
+                <TabItem Header="Act Requirements" FontWeight="Normal">
+                    <StackPanel>
+                        <TextBlock Text="The actions to be given when starting, or completing the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
+                        
+                        <TextBlock Text="Next Quest ID:" FontWeight="Bold"/>
+                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.NextQuestId}" />
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+        </GroupBox>
+    </Grid>
+</Window>
