@@ -180,19 +180,28 @@
                                 <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
                                 <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
                                 <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+                                <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                                <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
+                                <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
 
                                 <!-- paddings -->
                                 <Grid Margin="0,0,0,20"/>
                                 
                                 <!-- For quest descriptions -->
+                                <TextBlock Text="Summary:" FontWeight="Bold"/>
+                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Summary}" AcceptsReturn="True" />
+
                                 <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
+                                <CheckBox x:Name="checkbox_disableAtStartTab" Content="Disable at start tab" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
+                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
 
                                 <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
+                                <CheckBox x:Name="checkbox_disableAtPerformTab" Content="Disable at perform tab" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
+                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
 
                                 <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
+                                <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="Disable at complete tab"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
+                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
 
                                 <!-- paddings -->
                                 <Grid Margin="0,0,0,10"/>
@@ -214,6 +223,9 @@
                                     <TextBox Margin="0,5" Text="{Binding SelectedQuest.MedalCategory}"/>
                                     <TextBlock Text="View medal Item Id:"/>
                                     <TextBox Margin="0,5" Text="{Binding SelectedQuest.ViewMedalItem}"/>
+
+                                    <TextBlock Text="Show layer tag" FontWeight="Bold"/>
+                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
                                 </StackPanel>
 
                                 <!-- bottom padding-->

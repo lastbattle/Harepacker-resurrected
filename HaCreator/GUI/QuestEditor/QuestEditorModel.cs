@@ -37,12 +37,16 @@ namespace HaCreator.GUI
         private int _id;
         private string _name = string.Empty;
         private string _parent = string.Empty;
-        private string _questInfoDesc0 = string.Empty, _questInfoDesc1 = string.Empty, _questInfoDesc2 = string.Empty;
+        private string _summary = string.Empty, _questInfoDesc0 = string.Empty, _questInfoDesc1 = string.Empty, _questInfoDesc2 = string.Empty;
         private int _area;
         private bool _blocked;
         private int _order;
         private bool _autoPreComplete, _autoComplete, _autoStart;
+        private bool _selectedMob, _autoCancel, _oneShot;
+        private bool _disableAtStartTab, _disableAtPerformTab, _disableAtCompleteTab;
         private string _demandSummary = string.Empty, _rewardSummary = string.Empty;
+
+        private string _showLayerTag = string.Empty;
 
         // custom properties for UI
         public bool _isMedal;
@@ -128,6 +132,17 @@ namespace HaCreator.GUI
             }
         }
 
+        public string ShowLayerTag
+        {
+            get => _showLayerTag;
+            set
+            {
+                _showLayerTag = value;
+                OnPropertyChanged(nameof(ShowLayerTag));
+            }
+        }
+
+
         public bool AutoStart
         {
             get => _autoStart;
@@ -158,6 +173,64 @@ namespace HaCreator.GUI
             }
         }
 
+        public bool SelectedMob
+        {
+            get => _selectedMob;
+            set
+            {
+                _selectedMob = value;
+                OnPropertyChanged(nameof(SelectedMob));
+            }
+        }
+
+        public bool AutoCancel
+        {
+            get => _autoCancel;
+            set
+            {
+                _autoCancel = value;
+                OnPropertyChanged(nameof(AutoCancel));
+            }
+        }
+
+        public bool OneShot
+        {
+            get => _oneShot;
+            set
+            {
+                _oneShot = value;
+                OnPropertyChanged(nameof(OneShot));
+            }
+        }
+
+        public bool DisableAtStartTab
+        {
+            get => _disableAtStartTab;
+            set
+            {
+                _disableAtStartTab = value;
+                OnPropertyChanged(nameof(DisableAtStartTab));
+            }
+        }
+        public bool DisableAtPerformTab
+        {
+            get => _disableAtPerformTab;
+            set
+            {
+                _disableAtPerformTab = value;
+                OnPropertyChanged(nameof(DisableAtPerformTab));
+            }
+        }
+        public bool DisableAtCompleteTab
+        {
+            get => _disableAtCompleteTab;
+            set
+            {
+                _disableAtCompleteTab = value;
+                OnPropertyChanged(nameof(DisableAtCompleteTab));
+            }
+        }
+
         public string DemandSummary
         {
             get => _demandSummary;
@@ -175,6 +248,16 @@ namespace HaCreator.GUI
             {
                 _rewardSummary = value;
                 OnPropertyChanged(nameof(RewardSummary));
+            }
+        }
+
+        public string Summary
+        {
+            get => _summary;
+            set
+            {
+                _summary = value;
+                OnPropertyChanged(nameof(Summary));
             }
         }
 

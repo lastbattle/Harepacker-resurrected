@@ -19,6 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -143,6 +144,43 @@ namespace HaCreator.GUI
                 string key = kvp.Key;
                 WzSubProperty questProp = kvp.Value;
 
+#if DEBUG
+                foreach (WzImageProperty questImgProp in questProp.WzProperties)
+                {
+                    switch (questImgProp.Name)
+                    {
+                        case "name":
+                        case "0":
+                        case "1":
+                        case "2":
+                        case "parent":
+                        case "area":
+                        case "order":
+                        case "blocked":
+                        case "autoStart":
+                        case "autoPreComplete":
+                        case "autoComplete":
+                        case "selectedMob":
+                        case "autoCancel":
+                        case "disableAtStartTab":
+                        case "disableAtPerformTab":
+                        case "disableAtCompleteTab":
+                        case "demandSummary":
+                        case "rewardSummary":
+                        case "showLayerTag":
+
+                            // not handled yet
+                        case "oneShot":
+                        case "summary":
+                            break;
+                        default:
+                            string error = string.Format("Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, kvp.Key);
+                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            break;
+                    }
+                }
+#endif
+
                 // Quest name
                 string questName = (questProp["name"] as WzStringProperty)?.Value;
 
@@ -164,13 +202,25 @@ namespace HaCreator.GUI
                 quest.Order = (questProp["order"] as WzIntProperty)?.Value ?? 0;
 
                 // parse autoStart, autoPreComplete
+                quest.Blocked = (questProp["blocked"] as WzIntProperty)?.Value > 0;
                 quest.AutoStart = (questProp["autoStart"] as WzIntProperty)?.Value > 0;
                 quest.AutoPreComplete = (questProp["autoPreComplete"] as WzIntProperty)?.Value > 0;
                 quest.AutoComplete = (questProp["autoComplete"] as WzIntProperty)?.Value > 0;
+                quest.SelectedMob = (questProp["selectedMob"] as WzIntProperty)?.Value > 0;
+                quest.AutoCancel = (questProp["autoCancel"] as WzIntProperty)?.Value > 0;
+                quest.OneShot = (questProp["oneShot"] as WzIntProperty)?.Value > 0;
+
+                quest.DisableAtStartTab = (questProp["disableAtStartTab"] as WzIntProperty)?.Value > 0;
+                quest.DisableAtPerformTab = (questProp["disableAtPerformTab"] as WzIntProperty)?.Value > 0;
+                quest.DisableAtCompleteTab = (questProp["disableAtCompleteTab"] as WzIntProperty)?.Value > 0;
 
                 // demand summary, reward summary
+                quest.Summary = (questProp["summary"] as WzStringProperty)?.Value;
                 quest.DemandSummary = (questProp["demandSummary"] as WzStringProperty)?.Value;
                 quest.RewardSummary = (questProp["rewardSummary"] as WzStringProperty)?.Value;
+
+                // misc properties
+                quest.ShowLayerTag = (questProp["showLayerTag"] as WzStringProperty)?.Value;
 
                 // add
                 Quests.Add(quest);
@@ -319,6 +369,10 @@ namespace HaCreator.GUI
                 }
 
                 // autoStart, autoComplete, autoPreComplete
+                if (quest.Blocked == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("blocked", 1));
+                }
                 if (quest.AutoStart == true)
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("autoStart", 1));
@@ -331,8 +385,37 @@ namespace HaCreator.GUI
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("autoComplete", 1));
                 }
+                if (quest.SelectedMob == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("selectedMob", 1));
+                }
+                if (quest.AutoCancel == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("autoCancel", 1));
+                }
+                if (quest.OneShot == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("oneShot", 1));
+                }
 
-                // demand summary, reward summary
+                if (quest.DisableAtStartTab == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("disableAtStartTab", 1));
+                }
+                if (quest.DisableAtPerformTab == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("disableAtPerformTab", 1));
+                }
+                if (quest.DisableAtCompleteTab == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("disableAtCompleteTab", 1));
+                }
+
+                // summary, demand summary, reward summary
+                if (quest.Summary != null && quest.Summary != string.Empty)
+                {
+                    questWzSubProp.AddProperty(new WzStringProperty("summary", quest.Summary));
+                }
                 if (quest.DemandSummary != null && quest.DemandSummary != string.Empty)
                 {
                     questWzSubProp.AddProperty(new WzStringProperty("demandSummary", quest.DemandSummary));
@@ -340,6 +423,12 @@ namespace HaCreator.GUI
                 if (quest.RewardSummary != null && quest.RewardSummary != string.Empty)
                 {
                     questWzSubProp.AddProperty(new WzStringProperty("rewardSummary", quest.RewardSummary));
+                }
+
+                // misc properties
+                if (quest.ShowLayerTag != null && quest.ShowLayerTag != string.Empty)
+                {
+                    questWzSubProp.AddProperty(new WzStringProperty("showLayerTag", quest.ShowLayerTag));
                 }
 
                 // remove the original image
