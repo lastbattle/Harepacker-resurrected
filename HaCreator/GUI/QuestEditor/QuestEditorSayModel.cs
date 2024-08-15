@@ -17,7 +17,6 @@ namespace HaCreator.GUI
     {
         private string _npcConversation;
         
-        private bool _isYesNoConversation;
         private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = new ObservableCollection<QuestEditorSayResponseModel>();
         private ObservableCollection<QuestEditorSayResponseModel> _noResponses = new ObservableCollection<QuestEditorSayResponseModel>();
 
@@ -39,11 +38,8 @@ namespace HaCreator.GUI
         /// </summary>
         public bool IsYesNoConversation
         {
-            get => _isYesNoConversation;
-            set
-            {
-                _isYesNoConversation = value;
-                OnPropertyChanged(nameof(IsYesNoConversation));
+            get {
+                return _yesResponses.Count > 0  || _noResponses.Count > 0;
             }
         }
         public Visibility IsYesNo => true ? Visibility.Visible : Visibility.Collapsed;

@@ -245,14 +245,11 @@
                         <ScrollViewer>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="50"/>
+                                    <RowDefinition Height="30"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <StackPanel Orientation="Vertical" Grid.Row="0" Margin="0,0,0,10">
-                                    <TextBlock Text="What the NPC would say in a conversation when starting, or completing the quest." Foreground="Gray"/>
-                                    <TextBlock Text=" * If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
-                                </StackPanel>
+                                <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
 
                                 <Grid Grid.Row="1">
                                     <Grid.RowDefinitions>
