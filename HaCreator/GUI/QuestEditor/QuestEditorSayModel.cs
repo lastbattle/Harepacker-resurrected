@@ -9,70 +9,70 @@ using System.Windows;
 
 namespace HaCreator.GUI
 {
+
+    /// <summary>
+    /// For every NPC conversation
+    /// </summary>
     public class QuestEditorSayModel : INotifyPropertyChanged
     {
-        private string _type;
-        private ObservableCollection<string> _messages;
-        private string _yes;
-        private string _no;
-        private string _stop;
+        private string _npcConversation;
+        
+        private bool _isYesNoConversation;
+        private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = new ObservableCollection<QuestEditorSayResponseModel>();
+        private ObservableCollection<QuestEditorSayResponseModel> _noResponses = new ObservableCollection<QuestEditorSayResponseModel>();
 
-        public string Type
+        /// <summary>
+        /// The NPC conversation
+        /// </summary>
+        public string NpcConversation
         {
-            get => _type;
+            get => _npcConversation;
             set
             {
-                _type = value;
-                OnPropertyChanged(nameof(Type));
-                OnPropertyChanged(nameof(IsYesNo));
+                _npcConversation = value;
+                OnPropertyChanged(nameof(NpcConversation));
             }
         }
 
-        public ObservableCollection<string> Messages
+        /// <summary>
+        /// If this is a Yes/No conversation as opposed to Next or NextPrev
+        /// </summary>
+        public bool IsYesNoConversation
         {
-            get => _messages;
+            get => _isYesNoConversation;
             set
             {
-                _messages = value;
-                OnPropertyChanged(nameof(Messages));
+                _isYesNoConversation = value;
+                OnPropertyChanged(nameof(IsYesNoConversation));
+            }
+        }
+        public Visibility IsYesNo => true ? Visibility.Visible : Visibility.Collapsed;
+
+
+        /// <summary>
+        /// If the user selects yes, this defines what the NPC would say next
+        /// </summary>
+        public ObservableCollection<QuestEditorSayResponseModel> YesResponses
+        {
+            get => _yesResponses;
+            set
+            {
+                _yesResponses = value;
+                OnPropertyChanged(nameof(YesResponses));
             }
         }
 
-        public string Yes
+        /// <summary>
+        /// If the user selects no, this defines what the NPC would say next
+        /// </summary>
+        public ObservableCollection<QuestEditorSayResponseModel> NoResponses
         {
-            get => _yes;
+            get => _noResponses;
             set
             {
-                _yes = value;
-                OnPropertyChanged(nameof(Yes));
+                _noResponses = value;
+                OnPropertyChanged(nameof(NoResponses));
             }
-        }
-
-        public string No
-        {
-            get => _no;
-            set
-            {
-                _no = value;
-                OnPropertyChanged(nameof(No));
-            }
-        }
-
-        public string Stop
-        {
-            get => _stop;
-            set
-            {
-                _stop = value;
-                OnPropertyChanged(nameof(Stop));
-            }
-        }
-
-        public Visibility IsYesNo => Type == "YesNo" ? Visibility.Visible : Visibility.Collapsed;
-
-        public QuestEditorSayModel()
-        {
-            Messages = new ObservableCollection<string>();
         }
 
         #region Property Changed Event
@@ -83,5 +83,25 @@ namespace HaCreator.GUI
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
         #endregion
+    }
+
+    public class QuestEditorSayResponseModel : INotifyPropertyChanged
+    {
+        private string _text;
+        public string Text
+        {
+            get => _text;
+            set
+            {
+                _text = value;
+                OnPropertyChanged(nameof(Text));
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
     }
 }

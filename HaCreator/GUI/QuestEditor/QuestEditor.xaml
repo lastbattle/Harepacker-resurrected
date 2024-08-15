@@ -11,10 +11,10 @@
         
         d:DesignHeight="768" d:DesignWidth="1366"
         Height="768" Width="1366">
-    
+
     <Window.Resources>
         <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
-        
+
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
                 <Setter.Value>
@@ -145,188 +145,347 @@
 
         <!-- Quest Editor -->
         <GroupBox Header="Quest Editor" Grid.Column="1" Margin="10" FontWeight="Bold">
-            <TabControl>
-                <!-- Quest Info Tab -->
-                <TabItem Header="Quest Info" FontWeight="Normal">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="25"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="30"/>
-                        </Grid.RowDefinitions>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="20"/>
+                </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="The quest information, such as quest name, parent name." Foreground="Gray" Margin="0,0,0,10"/>
-                        
-                        <ScrollViewer Grid.Row="1">
-                            <StackPanel>
-                                <!-- Quest name -->
-                                <TextBlock Text="Name:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Name}"/>
-                                
-                                <!-- Parent quest-->
-                                <TextBlock Text="Parent quest:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Parent}"/>
-                                
-                                <!-- Quest area -->
-                                <TextBlock Text="Area:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Area}"/>
-                                
-                                <!-- Quest order -->
-                                <TextBlock Text="Order:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.Order}"/>
-                                
-                                <!-- Other boolean properties-->
-                                <CheckBox x:Name="checkbox_blocked" Content="Blocked" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
-                                <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
-                                <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
-                                <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
-                                <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
-                                <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
-                                <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
-
-                                <!-- paddings -->
-                                <Grid Margin="0,0,0,20"/>
-                                
-                                <!-- For quest descriptions -->
-                                <TextBlock Text="Summary:" FontWeight="Bold"/>
-                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Summary}" AcceptsReturn="True" />
-
-                                <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
-                                <CheckBox x:Name="checkbox_disableAtStartTab" Content="Disable at start tab" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
-                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
-
-                                <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
-                                <CheckBox x:Name="checkbox_disableAtPerformTab" Content="Disable at perform tab" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
-                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
-
-                                <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
-                                <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="Disable at complete tab"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
-                                <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
-
-                                <!-- paddings -->
-                                <Grid Margin="0,0,0,10"/>
-                                
-                                <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
-
-                                <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
-                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
-
-                                <!-- paddings -->
-                                <Grid Margin="0,0,0,10"/>
-
-                                <!-- For medals -->
-                                <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
-                                <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
-                                <StackPanel Margin="20,0,0,0" Visibility="{Binding SelectedQuest.IsMedal, Converter={StaticResource booleanToVisibility2Converter}}">
-                                    <TextBlock Text="Medal Category:"/>
-                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.MedalCategory}"/>
-                                    <TextBlock Text="View medal Item Id:"/>
-                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.ViewMedalItem}"/>
-
-                                    <TextBlock Text="Show layer tag" FontWeight="Bold"/>
-                                    <TextBox Margin="0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
-                                </StackPanel>
-
-                                <!-- bottom padding-->
-                                <Grid Margin="0,0,0,30"/>
-                            </StackPanel>
-                        </ScrollViewer>
-
-
-                        <StackPanel Orientation="Horizontal" Grid.Row="2" HorizontalAlignment="Right">
-                            <Button x:Name="button_deleteQuest" Content="Delete Quest" Margin="5,0,0,0" Width="120"
-                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
-                                    Click="button_deleteQuest_Click"/>
-                            <Button x:Name="button_saveQuest" Content="Save Quest" Margin="5,0,0,0"  Width="120"
-                                    Style="{DynamicResource ButtonStyle_Black}"
-                                    Click="button_saveQuest_Click"/>
-                        </StackPanel>
-                    </Grid>
-                </TabItem>
-
-                <!-- Say Info Tab -->
-                <TabItem Header="Say Info"  FontWeight="Normal">
-                    <ScrollViewer>
+                <TabControl Grid.Row="0">
+                    <!-- Quest Info Tab -->
+                    <TabItem Header="Quest Info" FontWeight="Normal">
                         <Grid>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="30"/>
+                                <RowDefinition Height="25"/>
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
-                            
-                            <TextBlock Text="What the NPC would say in a conversation when starting, or completing the quest." Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
 
-                            <ItemsControl Grid.Row="1" ItemsSource="{Binding SelectedQuest.SayInfo}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <GroupBox Header="Say Info" Margin="0,10" FontWeight="Bold" >
-                                            <StackPanel >
-                                                <ItemsControl ItemsSource="{Binding Messages}" FontWeight="Normal">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <DockPanel Margin="0,5">
-                                                                <Button DockPanel.Dock="Right" Content="X" 
-                                                                        Height="20" Width="20" VerticalAlignment="Top" 
-                                                                        Style="{DynamicResource ButtonStyle_Black}"/>
-                                                                <TextBox Text="{Binding .}" AcceptsReturn="True" MinHeight="50"/>
-                                                                <!--<haSharedLib:NpcRichTextBox  FormattedText="{Binding .}" AcceptsReturn="True" MinHeight="50"/>-->
-                                                            </DockPanel>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
+                            <TextBlock Grid.Row="0" Text="The quest information, such as quest name, parent name." Foreground="Gray" Margin="0,0,0,10"/>
 
-                                                <ComboBox SelectedItem="{Binding Type}" Margin="0,5" SelectedIndex="0" FontWeight="Normal">
-                                                    <ComboBoxItem Content="Regular"/>
-                                                    <ComboBoxItem Content="Yes/No"/>
-                                                </ComboBox>
-                                                <Button Content="Add new message" Margin="0,5"  Width="150" HorizontalAlignment="Left" FontWeight="Normal"
-                                                        Style="{DynamicResource ButtonStyle_Black}"/>
+                            <ScrollViewer Grid.Row="1">
+                                <StackPanel>
+                                    <!-- Quest name -->
+                                    <TextBlock Text="Name:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Name}"/>
 
-                                                <TextBox Text="{Binding Yes}" Margin="0,5" Visibility="{Binding IsYesNo}" FontWeight="Normal"/>
-                                                <TextBox Text="{Binding No}" Margin="0,5" Visibility="{Binding IsYesNo}" FontWeight="Normal"/>
-                                                <TextBox Text="{Binding Stop}" Margin="0,5" FontWeight="Normal"  MinHeight="50"/>
+                                    <!-- Parent quest-->
+                                    <TextBlock Text="Parent quest:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Parent}"/>
 
-                                                <Button Content="Remove Say Info" Margin="0,5"  Width="150" HorizontalAlignment="Left" FontWeight="Normal"
-                                                        Style="{DynamicResource ButtonStyle_Black}"/>
-                                            </StackPanel>
-                                        </GroupBox>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                    <!-- Quest area -->
+                                    <TextBlock Text="Area:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Area}"/>
+
+                                    <!-- Quest order -->
+                                    <TextBlock Text="Order:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Order}"/>
+
+                                    <!-- Other boolean properties-->
+                                    <CheckBox x:Name="checkbox_blocked" Content="Blocked" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
+                                    <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
+                                    <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
+                                    <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+                                    <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                                    <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
+                                    <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <!-- For quest descriptions -->
+                                    <TextBlock Text="Summary:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Summary}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtStartTab" Content="Disable at start tab" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtPerformTab" Content="Disable at perform tab" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="Disable at complete tab"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <!-- For medals -->
+                                    <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
+                                    <StackPanel Margin="20,0,0,0" Visibility="{Binding SelectedQuest.IsMedal, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <TextBlock Text="Medal Category:"/>
+                                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.MedalCategory}"/>
+                                        <TextBlock Text="View medal Item Id:"/>
+                                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.ViewMedalItem}"/>
+
+                                        <TextBlock Text="Show layer tag" FontWeight="Bold"/>
+                                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
+                                    </StackPanel>
+
+                                    <!-- bottom padding-->
+                                    <Grid Margin="0,0,0,30"/>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Grid>
-                        
-                       
-                    </ScrollViewer>
-                </TabItem>
+                    </TabItem>
 
-                <!-- Check Conditions Tab -->
-                <TabItem Header="Check Conditions" FontWeight="Normal" >
-                    <StackPanel>
-                        <TextBlock Text="The conditions needed to start, or complete the quest." Foreground="Gray" Margin="0,0,0,10"/>
-                        
-                        <TextBlock Text="NPC ID:" FontWeight="Bold"/>
-                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.NpcId}" 
+                    <!-- Say Info Tab -->
+                    <TabItem Header="Say Info"  FontWeight="Normal">
+                        <ScrollViewer>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="50"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Orientation="Vertical" Grid.Row="0" Margin="0,0,0,10">
+                                    <TextBlock Text="What the NPC would say in a conversation when starting, or completing the quest." Foreground="Gray"/>
+                                    <TextBlock Text=" * If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
+                                </StackPanel>
+
+                                <Grid Grid.Row="1">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Text="Start Quest Conversation" FontWeight="Bold"/>
+
+                                    <DataGrid x:Name="dataGrid_ConversationStart" Grid.Row="1" ItemsSource="{Binding SelectedQuest.SayInfoStartQuest}"
+                                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                        <DataGrid.Columns>
+
+                                            <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+
+                                            <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel>
+                                                            <ItemsControl ItemsSource="{Binding YesResponses}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Text}" Margin="0,2"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+
+                                                            <Button x:Name="button_addYesResponse" Content="Add response" Style="{DynamicResource ButtonStyle_Black}" Width="100" HorizontalAlignment="Right"
+                                                            Click="button_addYesResponse_Click"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ListBox ItemsSource="{Binding YesResponses}" Height="100">
+                                                            <ListBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="25"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Grid.Column="0"/>
+                                                                        <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" Margin="3,0,0,0" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}"
+                                                                        Click="DeleteYesResponse_Click"/>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ListBox.ItemTemplate>
+                                                        </ListBox>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+
+                                            <DataGridTemplateColumn Header="No Responses" Width="3*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel>
+                                                            <ItemsControl ItemsSource="{Binding NoResponses}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Text}" Margin="0,2"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+
+                                                            <Button x:Name="button_addNoResponse" Content="Add response" Style="{DynamicResource ButtonStyle_Black}"  Width="100" HorizontalAlignment="Right"
+                                                            Click="button_addNoResponse_Click"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ListBox ItemsSource="{Binding NoResponses}" Height="100">
+                                                            <ListBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="25"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Grid.Column="0"/>
+                                                                        <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" Margin="3,0,0,0" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}"
+                                                                        Click="DeleteNoResponse_Click"/>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ListBox.ItemTemplate>
+                                                        </ListBox>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                    <TextBlock Grid.Row="2" Text="End Quest Conversation" FontWeight="Bold" Margin="0,10,0,0"/>
+
+                                    <DataGrid x:Name="DataGrid_conversationEndQuest" Grid.Row="3" ItemsSource="{Binding SelectedQuest.SayInfoEndQuest}"
+                                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                        <DataGrid.Columns>
+
+                                            <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+
+                                            <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel>
+                                                            <ItemsControl ItemsSource="{Binding YesResponses}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Text}" Margin="0,2"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+
+                                                            <Button x:Name="button_addYesResponse" Content="Add response" Style="{DynamicResource ButtonStyle_Black}" Width="100" HorizontalAlignment="Right"
+                                                            Click="button_addYesResponse_Click"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ListBox ItemsSource="{Binding YesResponses}" Height="100">
+                                                            <ListBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="25"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Grid.Column="0"/>
+                                                                        <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" Margin="3,0,0,0" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}"
+                                                                        Click="DeleteYesResponse_Click"/>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ListBox.ItemTemplate>
+                                                        </ListBox>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+
+                                            <DataGridTemplateColumn Header="No Responses" Width="3*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel>
+                                                            <ItemsControl ItemsSource="{Binding NoResponses}">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Text}" Margin="0,2"/>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+
+                                                            <Button x:Name="button_addNoResponse" Content="Add response" Style="{DynamicResource ButtonStyle_Black}"  Width="100" HorizontalAlignment="Right"
+                                                            Click="button_addNoResponse_Click"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ListBox ItemsSource="{Binding NoResponses}" Height="100">
+                                                            <ListBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="25"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Grid.Column="0"/>
+                                                                        <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" Margin="3,0,0,0" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}"
+                                                                        Click="DeleteNoResponse_Click"/>
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ListBox.ItemTemplate>
+                                                        </ListBox>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Grid>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- Check Conditions Tab -->
+                    <TabItem Header="Check Conditions" FontWeight="Normal" >
+                        <StackPanel>
+                            <TextBlock Text="The conditions needed to start, or complete the quest." Foreground="Gray" Margin="0,0,0,10"/>
+
+                            <TextBlock Text="NPC ID:" FontWeight="Bold"/>
+                            <TextBox Margin="0,5" Text="{Binding SelectedQuest.NpcId}" 
                                  InputScope="Number"/>
 
-                        <TextBlock Text="Min Level:" FontWeight="Bold"/>
-                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.MinLevel}" 
+                            <TextBlock Text="Min Level:" FontWeight="Bold"/>
+                            <TextBox Margin="0,5" Text="{Binding SelectedQuest.MinLevel}" 
                                  InputScope="Number" MaxLines="4"/>
 
-                        <TextBlock Text="End date:" FontWeight="Bold"/>
-                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.EndDate}" />
-                    </StackPanel>
-                </TabItem>
+                            <TextBlock Text="End date:" FontWeight="Bold"/>
+                            <TextBox Margin="0,5" Text="{Binding SelectedQuest.EndDate}" />
+                        </StackPanel>
+                    </TabItem>
 
-                <!-- Act Requirements Tab -->
-                <TabItem Header="Act Requirements" FontWeight="Normal">
-                    <StackPanel>
-                        <TextBlock Text="The actions to be given when starting, or completing the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
-                        
-                        <TextBlock Text="Next Quest ID:" FontWeight="Bold"/>
-                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.NextQuestId}" />
-                    </StackPanel>
-                </TabItem>
-            </TabControl>
+                    <!-- Act Requirements Tab -->
+                    <TabItem Header="Act Requirements" FontWeight="Normal">
+                        <StackPanel>
+                            <TextBlock Text="The actions to be given when starting, or completing the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
+
+                            <TextBlock Text="Next Quest ID:" FontWeight="Bold"/>
+                            <TextBox Margin="0,5" Text="{Binding SelectedQuest.NextQuestId}" />
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
+
+                <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right">
+                    <Button x:Name="button_deleteQuest" Content="Delete Quest" Margin="5,0,0,0" Width="120"
+                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
+                                    Click="button_deleteQuest_Click"/>
+                    <Button x:Name="button_saveQuest" Content="Save Quest" Margin="5,0,0,0"  Width="120"
+                                    Style="{DynamicResource ButtonStyle_Black}"
+                                    Click="button_saveQuest_Click"/>
+                </StackPanel>
+            </Grid>
         </GroupBox>
     </Grid>
 </Window>

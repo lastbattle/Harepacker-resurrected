@@ -51,7 +51,8 @@ namespace HaCreator.GUI
         // custom properties for UI
         public bool _isMedal;
 
-        private readonly ObservableCollection<QuestEditorSayModel> _sayInfo = new ObservableCollection<QuestEditorSayModel>();
+        private readonly ObservableCollection<QuestEditorSayModel> _sayInfoStartQuest = new ObservableCollection<QuestEditorSayModel>();
+        private readonly ObservableCollection<QuestEditorSayModel> _sayInfoEndQuest = new ObservableCollection<QuestEditorSayModel>();
         private readonly ObservableCollection<QuestEditorActInfoModel> _actInfo = new ObservableCollection<QuestEditorActInfoModel>();
         private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
 
@@ -295,9 +296,17 @@ namespace HaCreator.GUI
         /// <summary>
         /// Say.img
         /// </summary>
-        public ObservableCollection<QuestEditorSayModel> SayInfo
+        public ObservableCollection<QuestEditorSayModel> SayInfoStartQuest
         {
-            get => _sayInfo;
+            get => _sayInfoStartQuest;
+            private set
+            {
+            }
+        }
+
+        public ObservableCollection<QuestEditorSayModel> SayInfoEndQuest
+        {
+            get => _sayInfoEndQuest;
             private set
             {
             }

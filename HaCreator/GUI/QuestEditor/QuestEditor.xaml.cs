@@ -168,8 +168,6 @@ namespace HaCreator.GUI
                         case "demandSummary":
                         case "rewardSummary":
                         case "showLayerTag":
-
-                            // not handled yet
                         case "oneShot":
                         case "summary":
                             break;
@@ -222,6 +220,36 @@ namespace HaCreator.GUI
                 // misc properties
                 quest.ShowLayerTag = (questProp["showLayerTag"] as WzStringProperty)?.Value;
 
+                // Parse quest Say.img
+                // the NPC conversations
+                if (Program.InfoManager.QuestSays.ContainsKey(key)) // sometimes it does not exist in the Quest.wz/Say.img
+                {
+                    WzSubProperty questSayProp = Program.InfoManager.QuestSays[key];
+
+                    WzSubProperty questSayStart0Prop = (WzSubProperty)questSayProp["0"];
+                    WzSubProperty questSayEnd0Prop = (WzSubProperty)questSayProp["1"];
+
+                    if (questSayStart0Prop != null)
+                    {
+                        var loadedModels = parseQuestSayConversations(questSayStart0Prop, quest);
+                        foreach (QuestEditorSayModel sayModel in loadedModels)
+                        {
+                            quest.SayInfoStartQuest.Add(sayModel);
+                        }
+                    }
+                    if (questSayEnd0Prop != null)
+                    {
+                        var loadedModels = parseQuestSayConversations(questSayEnd0Prop, quest);
+                        foreach (QuestEditorSayModel sayModel in loadedModels)
+                        {
+                            quest.SayInfoEndQuest.Add(sayModel);
+                        }
+                    }
+                } else
+                {
+                    // add empty placeholders
+                }
+
                 // add
                 Quests.Add(quest);
             }
@@ -273,6 +301,59 @@ namespace HaCreator.GUI
             SelectedQuest = quest1000;*/
         }
 
+
+        private ObservableCollection<QuestEditorSayModel> parseQuestSayConversations(WzSubProperty questSayStart0Prop, QuestEditorModel quest)
+        {
+            var sayInfo = new ObservableCollection<QuestEditorSayModel>();
+            QuestEditorSayModel questEditorSayModel = null;
+
+            for (int z = 0; z < questSayStart0Prop.WzProperties.Count; z++)
+            { // has to be by order
+                WzImageProperty questConvProp = questSayStart0Prop.WzProperties[z];
+
+                int questConvName;
+                if (int.TryParse(questConvProp.Name, out questConvName) && questConvName < 200) // is conversation property "0" "1" "2" "3"
+                {
+                    questEditorSayModel = new QuestEditorSayModel();
+                    questEditorSayModel.NpcConversation = (questConvProp as WzStringProperty).Value;
+
+                    sayInfo.Add(questEditorSayModel);
+                }
+                else
+                {
+                    if (questConvProp.Name == "yes" || questConvProp.Name == "no") // is "yes" "no" property
+                    {
+                        if (questEditorSayModel == null)
+                            continue; // wz formatting error
+                        if (questConvProp.Name == "yes")
+                        {
+                            int a = 0;
+                            WzStringProperty textProp;
+                            while ((textProp = questConvProp[a.ToString()] as WzStringProperty) != null)
+                            {
+                                questEditorSayModel.YesResponses.Add(new QuestEditorSayResponseModel() { Text = textProp.Value });
+                                a++;
+                            }
+                        }
+                        else
+                        {
+                            int a = 0;
+                            WzStringProperty textProp;
+                            while ((textProp = questConvProp[a.ToString()] as WzStringProperty) != null)
+                            {
+                                questEditorSayModel.NoResponses.Add(new QuestEditorSayResponseModel() { Text = textProp.Value });
+                                a++;
+                            }
+                        }
+                    }
+                    else if (questConvProp.Name == "stop")
+                    {
+
+                    }
+                }
+            }
+            return sayInfo;
+        }
         #region QuestInfo
 
         #endregion
@@ -317,7 +398,7 @@ namespace HaCreator.GUI
 
             foreach (var quest in Quests)
             {
-                if (quest.Name.ToLower().Contains(searchTerm))
+                if (quest.Name.ToLower().Contains(searchTerm) || quest.Id.ToString().Contains(searchTerm))
                 {
                     tempFilteredQuests.Add(quest);
                 }
@@ -325,7 +406,94 @@ namespace HaCreator.GUI
             // Replace the main list
             FilteredQuests = tempFilteredQuests;
         }
+        #endregion
 
+        #region Quest QuestInfo.img
+        #endregion
+
+
+        #region Quest Say.img
+        /// <summary>
+        /// Add a new 'yes' conversation response
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addYesResponse_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataContext = button.DataContext as QuestEditorSayModel;
+            if (dataContext != null)
+            {
+                dataContext.YesResponses.Add(new QuestEditorSayResponseModel() { Text = "Add some text here." });
+            }
+        }
+
+        /// <summary>
+        /// Add a new no conversation response
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addNoResponse_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataContext = button.DataContext as QuestEditorSayModel;
+            if (dataContext != null)
+            {
+                dataContext.NoResponses.Add(new QuestEditorSayResponseModel() { Text = "Add some text here." });
+            }
+        }
+
+        /// <summary>
+        /// Remove yes conversation response
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DeleteYesResponse_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var response = button.DataContext as QuestEditorSayResponseModel;
+            var questModel = FindAncestor<DataGridCell>(button)?.DataContext as QuestEditorSayModel;
+
+            if (response != null && questModel != null)
+            {
+                questModel.YesResponses.Remove(response);
+            }
+        }
+
+        /// <summary>
+        /// Remove no conversation response
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DeleteNoResponse_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var response = button.DataContext as QuestEditorSayResponseModel;
+            var questModel = FindAncestor<DataGridCell>(button)?.DataContext as QuestEditorSayModel;
+
+            if (response != null && questModel != null)
+            {
+                questModel.NoResponses.Remove(response);
+            }
+        }
+
+        // Helper method to find ancestor of a specific type
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            do
+            {
+                if (current is T)
+                {
+                    return (T)current;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            while (current != null);
+            return null;
+        }
+        #endregion
+
+        #region Save Delete quest
         /// <summary>
         /// Saves the quest to WZ images
         /// </summary>
@@ -340,6 +508,7 @@ namespace HaCreator.GUI
             WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
             WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
 
+            // Save QuestInfo.img
             if (questWzSubProperty_original != null)
             {
                 questWzSubProp.AddProperty(new WzStringProperty("name", quest.Name));
@@ -448,8 +617,82 @@ namespace HaCreator.GUI
                 _unsavedChanges = true;
                 Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
             }
+
+            ///////////////////
+            ////// Save Say.img
+            ///////////////////
+            WzSubProperty newSayWzProp = new WzSubProperty(quest.Id.ToString());
+            WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
+
+            // start quest
+            WzSubProperty startQuestSubProperty = new WzSubProperty("0");
+            WzSubProperty endQuestSubProperty = new WzSubProperty("1");
+
+            newSayWzProp.AddProperty(startQuestSubProperty);
+            newSayWzProp.AddProperty(endQuestSubProperty);
+
+            saveQuestSayConversation(quest.SayInfoStartQuest, startQuestSubProperty);
+            saveQuestSayConversation(quest.SayInfoEndQuest, endQuestSubProperty);
+
+            // end quest
+            // TODO
+
+            // remove previous quest say wzImage
+            WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+            if (oldSayWzProp != null)
+                oldSayWzProp.Remove();
+
+            questSayParentImg.AddProperty(newSayWzProp); // add new to the parent
+
+            // replace the old 
+            Program.InfoManager.QuestSays[quest.Id.ToString()] = newSayWzProp;
+
+            // flag unsaved changes bool
+            _unsavedChanges = true;
+            Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+
         }
 
+        private void saveQuestSayConversation(ObservableCollection<QuestEditorSayModel> questSayItems, WzSubProperty questSaySubProperty)
+        {
+            int i = 0;
+            foreach (QuestEditorSayModel sayModel in questSayItems)
+            {
+                // the main conversation
+                questSaySubProperty.AddProperty(new WzStringProperty(i.ToString(), sayModel.NpcConversation));
+
+                // yes/ no if any
+                if (sayModel.YesResponses.Count > 0)
+                {
+                    WzSubProperty yesResponseSubWzProp = new WzSubProperty("yes");
+                    int z = 0;
+                    foreach (QuestEditorSayResponseModel sayRespModel in sayModel.YesResponses)
+                    {
+                        yesResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                        z++;
+                    }
+                    questSaySubProperty.AddProperty(yesResponseSubWzProp);
+                }
+                if (sayModel.NoResponses.Count > 0)
+                {
+                    WzSubProperty noResponseSubWzProp = new WzSubProperty("no");
+                    int z = 0;
+                    foreach (QuestEditorSayResponseModel sayRespModel in sayModel.NoResponses)
+                    {
+                        noResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                        z++;
+                    }
+                    questSaySubProperty.AddProperty(noResponseSubWzProp);
+                }
+                i++;
+            }
+        }
+
+        /// <summary>
+        /// Delete this selected quest
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void button_deleteQuest_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedQuest == null)
@@ -473,7 +716,6 @@ namespace HaCreator.GUI
             Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
         }
         #endregion
-
 
         #region Property Changed Event
 
