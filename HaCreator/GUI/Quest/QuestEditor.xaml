@@ -285,7 +285,7 @@
                         <ScrollViewer>
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="23"/>
+                                    <RowDefinition Height="24"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 

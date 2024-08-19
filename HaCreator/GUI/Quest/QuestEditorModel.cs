@@ -51,9 +51,15 @@ namespace HaCreator.GUI.Quest
         // custom properties for UI
         public bool _isMedal;
 
+        // Say
         private readonly ObservableCollection<QuestEditorSayModel> _sayInfoStartQuest = new ObservableCollection<QuestEditorSayModel>();
         private readonly ObservableCollection<QuestEditorSayModel> _sayInfoEndQuest = new ObservableCollection<QuestEditorSayModel>();
+        private bool _isAskConversation;
+
+        // Act
         private readonly ObservableCollection<QuestEditorActInfoModel> _actInfo = new ObservableCollection<QuestEditorActInfoModel>();
+
+        // Check
         private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
 
         /// <summary>
@@ -309,6 +315,19 @@ namespace HaCreator.GUI.Quest
             get => _sayInfoEndQuest;
             private set
             {
+            }
+        }
+
+        /// <summary>
+        /// Determines if this conversation is 'ask' whereby the user selects from a list of options.
+        /// </summary>
+        public bool IsAskConversation
+        {
+            get => _isAskConversation;
+            set
+            {
+                _isAskConversation = value;
+                OnPropertyChanged(nameof(IsAskConversation));
             }
         }
 

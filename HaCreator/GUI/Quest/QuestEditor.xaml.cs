@@ -355,7 +355,7 @@ namespace HaCreator.GUI.Quest
                         if (questEditorSayModel == null)
                             continue; // wz formatting error
 
-                        questEditorSayModel.IsAskConversation = (questConvProp as WzIntProperty).Value > 0;
+                        quest.IsAskConversation = (questConvProp as WzIntProperty).Value > 0;
                     }
                     else if (questConvProp.Name == "stop") // | stop is the options for ask.
                     {
@@ -366,7 +366,19 @@ namespace HaCreator.GUI.Quest
                 // parse previous, set conversation type
                 if (questEditorSayModel != null)
                 {
-                    questEditorSayModel.ConversationType = questEditorSayModel.IsYesNoConversation ? QuestEditorConversationType.YesNo : QuestEditorConversationType.NextPrev;
+                    bool bContainsAskConversation = false;
+                    if (questEditorSayModel.NpcConversation.Contains("#L0#") || (questEditorSayModel.NpcConversation.Contains("#L1#") || questEditorSayModel.NpcConversation.Contains("#L2#") || questEditorSayModel.NpcConversation.Contains("#L3#"))
+                        && questEditorSayModel.NpcConversation.Contains("#l"))
+                    {
+                        bContainsAskConversation = true; // flag
+                    }
+
+                    if (bContainsAskConversation)
+                        questEditorSayModel.ConversationType = QuestEditorConversationType.Ask;
+                    else if (questEditorSayModel.YesResponses.Count > 0 || questEditorSayModel.NoResponses.Count > 0)
+                        questEditorSayModel.ConversationType = QuestEditorConversationType.YesNo;
+                    else
+                        questEditorSayModel.ConversationType = QuestEditorConversationType.NextPrev;
                 }
             }
             return sayInfo;
@@ -666,8 +678,8 @@ namespace HaCreator.GUI.Quest
             newSayWzProp.AddProperty(startQuestSubProperty);
             newSayWzProp.AddProperty(endQuestSubProperty);
 
-            saveQuestSayConversation(quest.SayInfoStartQuest, startQuestSubProperty); // start quest save
-            saveQuestSayConversation(quest.SayInfoEndQuest, endQuestSubProperty); // end quest save
+            saveQuestSayConversation(quest, quest.SayInfoStartQuest, startQuestSubProperty); // start quest save
+            saveQuestSayConversation(quest, quest.SayInfoEndQuest, endQuestSubProperty); // end quest save
 
             // remove previous quest say wzImage
             WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
@@ -688,38 +700,70 @@ namespace HaCreator.GUI.Quest
 
         }
 
-        private void saveQuestSayConversation(ObservableCollection<QuestEditorSayModel> questSayItems, WzSubProperty questSaySubProperty)
+        /// <summary>
+        /// Saves this list of conversations to Say.img
+        /// </summary>
+        /// <param name="quest"></param>
+        /// <param name="questSayItems"></param>
+        /// <param name="questSaySubProperty"></param>
+        private void saveQuestSayConversation(QuestEditorModel quest, ObservableCollection<QuestEditorSayModel> questSayItems, WzSubProperty questSaySubProperty)
         {
+            bool bContainsAskConversation = false;
+
             int i = 0;
             foreach (QuestEditorSayModel sayModel in questSayItems)
             {
                 // the main conversation
                 questSaySubProperty.AddProperty(new WzStringProperty(i.ToString(), sayModel.NpcConversation));
 
-                // yes/ no if any
-                if (sayModel.YesResponses.Count > 0)
+                if (sayModel.IsYesNoConversation) // if there's nothing after a YesNo conversation, it is okay.. 
                 {
-                    WzSubProperty yesResponseSubWzProp = new WzSubProperty("yes");
-                    int z = 0;
-                    foreach (QuestEditorSayResponseModel sayRespModel in sayModel.YesResponses)
+                    // yes/ no if any
+                    if (sayModel.YesResponses.Count > 0)
                     {
-                        yesResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
-                        z++;
+                        WzSubProperty yesResponseSubWzProp = new WzSubProperty("yes");
+                        int z = 0;
+                        foreach (QuestEditorSayResponseModel sayRespModel in sayModel.YesResponses)
+                        {
+                            yesResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                            z++;
+                        }
+                        questSaySubProperty.AddProperty(yesResponseSubWzProp);
                     }
-                    questSaySubProperty.AddProperty(yesResponseSubWzProp);
+                    if (sayModel.NoResponses.Count > 0)
+                    {
+                        WzSubProperty noResponseSubWzProp = new WzSubProperty("no");
+                        int z = 0;
+                        foreach (QuestEditorSayResponseModel sayRespModel in sayModel.NoResponses)
+                        {
+                            noResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                            z++;
+                        }
+                        questSaySubProperty.AddProperty(noResponseSubWzProp);
+                    }
                 }
-                if (sayModel.NoResponses.Count > 0)
+
+                if (sayModel.NpcConversation.Contains("#L0#") || (sayModel.NpcConversation.Contains("#L1#") || sayModel.NpcConversation.Contains("#L2#") || sayModel.NpcConversation.Contains("#L3#")) 
+                    && sayModel.NpcConversation.Contains("#l"))
                 {
-                    WzSubProperty noResponseSubWzProp = new WzSubProperty("no");
-                    int z = 0;
-                    foreach (QuestEditorSayResponseModel sayRespModel in sayModel.NoResponses)
+                    bContainsAskConversation = true; // flag
+
+                    if (sayModel.ConversationType != QuestEditorConversationType.Ask) 
                     {
-                        noResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
-                        z++;
+                        // TODO warn the user about incorrect parameters entered
                     }
-                    questSaySubProperty.AddProperty(noResponseSubWzProp);
                 }
+
                 i++;
+            }
+
+            if (bContainsAskConversation /*quest.IsAskConversation*/) // dont rely on prior data, check with existing conversations
+            {
+                WzIntProperty wzAskBoolProperty = new WzIntProperty("ask", 1);
+                questSaySubProperty.AddProperty(wzAskBoolProperty);
+
+                // TODO: 
+                // ask selections
             }
         }
 

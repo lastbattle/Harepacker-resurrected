@@ -18,8 +18,6 @@ namespace HaCreator.GUI.Quest
     {
         private string _npcConversation;
 
-        private bool _isAskConversation = false;
-
         public QuestEditorConversationType _questEditorConversationType;
 
         private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = new ObservableCollection<QuestEditorSayResponseModel>();
@@ -36,19 +34,6 @@ namespace HaCreator.GUI.Quest
             {
                 _npcConversation = value;
                 OnPropertyChanged(nameof(NpcConversation));
-            }
-        }
-
-        /// <summary>
-        /// Determines if this conversation is 'ask' whereby the user selects from a list of options.
-        /// </summary>
-        public bool IsAskConversation
-        {
-            get => _isAskConversation;
-            set
-            {
-                _isAskConversation = value;
-                OnPropertyChanged(nameof(IsAskConversation));
             }
         }
 
@@ -74,7 +59,7 @@ namespace HaCreator.GUI.Quest
         public bool IsYesNoConversation
         {
             get {
-                return _yesResponses.Count > 0  || _noResponses.Count > 0 || _questEditorConversationType == QuestEditorConversationType.YesNo;
+                return _questEditorConversationType == QuestEditorConversationType.YesNo;
             }
         }
 
