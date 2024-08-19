@@ -34,6 +34,7 @@ using SystemWinCtl = System.Windows.Controls;
 using HaSharedLibrary;
 using MapleLib;
 using System.Windows.Forms.Integration;
+using HaCreator.GUI.Quest;
 
 namespace HaCreator.MapEditor
 {

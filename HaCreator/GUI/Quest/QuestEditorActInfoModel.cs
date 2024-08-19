@@ -27,7 +27,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace HaCreator.GUI
+namespace HaCreator.GUI.Quest
 {
     public class QuestEditorActInfoModel : INotifyPropertyChanged
     {

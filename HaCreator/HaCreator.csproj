@@ -161,6 +161,7 @@
     <Compile Include="Collections\MapleLinesCollection.cs" />
     <Compile Include="Collections\MapleLinesEnumerator.cs" />
     <Compile Include="Collections\SerializableEnumerator.cs" />
+    <Compile Include="Converter\EnumToVisibilityConverter.cs" />
     <Compile Include="CustomControls\CheckboxButton.cs" />
     <Compile Include="CustomControls\HaList.xaml.cs">
       <DependentUpon>HaList.xaml</DependentUpon>
@@ -306,12 +307,13 @@
     <Compile Include="GUI\NewPlatform.Designer.cs">
       <DependentUpon>NewPlatform.cs</DependentUpon>
     </Compile>
-    <Compile Include="GUI\QuestEditor\QuestEditor.xaml.cs">
+    <Compile Include="GUI\Quest\QuestEditor.xaml.cs">
       <DependentUpon>QuestEditor.xaml</DependentUpon>
     </Compile>
-    <Compile Include="GUI\QuestEditor\QuestEditorActInfoModel.cs" />
-    <Compile Include="GUI\QuestEditor\QuestEditorCheckInfoModel.cs" />
-    <Compile Include="GUI\QuestEditor\QuestEditorModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
+    <Compile Include="GUI\Quest\QuestEditorModel.cs" />
     <Compile Include="GUI\Repack.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -580,7 +582,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Collections\AnchorEnumerator.cs" />
-    <Compile Include="GUI\QuestEditor\QuestEditorSayModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorSayModel.cs" />
     <Compile Include="Wz\PortalGameImageInfo.cs" />
     <Compile Include="Collections\FootholdEnumerator.cs" />
     <Compile Include="Wz\MapLoader.cs" />
@@ -845,7 +847,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
-    <Page Include="GUI\QuestEditor\QuestEditor.xaml">
+    <Page Include="GUI\Quest\QuestEditor.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

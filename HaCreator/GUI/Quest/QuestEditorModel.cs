@@ -29,7 +29,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace HaCreator.GUI
+namespace HaCreator.GUI.Quest
 {
     public class QuestEditorModel : INotifyPropertyChanged
     {
