@@ -173,7 +173,7 @@ namespace HaCreator.GUI.Quest
                         case "summary":
                             break;
                         default:
-                            string error = string.Format("Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, kvp.Key);
+                            string error = string.Format("[QuestEditor] Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, kvp.Key);
                             ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             break;
                     }
@@ -234,19 +234,43 @@ namespace HaCreator.GUI.Quest
                     if (questSayStart0Prop != null)
                     {
                         var loadedModels = parseQuestSayConversations(questSayStart0Prop, quest);
-                        foreach (QuestEditorSayModel sayModel in loadedModels)
+                        foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
                         {
                             quest.SayInfoStartQuest.Add(sayModel);
+                        }
+                        foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                        {
+                            quest.SayInfoStop_StartQuest.Add(sayStopModel);
                         }
                     }
                     if (questSayEnd0Prop != null)
                     {
                         var loadedModels = parseQuestSayConversations(questSayEnd0Prop, quest);
-                        foreach (QuestEditorSayModel sayModel in loadedModels)
+                        foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
                         {
                             quest.SayInfoEndQuest.Add(sayModel);
                         }
+                        foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                        {
+                            quest.SayInfoStop_EndQuest.Add(sayStopModel);
+                        }
                     }
+
+                    /*QuestEditorSayEndQuestModel test1 = new QuestEditorSayEndQuestModel()
+                    {
+                        ConversationType = QuestEditorStopConversationType.Default
+                    };
+                    test1.Responses.Add(new QuestEditorSayResponseModel() { Text = "You haven&apos;t collected 9 #b#t3994199#s#k yet." });
+                    test1.Responses.Add(new QuestEditorSayResponseModel() { Text = "Now #b go back to check the wreckage of the carriage, There&apos;s bound to have some clue out there." });
+                    quest.SayInfoStopQuest.Add(test1);
+
+                    QuestEditorSayEndQuestModel test2 = new QuestEditorSayEndQuestModel()
+                    {
+                        ConversationType = QuestEditorStopConversationType.Item
+                    };
+                    test2.Responses.Add(new QuestEditorSayResponseModel() { Text = "You haven&apos;t collected 9 #b#t3994199#s#k yet." });
+                    test2.Responses.Add(new QuestEditorSayResponseModel() { Text = "Now #b go back to check the wreckage of the carriage, There&apos;s bound to have some clue out there." });
+                    quest.SayInfoStopQuest.Add(test2);*/
                 }
                 else
                 {
@@ -305,9 +329,20 @@ namespace HaCreator.GUI.Quest
         }
 
 
-        private ObservableCollection<QuestEditorSayModel> parseQuestSayConversations(WzSubProperty questSayStart0Prop, QuestEditorModel quest)
+        /// <summary>
+        /// Parses quest say, and say stop conversations into a list.
+        /// </summary>
+        /// <param name="questSayStart0Prop"></param>
+        /// <param name="quest"></param>
+        /// <returns></returns>
+        private Tuple<
+            ObservableCollection<QuestEditorSayModel>, 
+            ObservableCollection<QuestEditorSayEndQuestModel>> parseQuestSayConversations(WzSubProperty questSayStart0Prop, QuestEditorModel quest)
         {
             var sayInfo = new ObservableCollection<QuestEditorSayModel>();
+
+            var sayStop = new ObservableCollection<QuestEditorSayEndQuestModel>();
+
             QuestEditorSayModel questEditorSayModel = null;
 
             for (int z = 0; z < questSayStart0Prop.WzProperties.Count; z++) // this has to be parsed by its order!! whatever comes first parses first
@@ -357,9 +392,107 @@ namespace HaCreator.GUI.Quest
 
                         quest.IsAskConversation = (questConvProp as WzIntProperty).Value > 0;
                     }
+                    else if (questConvProp.Name == "lost") // lost quest item
+                    {
+                        /*
+                         * <imgdir name="lost">
+                         * <string name="0" value="Oh no... you lost the letter? Well, it&apos;s not hard for me to write another on, though. Here it is, and please give this to #b#p2101001##k."/>
+                         * <imgdir name="yes">
+                         * </imgdir>
+                         * </imgdir>
+                         */
+                    }
                     else if (questConvProp.Name == "stop") // | stop is the options for ask.
                     {
                         // TODO
+                        foreach (WzImageProperty questStopProp in questConvProp.WzProperties)
+                        {
+                            if (questStopProp.Name == "item" || // if not enough item
+                                    questStopProp.Name == "mob" || questStopProp.Name == "monster" || // if the hunt amount have not reached threshold
+                                    questStopProp.Name == "npc" || // if npc is not in the map, or the user talks to the NPC that issued the quest and not the one required to complete it.
+                                    questStopProp.Name == "quest" || // if quest pre-requisite requirement has not reached 
+                                    questStopProp.Name == "default" || // 'everything else chat' if any of the  pre-requisite requirement has not reached [i.e not enough ETC slot]
+                                    questStopProp.Name == "info")
+                                    {
+                                for (int a = 0; a < questStopProp.WzProperties.Count; a++) // this has to be parsed by its order!! whatever comes first parses first
+                                {
+                                    WzStringProperty questStopPropItem = questStopProp.WzProperties[a] as WzStringProperty;
+
+                                    if (Enum.TryParse(StringUtility.CapitalizeFirstCharacter(questStopProp.Name), true, out QuestEditorStopConversationType conversationType))
+                                    {
+                                        QuestEditorSayEndQuestModel toAddTo = sayStop.Where(x => x.ConversationType == conversationType).FirstOrDefault();
+                                        if (toAddTo == null)
+                                        {
+                                            toAddTo = new QuestEditorSayEndQuestModel()
+                                            {
+                                                ConversationType = conversationType,
+                                            };
+                                            sayStop.Add(toAddTo);
+                                        }
+                                        toAddTo.Responses.Add(new QuestEditorSayResponseModel() { Text = questStopPropItem.Value });
+                                    } else
+                                    {
+                                        // ERROR
+                                        string error = string.Format("[QuestEditor] Missing enum entry in QuestEditorStopConversationType. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
+                                        ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                                    }
+                                }
+                            }
+                            else if (questStopProp.Name == "yes" || questStopProp.Name == "no") // an askYesNo conversation after stop, then more embedded 'stop'
+                            {
+                                // TODO
+                                /**
+                                 * <imgdir name="stop">
+                                 * <imgdir name="yes">
+                                 * <string name="0" value="I appreciated how you gave me an update on him last time, and now ... wow... thank you so much. With this, I should be good enough to go and tell his story to the queen."/>
+                                 * </imgdir>
+                                 * <imgdir name="stop">
+                                 * <imgdir name="npc">
+                                 * <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
+                                 * </imgdir>
+                                 * <imgdir name="item">
+                                 * <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
+                                 * </imgdir>
+                                 * </imgdir>
+                                 * </imgdir>*/
+                            }
+                            else if (questStopProp.Name == "stop")
+                            {
+                                // TODO
+                                // there's also embedded stop
+                                /*                
+                                 *                <imgdir name="stop">
+                                 *                <imgdir name="npc">
+                                 *                <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
+                                 *                </imgdir>
+                                 *                <imgdir name="item">
+                                 *                <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
+                                 *                </imgdir>
+                                 *                </imgdir>*/
+                            }
+                            else
+                            {   
+                                int intProp = -1;
+                                if (int.TryParse(questStopProp.Name, out intProp))
+                                {
+                                    // 0 1 2 3 4 5
+                                    /* 
+                                     * <imgdir name="stop">
+                                     * <imgdir name="0">
+                                     * <int name="answer" value="1"/>
+                                     * </imgdir>
+                                     * <imgdir name="1">
+                                     * <int name="answer" value="1"/>
+                                     * </imgdir>
+                                     * </imgdir>*/
+                                }
+                                else
+                                {
+                                    string error = string.Format("[QuestEditor] Unhandled quest stop type. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
+                                    ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -381,7 +514,7 @@ namespace HaCreator.GUI.Quest
                         questEditorSayModel.ConversationType = QuestEditorConversationType.NextPrev;
                 }
             }
-            return sayInfo;
+            return Tuple.Create(sayInfo, sayStop);
         }
 
         #region QuestInfo
@@ -486,10 +619,47 @@ namespace HaCreator.GUI.Quest
             {
                 // find the listbox first
                 // then get the ObservableCollection<QuestEditorSayResponseModel> it is binded to
-                ListBox qEditorSayResponseModel = FindAncestor<ListBox>(button);
-                ObservableCollection<QuestEditorSayResponseModel> responsesList = qEditorSayResponseModel.DataContext as ObservableCollection<QuestEditorSayResponseModel>;
+                ListBox listboxParent = FindAncestor<ListBox>(button);
+                ObservableCollection<QuestEditorSayResponseModel> responsesList = listboxParent.DataContext as ObservableCollection<QuestEditorSayResponseModel>;
                 
                 responsesList.Remove(response);
+            }
+        }
+
+        /// <summary>
+        /// Add a new text for 'stop' quest conversation
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addResponse_stopQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataGridRow = FindAncestor<DataGridRow>(button);
+            var dataGridCell = FindAncestor<DataGridCell>(button);
+            var questModel = dataGridCell.DataContext as QuestEditorSayEndQuestModel;
+
+            if (questModel != null)
+            {
+                questModel.Responses.Add(new QuestEditorSayResponseModel() { Text = "You have not met the requirements yet. <ADD SOME TEXT>" });
+            }
+        }
+
+        /// <summary>
+        /// Remove no conversation response for 'stop' quest conversation
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DeleteResponse_stop_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataGridRow = FindAncestor<DataGridRow>(button);
+            var dataGridCell = FindAncestor<DataGridCell>(button);
+            var response = button.DataContext as QuestEditorSayResponseModel;
+            var questModel = dataGridCell.DataContext as QuestEditorSayEndQuestModel;
+
+            if (response != null && questModel != null)
+            {
+                questModel.Responses.Remove(response);
             }
         }
 
@@ -681,6 +851,9 @@ namespace HaCreator.GUI.Quest
             saveQuestSayConversation(quest, quest.SayInfoStartQuest, startQuestSubProperty); // start quest save
             saveQuestSayConversation(quest, quest.SayInfoEndQuest, endQuestSubProperty); // end quest save
 
+            saveQuestStopSayConversation(quest.SayInfoStop_StartQuest, startQuestSubProperty);
+            saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
+
             // remove previous quest say wzImage
             WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
             if (questSayParentImg == null)
@@ -764,6 +937,37 @@ namespace HaCreator.GUI.Quest
 
                 // TODO: 
                 // ask selections
+            }
+        }
+
+        /// <summary>
+        /// Saves the list of "stop" npc conversation to Say.img
+        /// </summary>
+        /// <param name="stopList"></param>
+        /// <param name="questStartOrStopProperty"></param>
+        private void saveQuestStopSayConversation(ObservableCollection<QuestEditorSayEndQuestModel> stopList, WzSubProperty questStartOrStopProperty)
+        {
+            WzSubProperty stopProperty = new WzSubProperty("stop");
+            questStartOrStopProperty.AddProperty(stopProperty); // add to "0" or "1"
+
+            foreach (QuestEditorSayEndQuestModel stopModel in stopList)
+            {
+                string convTypeName = stopModel.ConversationType.ToString().ToLower();
+
+                WzSubProperty convTypeProperty;
+                if (stopProperty[convTypeName] == null)
+                {
+                    convTypeProperty = new WzSubProperty(convTypeName); // create new if not exist
+                    stopProperty.AddProperty(convTypeProperty); // add to "stop" property folder
+                } else
+                {
+                    convTypeProperty = stopProperty[convTypeName] as WzSubProperty; // get from
+                }
+
+                for (int i = 0; i < stopModel.Responses.Count; i++) {
+                    WzStringProperty npcResponseProperty = new WzStringProperty(i.ToString(), stopModel.Responses[i].Text);
+                    convTypeProperty.AddProperty(npcResponseProperty);
+                }
             }
         }
 

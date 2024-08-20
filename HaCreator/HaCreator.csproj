@@ -313,7 +313,9 @@
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
+    <Compile Include="GUI\Quest\QuestEditorSayEndQuestModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorStopConversationType.cs" />
     <Compile Include="GUI\Repack.cs">
       <SubType>Form</SubType>
     </Compile>

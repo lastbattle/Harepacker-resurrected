@@ -54,6 +54,9 @@ namespace HaCreator.GUI.Quest
         // Say
         private readonly ObservableCollection<QuestEditorSayModel> _sayInfoStartQuest = new ObservableCollection<QuestEditorSayModel>();
         private readonly ObservableCollection<QuestEditorSayModel> _sayInfoEndQuest = new ObservableCollection<QuestEditorSayModel>();
+
+        private readonly ObservableCollection<QuestEditorSayEndQuestModel> _sayInfoStop_StartQuest = new ObservableCollection<QuestEditorSayEndQuestModel>();
+        private readonly ObservableCollection<QuestEditorSayEndQuestModel> _sayInfoStop_EndQuest = new ObservableCollection<QuestEditorSayEndQuestModel>();
         private bool _isAskConversation;
 
         // Act
@@ -313,6 +316,22 @@ namespace HaCreator.GUI.Quest
         public ObservableCollection<QuestEditorSayModel> SayInfoEndQuest
         {
             get => _sayInfoEndQuest;
+            private set
+            {
+            }
+        }
+
+        public ObservableCollection<QuestEditorSayEndQuestModel> SayInfoStop_StartQuest
+        {
+            get => _sayInfoStop_StartQuest;
+            private set
+            {
+            }
+        }
+
+        public ObservableCollection<QuestEditorSayEndQuestModel> SayInfoStop_EndQuest
+        {
+            get => _sayInfoStop_EndQuest;
             private set
             {
             }
