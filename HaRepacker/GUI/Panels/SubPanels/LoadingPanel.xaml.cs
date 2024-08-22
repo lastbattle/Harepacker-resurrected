@@ -64,7 +64,10 @@ namespace HaRepacker.GUI.Panels.SubPanels
         /// <param name="visibility"></param>
         public void SetWzIvBruteforceStackpanelVisiblity(Visibility visibility)
         {
-            stackPanel_wzIvBruteforceStat.Visibility = visibility;
+            stackPanel_wzIvBruteforceStat.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                stackPanel_wzIvBruteforceStat.Visibility = visibility;
+            }));
         }
 
         #region Exported Fields
