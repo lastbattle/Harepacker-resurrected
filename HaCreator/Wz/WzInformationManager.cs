@@ -41,6 +41,9 @@ namespace HaCreator.Wz
         // Mobs
         public Dictionary<string, string> MobNameCache = new Dictionary<string, string>();
 
+        // Npcs
+        public Dictionary<string, string> NpcNameCache = new Dictionary<string, string>();
+
         public Dictionary<string, PortalInfo> Portals = new Dictionary<string, PortalInfo>();
         public List<string> PortalTypeById = new List<string>();
         public Dictionary<string, int> PortalIdByType = new Dictionary<string,int>();

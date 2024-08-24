@@ -866,6 +866,22 @@ namespace HaCreator.GUI
             if (Program.InfoManager.MapsNameCache.Count != 0)
                 return;
 
+            // Npc strings
+            WzImage stringNpcImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Npc.img");
+            foreach (WzSubProperty npcImg in stringNpcImg.WzProperties) // String.wz/Npc.img/2000
+            {
+                string npcId = npcImg.Name;
+                string npcName = (npcImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                if (!Program.InfoManager.NpcNameCache.ContainsKey(npcId))
+                    Program.InfoManager.NpcNameCache[npcId] = npcName;
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Npc] name in String.wz. NpcId='{0}'", npcId);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
             // Map strings
             WzImage stringMapWzImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
             foreach (WzSubProperty mapCat in stringMapWzImg.WzProperties)

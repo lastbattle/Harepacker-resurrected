@@ -90,7 +90,9 @@ namespace HaCreator.MapEditor.Info
         private static NpcInfo Load(WzImage parentObject)
         {
             string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            return new NpcInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetNpcNameById(id, Program.WzManager), parentObject);
+            string npcName = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id] : "NO NAME";
+
+            return new NpcInfo(null, new System.Drawing.Point(), id, npcName, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)

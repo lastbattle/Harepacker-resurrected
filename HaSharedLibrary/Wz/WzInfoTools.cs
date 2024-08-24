@@ -68,23 +68,6 @@ namespace HaSharedLibrary.Wz
             return source.Substring(firstNonZeroIndex);
         }
 
-        public static string GetNpcNameById(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Npc.img");
-            if (stringWzDirs != null)
-            {
-                WzObject npcObj = stringWzDirs[id];
-                WzStringProperty npcName = (WzStringProperty)npcObj["name"];
-                if (npcName == null)
-                    return "";
-
-                return npcName.Value;
-            }
-            return "";
-        }
-
         public static WzObject GetObjectByRelativePath(WzObject currentObject, string path)
         {
             foreach (string directive in path.Split("/".ToCharArray()))
