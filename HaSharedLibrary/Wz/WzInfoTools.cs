@@ -68,23 +68,6 @@ namespace HaSharedLibrary.Wz
             return source.Substring(firstNonZeroIndex);
         }
 
-        public static string GetMobNameById(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Mob.img");
-            if (stringWzDirs != null)
-            {
-                WzObject mobObj = stringWzDirs[id];
-                WzStringProperty mobName = (WzStringProperty)mobObj["name"];
-                if (mobName == null)
-                    return "";
-
-                return mobName.Value;
-            }
-            return "";
-        }
-
         public static string GetNpcNameById(string id, WzFileManager fileManager)
         {
             id = RemoveLeadingZeros(id);
