@@ -22,6 +22,7 @@ using System.Drawing;
 using HaSharedLibrary.Wz;
 using MapleLib;
 using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace HaCreator.GUI
 {
@@ -139,7 +140,7 @@ namespace HaCreator.GUI
                     return false;
                 }
 
-                ExtractStringWzMaps();
+                ExtractStringFile();
                 //Program.WzManager.ExtractItems();
 
                 ExtractMobFile();
@@ -147,11 +148,12 @@ namespace HaCreator.GUI
                 ExtractReactorFile();
                 ExtractSoundFile();
                 ExtractQuestFile();
+                ExtractItemFile();
                 ExtractMapMarks();
-                ExtractPortals();
-                ExtractTileSets();
-                ExtractObjSets();
-                ExtractBackgroundSets();
+                ExtractMapPortals();
+                ExtractMapTileSets();
+                ExtractMapObjSets();
+                ExtractMapBackgroundSets();
 
                 ExtractMaps();
             }
@@ -170,7 +172,7 @@ namespace HaCreator.GUI
 
                     Program.WzManager.LoadWzFile(stringWzFileName, _wzMapleVersion);
                 }
-                ExtractStringWzMaps();
+                ExtractStringFile();
 
                 // Mob WZ
                 List<string> mobWzFiles = Program.WzManager.GetWzFileNameListFromBase("mob");
@@ -223,6 +225,16 @@ namespace HaCreator.GUI
                 }
                 ExtractQuestFile();
 
+                // Load Items
+                List<string> itemWzDirs = Program.WzManager.GetWzFileNameListFromBase("item");
+                foreach (string itemWzDir in itemWzDirs)
+                {
+                    UpdateUI_CurrentLoadingWzFile(itemWzDir, true);
+
+                    Program.WzManager.LoadWzFile(itemWzDir, _wzMapleVersion);
+                }
+                ExtractItemFile();
+
                 // Load maps
                 List<string> mapWzFiles = Program.WzManager.GetWzFileNameListFromBase("map");
                 foreach (string mapWzFileName in mapWzFiles)
@@ -263,10 +275,10 @@ namespace HaCreator.GUI
                     Program.WzManager.LoadWzFile(backWzFileName, _wzMapleVersion);
                 }
                 ExtractMapMarks();
-                ExtractPortals();
-                ExtractTileSets();
-                ExtractObjSets();
-                ExtractBackgroundSets();
+                ExtractMapPortals();
+                ExtractMapTileSets();
+                ExtractMapObjSets();
+                ExtractMapBackgroundSets();
                 ExtractMaps();
 
                 // UI.wz
@@ -564,7 +576,7 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractQuestFile()
         {
-            if (Program.InfoManager.QuestActs.Count != 0)
+            if (Program.InfoManager.QuestActs.Count != 0) // already loaded
                 return;
 
             List<WzDirectory> questWzDirs = Program.WzManager.GetWzDirectoriesFromBase("quest");
@@ -607,6 +619,72 @@ namespace HaCreator.GUI
                             break;
                         default:
                             break;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Item.wz
+        /// </summary>
+        public void ExtractItemFile()
+        {
+            if (Program.InfoManager.MapsNameCache.Count == 0)
+                throw new Exception("ExtractStringWzFile needs to be called first.");
+
+            List<WzDirectory> itemWzDirs = Program.WzManager.GetWzDirectoriesFromBase("item");
+            foreach (WzDirectory itemWzDir in itemWzDirs)
+            {
+                foreach (WzDirectory itemWzImage in itemWzDir.WzDirectories)
+                {
+                    switch (itemWzImage.Name)
+                    {
+                        case "ItemOption.img":
+                        case "Special":
+                            {
+                                break;
+                            }
+                        case "Consume":
+                        case "Etc":
+                        case "Cash":
+                        case "Install":
+                            {
+                                foreach (WzImage itemGroupImg in itemWzImage.WzImages)
+                                {
+                                    foreach (WzImageProperty itemImg in itemGroupImg.WzProperties)
+                                    {
+                                        string itemId = itemImg.Name;
+                                        WzSubProperty itemProp = itemImg as WzSubProperty;
+                                        WzCanvasProperty icon = itemProp["info"]?["icon"] as WzCanvasProperty;
+                                        if (icon != null)
+                                        {
+                                            Bitmap bitmap = icon.GetLinkedWzCanvasBitmap();
+
+                                            Program.InfoManager.ItemIconCache.Add(itemId, bitmap);
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                        case "Pet": // pet doesnt have a group directory
+                            {
+                                foreach (WzImage petImg in itemWzImage.WzImages)
+                                {
+                                    string itemId = petImg.Name.Replace(".img", "");
+                                    WzCanvasProperty icon = petImg["info"]?["icon"] as WzCanvasProperty;
+                                    if (icon != null)
+                                    {
+                                        Bitmap bitmap = icon.GetLinkedWzCanvasBitmap();
+
+                                        Program.InfoManager.ItemIconCache.Add(itemId, bitmap);
+                                    }
+                                }
+                                break;
+                            }
+                        default:
+                            {
+                                break;
+                            }
                     }
                 }
             }
@@ -681,7 +759,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Map tiles
         /// </summary>
-        public void ExtractTileSets()
+        public void ExtractMapTileSets()
         {
             if (Program.InfoManager.TileSets.Count != 0)
                 return;
@@ -718,7 +796,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Handle various scenarios ie Map001.wz exists but may only contain Back or only Obj etc
         /// </summary>
-        public void ExtractObjSets()
+        public void ExtractMapObjSets()
         {
             if (Program.InfoManager.ObjectSets.Count != 0)
                 return;
@@ -751,7 +829,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Map background sets
         /// </summary>
-        public void ExtractBackgroundSets()
+        public void ExtractMapBackgroundSets()
         {
             if (Program.InfoManager.BackgroundSets.Count != 0)
                 return;
@@ -783,16 +861,14 @@ namespace HaCreator.GUI
         /// <summary>
         /// Extracts all string.wz map list and places it in Program.InfoManager.Maps dictionary
         /// </summary>
-        public void ExtractStringWzMaps()
+        public void ExtractStringFile()
         {
             if (Program.InfoManager.MapsNameCache.Count != 0)
                 return;
 
-            WzImage stringWzImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
-
-            if (!stringWzImg.Parsed)
-                stringWzImg.ParseImage();
-            foreach (WzSubProperty mapCat in stringWzImg.WzProperties)
+            // Map strings
+            WzImage stringMapWzImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
+            foreach (WzSubProperty mapCat in stringMapWzImg.WzProperties)
             {
                 foreach (WzSubProperty map in mapCat.WzProperties)
                 {
@@ -811,6 +887,108 @@ namespace HaCreator.GUI
                     }
                 }
             }
+
+            // Mob strings
+            WzImage stringMobImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Mob.img");
+            foreach (WzSubProperty mobImg in stringMobImg.WzProperties) // String.wz/Mob.img/100100
+            {
+                string mobId = mobImg.Name;
+                string itemName = (mobImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                if (!Program.InfoManager.MobNameCache.ContainsKey(mobId))
+                    Program.InfoManager.MobNameCache[mobId] = itemName;
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Mob] name in String.wz. MobId='{0}'", mobId);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
+            // Item strings
+            WzImage stringEqpImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Eqp.img");
+            foreach (WzSubProperty eqpSubProp in stringEqpImg.WzProperties)
+            {
+                foreach (WzSubProperty eqpCategorySubProp in eqpSubProp.WzProperties)
+                {
+                    foreach (WzSubProperty eqpItemSubProp in eqpCategorySubProp.WzProperties) // String.wz/Eqp.img/Accessory/1010000
+                    {
+                        string itemId = eqpItemSubProp.Name;
+                        string itemName = (eqpItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                        if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
+                            Program.InfoManager.ItemNameCache[itemId] = itemName;
+                        else
+                        {
+                            string error = string.Format("[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{0}', Category={1}", itemId, eqpCategorySubProp.Name);
+                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                        }
+                    }
+                }
+            }
+
+            WzImage stringInsImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Ins.img");
+            foreach (WzSubProperty insItemImg in stringInsImg.WzProperties) // String.wz/Ins.img/3010000
+            {
+                string itemId = insItemImg.Name;
+                string itemName = (insItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
+                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemImg.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
+            WzImage stringCashImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Cash.img");
+            foreach (WzSubProperty cashItemImg in stringCashImg.WzProperties) // String.wz/Cash.img/5010000
+            {
+                string itemId = cashItemImg.Name;
+                string itemName = (cashItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
+                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Cash] item name in String.wz. ItemId='{0}', Category={1}", itemId, cashItemImg.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
+            WzImage stringConsumeImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Consume.img");
+            foreach (WzSubProperty consumeItemImg in stringConsumeImg.WzProperties) // String.wz/Cash.img/5010000
+            {
+                string itemId = consumeItemImg.Name;
+                string itemName = (consumeItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
+                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Consume] item name in String.wz. ItemId='{0}', Category={1}", itemId, consumeItemImg.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
+            WzImage stringEtcImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Etc.img");
+            foreach (WzSubProperty etcSubProp in stringEtcImg.WzProperties)
+            {
+                foreach (WzSubProperty etcItemSubProp in etcSubProp.WzProperties) // String.wz/Etc.img/Etc/1010000
+                {
+                    string itemId = etcItemSubProp.Name;
+                    string itemName = (etcItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
+                        Program.InfoManager.ItemNameCache[itemId] = itemName;
+                    else
+                    {
+                        string error = string.Format("[Initialization] Duplicate [Etc] item name in String.wz. ItemId='{0}', Category={1}", itemId, etcSubProp.Name);
+                        ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    }
+                }
+            }
+
         }
 
         /// <summary>
@@ -822,8 +1000,14 @@ namespace HaCreator.GUI
 
             UpdateUI_CurrentLoadingWzFile(string.Format("{0} map data", Program.InfoManager.MapsNameCache.Count), false);
 
+            // Create a ParallelOptions object
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount * 2 // number of concurrent tasks, typically bottlenecked by disk I/O and RAM speeds
+            };
+
             //foreach (KeyValuePair<string, Tuple<string, string>> val in Program.InfoManager.MapsNameCache) {
-                Parallel.ForEach(Program.InfoManager.MapsNameCache, val => {
+            Parallel.ForEach(Program.InfoManager.MapsNameCache, parallelOptions, val => {
                 int mapid = 0;
                 int.TryParse(val.Key, out mapid);
 
@@ -850,7 +1034,7 @@ namespace HaCreator.GUI
         /// Map portals
         /// </summary>
         /// <exception cref="Exception"></exception>
-        public void ExtractPortals()
+        public void ExtractMapPortals()
         {
             if (Program.InfoManager.GamePortals.Count != 0)
                 return;
