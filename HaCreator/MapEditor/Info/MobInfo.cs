@@ -89,7 +89,9 @@ namespace HaCreator.MapEditor.Info
         private static MobInfo Load(WzImage parentObject)
         {
             string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            return new MobInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetMobNameById(id, Program.WzManager), parentObject);
+            string mobName = Program.InfoManager.MobNameCache.ContainsKey(id) ? Program.InfoManager.MobNameCache[id] : "";
+
+            return new MobInfo(null, new System.Drawing.Point(), id, mobName, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
