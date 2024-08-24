@@ -117,17 +117,17 @@ namespace HaCreator.CustomControls
             }
 
             // Maps
-            foreach (KeyValuePair<string, Tuple<string, string>> map in Program.InfoManager.MapsNameCache)
+            foreach (KeyValuePair<string, Tuple<string, string, string>> map in Program.InfoManager.MapsNameCache) // street name, map name, category name
             {
                 string mapid_str = map.Key.Substring(0, 9);
 
                 if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
-                    Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+                    Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
                     string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2);
 
                     maps.Add(displayMapNameString);
-                    mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                    mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5));
                 }
             }
             maps.Sort();
@@ -181,11 +181,11 @@ namespace HaCreator.CustomControls
                     string mapid_str = OpenedMapName.Substring(0, 9);
 
                     if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
-                        Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+                        Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
                         maps.Add(OpenedMapName);
                         if (!mapsMapInfo.ContainsKey(OpenedMapName))
-                            mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item6));
+                            mapsMapInfo.Add(OpenedMapName, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5));
                     }
                 }
                 object[] mapsObjs = maps.Cast<object>().ToArray();

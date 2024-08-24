@@ -879,11 +879,15 @@ namespace HaCreator.GUI
                         mapIdStr = map.Name;
                     else
                         mapIdStr = WzInfoTools.AddLeadingZeros(map.Name, 9);
+                    string categoryName = map.Parent.Name;
 
                     if (mapNameWzProp == null)
-                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string>("", "");
+                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string, string>("NO NAME", "NO NAME", "NO NAME");
                     else {
-                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string>(streetNameWzProp?.Value == null ? string.Empty : streetNameWzProp.Value, mapNameWzProp.Value);
+                        Program.InfoManager.MapsNameCache[mapIdStr] = new Tuple<string, string, string>(
+                            streetNameWzProp?.Value == null ? string.Empty : streetNameWzProp.Value, 
+                            mapNameWzProp.Value,
+                            categoryName);
                     }
                 }
             }
@@ -1013,16 +1017,24 @@ namespace HaCreator.GUI
 
                 WzImage mapImage = WzInfoTools.FindMapImage(mapid.ToString(), Program.WzManager);
                 if (mapImage != null) { // its okay if the image is not found, sometimes there may be strings in String.wz but not the actual maps in Map.wz
-                    WzSubProperty strMapProp = WzInfoTools.GetMapStringProp(val.Key, Program.WzManager);
-                    string mapName = WzInfoTools.GetMapName(strMapProp);
-                    string streetName = WzInfoTools.GetMapStreetName(strMapProp);
-                    string categoryName = WzInfoTools.GetMapCategoryName(strMapProp);
+                    string mapId = val.Key;
+                    string mapName = "NO NAME";
+                    string streetName = "NO NAME";
+                    string categoryName = "NO NAME";
+
+                    if (Program.InfoManager.MapsNameCache.ContainsKey(mapId))
+                    {
+                        var mapNames = Program.InfoManager.MapsNameCache[mapId];
+                        mapName = mapNames.Item1;
+                        streetName = mapNames.Item2;
+                        categoryName = mapNames.Item3;
+                    }
                     MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
 
                     // Ensure thread safety when writing to the shared resource
                     lock (Program.InfoManager.MapsCache) {
-                        Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, WzSubProperty, string, string, string, MapInfo>(
-                            mapImage, strMapProp, mapName, streetName, categoryName, info
+                        Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
+                            mapImage, mapName, streetName, categoryName, info
                         );
                     }
                 }

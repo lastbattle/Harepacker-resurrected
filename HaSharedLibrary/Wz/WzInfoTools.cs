@@ -85,62 +85,6 @@ namespace HaSharedLibrary.Wz
             return "";
         }
 
-        public static WzSubProperty GetMapStringProp(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage mapImg = (WzImage)fileManager.FindWzImageByName("string", "Map.img");
-            if (mapImg != null)
-            {
-                foreach (WzSubProperty mapNameCategory in mapImg.WzProperties)
-                {
-                    WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
-                    if (mapNameDirectory != null)
-                    {
-                        return mapNameDirectory;
-                    }
-                }
-            }
-            return null;
-        }
-
-        public static string GetMapName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            WzStringProperty mapName = (WzStringProperty)mapProp["mapName"];
-            if (mapName == null)
-            {
-                return "";
-            }
-            return mapName.Value;
-        }
-
-        public static string GetMapStreetName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            WzStringProperty streetName = (WzStringProperty)mapProp["streetName"];
-            if (streetName == null)
-            {
-                return "";
-            }
-            return streetName.Value;
-        }
-
-        public static string GetMapCategoryName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            return mapProp.Parent.Name;
-        }
-
         public static WzObject GetObjectByRelativePath(WzObject currentObject, string path)
         {
             foreach (string directive in path.Split("/".ToCharArray()))

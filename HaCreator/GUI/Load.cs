@@ -200,7 +200,6 @@ namespace HaCreator.GUI
             WzImage mapImage = null;
             int mapid = -1;
             string mapName = null, streetName = "", categoryName = "";
-            WzSubProperty strMapProp = null;
             MapInfo info = null;
 
             if (!bFromHistory) {
@@ -257,14 +256,13 @@ namespace HaCreator.GUI
                     int.TryParse(mapid_str, out mapid);
 
                     if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
-                        Tuple<WzImage, WzSubProperty, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+                        Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
                         mapImage = loadedMap.Item1;
-                        strMapProp = loadedMap.Item2;
-                        mapName = loadedMap.Item3;
-                        streetName = loadedMap.Item4;
-                        categoryName = loadedMap.Item5;
-                        info = loadedMap.Item6;
+                        mapName = loadedMap.Item2;
+                        streetName = loadedMap.Item3;
+                        categoryName = loadedMap.Item4;
+                        info = loadedMap.Item5;
                     }
                     else {
                         MessageBox.Show("Map is missing.", "Error");
@@ -276,7 +274,7 @@ namespace HaCreator.GUI
                     this.mapBrowser_history.AddLoadedMapToHistory(selectedItem);
                 }
             }
-            MapLoader.CreateMapFromImage(mapid, mapImage, info, mapName, streetName, categoryName, strMapProp, Tabs, multiBoard, rightClickHandler);
+            MapLoader.CreateMapFromImage(mapid, mapImage, info, mapName, streetName, categoryName, Tabs, multiBoard, rightClickHandler);
 
             DialogResult = DialogResult.OK;
             ww.EndWait();

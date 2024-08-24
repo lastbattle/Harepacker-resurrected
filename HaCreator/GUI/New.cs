@@ -106,13 +106,22 @@ namespace HaCreator.GUI
                 return;
             }
 
-            WzSubProperty strMapProp = WzInfoTools.GetMapStringProp(mapId_str, Program.WzManager);
-            string cloneMapName = WzInfoTools.GetMapName(strMapProp);
-            string cloneStreetName = WzInfoTools.GetMapStreetName(strMapProp);
-            string cloneCategoryName = WzInfoTools.GetMapCategoryName(strMapProp);
+            string cloneMapName = "NO NAME";
+            string cloneStreetName = "NO NAME";
+            string cloneCategoryName = "NO NAME";
+
+            if (Program.InfoManager.MapsNameCache.ContainsKey(mapId_str))
+            {
+                var mapNames = Program.InfoManager.MapsNameCache[mapId_str];
+
+                cloneMapName = mapNames.Item1;
+                cloneStreetName = mapNames.Item2;
+                cloneCategoryName = mapNames.Item3;
+            }
+
             MapInfo info = new MapInfo(mapImage, cloneMapName, cloneStreetName, cloneCategoryName);
 
-            MapLoader.CreateMapFromImage(-1 /*mapid*/, mapImage.DeepClone(), info, cloneMapName, cloneStreetName, cloneCategoryName, (WzSubProperty) strMapProp.DeepClone(), Tabs, multiBoard, rightClickHandler);
+            MapLoader.CreateMapFromImage(-1 /*mapid*/, mapImage.DeepClone(), info, cloneMapName, cloneStreetName, cloneCategoryName, Tabs, multiBoard, rightClickHandler);
 
             Close();
         }

@@ -92,15 +92,17 @@ namespace HaCreator.GUI.EditorPanels
             lock (hcsm.MultiBoard)
             {
                 lifePictureBox.Image = new Bitmap(1, 1);
-                if (lifeListBox.SelectedItem == null) return;
-                if (reactorRButton.Checked)
+                if (lifeListBox.SelectedItem == null) 
+                    return;
+
+                if (reactorRButton.Checked) // is reactor
                 {
                     ReactorInfo info = Program.InfoManager.Reactors[(string)lifeListBox.SelectedItem];
                     lifePictureBox.Image = new Bitmap(info.Image);
                     hcsm.EnterEditMode(ItemTypes.Reactors);
                     hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
                 }
-                else if (npcRButton.Checked)
+                else if (npcRButton.Checked) // npc
                 {
                     string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
                     NpcInfo info = NpcInfo.Get(id);
@@ -117,7 +119,7 @@ namespace HaCreator.GUI.EditorPanels
                     hcsm.EnterEditMode(ItemTypes.NPCs);
                     hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);
                 }
-                else if (mobRButton.Checked)
+                else if (mobRButton.Checked) // mobs
                 {
                     string id = ((string)lifeListBox.SelectedItem).Substring(0, ((string)lifeListBox.SelectedItem).IndexOf(" - "));
                     MobInfo info = MobInfo.Get(id);

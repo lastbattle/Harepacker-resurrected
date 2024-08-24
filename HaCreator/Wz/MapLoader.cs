@@ -953,7 +953,7 @@ namespace HaCreator.Wz
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
         /// <param name="rightClickHandler"></param>
-        public static void CreateMapFromImage(int mapId, WzImage mapImage, MapInfo info, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static void CreateMapFromImage(int mapId, WzImage mapImage, MapInfo info, string mapName, string streetName, string categoryName, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             if (!mapImage.Parsed)
                 mapImage.ParseImage();
