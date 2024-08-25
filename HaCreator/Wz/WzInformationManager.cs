@@ -35,8 +35,9 @@ namespace HaCreator.Wz
         public Dictionary<string, Tuple<WzImage, string, string, string, MapInfo>> MapsCache = new Dictionary<string, Tuple<WzImage, string, string, string, MapInfo>>(); // mapImage, strMapProp, mapName, streetName, categoryName, info
 
         // Item 
-        public Dictionary<string, string> ItemNameCache = new Dictionary<string, string>();
-        public Dictionary<string, Bitmap> ItemIconCache = new Dictionary<string, Bitmap>();
+        public Dictionary<int, Tuple<string, string, string>> ItemNameCache = new Dictionary<int, Tuple<string, string, string>>(); // itemid, <item category, item name, item desc>
+        public Dictionary<int, WzCanvasProperty> ItemIconCache = new Dictionary<int, WzCanvasProperty>();
+        public Dictionary<int, WzCanvasProperty> EquipIconCache = new Dictionary<int, WzCanvasProperty>();
 
         // Mobs
         public Dictionary<string, string> MobNameCache = new Dictionary<string, string>();

@@ -148,6 +148,7 @@ namespace HaCreator.GUI
                 ExtractReactorFile();
                 ExtractSoundFile();
                 ExtractQuestFile();
+                ExtractCharacterFile();
                 ExtractItemFile();
                 ExtractMapMarks();
                 ExtractMapPortals();
@@ -224,6 +225,16 @@ namespace HaCreator.GUI
                     Program.WzManager.LoadWzFile(questWzDir, _wzMapleVersion);
                 }
                 ExtractQuestFile();
+
+                // Load character
+                List<string> characterWzDirs = Program.WzManager.GetWzFileNameListFromBase("character");
+                foreach (string characterWzDir in characterWzDirs)
+                {
+                    UpdateUI_CurrentLoadingWzFile(characterWzDir, true);
+
+                    Program.WzManager.LoadWzFile(characterWzDir, _wzMapleVersion);
+                }
+                ExtractCharacterFile();
 
                 // Load Items
                 List<string> itemWzDirs = Program.WzManager.GetWzFileNameListFromBase("item");
@@ -624,6 +635,44 @@ namespace HaCreator.GUI
             }
         }
 
+        public void ExtractCharacterFile()
+        {
+            if (Program.InfoManager.MapsNameCache.Count == 0)
+                throw new Exception("ExtractStringWzFile needs to be called first.");
+            else if (Program.InfoManager.EquipIconCache.Count != 0)
+                return; // loaded
+
+            List<WzDirectory> characterWzDirs = Program.WzManager.GetWzDirectoriesFromBase("character");
+            foreach (WzDirectory characterWzDir in characterWzDirs)
+            {
+                // foreach (WzDirectory characterWzImage in characterWzDir.WzDirectories)
+                Parallel.ForEach(characterWzDir.WzDirectories, characterWzImage =>
+                {
+                        switch (characterWzImage.Name)
+                        {
+                            case "Afterimage": // weapon delays
+                                break;
+                            default:
+                                {
+                                    foreach (WzImage itemImg in characterWzImage.WzImages)
+                                    {
+                                        string itemId = itemImg.Name.Replace(".img", "");
+                                        WzCanvasProperty icon = itemImg["info"]?["icon"] as WzCanvasProperty;
+                                        if (icon != null)
+                                        {
+                                            int intName = 0;
+                                            int.TryParse(itemId, out intName);
+
+                                            Program.InfoManager.EquipIconCache.Add(intName, icon);
+                                        }
+                                    }
+                                    break;
+                                }
+                        }
+                });
+            }
+        }
+
         /// <summary>
         /// Item.wz
         /// </summary>
@@ -631,11 +680,14 @@ namespace HaCreator.GUI
         {
             if (Program.InfoManager.MapsNameCache.Count == 0)
                 throw new Exception("ExtractStringWzFile needs to be called first.");
+            else if (Program.InfoManager.ItemIconCache.Count != 0)
+                return; // loaded
 
             List<WzDirectory> itemWzDirs = Program.WzManager.GetWzDirectoriesFromBase("item");
             foreach (WzDirectory itemWzDir in itemWzDirs)
             {
-                foreach (WzDirectory itemWzImage in itemWzDir.WzDirectories)
+                Parallel.ForEach(itemWzDir.WzDirectories, itemWzImage =>
+                //foreach (WzDirectory itemWzImage in itemWzDir.WzDirectories)
                 {
                     switch (itemWzImage.Name)
                     {
@@ -658,9 +710,10 @@ namespace HaCreator.GUI
                                         WzCanvasProperty icon = itemProp["info"]?["icon"] as WzCanvasProperty;
                                         if (icon != null)
                                         {
-                                            Bitmap bitmap = icon.GetLinkedWzCanvasBitmap();
+                                            int intName = 0;
+                                            int.TryParse(itemId, out intName);
 
-                                            Program.InfoManager.ItemIconCache.Add(itemId, bitmap);
+                                            Program.InfoManager.ItemIconCache.Add(intName, icon);
                                         }
                                     }
                                 }
@@ -674,9 +727,10 @@ namespace HaCreator.GUI
                                     WzCanvasProperty icon = petImg["info"]?["icon"] as WzCanvasProperty;
                                     if (icon != null)
                                     {
-                                        Bitmap bitmap = icon.GetLinkedWzCanvasBitmap();
+                                        int intName = 0;
+                                        int.TryParse(itemId, out intName);
 
-                                        Program.InfoManager.ItemIconCache.Add(itemId, bitmap);
+                                        Program.InfoManager.ItemIconCache.Add(intName, icon);
                                     }
                                 }
                                 break;
@@ -686,7 +740,7 @@ namespace HaCreator.GUI
                                 break;
                             }
                     }
-                }
+                });
             }
         }
 
@@ -933,10 +987,15 @@ namespace HaCreator.GUI
                     foreach (WzSubProperty eqpItemSubProp in eqpCategorySubProp.WzProperties) // String.wz/Eqp.img/Accessory/1010000
                     {
                         string itemId = eqpItemSubProp.Name;
+                        string itemCategory = string.Format("Eqp-{0}", eqpCategorySubProp.Name);
                         string itemName = (eqpItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                        string itemDesc = (eqpItemSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 
-                        if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
-                            Program.InfoManager.ItemNameCache[itemId] = itemName;
+                        int intName = 0;
+                        int.TryParse(itemId, out intName);
+
+                        if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                            Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                         else
                         {
                             string error = string.Format("[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{0}', Category={1}", itemId, eqpCategorySubProp.Name);
@@ -950,10 +1009,15 @@ namespace HaCreator.GUI
             foreach (WzSubProperty insItemImg in stringInsImg.WzProperties) // String.wz/Ins.img/3010000
             {
                 string itemId = insItemImg.Name;
+                const string itemCategory = "Ins";
                 string itemName = (insItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (insItemImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
-                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                 else
                 {
                     string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemImg.Name);
@@ -965,10 +1029,15 @@ namespace HaCreator.GUI
             foreach (WzSubProperty cashItemImg in stringCashImg.WzProperties) // String.wz/Cash.img/5010000
             {
                 string itemId = cashItemImg.Name;
+                const string itemCategory = "Cash";
                 string itemName = (cashItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (cashItemImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
-                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                 else
                 {
                     string error = string.Format("[Initialization] Duplicate [Cash] item name in String.wz. ItemId='{0}', Category={1}", itemId, cashItemImg.Name);
@@ -980,10 +1049,15 @@ namespace HaCreator.GUI
             foreach (WzSubProperty consumeItemImg in stringConsumeImg.WzProperties) // String.wz/Cash.img/5010000
             {
                 string itemId = consumeItemImg.Name;
+                const string itemCategory = "Consume";
                 string itemName = (consumeItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (consumeItemImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
-                    Program.InfoManager.ItemNameCache[itemId] = itemName;
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                 else
                 {
                     string error = string.Format("[Initialization] Duplicate [Consume] item name in String.wz. ItemId='{0}', Category={1}", itemId, consumeItemImg.Name);
@@ -997,10 +1071,15 @@ namespace HaCreator.GUI
                 foreach (WzSubProperty etcItemSubProp in etcSubProp.WzProperties) // String.wz/Etc.img/Etc/1010000
                 {
                     string itemId = etcItemSubProp.Name;
+                    const string itemCategory = "Etc";
                     string itemName = (etcItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                    string itemDesc = (etcItemSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 
-                    if (!Program.InfoManager.ItemNameCache.ContainsKey(itemId))
-                        Program.InfoManager.ItemNameCache[itemId] = itemName;
+                    int intName = 0;
+                    int.TryParse(itemId, out intName);
+
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                        Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                     else
                     {
                         string error = string.Format("[Initialization] Duplicate [Etc] item name in String.wz. ItemId='{0}', Category={1}", itemId, etcSubProp.Name);
@@ -1069,7 +1148,7 @@ namespace HaCreator.GUI
 
             WzImage mapImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
             if (mapImg == null)
-                throw new Exception("Couldnt extract portals. MapHelper.img not found.");
+                throw new Exception("Couldn't extract portals. MapHelper.img not found.");
 
             WzSubProperty portalParent = (WzSubProperty)mapImg["portal"];
             WzSubProperty editorParent = (WzSubProperty)portalParent["editor"];

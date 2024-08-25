@@ -185,10 +185,11 @@ namespace HaSharedLibrary.Wz
         /// On post 64-bit client:
         /// Map/Map/Map1/Map1_000.wz/10000000.img (WzFile)
         /// </summary>
-        /// <param name="mapid"></param>
+        /// <param name="mapId"></param>
+        /// <param name="fileManager"></param>
         /// <returns></returns>
-        public static WzDirectory FindMapDirectoryParent(string mapid, WzFileManager fileManager) {
-            string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
+        public static WzDirectory FindMapDirectoryParent(string mapId, WzFileManager fileManager) {
+            string mapIdNamePadded = AddLeadingZeros(mapId, 9) + ".img";
             string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
             string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 

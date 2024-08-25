@@ -4,9 +4,6 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//uncomment the line below to create a space-time tradeoff (saving RAM by wasting more CPU cycles)
-#define SPACETIME
-
 using System;
 using System.Windows.Forms;
 
