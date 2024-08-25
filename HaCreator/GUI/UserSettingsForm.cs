@@ -70,9 +70,6 @@ namespace HaCreator.GUI
             scrollexpBox.Value = (decimal)UserSettings.ScrollExponentFactor;
             scrollfactBox.Value = (decimal)UserSettings.ScrollFactor;
             movementBox.Value = (decimal)UserSettings.SignificantDistance;
-
-            // API
-            openAI_apiKey_textBox.Text = ApplicationSettings.OpenAI_ApiKey;
         }
 
         public static Color XNAToSystemColor(Microsoft.Xna.Framework.Color color)
@@ -139,9 +136,6 @@ namespace HaCreator.GUI
             UserSettings.ScrollExponentFactor = (double)scrollexpBox.Value;
             UserSettings.ScrollFactor = (double)scrollfactBox.Value;
             UserSettings.SignificantDistance = (float)movementBox.Value;
-
-            // API
-            ApplicationSettings.OpenAI_ApiKey = openAI_apiKey_textBox.Text;
 
             Close();
         }
