@@ -241,6 +241,12 @@
     <Compile Include="GUI\Input\IntInputBox.Designer.cs">
       <DependentUpon>IntInputBox.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadItemSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadItemSelector.Designer.cs">
+      <DependentUpon>LoadItemSelector.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\InstanceEditor\MassZmEditor.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -651,6 +657,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\BackgroundInstanceEditor.resx">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadItemSelector.resx">
+      <DependentUpon>LoadItemSelector.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\MassZmEditor.resx">
       <DependentUpon>MassZmEditor.cs</DependentUpon>
