@@ -47,7 +47,7 @@ namespace HaCreator.GUI.Quest
 
         public bool IsEquip
         {
-            get { return _itemId / 1000000 == 1; }
+            get { return _itemId / 1000000 != 1; }
             private set { }
         }
 
