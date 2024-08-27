@@ -590,7 +590,67 @@ namespace HaCreator.GUI.Quest
         /// <param name="e"></param>
         private void button_generateRewardSummary_Click(object sender, RoutedEventArgs e)
         {
+            /*
+* "#Wbasic#
+ * #Wprob#
+ * 
+ * #i2040826:# #t2040826:# x 1
+ * #i2040845:# #t2040845:# x 1
+ * Select 1 of the above
+ * 
+ * New Party Quest Challenge 3 now available.
+ * 
+ * #f<Image Path># = Show image path in Wz (Example : #fUI/UIWindow.img/QuestIcon/4/0#)
+ * >> #fUI/UIWindow.img/QuestIcon/0/0# = Quest Available
+ * >> #fUI/UIWindow.img/QuestIcon/1/0# = Quest Started
+ * >> #fUI/UIWindow.img/QuestIcon/10/0# = Evan SP
+ * >> #fUI/UIWindow.img/QuestIcon/2/0# = Quest completed
+ * >> #fUI/UIWindow.img/QuestIcon/3/0# = Select item
+ * ?> #fUI/UIWindow.img/QuestIcon/4/0# = Reward item
+ * >> #fUI/UIWindow.img/QuestIcon/5/0# = Unknown Item
+ * >> #fUI/UIWindow.img/QuestIcon/6/0# = Fame
+ * >> #fUI/UIWindow.img/QuestIcon/7/0# = Meso
+ * >> #fUI/UIWindow.img/QuestIcon/8/0# = EXP
+ * >> #fUI/UIWindow.img/QuestIcon/9/0# = Closeness
+ * >> #fMob/0100100.img/stand/0# = Mob image
+ */
+            var button = (Button)sender;
+            if (SelectedQuest == null)
+                return;
 
+            StringBuilder sb = new StringBuilder();
+
+            foreach (QuestEditorActInfoModel act in SelectedQuest.ActInfo)
+            {
+                switch (act.ActType)
+                {
+                    case QuestEditorActType.Item:
+                        sb.Append("#Wbasic#").Append("\r\n");
+
+                        foreach (QuestEditorActInfoRewardModel reward in act.SelectedRewardItems)
+                        {
+                            sb.Append(string.Format("#i{0}:# #t{0}:# x {1}", reward.ItemId, reward.Quantity.ToString("#,##0"))); // TODO: number of items
+                            sb.Append("\r\n");
+                        }
+                        break;
+                    case QuestEditorActType.Mesos:
+                        {
+                            int mesosAmount = 100_000;
+                            sb.Append(string.Format("{0} Mesos", mesosAmount.ToString("#,##0"))); // mesos amount
+                            sb.Append("\r\n");
+                            break;
+                        }
+                    case QuestEditorActType.Exp:
+                        {
+                            int expAmount = 100_000;
+                            sb.Append(string.Format("{0} EXP", expAmount.ToString("#,##0"))); // exp amount
+                            sb.Append("\r\n");
+                            break;
+                        }
+                }
+            }
+            sb.Append("\r\n");
+            SelectedQuest.RewardSummary = sb.ToString();
         }
         #endregion
 
