@@ -202,16 +202,28 @@
                     <ColumnDefinition Width="120"/>
                 </Grid.ColumnDefinitions>
 
-                <ListBox ItemsSource="{Binding SelectedRewardItems}" MinHeight="100">
+                <ListBox ItemsSource="{Binding SelectedRewardItems}" Grid.Column="0" MinHeight="100">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="25"/>
+                                    <ColumnDefinition MinWidth="200" Width="4*"/>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="{Binding}" Grid.Column="0"/>
-                                <Button x:Name="button_deleteItem" Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+
+                                <TextBlock Text="{Binding ItemId}" Grid.Column="0"  
+                                               VerticalAlignment="Center"  HorizontalAlignment="Left"/>
+
+                                <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left">
+                                    <TextBlock Text="Quantity:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBox Text="{Binding Quantity}" Width="40" 
+                                             InputScope="Number" IsEnabled="{Binding IsEquip}"
+                                             VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <Button x:Name="button_deleteItem" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
                                         Click="button_deleteItem_Click"
                                         />
@@ -220,7 +232,8 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
                 
-                <Button x:Name="botton_selectItem" Content="Select item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" VerticalAlignment="Bottom"
+                <Button x:Name="botton_selectItem" Content="Select item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_selectItem_Click"/>
             </Grid>
         </DataTemplate>

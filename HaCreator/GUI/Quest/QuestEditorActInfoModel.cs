@@ -33,8 +33,8 @@ namespace HaCreator.GUI.Quest
     {
         private QuestEditorActType _actType = QuestEditorActType.Exp;
 
-        private ObservableCollection<int> _selectedRewardItems = new ObservableCollection<int>();
-        public ObservableCollection<int> SelectedRewardItems
+        private ObservableCollection<QuestEditorActInfoRewardModel> _selectedRewardItems = new ObservableCollection<QuestEditorActInfoRewardModel>();
+        public ObservableCollection<QuestEditorActInfoRewardModel> SelectedRewardItems
         {
             get { return _selectedRewardItems; }
             set { 

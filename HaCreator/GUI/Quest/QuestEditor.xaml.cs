@@ -701,7 +701,14 @@ namespace HaCreator.GUI.Quest
                 int selectedItem = itemSelector.SelectedItemId;
                 if (selectedItem != 0)
                 {
-                    actInfo.SelectedRewardItems.Add(selectedItem);
+                    Tuple<string, string, string> nameCache = Program.InfoManager.ItemNameCache[selectedItem]; // // itemid, <item category, item name, item desc>
+
+                    actInfo.SelectedRewardItems.Add(
+                        new QuestEditorActInfoRewardModel() {
+                            ItemId = selectedItem,
+                            Quantity = 1,
+                            ItemName = nameCache != null ? nameCache.Item2 : "NO NAME",
+                        });
                 }
             }
         }
@@ -719,9 +726,9 @@ namespace HaCreator.GUI.Quest
             if (actInfo.ActType != QuestEditorActType.Item)
                 return;
 
-            if (btnSender.DataContext is int selectedDeleteItemId) 
+            if (btnSender.DataContext is QuestEditorActInfoRewardModel selectedItem) 
             {
-                actInfo.SelectedRewardItems.Remove(selectedDeleteItemId);
+                actInfo.SelectedRewardItems.Remove(selectedItem);
             }
         }
         #endregion

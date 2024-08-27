@@ -316,8 +316,8 @@
     <Compile Include="GUI\Quest\QuestEditor.xaml.cs">
       <DependentUpon>QuestEditor.xaml</DependentUpon>
     </Compile>
-    <Compile Include="GUI\Quest\QuestEditorActDataTemplateSelector.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActInfoRewardModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActType.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
