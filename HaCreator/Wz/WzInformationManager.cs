@@ -5,6 +5,8 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaCreator.MapEditor.Info;
+using HaSharedLibrary.Wz;
+using MapleLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -37,7 +39,7 @@ namespace HaCreator.Wz
         // Item 
         public Dictionary<int, Tuple<string, string, string>> ItemNameCache = new Dictionary<int, Tuple<string, string, string>>(); // itemid, <item category, item name, item desc>
         public Dictionary<int, WzCanvasProperty> ItemIconCache = new Dictionary<int, WzCanvasProperty>();
-        public Dictionary<int, WzCanvasProperty> EquipIconCache = new Dictionary<int, WzCanvasProperty>();
+        public Dictionary<int, WzImage> EquipItemCache = new Dictionary<int, WzImage>();
 
         // Mobs
         public Dictionary<string, string> MobNameCache = new Dictionary<string, string>();
@@ -55,6 +57,36 @@ namespace HaCreator.Wz
         public Dictionary<string, WzSubProperty> QuestChecks = new Dictionary<string, WzSubProperty>();
         public Dictionary<string, WzSubProperty> QuestInfos = new Dictionary<string, WzSubProperty>();
         public Dictionary<string, WzSubProperty> QuestSays = new Dictionary<string, WzSubProperty>();
+
+
+        /// <summary>
+        /// Gets the equipment's WzSubProperty from Character.wz
+        /// and caches it to memory
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="fileManager"></param>
+        /// <returns></returns>
+        public WzImage GetItemEquipSubProperty(int id, string categoryName, WzFileManager fileManager)
+        {
+            if (EquipItemCache.ContainsKey(id))
+                return EquipItemCache[id];
+
+            WzDirectory charWzEqpCatDirectory = (WzDirectory)fileManager.FindWzImageByName("character", categoryName);
+            if (charWzEqpCatDirectory != null)
+            {
+                WzImage itemObj = (WzImage)charWzEqpCatDirectory[WzInfoTools.AddLeadingZeros(id.ToString(), 8) + ".img"];
+                if (itemObj != null)
+                {
+                    lock (EquipItemCache)
+                    {
+                        if (!EquipItemCache.ContainsKey(id))
+                            EquipItemCache.Add(id, itemObj);
+                    }
+                    return itemObj;
+                }
+            }
+            return null;
+        }
 
         /// <summary>
         /// Clears existing data loaded

@@ -35,6 +35,7 @@ using HaCreator.MapEditor.Instance.Shapes;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Threading;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -84,12 +85,13 @@ namespace HaCreator.GUI.InstanceEditor
 
                     if (itemId / 1000000 == 1)
                     {
-                        if (Program.InfoManager.EquipIconCache.ContainsKey(itemId))
-                        {
+                        //WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(itemId, itemCategory, Program.WzManager);
+                        //if (eqpImg != null)
+                        //{
                             string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
 
                             itemNames.Add(combinedId_ItemName);
-                        }
+                        //}
                     }
                     else
                     {
@@ -245,34 +247,41 @@ namespace HaCreator.GUI.InstanceEditor
                 int intName = 0;
                 int.TryParse(itemId, out intName);
 
-                if (intName / 1000000 == 1)
-                {
-                    if (Program.InfoManager.EquipIconCache.ContainsKey(intName))
-                        pictureBox_IconPreview.Image = Program.InfoManager.EquipIconCache[intName].GetLinkedWzCanvasBitmap();
-                    else
-                        pictureBox_IconPreview.Image = null;
-                }
-                else
-                {
-                    if (Program.InfoManager.ItemIconCache.ContainsKey(intName))
-                        pictureBox_IconPreview.Image = Program.InfoManager.ItemIconCache[intName].GetLinkedWzCanvasBitmap();
-                    else
-                        pictureBox_IconPreview.Image = null;
-                }
+                if (intName != 0) {
+                    Tuple<string, string, string> itemInfo = Program.InfoManager.ItemNameCache[intName]; // // itemid, <item category, item name, item desc>
 
-                if (Program.InfoManager.ItemNameCache.ContainsKey(intName))
-                    label_itemDesc.Text = Program.InfoManager.ItemNameCache[intName].Item3;
-                else
-                    label_itemDesc.Text = string.Empty;
+                    if (intName / 1000000 == 1)
+                    {
+                        WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(intName, itemInfo.Item1, Program.WzManager);
 
-                // set selected itemid
-                this._selectedItemId = intName;
-                this.button_select.Enabled = true;
-            } else
-            {
-                this._selectedItemId = 0;
-                button_select.Enabled = false;
+                        if (eqpImg != null)
+                        {
+                                pictureBox_IconPreview.Image = ((WzCanvasProperty)eqpImg["info"]?["icon"]).GetLinkedWzCanvasBitmap();
+                        }
+                        else
+                            pictureBox_IconPreview.Image = null;
+                    }
+                    else
+                    {
+                        if (Program.InfoManager.ItemIconCache.ContainsKey(intName))
+                            pictureBox_IconPreview.Image = Program.InfoManager.ItemIconCache[intName].GetLinkedWzCanvasBitmap();
+                        else
+                            pictureBox_IconPreview.Image = null;
+                    }
+
+                    if (Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                        label_itemDesc.Text = Program.InfoManager.ItemNameCache[intName].Item3;
+                    else
+                        label_itemDesc.Text = string.Empty;
+
+                    // set selected itemid
+                    this._selectedItemId = intName;
+                    this.button_select.Enabled = true;
+                    return;
+                }
             }
+            this._selectedItemId = 0;
+            button_select.Enabled = false;
         }
 
         private void listBox_itemList_measureItem(object sender, MeasureItemEventArgs e)
@@ -286,6 +295,16 @@ namespace HaCreator.GUI.InstanceEditor
             //e.DrawFocusRectangle();
 
             //e.Graphics.DrawString(listBox_itemList.Items[e.Index].ToString(), e.Font, new SolidBrush(e.ForeColor), e.Bounds);
+        }
+
+        /// <summary>
+        /// On select button click
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_select_Click(object sender, EventArgs e)
+        {
+            Close();
         }
     }
 }

@@ -148,7 +148,7 @@ namespace HaCreator.GUI
                 ExtractReactorFile();
                 ExtractSoundFile();
                 ExtractQuestFile();
-                ExtractCharacterFile();
+                //ExtractCharacterFile(); // due to performance issue, its loaded on demand
                 ExtractItemFile();
                 ExtractMapMarks();
                 ExtractMapPortals();
@@ -234,7 +234,7 @@ namespace HaCreator.GUI
 
                     Program.WzManager.LoadWzFile(characterWzDir, _wzMapleVersion);
                 }
-                ExtractCharacterFile();
+                //ExtractCharacterFile(); // due to performance issue, its loaded on demand
 
                 // Load Items
                 List<string> itemWzDirs = Program.WzManager.GetWzFileNameListFromBase("item");
@@ -516,8 +516,6 @@ namespace HaCreator.GUI
                 if (mobStringImage == null)
                     continue; // not in this wz
 
-                if (!mobStringImage.Parsed)
-                    mobStringImage.ParseImage();
                 foreach (WzSubProperty mob in mobStringImage.WzProperties)
                 {
                     WzStringProperty nameProp = (WzStringProperty)mob["name"];
@@ -551,8 +549,6 @@ namespace HaCreator.GUI
                 if (npcImage == null)
                     continue; // not in this wz
 
-                if (!npcImage.Parsed)
-                    npcImage.ParseImage();
                 foreach (WzSubProperty npc in npcImage.WzProperties)
                 {
                     WzStringProperty nameProp = (WzStringProperty)npc["name"];
@@ -637,9 +633,12 @@ namespace HaCreator.GUI
 
         public void ExtractCharacterFile()
         {
-            if (Program.InfoManager.MapsNameCache.Count == 0)
+            // disabled due to performance issue on startup
+            // only load on demand
+
+            /*if (Program.InfoManager.MapsNameCache.Count == 0)
                 throw new Exception("ExtractStringWzFile needs to be called first.");
-            else if (Program.InfoManager.EquipIconCache.Count != 0)
+            else if (Program.InfoManager.EquipItemCache.Count != 0)
                 return; // loaded
 
             List<WzDirectory> characterWzDirs = Program.WzManager.GetWzDirectoriesFromBase("character");
@@ -648,29 +647,29 @@ namespace HaCreator.GUI
                 // foreach (WzDirectory characterWzImage in characterWzDir.WzDirectories)
                 Parallel.ForEach(characterWzDir.WzDirectories, characterWzImage =>
                 {
-                        switch (characterWzImage.Name)
-                        {
-                            case "Afterimage": // weapon delays
-                                break;
-                            default:
+                    switch (characterWzImage.Name)
+                    {
+                        case "Afterimage": // weapon delays
+                            break;
+                        default:
+                            {
+                                foreach (WzImage itemImg in characterWzImage.WzImages)
                                 {
-                                    foreach (WzImage itemImg in characterWzImage.WzImages)
+                                    string itemId = itemImg.Name.Replace(".img", "");
+                                    WzCanvasProperty icon = itemImg["info"]?["icon"] as WzCanvasProperty;
+                                    if (icon != null)
                                     {
-                                        string itemId = itemImg.Name.Replace(".img", "");
-                                        WzCanvasProperty icon = itemImg["info"]?["icon"] as WzCanvasProperty;
-                                        if (icon != null)
-                                        {
-                                            int intName = 0;
-                                            int.TryParse(itemId, out intName);
+                                        int intName = 0;
+                                        int.TryParse(itemId, out intName);
 
-                                            Program.InfoManager.EquipIconCache.Add(intName, icon);
-                                        }
+                                        Program.InfoManager.EquipItemCache.Add(intName, itemImg);
                                     }
-                                    break;
                                 }
-                        }
+                                break;
+                            }
+                    }
                 });
-            }
+            }*/
         }
 
         /// <summary>
@@ -763,8 +762,6 @@ namespace HaCreator.GUI
                 {
                     if (!soundImage.Name.ToLower().Contains("bgm"))
                         continue;
-                    if (!soundImage.Parsed)
-                        soundImage.ParseImage();
                     try {
                         foreach (WzImageProperty bgmImage in soundImage.WzProperties) {
                             WzBinaryProperty binProperty = null;
@@ -987,7 +984,7 @@ namespace HaCreator.GUI
                     foreach (WzSubProperty eqpItemSubProp in eqpCategorySubProp.WzProperties) // String.wz/Eqp.img/Accessory/1010000
                     {
                         string itemId = eqpItemSubProp.Name;
-                        string itemCategory = string.Format("Eqp-{0}", eqpCategorySubProp.Name);
+                        string itemCategory = eqpCategorySubProp.Name;
                         string itemName = (eqpItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
                         string itemDesc = (eqpItemSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
 

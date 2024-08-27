@@ -125,6 +125,7 @@
             this.button_select.TabIndex = 0;
             this.button_select.Text = "Select";
             this.button_select.UseVisualStyleBackColor = true;
+            this.button_select.Click += new System.EventHandler(this.button_select_Click);
             // 
             // searchBox
             // 
