@@ -89,11 +89,5 @@ namespace HaCreator
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";
         public static string LastXmlPath = "";
-
-
-        #region API Key
-        [JsonProperty(PropertyName = "OpenAI_ApiKey")]
-        public static string OpenAI_ApiKey = "";
-        #endregion
     }
 }
