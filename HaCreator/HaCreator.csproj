@@ -316,7 +316,9 @@
     <Compile Include="GUI\Quest\QuestEditor.xaml.cs">
       <DependentUpon>QuestEditor.xaml</DependentUpon>
     </Compile>
+    <Compile Include="GUI\Quest\QuestEditorActDataTemplateSelector.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActType.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
     <Compile Include="GUI\Quest\QuestEditorSayEndQuestModel.cs" />
@@ -950,7 +952,14 @@
     <Content Include="HaLogo\HaLogo48.png" />
     <Content Include="HaLogo\HaLogo512.png" />
     <Content Include="HaLogo\HaLogo64.png" />
-    <Resource Include="Images\questIcon_0.png" />
+    <Content Include="Images\Quest\BtMarkNpc.png" />
+    <Resource Include="Images\Quest\shop.meso.png" />
+    <Content Include="Images\Quest\summary_icon.basic.png" />
+    <Content Include="Images\Quest\summary_icon.prob.png" />
+    <Content Include="Images\Quest\summary_icon.reward.png" />
+    <Content Include="Images\Quest\summary_icon.select.png" />
+    <Content Include="Images\Quest\summary_icon.summary.png" />
+    <Resource Include="Images\Quest\questIcon_0.png" />
     <Resource Include="Images\box_edit-big.png" />
     <None Include="Resources\placeholder.bmp" />
   </ItemGroup>

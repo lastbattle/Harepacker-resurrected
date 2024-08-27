@@ -19,6 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+using HaCreator.GUI.InstanceEditor;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -134,7 +135,7 @@ namespace HaCreator.GUI.Quest
         }
         #endregion
 
-
+        #region Loader
         /// <summary>
         /// Data from Quest.wz
         /// </summary>
@@ -416,6 +417,9 @@ namespace HaCreator.GUI.Quest
                                     {
                                 for (int a = 0; a < questStopProp.WzProperties.Count; a++) // this has to be parsed by its order!! whatever comes first parses first
                                 {
+                                    // TODO
+                                    // Quest_000.wz\Say.img\57106\1\stop\default\illustration 
+                                    // sometimes may be a WzSubProperty in the later version of MapleStory. (v170++)
                                     WzStringProperty questStopPropItem = questStopProp.WzProperties[a] as WzStringProperty;
 
                                     if (Enum.TryParse(StringUtility.CapitalizeFirstCharacter(questStopProp.Name), true, out QuestEditorStopConversationType conversationType))
@@ -516,9 +520,6 @@ namespace HaCreator.GUI.Quest
             }
             return Tuple.Create(sayInfo, sayStop);
         }
-
-        #region QuestInfo
-
         #endregion
 
         #region Quest Tabs
@@ -571,10 +572,27 @@ namespace HaCreator.GUI.Quest
         }
         #endregion
 
-
         #region Quest QuestInfo.img
-        #endregion
+        /// <summary>
+        /// On click - button to generate the demand summary requirements from items in "Demand" tab
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_generateDemandSummary_Click(object sender, RoutedEventArgs e)
+        {
 
+        }
+
+        /// <summary>
+        /// On click - button to generate reward summary requirements from items in "Reward" tab
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_generateRewardSummary_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
+        #endregion
 
         #region Quest Say.img
         /// <summary>
@@ -662,51 +680,49 @@ namespace HaCreator.GUI.Quest
                 questModel.Responses.Remove(response);
             }
         }
+        #endregion
 
+        #region Quest Act.img
         /// <summary>
-        /// Helper method to find ancestor of a specific type
+        /// On select item as reward
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="current"></param>
-        /// <returns></returns>
-        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectItem_Click(object sender, RoutedEventArgs e)
         {
-            do
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
             {
-                if (current is T)
+                if (actInfo.ActType != QuestEditorActType.Item)
+                    return;
+
+                LoadItemSelector itemSelector = new LoadItemSelector();
+                itemSelector.ShowDialog();
+                int selectedItem = itemSelector.SelectedItemId;
+                if (selectedItem != 0)
                 {
-                    return (T)current;
+                    actInfo.SelectedRewardItems.Add(selectedItem);
                 }
-                current = VisualTreeHelper.GetParent(current);
             }
-            while (current != null);
-            return null;
         }
 
         /// <summary>
-        /// Helper method to find descendant of a specific type
+        /// On delete reward item
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="parent"></param>
-        /// <returns></returns>
-        private static T FindDescendant<T>(DependencyObject parent) where T : DependencyObject
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_deleteItem_Click(object sender, RoutedEventArgs e)
         {
-            int childCount = VisualTreeHelper.GetChildrenCount(parent);
-            for (int i = 0; i < childCount; i++)
+            Button btnSender = ((Button)sender);
+            QuestEditorActInfoModel actInfo = FindAncestor<ListBox>(btnSender).DataContext as QuestEditorActInfoModel; // bz button is binded to <int>
+            
+            if (actInfo.ActType != QuestEditorActType.Item)
+                return;
+
+            if (btnSender.DataContext is int selectedDeleteItemId) 
             {
-                var child = VisualTreeHelper.GetChild(parent, i);
-                if (child is T result)
-                {
-                    return result;
-                }
-                else
-                {
-                    T descendant = FindDescendant<T>(child);
-                    if (descendant != null)
-                        return descendant;
-                }
+                actInfo.SelectedRewardItems.Remove(selectedDeleteItemId);
             }
-            return null;
         }
         #endregion
 
@@ -1015,6 +1031,54 @@ namespace HaCreator.GUI.Quest
 
                 Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
             }
+        }
+        #endregion
+
+        #region Helpers
+        /// <summary>
+        /// Helper method to find ancestor of a specific type
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="current"></param>
+        /// <returns></returns>
+        private static T FindAncestor<T>(DependencyObject current) where T : DependencyObject
+        {
+            do
+            {
+                if (current is T)
+                {
+                    return (T)current;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            while (current != null);
+            return null;
+        }
+
+        /// <summary>
+        /// Helper method to find descendant of a specific type
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="parent"></param>
+        /// <returns></returns>
+        private static T FindDescendant<T>(DependencyObject parent) where T : DependencyObject
+        {
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T result)
+                {
+                    return result;
+                }
+                else
+                {
+                    T descendant = FindDescendant<T>(child);
+                    if (descendant != null)
+                        return descendant;
+                }
+            }
+            return null;
         }
         #endregion
 

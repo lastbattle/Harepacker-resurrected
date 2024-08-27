@@ -122,6 +122,13 @@
                 <x:Type TypeName="local:QuestEditorStopConversationType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <!-- DataTemplate for NPC conversation stop type enum -->
+        <ObjectDataProvider x:Key="ActTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
 
         <!-- DataTemplate for Yes/No Responses ItemsControl -->
         <DataTemplate x:Key="ResponseItemTemplate">
@@ -149,8 +156,78 @@
             </ListBox>
         </DataTemplate>
         
-        <!-- Data template for NPC conversation types-->
+        <!-- Act rewards template-->
+        <!-- EXP-->
+        <DataTemplate x:Key="ActExpTemplate">
+            <StackPanel>
+                <TextBlock Text="Player EXP reward amount:" />
+                <TextBox Text="500,000" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- EXP-->
+        <DataTemplate x:Key="ActMesosTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Width="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/shop.meso.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Player mesos reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="500,000" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
 
+        </DataTemplate>
+
+        <!-- Npc -->
+        <DataTemplate x:Key="ActNpcTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Complete NPC ID:" />
+                    <TextBox Text="1000000" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"/>
+            </Grid>
+        </DataTemplate>
+        
+        <!-- Item -->
+        <DataTemplate x:Key="ActItemTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <ListBox ItemsSource="{Binding SelectedRewardItems}" MinHeight="100">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="25"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding}" Grid.Column="0"/>
+                                <Button x:Name="button_deleteItem" Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_deleteItem_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                
+                <Button x:Name="botton_selectItem" Content="Select item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" VerticalAlignment="Bottom"
+                        Click="botton_selectItem_Click"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- null-->
+        <DataTemplate x:Key="ActNullTemplate">
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -262,11 +339,32 @@
                                     <Grid Margin="0,0,0,10"/>
 
                                     <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
-                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
+                                    <Image Source="/Images/Quest/summary_icon.summary.png" Height="15" Stretch="Uniform"  HorizontalAlignment="Left"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="170"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Margin="0,0,0,5" Grid.Column="0" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
+                                        <Button x:Name="button_generateDemandSummary" Grid.Column="1" Content="Generate from 'Check'" Margin="5,0,0,0" 
+                                                Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateDemandSummary_Click"
+                                                />
+                                    </Grid>
+
 
                                     <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
-                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
-
+                                    <Image Source="/Images/Quest/summary_icon.reward.png" Height="15" Stretch="Uniform" HorizontalAlignment="Left"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="170"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
+                                        <Button x:Name="button_generateRewardSummary" Grid.Column="1" Content="Generate from 'Act'" Margin="5,0,0,0" 
+                                                Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateRewardSummary_Click"
+                                                />
+                                    </Grid>
+                                    
                                     <!-- paddings -->
                                     <Grid Margin="0,0,0,10"/>
 
@@ -620,12 +718,91 @@
 
                     <!-- Act Requirements Tab -->
                     <TabItem Header="Act Requirements" FontWeight="Normal">
-                        <StackPanel>
-                            <TextBlock Text="The actions to be given when starting, or completing the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Grid.Row="0" Margin="0,0,0,10"/>
+                        <Grid>
+                            <ScrollViewer>
 
-                            <TextBlock Text="Next Quest ID:" FontWeight="Bold"/>
-                            <TextBox Margin="0,5" Text="{Binding SelectedQuest.NextQuestId}" />
-                        </StackPanel>
+                                <TabControl Grid.Row="1">
+                                    <!-- Start quest-->
+                                    <TabItem Header="Start quest action" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="The actions to be given when starting the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Margin="0,0,0,5"/>
+
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- End quest-->
+                                    <TabItem Header="End quest action" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Text="The actions to be given when completing the quest. (i.e: give quest item, give rewards)" Foreground="Gray" Margin="0,0,0,5"/>
+
+                                            <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                                                <TextBlock Text="Next Quest ID:" FontWeight="Bold"/>
+                                                <TextBox Margin="0,5" Text="{Binding SelectedQuest.NextQuestId}" />
+                                            </StackPanel>
+
+                                            <DataGrid x:Name="DataGrid_actEndQuest" Grid.Row="3" 
+                                                          ItemsSource="{Binding SelectedQuest.ActInfo}"
+                                                          AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                                <DataGrid.Columns>
+                                                    <!-- Conversation Type Column -->
+                                                    <DataGridTemplateColumn Header="Type" Width="80">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                              ItemsSource="{Binding Source={StaticResource ActTypeEnum}}"
+                                                                              MaxHeight="30" VerticalAlignment="Top">
+                                                                </ComboBox>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+
+                                                    <!-- Rewards Column -->
+                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                        <DataGridTemplateColumn.CellEditingTemplate>
+                                                            <DataTemplate>
+
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellEditingTemplate>
+
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ContentPresenter x:Name="RewardsContent" Content="{Binding}"/>
+                                                                <DataTemplate.Triggers>
+                                                                    <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Item}">
+                                                                        <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActItemTemplate}"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Exp}">
+                                                                        <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActExpTemplate}"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Mesos}">
+                                                                        <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActMesosTemplate}"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Npc}">
+                                                                        <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNpcTemplate}"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding ActType}" Value="{x:Null}">
+                                                                        <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>
+                                                                    </DataTrigger>
+                                                                </DataTemplate.Triggers>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
+                                    </TabItem>
+
+                                </TabControl>
+                            </ScrollViewer>
+                        </Grid>
                     </TabItem>
                 </TabControl>
 

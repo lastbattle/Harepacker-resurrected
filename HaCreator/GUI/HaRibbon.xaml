@@ -209,7 +209,7 @@
 
             <RibbonTab x:Name="etcTab" Header="Etc" KeyTip="E">
                 <RibbonGroup x:Name="RibbonGroup_Etc" Header="Map">
-                    <RibbonButton Label="Edit quests" Command="ns:HaRibbon.ShowQuestEditorWindow" Focusable="False" LargeImageSource="pack://application:,,,/HaCreator;component/Images/questIcon_0.png"/>
+                    <RibbonButton Label="Edit quests" Command="ns:HaRibbon.ShowQuestEditorWindow" Focusable="False" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Quest/questIcon_0.png"/>
                 </RibbonGroup>
             </RibbonTab>
 

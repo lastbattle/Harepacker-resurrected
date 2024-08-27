@@ -19,9 +19,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
@@ -31,12 +31,37 @@ namespace HaCreator.GUI.Quest
 {
     public class QuestEditorActInfoModel : INotifyPropertyChanged
     {
+        private QuestEditorActType _actType = QuestEditorActType.Exp;
+
+        private ObservableCollection<int> _selectedRewardItems = new ObservableCollection<int>();
+        public ObservableCollection<int> SelectedRewardItems
+        {
+            get { return _selectedRewardItems; }
+            set { 
+                this._selectedRewardItems = value;
+                OnPropertyChanged(nameof(SelectedRewardItems));
+            }
+        }
+
         /// <summary>
         /// Constructor
         /// </summary>
         public QuestEditorActInfoModel()
         {
 
+        }
+
+        public QuestEditorActType ActType
+        {
+            get => _actType;
+            set
+            {
+                if (_actType != value)
+                {
+                    _actType = value;
+                    OnPropertyChanged(nameof(ActType));
+                }
+            }
         }
 
         #region Property Changed Event

@@ -45,7 +45,7 @@ namespace HaCreator.GUI.InstanceEditor
         private bool _bItemsLoaded = false;
 
         // dictionary
-        private readonly List<string> itemNames = new List<string>(); // cache
+        private static readonly List<string> itemNames = new List<string>(); // cache
 
 
         private int _selectedItemId = 0;
@@ -75,36 +75,38 @@ namespace HaCreator.GUI.InstanceEditor
             _isLoading = true;
             try
             {
-                // Maps
-                foreach (KeyValuePair<int, Tuple<string, string, string>> item in Program.InfoManager.ItemNameCache) // itemid, <item category, item name, item desc>
+                if (itemNames.Count == 0) // only load on the first time if none
                 {
-                    int itemId = item.Key;
-                    string itemCategory = item.Value.Item1;
-                    string itemName = item.Value.Item2;
-                    string itemDesc = item.Value.Item3;
-
-                    if (itemId / 1000000 == 1)
+                    // Maps
+                    foreach (KeyValuePair<int, Tuple<string, string, string>> item in Program.InfoManager.ItemNameCache) // itemid, <item category, item name, item desc>
                     {
-                        //WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(itemId, itemCategory, Program.WzManager);
-                        //if (eqpImg != null)
-                        //{
-                            string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
+                        int itemId = item.Key;
+                        string itemCategory = item.Value.Item1;
+                        string itemName = item.Value.Item2;
+                        string itemDesc = item.Value.Item3;
 
-                            itemNames.Add(combinedId_ItemName);
-                        //}
-                    }
-                    else
-                    {
-                        if (Program.InfoManager.ItemIconCache.ContainsKey(itemId))
+                        if (itemId / 1000000 == 1)
                         {
+                            //WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(itemId, itemCategory, Program.WzManager);
+                            //if (eqpImg != null)
+                            //{
                             string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
 
                             itemNames.Add(combinedId_ItemName);
+                            //}
+                        }
+                        else
+                        {
+                            if (Program.InfoManager.ItemIconCache.ContainsKey(itemId))
+                            {
+                                string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
+
+                                itemNames.Add(combinedId_ItemName);
+                            }
                         }
                     }
+                    itemNames.Sort();
                 }
-                itemNames.Sort();
-
 
                 object[] itemObjs = itemNames.Cast<object>().ToArray();
                 listBox_itemList.Items.AddRange(itemObjs);
@@ -192,7 +194,7 @@ namespace HaCreator.GUI.InstanceEditor
                 Task t = Task.Run(() => {
                     Thread.Sleep(500); // average key typing speed
 
-                    List<string> mapsFiltered = new List<string>();
+                    List<string> itemsFiltered = new List<string>();
                     foreach (string map in itemNames)
                     {
                         if (_existingSearchTaskToken.IsCancellationRequested)
@@ -201,12 +203,12 @@ namespace HaCreator.GUI.InstanceEditor
                         // Filter by string first
                         if (map.ToLower().Contains(searchText))
                         {
-                            mapsFiltered.Add(map);
+                            itemsFiltered.Add(map);
                         }
                     }
 
                     currentDispatcher.BeginInvoke(new Action(() => {
-                        foreach (string map in mapsFiltered)
+                        foreach (string map in itemsFiltered)
                         {
                             if (_existingSearchTaskToken.IsCancellationRequested)
                                 return; // stop immediately
@@ -253,11 +255,8 @@ namespace HaCreator.GUI.InstanceEditor
                     if (intName / 1000000 == 1)
                     {
                         WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(intName, itemInfo.Item1, Program.WzManager);
-
                         if (eqpImg != null)
-                        {
-                                pictureBox_IconPreview.Image = ((WzCanvasProperty)eqpImg["info"]?["icon"]).GetLinkedWzCanvasBitmap();
-                        }
+                            pictureBox_IconPreview.Image = ((WzCanvasProperty)eqpImg["info"]?["icon"]).GetLinkedWzCanvasBitmap();
                         else
                             pictureBox_IconPreview.Image = null;
                     }
