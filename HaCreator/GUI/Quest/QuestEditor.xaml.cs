@@ -376,6 +376,17 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
+                    case "nextQuest":
+                        {
+                            int nextQuestId = (actTypeProp as WzIntProperty)?.GetInt() ?? 0; // for 
+                            if (nextQuestId != 0)
+                            {
+                                var firstExpAct = AddActItemIfNoneAndGet(QuestEditorActType.NextQuest, questActs);
+
+                                firstExpAct.Amount = nextQuestId;
+                            }
+                            break;
+                        }
                     /*case "nextQuest":
                     case "0":
                     case "1":
@@ -1128,6 +1139,30 @@ namespace HaCreator.GUI.Quest
                 npcSelector.ShowDialog();
 
                 string selectedItem = npcSelector.SelectedNpcId;
+                if (selectedItem != string.Empty)
+                {
+                    actInfo.Amount = int.Parse(selectedItem);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Select the next quest id
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectQuest_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
+            {
+                if (actInfo.ActType != QuestEditorActType.NextQuest)
+                    return;
+
+                LoadQuestSelector questSelector = new LoadQuestSelector();
+                questSelector.ShowDialog();
+
+                string selectedItem = questSelector.SelectedQuestId;
                 if (selectedItem != string.Empty)
                 {
                     actInfo.Amount = int.Parse(selectedItem);

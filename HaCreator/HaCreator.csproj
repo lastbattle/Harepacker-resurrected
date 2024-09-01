@@ -241,6 +241,12 @@
     <Compile Include="GUI\Input\IntInputBox.Designer.cs">
       <DependentUpon>IntInputBox.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadQuestSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadQuestSelector.Designer.cs">
+      <DependentUpon>LoadQuestSelector.cs</DependentUpon>
+    </Compile>
     <Compile Include="GUI\InstanceEditor\LoadNpcSelector.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -665,6 +671,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\BackgroundInstanceEditor.resx">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadQuestSelector.resx">
+      <DependentUpon>LoadQuestSelector.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\LoadNpcSelector.resx">
       <DependentUpon>LoadNpcSelector.cs</DependentUpon>

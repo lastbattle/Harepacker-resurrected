@@ -39,6 +39,8 @@ namespace HaCreator.GUI.Quest
         CharismaEXP,
         InsightEXP,
         WillEXP,
-        SenseEXP
+        SenseEXP,
+
+        NextQuest
     }
 }

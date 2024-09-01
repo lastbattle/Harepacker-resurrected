@@ -269,7 +269,30 @@
                 </Grid>
             </StackPanel>
         </DataTemplate>
-        
+
+        <!-- NextQuest -->
+        <DataTemplate x:Key="ActNextQuestTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.0.5.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Next quest:" Margin="4,0,0,0"/>
+                </StackPanel>
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding Amount}" InputScope="Number" Grid.Row="0"/>
+
+                    <Button x:Name="botton_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        Click="botton_selectQuest_Click"/>
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+
         <!-- Message for horntail message/map -->
         <DataTemplate x:Key="ActMessageTemplate">
             <Grid>
@@ -420,6 +443,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.SenseEXP}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitSenseTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.NextQuest}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNextQuestTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Null}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>
