@@ -36,6 +36,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Threading;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -44,8 +45,10 @@ namespace HaCreator.GUI.InstanceEditor
         private bool _isLoading = false;
         private bool _bItemsLoaded = false;
 
+        private int _filterItemId = 0; // 0 = no filter, 243 = _itemId / 10000
+
         // dictionary
-        private static readonly List<string> itemNames = new List<string>(); // cache
+        private readonly List<string> itemNames = new List<string>(); // cache
 
 
         private int _selectedItemId = 0;
@@ -57,9 +60,15 @@ namespace HaCreator.GUI.InstanceEditor
             get { return _selectedItemId; }
         }
 
-        public LoadItemSelector()
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="filterItemId"></param>
+        public LoadItemSelector(int filterItemId)
         {
             InitializeComponent();
+
+            this._filterItemId = filterItemId;
 
             // load items
             load();
@@ -75,38 +84,38 @@ namespace HaCreator.GUI.InstanceEditor
             _isLoading = true;
             try
             {
-                if (itemNames.Count == 0) // only load on the first time if none
+                // Maps
+                foreach (KeyValuePair<int, Tuple<string, string, string>> item in Program.InfoManager.ItemNameCache) // itemid, <item category, item name, item desc>
                 {
-                    // Maps
-                    foreach (KeyValuePair<int, Tuple<string, string, string>> item in Program.InfoManager.ItemNameCache) // itemid, <item category, item name, item desc>
-                    {
-                        int itemId = item.Key;
-                        string itemCategory = item.Value.Item1;
-                        string itemName = item.Value.Item2;
-                        string itemDesc = item.Value.Item3;
+                    int itemId = item.Key;
+                    string itemCategory = item.Value.Item1;
+                    string itemName = item.Value.Item2;
+                    string itemDesc = item.Value.Item3;
 
-                        if (itemId / 1000000 == 1)
+                    if (_filterItemId != 0 && (itemId / 10000 != _filterItemId)) // filters for item category
+                        continue;
+
+                    if (ItemIdsCategory.IsEquipment(itemId))
+                    {
+                        //WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(itemId, itemCategory, Program.WzManager);
+                        //if (eqpImg != null)
+                        //{
+                        string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
+
+                        itemNames.Add(combinedId_ItemName);
+                        //}
+                    }
+                    else
+                    {
+                        if (Program.InfoManager.ItemIconCache.ContainsKey(itemId))
                         {
-                            //WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(itemId, itemCategory, Program.WzManager);
-                            //if (eqpImg != null)
-                            //{
                             string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
 
                             itemNames.Add(combinedId_ItemName);
-                            //}
-                        }
-                        else
-                        {
-                            if (Program.InfoManager.ItemIconCache.ContainsKey(itemId))
-                            {
-                                string combinedId_ItemName = string.Format("[{0}] - ({1}) {2}", itemId, itemCategory, itemName);
-
-                                itemNames.Add(combinedId_ItemName);
-                            }
                         }
                     }
-                    itemNames.Sort();
                 }
+                itemNames.Sort();
 
                 object[] itemObjs = itemNames.Cast<object>().ToArray();
                 listBox_itemList.Items.AddRange(itemObjs);
@@ -172,7 +181,8 @@ namespace HaCreator.GUI.InstanceEditor
             listBox_itemList.Items.Clear();
             if (searchText == string.Empty)
             {
-                var filteredItems = itemNames.Where(kvp => {
+                var filteredItems = itemNames.Where(kvp =>
+                {
                     return true;
                 }).Select(kvp => kvp) // or kvp.Value or any transformation you need
                   .Cast<object>()
@@ -191,7 +201,8 @@ namespace HaCreator.GUI.InstanceEditor
                 _existingSearchTaskToken = new CancellationTokenSource();
                 var cancellationToken = _existingSearchTaskToken.Token;
 
-                Task t = Task.Run(() => {
+                Task t = Task.Run(() =>
+                {
                     Thread.Sleep(500); // average key typing speed
 
                     List<string> itemsFiltered = new List<string>();
@@ -207,7 +218,8 @@ namespace HaCreator.GUI.InstanceEditor
                         }
                     }
 
-                    currentDispatcher.BeginInvoke(new Action(() => {
+                    currentDispatcher.BeginInvoke(new Action(() =>
+                    {
                         foreach (string map in itemsFiltered)
                         {
                             if (_existingSearchTaskToken.IsCancellationRequested)
@@ -249,10 +261,11 @@ namespace HaCreator.GUI.InstanceEditor
                 int intName = 0;
                 int.TryParse(itemId, out intName);
 
-                if (intName != 0) {
+                if (intName != 0)
+                {
                     Tuple<string, string, string> itemInfo = Program.InfoManager.ItemNameCache[intName]; // // itemid, <item category, item name, item desc>
 
-                    if (intName / 1000000 == 1)
+                    if (ItemIdsCategory.IsEquipment(intName))
                     {
                         WzImage eqpImg = Program.InfoManager.GetItemEquipSubProperty(intName, itemInfo.Item1, Program.WzManager);
                         if (eqpImg != null)

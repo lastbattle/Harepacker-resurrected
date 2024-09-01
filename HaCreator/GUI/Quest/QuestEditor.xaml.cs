@@ -23,6 +23,7 @@ using HaCreator.GUI.InstanceEditor;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -278,6 +279,18 @@ namespace HaCreator.GUI.Quest
                     // add empty placeholders
                 }
 
+                // Parse Act.img
+                if (Program.InfoManager.QuestActs.ContainsKey(key)) // sometimes it does not exist in the Quest.wz/Say.img
+                {
+                    WzSubProperty questActProp = Program.InfoManager.QuestActs[key];
+
+                    WzSubProperty questActStart0Prop = (WzSubProperty)questActProp["0"];
+                    WzSubProperty questActEnd1Prop = (WzSubProperty)questActProp["1"];
+
+                    parseQuestAct(questActStart0Prop, quest.ActStartInfo, quest.Id);
+                    parseQuestAct(questActEnd1Prop, quest.ActEndInfo, quest.Id);
+                }
+
                 // add
                 Quests.Add(quest);
             }
@@ -329,6 +342,208 @@ namespace HaCreator.GUI.Quest
             SelectedQuest = quest1000;*/
         }
 
+
+        /// <summary>
+        /// Parses Quest.wz/Act.img/0, Quest.wz/Act.img/1
+        /// </summary>
+        /// <param name="questActProp"></param>
+        /// <param name="quest"></param>
+        private void parseQuestAct(WzSubProperty questActProp, ObservableCollection<QuestEditorActInfoModel> questActs, int questId)
+        {
+            foreach (WzImageProperty actTypeProp in questActProp.WzProperties)
+            {
+                switch (actTypeProp.Name)
+                {
+                    case "item":
+                        {
+                            foreach (WzImageProperty itemProp in actTypeProp.WzProperties)
+                            {
+                                int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
+                                string dateExpire = (itemProp["dateExpire"] as WzStringProperty)?.GetString() ?? null;
+                                string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
+
+                                if (itemId != 0)
+                                {
+                                    var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Item, questActs);
+
+                                    firstAct.SelectedRewardItems.Add(new QuestEditorActInfoRewardModel()
+                                    {
+                                        ItemId = itemId,
+                                        Quantity = count,
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                    /*case "nextQuest":
+                    case "0":
+                    case "1":
+                    case "2":
+                    case "3":
+                    case "4":
+                    case "yes":
+                    case "no":
+                    case "npc":
+                    case "lvmin":
+                    case "lvmax":
+                    case "interval":
+                    case "start":
+                    case "end":
+                        break;*/
+                    case "exp":
+                        {
+                            long expAmount = (actTypeProp as WzIntProperty)?.GetLong() ?? 0; // for 
+                            if (expAmount != 0)
+                            {
+                                var firstExpAct = AddActItemIfNoneAndGet(QuestEditorActType.Exp, questActs);
+
+                                firstExpAct.Amount = expAmount;
+                            }
+                            break;
+                        }
+                    /*case "ask":
+                    case "stop":
+                        break;*/
+                    case "money":
+                        {
+                            long mesosAmount = (actTypeProp as WzIntProperty)?.GetLong() ?? 0; // for 
+                            if (mesosAmount != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Money, questActs);
+
+                                firstAct.Amount = mesosAmount;
+                            }
+                            break;
+                        }
+                    /*case "info":
+                        break;*/
+                    case "pop": // fame
+                        {
+                            int fameAmount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0; // for 
+                            if (fameAmount != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Pop, questActs);
+
+                                firstAct.Amount = fameAmount;
+                            }
+                            break;
+                        }
+                    /*
+                    case "quest":
+                    case "skill":
+                    case "fieldEnter":
+                    case "job":
+                    case "pettameness":
+                    case "petspeed":
+                    case "petskill":
+                    case "npcAct":
+                        break;*/
+                    case "sp": // mostly for Evan
+                        {
+                            /*
+                             * <imgdir name="sp">
+                             * <imgdir name="0">
+                             * <int name="sp_value" value="1"/>
+                             * <imgdir name="job">
+                             * <int name="0" value="2210"/>
+                             * </imgdir>
+                             * </imgdir>
+                             * </imgdir>
+                             */
+                            break;
+                        }
+                    case "senseEXP": // traits
+                    case "willEXP":
+                    case "insightEXP":
+                    case "charismaEXP":
+                    case "charmEXP":
+                    case "craftEXP":
+                        {
+                            QuestEditorActType actEnum = (QuestEditorActType) Enum.Parse(typeof(QuestEditorActType), StringUtility.CapitalizeFirstCharacter(actTypeProp.Name));
+
+                            int exp = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+
+                            var firstAct = AddActItemIfNoneAndGet(actEnum, questActs);
+                            firstAct.Amount = exp;
+                            break;
+                        }
+                    case "map":
+                        {
+                            /*
+                             * <int name="buffItemID" value="2022109"/>
+                             * <string name="message" value="나인스피릿 아기용의 힘찬 울음소리를 듣자 신비로운 힘이 솟아오른다."/>
+                             * <imgdir name="map">
+                             * <int name="0" value="240000000"/>
+                             * <int name="1" value="240040611"/>
+                             * </imgdir>*/
+                            ObservableCollection<int> maps = new ObservableCollection<int>();
+                            int i = 0;
+                            WzImageProperty img0Prop = null;
+                            while ((img0Prop = (actTypeProp as WzSubProperty)[i.ToString()]) != null) {
+                                int mapid = (img0Prop as WzIntProperty)?.Value ?? 0;
+                                if (mapid != 0)
+                                    maps.Add(mapid);
+                                i++;
+                            }
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Message_Map, questActs);
+                            foreach (int map in maps)
+                            {
+                                firstAct.SelectedNumbersItem.Add(map);
+                            }
+                            break;
+                        }
+                    case "message": // message and map is related
+                        {
+                            /*
+                             * <int name="buffItemID" value="2022109"/>
+                             * <string name="message" value="나인스피릿 아기용의 힘찬 울음소리를 듣자 신비로운 힘이 솟아오른다."/>
+                             * <imgdir name="map">
+                             * <int name="0" value="240000000"/>
+                             * <int name="1" value="240040611"/>
+                             * </imgdir>*/
+                            string message = (actTypeProp as WzStringProperty)?.Value ?? string.Empty;
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Message_Map, questActs);
+                            if (message != string.Empty)
+                            {
+                                firstAct.Text = message;
+                            }
+                            break;
+                        }
+                    case "buffItemId":
+                        {
+                            int buffItemID = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (buffItemID != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.BuffItemId, questActs);
+
+                                firstAct.Amount = buffItemID;
+                            }
+                            break;
+                        }
+                    default:
+                        {
+                            string error = string.Format("[QuestEditor] Unhandled quest act type. Name='{0}', QuestId={1}", actTypeProp.Name, questId);
+                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            break;
+                        }
+                }
+            }
+        }
+        private QuestEditorActInfoModel AddActItemIfNoneAndGet(QuestEditorActType actTypeEnum, ObservableCollection<QuestEditorActInfoModel> questActs)
+        {
+            bool containsItemActType = questActs.Any(act => act.ActType == actTypeEnum);
+            if (!containsItemActType)
+            {
+                questActs.Add(new QuestEditorActInfoModel()
+                {
+                    ActType = actTypeEnum,
+                });
+            }
+            var firstAct = questActs.FirstOrDefault(act => act.ActType == actTypeEnum);
+            return firstAct;
+        }
 
         /// <summary>
         /// Parses quest say, and say stop conversations into a list.
@@ -402,7 +617,7 @@ namespace HaCreator.GUI.Quest
                          * </imgdir>
                          * </imgdir>
                          */
-                    }
+                        }
                     else if (questConvProp.Name == "stop") // | stop is the options for ask.
                     {
                         // TODO
@@ -593,12 +808,15 @@ namespace HaCreator.GUI.Quest
             /*
 * "#Wbasic#
  * #Wprob#
+ * #Wselect#
  * 
  * #i2040826:# #t2040826:# x 1
  * #i2040845:# #t2040845:# x 1
  * Select 1 of the above
  * 
  * New Party Quest Challenge 3 now available.
+ * 
+ * Can proceed to the &apos;Moonlight Sonata Music Box&apos; quest"
  * 
  * #f<Image Path># = Show image path in Wz (Example : #fUI/UIWindow.img/QuestIcon/4/0#)
  * >> #fUI/UIWindow.img/QuestIcon/0/0# = Quest Available
@@ -620,33 +838,59 @@ namespace HaCreator.GUI.Quest
 
             StringBuilder sb = new StringBuilder();
 
-            foreach (QuestEditorActInfoModel act in SelectedQuest.ActInfo)
+            foreach (QuestEditorActInfoModel act in SelectedQuest.ActEndInfo)
             {
                 switch (act.ActType)
                 {
                     case QuestEditorActType.Item:
-                        sb.Append("#Wbasic#").Append("\r\n");
+                        {
+                            sb.Append("#Wbasic#").Append("\r\n");
 
-                        foreach (QuestEditorActInfoRewardModel reward in act.SelectedRewardItems)
-                        {
-                            sb.Append(string.Format("#i{0}:# #t{0}:# x {1}", reward.ItemId, reward.Quantity.ToString("#,##0"))); // TODO: number of items
-                            sb.Append("\r\n");
+                            foreach (QuestEditorActInfoRewardModel reward in act.SelectedRewardItems)
+                            {
+                                sb.Append(string.Format("#i{0}:# #t{0}:# x {1}", reward.ItemId, reward.Quantity.ToString("#,##0")));
+                                sb.Append("\r\n");
+
+                                // TODO: time limited item
+                                // #i1012270:# #t1012270:# (5 days) x 1
+                            }
+                            break;
                         }
-                        break;
-                    case QuestEditorActType.Mesos:
+                    case QuestEditorActType.Npc:
                         {
-                            int mesosAmount = 100_000;
-                            sb.Append(string.Format("{0} Mesos", mesosAmount.ToString("#,##0"))); // mesos amount
-                            sb.Append("\r\n");
+                            // nothing for user preview for NPC
+                            break;
+                        }
+                    case QuestEditorActType.Money:
+                        {
+                            if (act.Amount > 0)
+                            {
+                                sb.Append(string.Format("{0} Mesos", act.Amount.ToString("#,##0"))); // amount
+                                sb.Append("\r\n");
+                            }
                             break;
                         }
                     case QuestEditorActType.Exp:
                         {
-                            int expAmount = 100_000;
-                            sb.Append(string.Format("{0} EXP", expAmount.ToString("#,##0"))); // exp amount
-                            sb.Append("\r\n");
+                            if (act.Amount > 0)
+                            {
+                                sb.Append(string.Format("{0} EXP", act.Amount.ToString("#,##0"))); // amount
+                                sb.Append("\r\n");
+                            }
+                            // EXP #b(depends on level)#k
                             break;
                         }
+                    case QuestEditorActType.Pop:
+                        {
+                            if (act.Amount > 0)
+                            {
+                                sb.Append(string.Format("{0} Fame", act.Amount.ToString("#,##0"))); // amount
+                                sb.Append("\r\n");
+                            }
+                            break;
+                        }
+                    default:
+                        throw new Exception("Unhandled QuestEditorActType" + act.ActType.ToString());
                 }
             }
             sb.Append("\r\n");
@@ -756,18 +1000,43 @@ namespace HaCreator.GUI.Quest
                 if (actInfo.ActType != QuestEditorActType.Item)
                     return;
 
-                LoadItemSelector itemSelector = new LoadItemSelector();
+                LoadItemSelector itemSelector = new LoadItemSelector(0);
                 itemSelector.ShowDialog();
                 int selectedItem = itemSelector.SelectedItemId;
                 if (selectedItem != 0)
                 {
-                    Tuple<string, string, string> nameCache = Program.InfoManager.ItemNameCache[selectedItem]; // // itemid, <item category, item name, item desc>
-
                     actInfo.SelectedRewardItems.Add(
                         new QuestEditorActInfoRewardModel() {
                             ItemId = selectedItem,
                             Quantity = 1,
-                            ItemName = nameCache != null ? nameCache.Item2 : "NO NAME",
+                        });
+                }
+            }
+        }
+
+        /// <summary>
+        /// On select buff as reward
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectBuff_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
+            {
+                if (actInfo.ActType != QuestEditorActType.BuffItemId)
+                    return;
+
+                LoadItemSelector itemSelector = new LoadItemSelector(ItemIdsCategory.BUFF_CATEGORY);
+                itemSelector.ShowDialog();
+                int selectedItem = itemSelector.SelectedItemId;
+                if (selectedItem != 0)
+                {
+                    actInfo.SelectedRewardItems.Add(
+                        new QuestEditorActInfoRewardModel()
+                        {
+                            ItemId = selectedItem,
+                            Quantity = 1,
                         });
                 }
             }
@@ -791,9 +1060,57 @@ namespace HaCreator.GUI.Quest
                 actInfo.SelectedRewardItems.Remove(selectedItem);
             }
         }
+
+        /// <summary>
+        /// Select map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectMaps_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
+            {
+                if (actInfo.ActType != QuestEditorActType.Message_Map)
+                    return;
+
+                LoadMapSelector mapSelector = new LoadMapSelector();
+                mapSelector.ShowDialog();
+
+                string selectedItem = mapSelector.SelectedMap;
+                if (selectedItem != string.Empty)
+                {
+                    actInfo.SelectedNumbersItem.Add( int.Parse(selectedItem));
+                }
+            }
+        }
+
+
+        /// <summary>
+        /// Removes the map from the list
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DeleteMapResponse_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataGridRow = FindAncestor<DataGridRow>(button);
+            var dataGridCell = FindAncestor<DataGridCell>(button);
+            var response = (int) button.DataContext;
+            var questModel = dataGridCell.DataContext as QuestEditorActInfoModel;
+
+            if (questModel != null)
+            {
+                // find the listbox first
+                // then get the ObservableCollection<QuestEditorSayResponseModel> it is binded to
+                ListBox listboxParent = FindAncestor<ListBox>(button);
+
+                questModel.SelectedNumbersItem.Remove(response);
+            }
+        }
         #endregion
 
-        #region Save Delete quest
+        #region Save and Delete quest
         /// <summary>
         /// Saves the quest to WZ images
         /// </summary>

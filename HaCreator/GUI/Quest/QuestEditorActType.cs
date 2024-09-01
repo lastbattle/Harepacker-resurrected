@@ -29,9 +29,22 @@ namespace HaCreator.GUI.Quest
 {
     public enum QuestEditorActType
     {
+        Null,
+
         Item,
         Exp,
         Npc,
-        Mesos,
+        Money, // mesos, called 'money' in wz files
+        Pop, // fame, called 'pop' in wz files
+        BuffItemId,
+
+        Message_Map,
+
+        CraftEXP,
+        CharmEXP,
+        CharismaEXP,
+        InsightEXP,
+        WillEXP,
+        SenseEXP
     }
 }

@@ -43,6 +43,17 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private ObservableCollection<int> _selectedNumbersItem = new ObservableCollection<int>();
+        public ObservableCollection<int> SelectedNumbersItem
+        {
+            get { return _selectedNumbersItem; }
+            set
+            {
+                this._selectedNumbersItem = value;
+                OnPropertyChanged(nameof(SelectedNumbersItem));
+            }
+        }
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -60,6 +71,42 @@ namespace HaCreator.GUI.Quest
                 {
                     _actType = value;
                     OnPropertyChanged(nameof(ActType));
+                }
+            }
+        }
+
+        private long _amount;
+        /// <summary>
+        /// The amount, it may be EXP, fame, mesos, or NPC ID
+        /// dual-use
+        /// </summary>
+        public long Amount
+        {
+            get => _amount;
+            set
+            {
+                if (_amount != value)
+                {
+                    _amount = value;
+                    OnPropertyChanged(nameof(Amount));
+                }
+            }
+        }
+
+        private string _text;
+        /// <summary>
+        /// The Text, it may be EXP, fame, mesos, or NPC ID
+        /// dual-use
+        /// </summary>
+        public string Text
+        {
+            get => _text;
+            set
+            {
+                if (_text != value)
+                {
+                    _text = value;
+                    OnPropertyChanged(nameof(Text));
                 }
             }
         }

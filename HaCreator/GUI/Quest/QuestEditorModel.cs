@@ -60,7 +60,8 @@ namespace HaCreator.GUI.Quest
         private bool _isAskConversation;
 
         // Act
-        private readonly ObservableCollection<QuestEditorActInfoModel> _actInfo = new ObservableCollection<QuestEditorActInfoModel>();
+        private readonly ObservableCollection<QuestEditorActInfoModel> _actStartInfo = new ObservableCollection<QuestEditorActInfoModel>();
+        private readonly ObservableCollection<QuestEditorActInfoModel> _actEndInfo = new ObservableCollection<QuestEditorActInfoModel>();
 
         // Check
         private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
@@ -353,9 +354,16 @@ namespace HaCreator.GUI.Quest
         /// <summary>
         /// ActInfo.img
         /// </summary>
-        public ObservableCollection<QuestEditorActInfoModel> ActInfo
+        public ObservableCollection<QuestEditorActInfoModel> ActStartInfo
         {
-            get => _actInfo;
+            get => _actStartInfo;
+            private set
+            {
+            }
+        }
+        public ObservableCollection<QuestEditorActInfoModel> ActEndInfo
+        {
+            get => _actEndInfo;
             private set
             {
             }

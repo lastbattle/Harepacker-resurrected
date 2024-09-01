@@ -22,7 +22,19 @@ namespace HaCreator.GUI.InstanceEditor
         private TextBox textBox = null;
 
         /// <summary>
-        /// Load map selector
+        /// Constructor for no NumericUpDown or TextBox
+        /// </summary>
+        public LoadMapSelector()
+        {
+            InitializeComponent();
+
+            DialogResult = DialogResult.Cancel;
+
+            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+        }
+
+        /// <summary>
+        /// Load map selector for NumericUpDown
         /// </summary>
         /// <param name="numericUpDown"></param>
         public LoadMapSelector(NumericUpDown numericUpDown)
@@ -30,13 +42,14 @@ namespace HaCreator.GUI.InstanceEditor
             InitializeComponent();
 
             DialogResult = DialogResult.Cancel;
-
+            
             this.numericUpDown = numericUpDown;
+
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
         }
 
         /// <summary>
-        /// Load map selector
+        /// Load map selector for TextBox
         /// </summary>
         /// <param name="textbox"></param>
         public LoadMapSelector(TextBox textbox) {
@@ -70,11 +83,21 @@ namespace HaCreator.GUI.InstanceEditor
 
             if (numericUpDown != null) {
                 this.numericUpDown.Value = long.Parse(mapid);
-            } else {
+            } else if (textBox != null) {
                 this.textBox.Text = mapid;
             }
+            // set selected map
+            SelectedMap = mapid;
+
             DialogResult = DialogResult.OK;
             Close();
+        }
+
+        private string _selectedMap = string.Empty;
+        public string SelectedMap
+        {
+            get { return _selectedMap; }
+            set { this._selectedMap = value; }
         }
 
         private void mapBrowser_SelectionChanged()
