@@ -20,7 +20,6 @@ namespace HaCreator.GUI.Quest
             set { 
                 this._itemId = value;
                 OnPropertyChanged(nameof(ItemId));
-                OnPropertyChanged(nameof(IsEquip));
             } 
         }
 
@@ -33,7 +32,17 @@ namespace HaCreator.GUI.Quest
             get { return _quantity; }
             set
             {
-                this._quantity = value;
+                int newValue = value;
+
+                if (newValue == 0) // dont allow 0
+                    newValue = 1;
+
+                if (ItemIdsCategory.IsEquipment(_itemId))  // Restrict to -1 or 1 if IsEquip is true
+                    newValue = Math.Sign(newValue);
+                else // Clamp between -9999 and 9999 if IsEquip is false
+                    newValue = Math.Max(-9999, Math.Min(9999, newValue));
+
+                this._quantity = newValue;
                 OnPropertyChanged(nameof(Quantity));
             }
         }
@@ -41,7 +50,7 @@ namespace HaCreator.GUI.Quest
 
         private string _potentialGrade;
         /// <summary>
-        /// The potential grade of the item. "노멀"
+        /// The potential grade of the item. "노멀" = normal, "레어" = rare, Epic 에픽, Unique 유니크, Legendary 레전드리
         /// TODO
         /// </summary>
         public string PotentialGrade
@@ -101,12 +110,6 @@ namespace HaCreator.GUI.Quest
             private set
             {
             }
-        }
-
-        public bool IsEquip
-        {
-            get { return !ItemIdsCategory.IsEquipment(_itemId); }
-            private set { }
         }
 
         #region Property Changed Event
