@@ -531,7 +531,7 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractNpcFile()
         {
-            if (Program.InfoManager.NPCs.Count != 0)
+            if (Program.InfoManager.NpcPropertyCache.Count != 0)
                 return;
 
             // Npc.wz
@@ -539,10 +539,19 @@ namespace HaCreator.GUI
 
             foreach (WzDirectory npcWzDir in npcWzDirs)
             {
+                foreach (WzImage npcImage in npcWzDir.WzImages)
+                {
+                    string npcId = npcImage.Name.Replace(".img", "");
+
+                    if (!Program.InfoManager.NpcPropertyCache.ContainsKey(npcId))
+                    {
+                        Program.InfoManager.NpcPropertyCache.Add(npcId, npcImage);
+                    }
+                }
             }
 
             // String.wz
-            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
+            /*List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
             foreach (WzDirectory stringWzDir in stringWzDirs)
             {
                 WzImage npcImage = (WzImage)stringWzDir?["Npc.img"];
@@ -554,9 +563,9 @@ namespace HaCreator.GUI
                     WzStringProperty nameProp = (WzStringProperty)npc["name"];
                     string name = nameProp == null ? "" : nameProp.Value;
 
-                    Program.InfoManager.NPCs.Add(WzInfoTools.AddLeadingZeros(npc.Name, 7), name);
+                    Program.InfoManager.NPCs.Add(WzInfoTools.AddLeadingZeros(npc.Name, 7), new Tuple<WzSubProperty, string>(npc, name));
                 }
-            }
+            }*/
         }
 
         /// <summary>

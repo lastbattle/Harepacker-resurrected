@@ -22,7 +22,6 @@ namespace HaCreator.Wz
 {
     public class WzInformationManager
     {
-        public Dictionary<string, string> NPCs = new Dictionary<string, string>();
         public Dictionary<string, string> Mobs = new Dictionary<string, string>();
         public Dictionary<string, ReactorInfo> Reactors = new Dictionary<string, ReactorInfo>();
         public Dictionary<string, WzImage> TileSets = new Dictionary<string, WzImage>();
@@ -46,6 +45,7 @@ namespace HaCreator.Wz
 
         // Npcs
         public Dictionary<string, string> NpcNameCache = new Dictionary<string, string>();
+        public Dictionary<string, WzImage> NpcPropertyCache = new Dictionary<string, WzImage>();
 
         public Dictionary<string, PortalInfo> Portals = new Dictionary<string, PortalInfo>();
         public List<string> PortalTypeById = new List<string>();
@@ -93,7 +93,7 @@ namespace HaCreator.Wz
         /// </summary>
         public void Clear()
         {
-            NPCs.Clear();
+            NpcNameCache.Clear();
             Mobs.Clear();
             Reactors.Clear();
             TileSets.Clear();

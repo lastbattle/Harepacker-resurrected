@@ -321,7 +321,8 @@
                     <TextBox Text="{Binding Amount}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
-                <Button Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"/>
+                <Button x:Name="button_selectNPC" Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_selectNPC_Click"/>
             </Grid>
         </DataTemplate>
         

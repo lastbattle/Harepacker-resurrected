@@ -429,10 +429,12 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
+                   // case "fieldEnter": // is only used by questid 9866
+
+                   //     break;
                     /*
                     case "quest":
                     case "skill":
-                    case "fieldEnter":
                     case "job":
                     case "pettameness":
                     case "petspeed":
@@ -1106,6 +1108,30 @@ namespace HaCreator.GUI.Quest
                 ListBox listboxParent = FindAncestor<ListBox>(button);
 
                 questModel.SelectedNumbersItem.Remove(response);
+            }
+        }
+
+        /// <summary>
+        /// Select NPC
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectNPC_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
+            {
+                if (actInfo.ActType != QuestEditorActType.Npc)
+                    return;
+
+                LoadNpcSelector npcSelector = new LoadNpcSelector();
+                npcSelector.ShowDialog();
+
+                string selectedItem = npcSelector.SelectedNpcId;
+                if (selectedItem != string.Empty)
+                {
+                    actInfo.Amount = int.Parse(selectedItem);
+                }
             }
         }
         #endregion

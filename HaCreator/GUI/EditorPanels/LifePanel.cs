@@ -43,7 +43,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 reactors.Add(entry.Value.ID);
             }
-            foreach (KeyValuePair<string, string> entry in Program.InfoManager.NPCs)
+            foreach (KeyValuePair<string, string> entry in Program.InfoManager.NpcNameCache)
             {
                 npcs.Add(entry.Key + " - " + entry.Value);
             }
