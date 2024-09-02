@@ -129,6 +129,13 @@
                 <x:Type TypeName="local:QuestEditorActType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <!-- Data template for potential grade enum-->
+        <ObjectDataProvider x:Key="PotentialTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActInfoPotentialType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
 
         <!-- DataTemplate for Yes/No Responses ItemsControl -->
         <DataTemplate x:Key="ResponseItemTemplate">
@@ -367,18 +374,34 @@
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
 
-                                <StackPanel Orientation="Horizontal" Grid.Column="0"  HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal" Grid.Column="0"  HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding ItemId}"/>
                                     <TextBlock Text="[" Margin="20,0,0,0"/>
                                     <TextBlock Text="{Binding ItemName}"/>
                                     <TextBlock Text="]"/>
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left">
-                                    <TextBlock Text="Quantity:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
                                              InputScope="Number"
-                                             VerticalAlignment="Center"/>
+                                             />
+
+                                    <TextBlock Text="Expiry:" Margin="20,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <DatePicker Name="datePicker_itemExpiry" Text="" 
+                                                DisplayDate="01/01/2020 00:00:00"
+                                                SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd}"
+                                                SelectedDateChanged="datePicker_itemExpiry_SelectedDateChanged"/>
+
+                                    <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="comboBox_potentialGrade" 
+                                              ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
+                                              SelectedItem="{Binding PotentialGrade, Mode=TwoWay}"
+                                              >
+                                    </ComboBox>
                                 </StackPanel>
 
                                 <Button x:Name="button_deleteItem" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 

@@ -48,12 +48,12 @@ namespace HaCreator.GUI.Quest
         }
 
 
-        private string _potentialGrade;
+        private QuestEditorActInfoPotentialType _potentialGrade;
         /// <summary>
-        /// The potential grade of the item. "노멀" = normal, "레어" = rare, Epic 에픽, Unique 유니크, Legendary 레전드리
+        /// The potential grade of the item. "노멀" = normal, "레어" = rare/ hidden potential, Epic 에픽, Unique 유니크, Legendary 레전드리
         /// TODO
         /// </summary>
-        public string PotentialGrade
+        public QuestEditorActInfoPotentialType PotentialGrade
         {
             get { return _potentialGrade; }
             set
@@ -63,12 +63,12 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private string _expireDate;
+        private DateTime _expireDate;
         /// <summary>
         /// The expiry date of the item. "2009012300"
         /// TODO
         /// </summary>
-        public string ExpireDate
+        public DateTime ExpireDate
         {
             get { return _expireDate; }
             set
@@ -93,23 +93,18 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-
-        /// <summary>
-        /// The item name (only for user preview)
-        /// </summary>
         public string ItemName
         {
-            get {
+            get
+            {
                 Tuple<string, string, string> nameCache = Program.InfoManager.ItemNameCache[ItemId]; // // itemid, <item category, item name, item desc>
                 if (nameCache != null)
                 {
                     return nameCache.Item2;
                 }
-                return "NO NAME"; 
+                return "NO NAME";
             }
-            private set
-            {
-            }
+            private set { }
         }
 
         #region Property Changed Event

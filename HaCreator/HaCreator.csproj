@@ -329,6 +329,7 @@
       <DependentUpon>QuestEditor.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActInfoPotentialType.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoRewardModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActType.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />

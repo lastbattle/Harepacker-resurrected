@@ -367,11 +367,47 @@ namespace HaCreator.GUI.Quest
                                 {
                                     var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Item, questActs);
 
-                                    firstAct.SelectedRewardItems.Add(new QuestEditorActInfoRewardModel()
+                                    // potential
+                                    QuestEditorActInfoPotentialType potentialType = QuestEditorActInfoPotentialType.Normal;
+                                    if (potentialGrade != null) // its ok if potentialGrade is null
+                                    {
+                                        // Normal 노멀
+                                        // Rare 레어
+                                        // Epic 에픽
+                                        // Unique 유니크
+                                        // Legendary 레전드리
+                                        switch (potentialGrade)
+                                        {
+                                            case "노멀":
+                                                potentialType = QuestEditorActInfoPotentialType.Normal;
+                                                break;
+                                            case "레어":
+                                                potentialType = QuestEditorActInfoPotentialType.Rare;
+                                                break;
+                                            case "에픽":
+                                                potentialType = QuestEditorActInfoPotentialType.Epic;
+                                                break;
+                                            case "유니크":
+                                                potentialType = QuestEditorActInfoPotentialType.Unique;
+                                                break;
+                                            case "레전드리":
+                                                potentialType = QuestEditorActInfoPotentialType.Legendary;
+                                                break;
+                                        }
+                                    }
+
+                                    QuestEditorActInfoRewardModel actReward = new QuestEditorActInfoRewardModel()
                                     {
                                         ItemId = itemId,
                                         Quantity = count,
-                                    });
+                                        PotentialGrade = potentialType,
+                                    };
+                                    if (dateExpire != null)
+                                    {
+                                        string parseStr = dateExpire.Length == 10 ? "yyyyMMddHH" : "yyyyMMddHHmm";
+                                        actReward.ExpireDate = DateTime.ParseExact(dateExpire, parseStr, System.Globalization.CultureInfo.InvariantCulture);
+                                    }
+                                    firstAct.SelectedRewardItems.Add(actReward);
                                 }
                             }
                             break;
@@ -1024,6 +1060,24 @@ namespace HaCreator.GUI.Quest
                             Quantity = 1,
                         });
                 }
+            }
+        }
+
+        /// <summary>
+        /// On item expiry date selected
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void datePicker_itemExpiry_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+        {
+            DatePicker picker = sender as DatePicker;
+            if (picker.SelectedDate.HasValue)
+            {
+                DateTime selectedDate = picker.SelectedDate.Value;
+
+                QuestEditorActInfoRewardModel reward = picker.DataContext as QuestEditorActInfoRewardModel;
+                reward.ExpireDate = selectedDate;
+                //reward.ExpireDate = selectedDate.Year.ToString().PadLeft(4, '0') + selectedDate.Month.ToString().PadLeft(2, '0') + selectedDate.Day.ToString().PadLeft(2, '0') + "00"; // 2010100700
             }
         }
 
