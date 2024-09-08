@@ -9,7 +9,7 @@ namespace HaCreator.GUI.Quest
     public enum QuestEditorActInfoPotentialType
     {
         Normal,
-        Rare, // hidden potential
+        Rare,
         Epic,
         Unique,
         Legendary

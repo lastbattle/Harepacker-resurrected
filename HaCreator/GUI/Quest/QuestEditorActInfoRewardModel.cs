@@ -50,7 +50,7 @@ namespace HaCreator.GUI.Quest
 
         private QuestEditorActInfoPotentialType _potentialGrade;
         /// <summary>
-        /// The potential grade of the item. "노멀" = normal, "레어" = rare/ hidden potential, Epic 에픽, Unique 유니크, Legendary 레전드리
+        /// The potential grade of the item. "노멀" = normal, "레어" = rare, Epic 에픽, Unique 유니크, Legendary 레전드리
         /// TODO
         /// </summary>
         public QuestEditorActInfoPotentialType PotentialGrade

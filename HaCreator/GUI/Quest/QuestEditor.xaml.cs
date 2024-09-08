@@ -404,8 +404,16 @@ namespace HaCreator.GUI.Quest
                                     };
                                     if (dateExpire != null)
                                     {
-                                        string parseStr = dateExpire.Length == 10 ? "yyyyMMddHH" : "yyyyMMddHHmm";
-                                        actReward.ExpireDate = DateTime.ParseExact(dateExpire, parseStr, System.Globalization.CultureInfo.InvariantCulture);
+                                        string parseStr = dateExpire.Length == 10 ? "yyyyMMddHH" : (dateExpire.Length == 12 ? "yyyyMMddHHmm" : null);
+                                        if (parseStr == null)
+                                        {
+                                            string error = string.Format("[QuestEditor] Unknown 'dateExpire' format for items. Data={0}", dateExpire);
+                                            ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                                        }
+                                        else
+                                        {
+                                            actReward.ExpireDate = DateTime.ParseExact(dateExpire, parseStr, System.Globalization.CultureInfo.InvariantCulture);
+                                        }
                                     }
                                     firstAct.SelectedRewardItems.Add(actReward);
                                 }
@@ -423,7 +431,7 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*case "nextQuest":
+                    /*
                     case "0":
                     case "1":
                     case "2":
@@ -431,10 +439,31 @@ namespace HaCreator.GUI.Quest
                     case "4":
                     case "yes":
                     case "no":
-                    case "npc":
+                    case "npc":*/
+
                     case "lvmin":
+                        {
+                            int amount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.LvMin, questActs);
+
+                                firstAct.Amount = amount;
+                            }
+                            break;
+                        }
                     case "lvmax":
-                    case "interval":
+                        {
+                            int amount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.LvMax, questActs);
+
+                                firstAct.Amount = amount;
+                            }
+                            break;
+                        }
+                    /*case "interval":
                     case "start":
                     case "end":
                         break;*/
@@ -476,16 +505,35 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                   // case "fieldEnter": // is only used by questid 9866
+                    case "fieldEnter": // is only used by questid 9866
+                        {
 
-                   //     break;
+                            break;
+                        }
+                    //     break;
                     /*
                     case "quest":
                     case "skill":
-                    case "job":
+                    case "job":*/
                     case "pettameness":
+                        {
+                            int tame = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.PetTameness, questActs);
+                            firstAct.Amount = tame;
+                            break;
+                            break;
+                        }
                     case "petspeed":
-                    case "petskill":
+                        {
+                            int speed = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.PetSpeed, questActs);
+                            firstAct.Amount = speed;
+                            break;
+                        }
+
+                    /*case "petskill":
                     case "npcAct":
                         break;*/
                     case "sp": // mostly for Evan
@@ -1138,7 +1186,7 @@ namespace HaCreator.GUI.Quest
             // Get the DataContext of the button
             if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
             {
-                if (actInfo.ActType != QuestEditorActType.Message_Map)
+                if (actInfo.ActType != QuestEditorActType.Message_Map && actInfo.ActType != QuestEditorActType.FieldEnter)
                     return;
 
                 LoadMapSelector mapSelector = new LoadMapSelector();

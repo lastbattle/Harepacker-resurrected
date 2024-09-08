@@ -253,6 +253,75 @@
                 <TextBox Text="{Binding Amount}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
         </DataTemplate>
+        
+        <!-- lvMin -->
+        <DataTemplate x:Key="ActLvMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level min:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActLvMaxTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level max:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- fieldEnter -->
+        <DataTemplate x:Key="ActFieldEnterTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition MinWidth="150" Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
+                <Grid Grid.Column="1">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem}" MinHeight="30">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition MinWidth="100" Width="*"/>
+                                        <ColumnDefinition Width="25"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"/>
+                                    <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                                            Click="DeleteMapResponse_Click"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button x:Name="botton_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Click="botton_selectMaps_Click"/>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Pet speed-->
+        <DataTemplate x:Key="ActPetSpeedTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet speed:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- Pet Tameness-->
+        <DataTemplate x:Key="ActPetTamenessTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet tameness:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Buff -->
         <DataTemplate x:Key="ActBuffTemplate">
@@ -291,7 +360,7 @@
                         <ColumnDefinition Width="120"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBox Text="{Binding Amount}" InputScope="Number" Grid.Row="0"/>
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
 
                     <Button x:Name="botton_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
@@ -315,7 +384,7 @@
 
                 <TextBlock Text="Maps to show in:" Grid.Column="2" Margin="4,0,0,0"/>
                 <StackPanel Orientation="Vertical" Grid.Column="3">
-                    <ListBox ItemsSource="{Binding SelectedNumbersItem}">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem}"  MinHeight="30">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
@@ -467,8 +536,23 @@
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.SenseEXP}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitSenseTemplate}"/>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.LvMin}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActLvMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.LvMax}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActLvMaxTemplate}"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.NextQuest}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNextQuestTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetSpeed}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetSpeedTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetTameness}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetTamenessTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.FieldEnter}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFieldEnterTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Null}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>

@@ -19,6 +19,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -87,8 +88,38 @@ namespace HaCreator.GUI.Quest
             {
                 if (_amount != value)
                 {
-                    _amount = value;
-                    OnPropertyChanged(nameof(Amount));
+                    long setAmount = value;
+
+                    // input validation
+                    if (ActType == QuestEditorActType.LvMin)
+                    {
+                        if (setAmount < 0)
+                            setAmount = 0;
+                        if (setAmount >= CharacterStats.MAX_LEVEL)
+                            setAmount = CharacterStats.MAX_LEVEL;
+                    }
+                    else if (ActType == QuestEditorActType.LvMax)
+                    {
+                        if (setAmount < 0)
+                            setAmount = 0;
+                        if (setAmount >= CharacterStats.MAX_LEVEL)
+                            setAmount = CharacterStats.MAX_LEVEL;
+                    }
+                    else if (ActType == QuestEditorActType.NextQuest)
+                    {
+                        if (setAmount < 0)
+                            setAmount = 0;
+                    }
+                    else if (ActType == QuestEditorActType.PetSpeed || ActType == QuestEditorActType.PetTameness)
+                    {
+                        if (setAmount < 0)
+                            setAmount = 0;
+                    }
+                    if (setAmount != _amount)
+                    {
+                        _amount = setAmount;
+                        OnPropertyChanged(nameof(Amount));
+                    }
                 }
             }
         }

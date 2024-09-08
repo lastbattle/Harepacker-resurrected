@@ -31,6 +31,9 @@ namespace HaCreator.GUI.Quest
         Money, // mesos, called 'money' in wz files
         Pop, // fame, called 'pop' in wz files
         BuffItemId,
+        LvMin,
+        LvMax,
+        FieldEnter,
 
         Message_Map,
 
@@ -41,6 +44,9 @@ namespace HaCreator.GUI.Quest
         WillEXP,
         SenseEXP,
 
-        NextQuest
+        NextQuest,
+
+        PetSpeed,
+        PetTameness
     }
 }
