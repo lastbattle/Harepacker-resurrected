@@ -162,6 +162,7 @@
     <Compile Include="Collections\MapleLinesEnumerator.cs" />
     <Compile Include="Collections\SerializableEnumerator.cs" />
     <Compile Include="Converter\EnumToVisibilityConverter.cs" />
+    <Compile Include="Converter\PetSkillFlagConverter.cs" />
     <Compile Include="CustomControls\CheckboxButton.cs" />
     <Compile Include="CustomControls\HaList.xaml.cs">
       <DependentUpon>HaList.xaml</DependentUpon>

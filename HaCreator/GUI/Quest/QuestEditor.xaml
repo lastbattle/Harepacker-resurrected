@@ -8,6 +8,7 @@
         xmlns:converter="clr-namespace:HaCreator.Converter"
         xmlns:haSharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
         xmlns:haSharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
+        xmlns:mapleLibCharStruct="clr-namespace:MapleLib.WzLib.WzStructure.Data.CharacterStructure;assembly=MapleLib"
         mc:Ignorable="d" 
         Title="HaCreator's MapleStory Quest editor"
         
@@ -16,7 +17,8 @@
 
     <Window.Resources>
         <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
-        
+        <converter:PetSkillFlagConverter x:Key="petSkillFlagConverter"/>
+
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
                 <Setter.Value>
@@ -134,6 +136,13 @@
                         ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="local:QuestEditorActInfoPotentialType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for pet skill enum-->
+        <ObjectDataProvider x:Key="PetSkillTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:PetSkillFlag"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
 
@@ -322,7 +331,21 @@
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
         </DataTemplate>
-
+        <!-- Pet Skill -->
+        <DataTemplate x:Key="ActPetSkillTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Select a skill:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <ComboBox x:Name="comboBox_petSkill" 
+                          ItemsSource="{Binding Source={StaticResource PetSkillTypeEnum}}"  
+                           SelectedItem="{Binding Amount, Mode=TwoWay, Converter={StaticResource petSkillFlagConverter}}"
+                          SelectionChanged="comboBox_petSkill_SelectionChanged"
+                                              >
+                </ComboBox>
+            </StackPanel>
+        </DataTemplate>
+        
         <!-- Buff -->
         <DataTemplate x:Key="ActBuffTemplate">
             <StackPanel>
@@ -464,13 +487,16 @@
                                                 SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd}"
                                                 SelectedDateChanged="datePicker_itemExpiry_SelectedDateChanged"/>
 
-                                    <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100"
-                                               VerticalAlignment="Center"/>
-                                    <ComboBox x:Name="comboBox_potentialGrade" 
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                                Visibility="{Binding IsEquip, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100"
+                                               />
+                                        <ComboBox x:Name="comboBox_potentialGrade" 
                                               ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
                                               SelectedItem="{Binding PotentialGrade, Mode=TwoWay}"
                                               >
-                                    </ComboBox>
+                                        </ComboBox>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Button x:Name="button_deleteItem" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
@@ -550,6 +576,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetTameness}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetTamenessTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetSkill}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetSkillTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.FieldEnter}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFieldEnterTemplate}"/>

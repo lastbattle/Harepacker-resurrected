@@ -20,9 +20,11 @@ SOFTWARE.
 */
 
 using HaCreator.GUI.InstanceEditor;
+using HaCreator.MapSimulator;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
@@ -532,9 +534,15 @@ namespace HaCreator.GUI.Quest
                             firstAct.Amount = speed;
                             break;
                         }
+                    case "petskill": // only used by quest 4660 4661
+                        {
+                            int skillVal = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
 
-                    /*case "petskill":
-                    case "npcAct":
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.PetSkill, questActs);
+                            firstAct.Amount = skillVal;
+                            break;
+                        }
+                    /*case "npcAct":
                         break;*/
                     case "sp": // mostly for Evan
                         {
@@ -1269,6 +1277,27 @@ namespace HaCreator.GUI.Quest
                 {
                     actInfo.Amount = int.Parse(selectedItem);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Pet skill combobox changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void comboBox_petSkill_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (e.AddedItems.Count == 0 || _isLoading)
+                return;
+
+            ComboBox comboBox = sender as ComboBox;
+            PetSkillFlag comboBoxSelectedItem = (PetSkillFlag) comboBox.SelectedItem;
+            StackPanel parentSp = FindAncestor<StackPanel>(comboBox);
+            QuestEditorActInfoModel actInfoModel = parentSp.DataContext as QuestEditorActInfoModel;
+
+            if (actInfoModel != null) 
+            {
+                // actInfoModel.Amount = comboBoxSelectedItem.GetValue(); // no need via binding
             }
         }
         #endregion

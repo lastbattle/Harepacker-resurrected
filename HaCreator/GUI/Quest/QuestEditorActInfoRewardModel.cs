@@ -20,6 +20,7 @@ namespace HaCreator.GUI.Quest
             set { 
                 this._itemId = value;
                 OnPropertyChanged(nameof(ItemId));
+                OnPropertyChanged(nameof(IsEquip));
             } 
         }
 
@@ -104,6 +105,12 @@ namespace HaCreator.GUI.Quest
                 }
                 return "NO NAME";
             }
+            private set { }
+        }
+
+        public bool IsEquip
+        {
+            get { return ItemIdsCategory.IsEquipment(_itemId); }
             private set { }
         }
 

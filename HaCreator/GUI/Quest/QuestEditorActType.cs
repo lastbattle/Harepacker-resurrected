@@ -47,6 +47,7 @@ namespace HaCreator.GUI.Quest
         NextQuest,
 
         PetSpeed,
-        PetTameness
+        PetTameness,
+        PetSkill
     }
 }
