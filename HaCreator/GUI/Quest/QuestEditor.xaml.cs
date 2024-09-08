@@ -509,7 +509,14 @@ namespace HaCreator.GUI.Quest
                         }
                     case "fieldEnter": // is only used by questid 9866
                         {
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.FieldEnter, questActs);
 
+                            foreach (WzImageProperty itemProp in actTypeProp.WzProperties)
+                            {
+                                int mapId = (itemProp as WzIntProperty)?.GetInt() ?? 0;
+
+                                firstAct.SelectedNumbersItem.Add(mapId);
+                            }
                             break;
                         }
                     //     break;
@@ -523,7 +530,6 @@ namespace HaCreator.GUI.Quest
 
                             var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.PetTameness, questActs);
                             firstAct.Amount = tame;
-                            break;
                             break;
                         }
                     case "petspeed":
