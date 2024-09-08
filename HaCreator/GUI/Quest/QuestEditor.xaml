@@ -466,11 +466,13 @@
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
 
-                                <StackPanel Orientation="Horizontal" Grid.Column="0"  HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <StackPanel Orientation="Vertical" Grid.Column="0"  HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding ItemId}"/>
-                                    <TextBlock Text="[" Margin="20,0,0,0"/>
-                                    <TextBlock Text="{Binding ItemName}"/>
-                                    <TextBlock Text="]"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding ItemName}"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">

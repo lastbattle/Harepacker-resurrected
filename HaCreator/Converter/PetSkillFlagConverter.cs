@@ -17,7 +17,7 @@ namespace HaCreator.Converter
             {
                 foreach (PetSkillFlag flag in Enum.GetValues(typeof(PetSkillFlag)))
                 {
-                    if (flag != PetSkillFlag.NUM_SKILL && flag.GetValue() == amount)
+                    if (flag.GetValue() == amount)
                     {
                         return flag;
                     }
