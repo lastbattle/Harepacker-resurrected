@@ -473,7 +473,16 @@
                         Click="button_selectNPC_Click"/>
             </Grid>
         </DataTemplate>
-        
+        <!-- NPC Act -->
+        <DataTemplate x:Key="ActNpcActTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Animation action:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
         <!-- Item -->
         <DataTemplate x:Key="ActItemTemplate">
             <Grid>
@@ -562,6 +571,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Npc}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNpcTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.NpcAct}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNpcActTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Pop}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFameTemplate}"/>

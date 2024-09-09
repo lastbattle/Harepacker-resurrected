@@ -442,9 +442,27 @@ namespace HaCreator.GUI.Quest
                     case "3":
                     case "4":
                     case "yes":
-                    case "no":
-                    case "npc":*/
+                    case "no":*/
+                    case "npc":
+                        {
+                            int npcId = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (npcId != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Npc, questActs);
 
+                                firstAct.Amount = npcId;
+                            }
+                            break;
+                        }
+                    case "npcAct":
+                        {
+                            string npcAct = (actTypeProp as WzStringProperty)?.Value;
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.NpcAct, questActs);
+
+                            firstAct.Text = npcAct;
+                            break;
+                        }
                     case "lvmin":
                         {
                             int amount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;

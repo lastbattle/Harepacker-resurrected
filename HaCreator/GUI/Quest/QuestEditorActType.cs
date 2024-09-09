@@ -28,6 +28,7 @@ namespace HaCreator.GUI.Quest
         Item,
         Exp,
         Npc,
+        NpcAct, // npc action to show when starting, or completing the quest
         Money, // mesos, called 'money' in wz files
         Pop, // fame, called 'pop' in wz files
         BuffItemId,
