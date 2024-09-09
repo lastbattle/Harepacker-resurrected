@@ -34,6 +34,7 @@ namespace HaCreator.GUI.Quest
         BuffItemId,
         LvMin,
         LvMax,
+        Info, // infoEx
         FieldEnter,
 
         Message_Map,
@@ -41,17 +42,18 @@ namespace HaCreator.GUI.Quest
         Start,
         End,
 
+        NextQuest,
+
+        PetSpeed,
+        PetTameness,
+        PetSkill,
+
+        // postBB stuff
         CraftEXP,
         CharmEXP,
         CharismaEXP,
         InsightEXP,
         WillEXP,
         SenseEXP,
-
-        NextQuest,
-
-        PetSpeed,
-        PetTameness,
-        PetSkill
     }
 }

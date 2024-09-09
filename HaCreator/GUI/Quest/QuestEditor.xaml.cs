@@ -531,8 +531,15 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*case "info":
-                        break;*/
+                    case "info": // infoEx string
+                        {
+                            string info = (actTypeProp as WzStringProperty)?.Value;
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Info, questActs);
+
+                            firstAct.Text = info;
+                            break;
+                        }
                     case "pop": // fame
                         {
                             int fameAmount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0; // for 
@@ -556,7 +563,6 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    //     break;
                     /*
                     case "quest":
                     case "skill":
@@ -585,8 +591,6 @@ namespace HaCreator.GUI.Quest
                             firstAct.Amount = skillVal;
                             break;
                         }
-                    /*case "npcAct":
-                        break;*/
                     case "sp": // mostly for Evan
                         {
                             /*
