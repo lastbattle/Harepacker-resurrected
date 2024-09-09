@@ -26,6 +26,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -362,7 +363,7 @@ namespace HaCreator.GUI.Quest
                             {
                                 int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
-                                string dateExpire = (itemProp["dateExpire"] as WzStringProperty)?.GetString() ?? null;
+                                WzStringProperty dateExpireProp = (itemProp["dateExpire"] as WzStringProperty);
                                 string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
 
                                 if (itemId != 0)
@@ -404,17 +405,18 @@ namespace HaCreator.GUI.Quest
                                         Quantity = count,
                                         PotentialGrade = potentialType,
                                     };
-                                    if (dateExpire != null)
+                                    if (dateExpireProp != null)
                                     {
-                                        string parseStr = dateExpire.Length == 10 ? "yyyyMMddHH" : (dateExpire.Length == 12 ? "yyyyMMddHHmm" : null);
-                                        if (parseStr == null)
+                                        DateTime? date = dateExpireProp.GetDateTime();
+
+                                        if (date == null)
                                         {
-                                            string error = string.Format("[QuestEditor] Unknown 'dateExpire' format for items. Data={0}", dateExpire);
+                                            string error = string.Format("[QuestEditor] Unknown 'dateExpire' format for items. Data={0}", dateExpireProp.GetString());
                                             ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                                         }
                                         else
                                         {
-                                            actReward.ExpireDate = DateTime.ParseExact(dateExpire, parseStr, System.Globalization.CultureInfo.InvariantCulture);
+                                            actReward.ExpireDate = date.Value;
                                         }
                                     }
                                     firstAct.SelectedRewardItems.Add(actReward);
@@ -465,10 +467,27 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*case "interval":
+                    //case "interval":
                     case "start":
                     case "end":
-                        break;*/
+                        {
+                            //<string name="start" value="2006072000"/>
+                            //<string name="end" value="2006100100" />
+                            WzStringProperty dateStr = (actTypeProp as WzStringProperty);
+                            if (dateStr != null)
+                            {
+                                DateTime? date = dateStr.GetDateTime();
+
+                                if (date != null)
+                                {
+                                    QuestEditorActType actEnum = (QuestEditorActType)Enum.Parse(typeof(QuestEditorActType), StringUtility.CapitalizeFirstCharacter(actTypeProp.Name));
+                                    var firstExpAct = AddActItemIfNoneAndGet(actEnum, questActs);
+
+                                    firstExpAct.Date = date.Value;
+                                }
+                            }
+                            break;
+                        }
                     case "exp":
                         {
                             long expAmount = (actTypeProp as WzIntProperty)?.GetLong() ?? 0; // for 
@@ -1130,7 +1149,7 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void datePicker_itemExpiry_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
+        /*private void datePicker_itemExpiry_SelectedDateChanged(object sender, SelectionChangedEventArgs e)
         {
             DatePicker picker = sender as DatePicker;
             if (picker.SelectedDate.HasValue)
@@ -1141,7 +1160,7 @@ namespace HaCreator.GUI.Quest
                 reward.ExpireDate = selectedDate;
                 //reward.ExpireDate = selectedDate.Year.ToString().PadLeft(4, '0') + selectedDate.Month.ToString().PadLeft(2, '0') + selectedDate.Day.ToString().PadLeft(2, '0') + "00"; // 2010100700
             }
-        }
+        }*/
 
         /// <summary>
         /// On select buff as reward

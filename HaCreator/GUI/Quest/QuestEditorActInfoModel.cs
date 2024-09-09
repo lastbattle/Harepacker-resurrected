@@ -142,6 +142,23 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private DateTime _date;
+        /// <summary>
+        /// DateTime for 'start' 'end'
+        /// </summary>
+        public DateTime Date
+        {
+            get => _date;
+            set
+            {
+                if (_date != value)
+                {
+                    _date = value;
+                    OnPropertyChanged(nameof(Date));
+                }
+            }
+        }
+
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;
 

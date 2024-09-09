@@ -312,6 +312,32 @@
                 </Grid>
             </Grid>
         </DataTemplate>
+        
+        <!-- Start -->
+        <DataTemplate x:Key="ActStartTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Start date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- End -->
+        <DataTemplate x:Key="ActEndTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="End date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Pet speed-->
         <DataTemplate x:Key="ActPetSpeedTemplate">
@@ -486,8 +512,8 @@
                                                VerticalAlignment="Center"/>
                                     <DatePicker Name="datePicker_itemExpiry" Text="" 
                                                 DisplayDate="01/01/2020 00:00:00"
-                                                SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd}"
-                                                SelectedDateChanged="datePicker_itemExpiry_SelectedDateChanged"/>
+                                                SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                                                />
 
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                                 Visibility="{Binding IsEquip, Converter={StaticResource booleanToVisibility2Converter}}">
@@ -584,6 +610,12 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.FieldEnter}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFieldEnterTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Start}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActStartTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.End}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActEndTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Null}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>

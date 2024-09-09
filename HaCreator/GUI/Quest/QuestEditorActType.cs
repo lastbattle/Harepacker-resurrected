@@ -37,6 +37,9 @@ namespace HaCreator.GUI.Quest
 
         Message_Map,
 
+        Start,
+        End,
+
         CraftEXP,
         CharmEXP,
         CharismaEXP,
