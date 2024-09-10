@@ -446,6 +446,8 @@ namespace HaRepacker.GUI
                 strUserKey31, strUserKey32
                 );
 
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName = nameBox.Text;
+
             // Set the UserKey in memory.
             Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
 

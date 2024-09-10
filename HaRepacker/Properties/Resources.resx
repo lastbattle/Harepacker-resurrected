@@ -471,7 +471,7 @@ Click "Yes" to download the new version.</value>
     <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>
   </data>
   <data name="EncTypeCustom" xml:space="preserve">
-    <value>Use custom encryption key</value>
+    <value>Use custom encryption key ({0})</value>
   </data>
   <data name="EncTypeGenerate" xml:space="preserve">
     <value>Bruteforce AES key (Generate)</value>

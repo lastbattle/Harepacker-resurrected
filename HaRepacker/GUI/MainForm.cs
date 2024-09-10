@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
@@ -37,6 +38,7 @@ using MapleLib.WzLib.WzProperties;
 using HaSharedLibrary.SystemInterop;
 using MapleLib;
 using System.Text.RegularExpressions;
+using MapleLib.Configuration;
 
 namespace HaRepacker.GUI
 {
@@ -390,32 +392,32 @@ namespace HaRepacker.GUI
         /// Shared code between WzMapleVersionInputBox.cs
         /// </summary>
         /// <param name="encryptionBox"></param>
-        public static void AddWzEncryptionTypesToComboBox(object encryptionBox)
-        {
-            string[] resources = {
-                Properties.Resources.EncTypeGMS,
-                Properties.Resources.EncTypeMSEA,
-                Properties.Resources.EncTypeNone,
-                Properties.Resources.EncTypeCustom,
-                Properties.Resources.EncTypeGenerate,
-            };
-            bool isToolStripComboBox = encryptionBox is ToolStripComboBox;
+        public static void AddWzEncryptionTypesToComboBox(object encryptionBox) {
+            string customKeyName = string.Format(Properties.Resources.EncTypeCustom, Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName);
 
-            int i = 0;
-            foreach (string res in resources)
-            {
-                if (isToolStripComboBox)
-                    ((ToolStripComboBox)encryptionBox).Items.Add(res); // in mainform
-                else
-                {
-                    if (i != 4) // dont show bruteforce option in SaveForm
-                    {
-                        ((ComboBox)encryptionBox).Items.Add(res); // in saveForm
-                    }
-                }
-                i++;
+            BindingList<EncryptionKey> keys = new BindingList<EncryptionKey> {
+                new EncryptionKey { Name = Properties.Resources.EncTypeGMS, MapleVersion = WzMapleVersion.GMS },
+                new EncryptionKey { Name = Properties.Resources.EncTypeMSEA, MapleVersion = WzMapleVersion.EMS },
+                new EncryptionKey { Name = Properties.Resources.EncTypeNone, MapleVersion = WzMapleVersion.BMS },
+                new EncryptionKey { Name = customKeyName, MapleVersion = WzMapleVersion.CUSTOM },
+            };
+        
+            ComboBox comboBox; 
+            if (encryptionBox is ToolStripComboBox tsBox) {
+                // MainForm
+                comboBox = tsBox.ComboBox;
+                keys.Add(new EncryptionKey { Name = Properties.Resources.EncTypeGenerate, MapleVersion = WzMapleVersion.GENERATE }); // show bruteforce option
             }
+            else {
+                // SaveForm / NewForm / WZMapleVersionInputBox (import IMG)
+                comboBox = encryptionBox as ComboBox;
+            }
+
+            comboBox.DisplayMember = "Name";
+            comboBox.DataSource = keys;
         }
+
+        private bool _handlingCustomEncryptionChange = false;
 
         /// <summary>
         /// On encryption box selection changed
@@ -428,15 +430,22 @@ namespace HaRepacker.GUI
             {
                 return;
             }
-
-            int selectedIndex = encryptionBox.SelectedIndex;
-            WzMapleVersion wzMapleVer = GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
-            Program.ConfigurationManager.ApplicationSettings.MapleVersion = wzMapleVer;
-
-            if (wzMapleVer == WzMapleVersion.CUSTOM)
+        
+            if (_handlingCustomEncryptionChange) // prevent CustomWZEncryptionInputBox from being shown multiple times
             {
+                return;
+            }
+        
+            EncryptionKey selectedEncryption = (EncryptionKey)encryptionBox.SelectedItem;
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion = selectedEncryption.MapleVersion;
+        
+            if (selectedEncryption.MapleVersion == WzMapleVersion.CUSTOM)
+            {
+                _handlingCustomEncryptionChange = true;
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+                selectedEncryption.Name = string.Format(Properties.Resources.EncTypeCustom, Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName);
+                _handlingCustomEncryptionChange = false;
             }
             else
             {
