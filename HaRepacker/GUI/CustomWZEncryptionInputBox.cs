@@ -20,15 +20,21 @@ SOFTWARE.
 */
 
 using System;
+using System.ComponentModel;
 using System.Windows.Forms;
 using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
 using MapleLib.Configuration;
+using MapleLib.WzLib;
+using MapleLib.WzLib.Util;
 
 namespace HaRepacker.GUI
 {
     public partial class CustomWZEncryptionInputBox : Form
     {
+        private EncryptionKey _currentSelectedEncryptionKey;
+        private BindingList<EncryptionKey> _encryptionKeys;
+
         /// <summary>
         /// Constructor
         /// </summary>
@@ -36,6 +42,11 @@ namespace HaRepacker.GUI
         public CustomWZEncryptionInputBox()
         {
             InitializeComponent();
+
+            _encryptionKeys = new BindingList<EncryptionKey>(Program.ConfigurationManager.CustomKeys);
+
+            nameBox.DataSource = _encryptionKeys;
+            nameBox.DisplayMember = "Name";
         }
 
 
@@ -236,6 +247,119 @@ namespace HaRepacker.GUI
                     }
                 }
             }
+
+            var currentLoadedKey = WzKeyGenerator.GenerateWzKey(Program.ConfigurationManager.GetCusomWzIVEncryption(), MapleCryptoConstants.UserKey_WzLib); // from ApplicationSettings.txt
+            var matchedIndex = Program.ConfigurationManager.CustomKeys.FindIndex(k => k.WzKey == currentLoadedKey); // find the matched one
+
+            if (matchedIndex != -1) {
+                nameBox.SelectedIndex = matchedIndex;
+            }
+            else {
+                DefaultData();
+            }   
+        }
+
+        private void DefaultData() {
+            _currentSelectedEncryptionKey = null;
+            nameBox.Text = "Custom Key " + (Program.ConfigurationManager.CustomKeys.Count + 1);
+            SetDefaultTextBoxIV();
+            SetDefaultTextBoxAESUserKey();
+        }
+
+        private void nameBox_SelectedIndexChanged(object sender, EventArgs e) {
+            if (nameBox.SelectedItem is null)
+                return;
+
+            _currentSelectedEncryptionKey = (EncryptionKey)nameBox.SelectedItem;
+
+            FillBoxesWithSelectedKey();
+        }
+
+        private void FillBoxesWithSelectedKey() {
+
+            if (_currentSelectedEncryptionKey == null) {
+                SetDefaultTextBoxIV();
+                SetDefaultTextBoxAESUserKey();
+                return;
+            }
+
+            // IV
+            var iv = _currentSelectedEncryptionKey.Iv.Split(' ');
+            textBox_byte0.Text = iv[0];
+            textBox_byte1.Text = iv[1];
+            textBox_byte2.Text = iv[2];
+            textBox_byte3.Text = iv[3];
+
+            // AES User Key
+            var aesUserKey = _currentSelectedEncryptionKey.AesUserKey.Split(' ');
+            textBox_AESUserKey1.Text = aesUserKey[0];
+            textBox_AESUserKey2.Text = aesUserKey[1];
+            textBox_AESUserKey3.Text = aesUserKey[2];
+            textBox_AESUserKey4.Text = aesUserKey[3];
+            textBox_AESUserKey5.Text = aesUserKey[4];
+            textBox_AESUserKey6.Text = aesUserKey[5];
+            textBox_AESUserKey7.Text = aesUserKey[6];
+            textBox_AESUserKey8.Text = aesUserKey[7];
+            textBox_AESUserKey9.Text = aesUserKey[8];
+            textBox_AESUserKey10.Text = aesUserKey[9];
+            textBox_AESUserKey11.Text = aesUserKey[10];
+            textBox_AESUserKey12.Text = aesUserKey[11];
+            textBox_AESUserKey13.Text = aesUserKey[12];
+            textBox_AESUserKey14.Text = aesUserKey[13];
+            textBox_AESUserKey15.Text = aesUserKey[14];
+            textBox_AESUserKey16.Text = aesUserKey[15];
+            textBox_AESUserKey17.Text = aesUserKey[16];
+            textBox_AESUserKey18.Text = aesUserKey[17];
+            textBox_AESUserKey19.Text = aesUserKey[18];
+            textBox_AESUserKey20.Text = aesUserKey[19];
+            textBox_AESUserKey21.Text = aesUserKey[20];
+            textBox_AESUserKey22.Text = aesUserKey[21];
+            textBox_AESUserKey23.Text = aesUserKey[22];
+            textBox_AESUserKey24.Text = aesUserKey[23];
+            textBox_AESUserKey25.Text = aesUserKey[24];
+            textBox_AESUserKey26.Text = aesUserKey[25];
+            textBox_AESUserKey27.Text = aesUserKey[26];
+            textBox_AESUserKey28.Text = aesUserKey[27];
+            textBox_AESUserKey29.Text = aesUserKey[28];
+            textBox_AESUserKey30.Text = aesUserKey[29];
+            textBox_AESUserKey31.Text = aesUserKey[30];
+            textBox_AESUserKey32.Text = aesUserKey[31];
+        }
+
+        private void createButton_Click(object sender, EventArgs e) {
+            DefaultData();
+        }
+
+        private void deleteButton_Click(object sender, EventArgs e) {
+            if (nameBox.Items.Count <= 1) {
+                MessageBox.Show("Can't delete. Must have at least one Custom Key.", "Error");
+                return;
+            }
+
+            if (_currentSelectedEncryptionKey == null) // "Create New" button is just clicked, not a valid selection
+            {
+                MessageBox.Show("Nothing to delete.", "Error");
+                return;
+            }
+
+            if (DialogResult.Yes != MessageBox.Show($"Are you sure you want to delete [{_currentSelectedEncryptionKey.Name}]?", "Warning", MessageBoxButtons.YesNo))
+                return;
+
+            int removeIndex = nameBox.SelectedIndex;
+            _encryptionKeys.RemoveAt(removeIndex);
+
+            if (removeIndex == _encryptionKeys.Count)
+            {
+                // If the last item is removed, nameBox.SelectedItem automatically becomes the previous item (index - 1).
+                // The SelectedIndexChanged event will be triggered, causing all boxes to update accordingly.
+            }
+            else
+            {
+                // Otherwise we need to manually update the selected key
+                nameBox_SelectedIndexChanged(null, null);
+            }
+
+            Program.ConfigurationManager.Save();
         }
 
         /// <summary>
@@ -245,6 +369,11 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void SaveButton_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrWhiteSpace(nameBox.Text)) {
+                MessageBox.Show("Please enter a name.", "Error");
+                return;
+            }
+
             // IV 
             string strByte0 = textBox_byte0.Text;
             string strByte1 = textBox_byte1.Text;
@@ -316,11 +445,30 @@ namespace HaRepacker.GUI
                 strUserKey21, strUserKey22, strUserKey23, strUserKey24, strUserKey25, strUserKey26, strUserKey27, strUserKey28, strUserKey29, strUserKey30,
                 strUserKey31, strUserKey32
                 );
-            Program.ConfigurationManager.Save();
 
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName = nameBox.Text;
 
             // Set the UserKey in memory.
             Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
+
+            if (_currentSelectedEncryptionKey == null) {
+                // add
+                _currentSelectedEncryptionKey = new EncryptionKey {
+                    Name = nameBox.Text,
+                    Iv = Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes,
+                    AesUserKey = Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomAESUserKey,
+                    MapleVersion = WzMapleVersion.CUSTOM,
+                };
+                Program.ConfigurationManager.CustomKeys.Add(_currentSelectedEncryptionKey);
+            }
+            else {
+                //update
+                _currentSelectedEncryptionKey.Name = nameBox.Text;
+                _currentSelectedEncryptionKey.Iv = Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionBytes;
+                _currentSelectedEncryptionKey.AesUserKey = Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomAESUserKey;
+            }
+
+            Program.ConfigurationManager.Save();
 
             Close();
         }
@@ -355,6 +503,13 @@ namespace HaRepacker.GUI
         private void Button_resetAESUserKey_Click(object sender, EventArgs e)
         {
             SetDefaultTextBoxAESUserKey();
+        }
+
+        private void SetDefaultTextBoxIV() {
+            textBox_byte0.Text = "00";
+            textBox_byte1.Text = "00";
+            textBox_byte2.Text = "00";
+            textBox_byte3.Text = "00";
         }
 
         private void SetDefaultTextBoxAESUserKey()

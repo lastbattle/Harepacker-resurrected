@@ -370,7 +370,7 @@
     <value>這只在HaRepacker的x86版本下可用，請獲取替代版本。</value>
   </data>
   <data name="EncTypeCustom" xml:space="preserve">
-    <value>使用自定義加密</value>
+    <value>使用自定義加密（{0}）</value>
   </data>
   <data name="EncTypeGenerate" xml:space="preserve">
     <value>暴力破解AES金鑰（生成）</value>

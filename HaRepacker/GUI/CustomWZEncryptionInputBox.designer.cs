@@ -42,6 +42,7 @@ namespace HaRepacker.GUI
             this.label4 = new System.Windows.Forms.Label();
             this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.groupBox2 = new System.Windows.Forms.GroupBox();
+            this.label6 = new System.Windows.Forms.Label();
             this.linkLabel1 = new System.Windows.Forms.LinkLabel();
             this.button_resetAESUserKey = new System.Windows.Forms.Button();
             this.textBox_AESUserKey32 = new System.Windows.Forms.TextBox();
@@ -77,9 +78,13 @@ namespace HaRepacker.GUI
             this.textBox_AESUserKey1 = new System.Windows.Forms.TextBox();
             this.textBox_AESUserKey3 = new System.Windows.Forms.TextBox();
             this.textBox_AESUserKey2 = new System.Windows.Forms.TextBox();
-            this.label6 = new System.Windows.Forms.Label();
+            this.groupBox3 = new System.Windows.Forms.GroupBox();
+            this.createButton = new System.Windows.Forms.Button();
+            this.deleteButton = new System.Windows.Forms.Button();
+            this.nameBox = new System.Windows.Forms.ComboBox();
             this.groupBox1.SuspendLayout();
             this.groupBox2.SuspendLayout();
+            this.groupBox3.SuspendLayout();
             this.SuspendLayout();
             // 
             // saveButton
@@ -184,6 +189,12 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.groupBox2, "groupBox2");
             this.groupBox2.Name = "groupBox2";
             this.groupBox2.TabStop = false;
+            // 
+            // label6
+            // 
+            resources.ApplyResources(this.label6, "label6");
+            this.label6.ForeColor = System.Drawing.SystemColors.AppWorkspace;
+            this.label6.Name = "label6";
             // 
             // linkLabel1
             // 
@@ -397,16 +408,41 @@ namespace HaRepacker.GUI
             this.textBox_AESUserKey2.Name = "textBox_AESUserKey2";
             this.textBox_AESUserKey2.Tag = "1";
             // 
-            // label6
+            // groupBox3
             // 
-            resources.ApplyResources(this.label6, "label6");
-            this.label6.ForeColor = System.Drawing.SystemColors.AppWorkspace;
-            this.label6.Name = "label6";
+            this.groupBox3.Controls.Add(this.createButton);
+            this.groupBox3.Controls.Add(this.deleteButton);
+            this.groupBox3.Controls.Add(this.nameBox);
+            resources.ApplyResources(this.groupBox3, "groupBox3");
+            this.groupBox3.Name = "groupBox3";
+            this.groupBox3.TabStop = false;
+            // 
+            // createButton
+            // 
+            resources.ApplyResources(this.createButton, "createButton");
+            this.createButton.Name = "createButton";
+            this.createButton.UseVisualStyleBackColor = true;
+            this.createButton.Click += new System.EventHandler(this.createButton_Click);
+            // 
+            // deleteButton
+            // 
+            resources.ApplyResources(this.deleteButton, "deleteButton");
+            this.deleteButton.Name = "deleteButton";
+            this.deleteButton.UseVisualStyleBackColor = true;
+            this.deleteButton.Click += new System.EventHandler(this.deleteButton_Click);
+            // 
+            // nameBox
+            // 
+            this.nameBox.FormattingEnabled = true;
+            resources.ApplyResources(this.nameBox, "nameBox");
+            this.nameBox.Name = "nameBox";
+            this.nameBox.SelectedIndexChanged += new System.EventHandler(this.nameBox_SelectedIndexChanged);
             // 
             // CustomWZEncryptionInputBox
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.Controls.Add(this.groupBox3);
             this.Controls.Add(this.groupBox2);
             this.Controls.Add(this.groupBox1);
             this.Controls.Add(this.saveButton);
@@ -417,6 +453,7 @@ namespace HaRepacker.GUI
             this.groupBox1.PerformLayout();
             this.groupBox2.ResumeLayout(false);
             this.groupBox2.PerformLayout();
+            this.groupBox3.ResumeLayout(false);
             this.ResumeLayout(false);
 
         }
@@ -470,5 +507,9 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.Button button_resetAESUserKey;
         private System.Windows.Forms.LinkLabel linkLabel1;
         private System.Windows.Forms.Label label6;
+        private System.Windows.Forms.GroupBox groupBox3;
+        private System.Windows.Forms.ComboBox nameBox;
+        private System.Windows.Forms.Button deleteButton;
+        private System.Windows.Forms.Button createButton;
     }
 }
