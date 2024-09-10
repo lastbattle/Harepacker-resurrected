@@ -115,6 +115,11 @@ namespace HaCreator.GUI.Quest
                         if (setAmount < 0)
                             setAmount = 0;
                     }
+                    else if (ActType == QuestEditorActType.Interval)
+                    {
+                        if (setAmount < 0)
+                            setAmount = 0;
+                    }
                     if (setAmount != _amount)
                     {
                         _amount = setAmount;

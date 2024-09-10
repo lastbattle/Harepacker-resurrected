@@ -485,7 +485,17 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    //case "interval":
+                    case "interval":
+                        {
+                            int amount = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Interval, questActs);
+
+                                firstAct.Amount = amount;
+                            }
+                            break;
+                        }
                     case "start":
                     case "end":
                         {

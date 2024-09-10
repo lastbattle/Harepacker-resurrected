@@ -39,6 +39,7 @@ namespace HaCreator.GUI.Quest
 
         Message_Map,
 
+        Interval,
         Start,
         End,
 

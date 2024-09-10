@@ -323,6 +323,16 @@
             </Grid>
         </DataTemplate>
         
+        
+        <!-- Interval -->
+        <DataTemplate x:Key="ActIntervalTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Interval (minutes):" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
         <!-- Start -->
         <DataTemplate x:Key="ActStartTemplate">
             <StackPanel>
@@ -335,7 +345,6 @@
                             />
             </StackPanel>
         </DataTemplate>
-        
         <!-- End -->
         <DataTemplate x:Key="ActEndTemplate">
             <StackPanel>
@@ -635,6 +644,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.FieldEnter}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFieldEnterTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Interval}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActIntervalTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Start}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActStartTemplate}"/>
