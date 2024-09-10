@@ -247,9 +247,14 @@ namespace HaRepacker.GUI
                     }
                 }
             }
-
-            var currentLoadedKey = WzKeyGenerator.GenerateWzKey(Program.ConfigurationManager.GetCusomWzIVEncryption(), MapleCryptoConstants.UserKey_WzLib); // from ApplicationSettings.txt
-            var matchedIndex = Program.ConfigurationManager.CustomKeys.FindIndex(k => k.WzKey == currentLoadedKey); // find the matched one
+            
+            // load the custom user key from ApplicationSettings.txt
+            var iv = Program.ConfigurationManager.GetCusomWzIVEncryption();
+            Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
+            var currentLoadedKey = WzKeyGenerator.GenerateWzKey(iv, MapleCryptoConstants.UserKey_WzLib);
+            
+            // find the matched one
+            var matchedIndex = Program.ConfigurationManager.CustomKeys.FindIndex(k => k.WzKey == currentLoadedKey);
 
             if (matchedIndex != -1) {
                 nameBox.SelectedIndex = matchedIndex;
