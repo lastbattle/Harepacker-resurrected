@@ -164,6 +164,30 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        // Say
+        private readonly ObservableCollection<QuestEditorSayModel> _actConversationStart = new ObservableCollection<QuestEditorSayModel>();
+        /// <summary>
+        /// Conversation
+        /// </summary>
+        public ObservableCollection<QuestEditorSayModel> ActConversationStart
+        {
+            get => _actConversationStart;
+            private set
+            {
+            }
+        }
+        private readonly ObservableCollection<QuestEditorSayEndQuestModel> _actConversationStop = new ObservableCollection<QuestEditorSayEndQuestModel>();
+        /// <summary>
+        /// Conversation
+        /// </summary>
+        public ObservableCollection<QuestEditorSayEndQuestModel> ActConversationStop
+        {
+            get => _actConversationStop;
+            private set
+            {
+            }
+        }
+
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;
 

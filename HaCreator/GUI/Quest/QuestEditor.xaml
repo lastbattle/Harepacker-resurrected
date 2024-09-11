@@ -367,7 +367,156 @@
                             />
             </StackPanel>
         </DataTemplate>
+        <!-- Conversation "0", "1", "2", "3" -->
+        <DataTemplate x:Key="ActConversationTemplate">
+            <StackPanel>
+                <DataGrid x:Name="dataGrid_ConversationStart" Grid.Row="1" 
+                          ItemsSource="{Binding ActConversationStart}"
+                          AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                    <DataGrid.Resources>
 
+                    </DataGrid.Resources>
+
+                    <DataGrid.Columns>
+
+                        <!-- Conversation Type Column -->
+                        <DataGridTemplateColumn Header="Type" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              ItemsSource="{Binding Source={StaticResource ConversationTypeEnum}}"
+                                              MaxHeight="30" VerticalAlignment="Top">
+                                    </ComboBox>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Conversation Text Column -->
+                        <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+
+                        <!-- Yes Responses Column -->
+                        <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ItemsControl ItemsSource="{Binding YesResponses}"
+                                      ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                        <Button x:Name="button_addResponse" Content="Add response" 
+                                                Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                HorizontalAlignment="Right"
+                                                IsEnabled="{Binding IsYesNoConversation}"
+                                                Click="button_addResponse_Click"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}" 
+                                    Content="{Binding YesResponses}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- No Responses Column -->
+                        <DataGridTemplateColumn Header="No Responses" Width="3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ItemsControl ItemsSource="{Binding NoResponses}"
+                                                      ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                        <Button x:Name="button_addNoResponse" Content="Add response" 
+                                                Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                HorizontalAlignment="Right"
+                                                IsEnabled="{Binding IsYesNoConversation}"
+                                                Click="button_addResponse_Click"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}" 
+                                    Content="{Binding NoResponses}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <DataGrid x:Name="dataGrid_ConversationStop" Grid.Row="1" 
+                          ItemsSource="{Binding ActConversationStop}"
+                          AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                    <DataGrid.Resources>
+
+                    </DataGrid.Resources>
+
+                    <DataGrid.Columns>
+
+                        <!-- Conversation Type Column -->
+                        <DataGridTemplateColumn Header="Type" Width="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              ItemsSource="{Binding Source={StaticResource ConversationTypeEnum}}"
+                                              MaxHeight="30" VerticalAlignment="Top">
+                                    </ComboBox>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Conversation Text Column -->
+                        <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+
+                        <!-- Yes Responses Column -->
+                        <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ItemsControl ItemsSource="{Binding YesResponses}"
+                                      ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                        <Button x:Name="button_addResponse" Content="Add response" 
+                                                Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                HorizontalAlignment="Right"
+                                                IsEnabled="{Binding IsYesNoConversation}"
+                                                Click="button_addResponse_Click"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}" 
+                                    Content="{Binding YesResponses}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- No Responses Column -->
+                        <DataGridTemplateColumn Header="No Responses" Width="3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <ItemsControl ItemsSource="{Binding NoResponses}"
+                                      ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                        <Button x:Name="button_addNoResponse" Content="Add response" 
+                                                Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                HorizontalAlignment="Right"
+                                                IsEnabled="{Binding IsYesNoConversation}"
+                                                Click="button_addResponse_Click"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}" 
+                                    Content="{Binding NoResponses}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </StackPanel>
+        </DataTemplate>
+        
         <!-- Pet speed-->
         <DataTemplate x:Key="ActPetSpeedTemplate">
             <StackPanel>
@@ -674,6 +823,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.End}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActEndTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Conversation0123}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActConversationTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Null}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>

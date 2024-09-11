@@ -42,6 +42,7 @@ namespace HaCreator.GUI.Quest
         Interval,
         Start,
         End,
+        Conversation0123, // "0", "1", "2", "3"
 
         NextQuest,
 

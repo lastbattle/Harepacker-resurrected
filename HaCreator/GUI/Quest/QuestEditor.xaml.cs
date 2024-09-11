@@ -290,8 +290,8 @@ namespace HaCreator.GUI.Quest
                     WzSubProperty questActStart0Prop = (WzSubProperty)questActProp["0"];
                     WzSubProperty questActEnd1Prop = (WzSubProperty)questActProp["1"];
 
-                    parseQuestAct(questActStart0Prop, quest.ActStartInfo, quest.Id);
-                    parseQuestAct(questActEnd1Prop, quest.ActEndInfo, quest.Id);
+                    parseQuestAct(questActStart0Prop, quest.ActStartInfo, quest);
+                    parseQuestAct(questActEnd1Prop, quest.ActEndInfo, quest);
                 }
 
                 // add
@@ -351,8 +351,10 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         /// <param name="questActProp"></param>
         /// <param name="quest"></param>
-        private void parseQuestAct(WzSubProperty questActProp, ObservableCollection<QuestEditorActInfoModel> questActs, int questId)
+        private void parseQuestAct(WzSubProperty questActProp, ObservableCollection<QuestEditorActInfoModel> questActs, QuestEditorModel quest)
         {
+            bool bContainsConversation = false;
+
             foreach (WzImageProperty actTypeProp in questActProp.WzProperties)
             {
                 switch (actTypeProp.Name)
@@ -600,16 +602,7 @@ namespace HaCreator.GUI.Quest
                              */
                             break;
                         }
-                    /*case "ask":
-                    case "stop":
-                        break;
-                    case "0":
-                    case "1":
-                    case "2":
-                    case "3":
-                    case "4":
-                    case "yes":
-                    case "no":
+                        /*
                     case "quest":
                     case "skill":
                     case "job":*/
@@ -684,12 +677,43 @@ namespace HaCreator.GUI.Quest
                         }
                     default:
                         {
-                            string error = string.Format("[QuestEditor] Unhandled quest act type. Name='{0}', QuestId={1}", actTypeProp.Name, questId);
-                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            // parse 1~10
+                            int actNum = -1;
+                            if (int.TryParse(actTypeProp.Name, out actNum) && actNum < 20 && actNum > 0 
+                                || (actTypeProp.Name == "yes") 
+                                || (actTypeProp.Name == "no") 
+                                || (actTypeProp.Name == "ask") 
+                                || (actTypeProp.Name == "stop")) // is conversation property "0" "1" "2" "3"
+                            {
+                                bContainsConversation = true; // flags this
+                                // and parse it later in order.
+                                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Conversation0123, questActs);
+                            }
+                            else
+                            {
+                                string error = string.Format("[QuestEditor] Unhandled quest act type. Name='{0}', QuestId={1}", actTypeProp.Name, quest.Id);
+                                ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            }
                             break;
                         }
                 }
             }
+
+            if (bContainsConversation) // conversation
+            {
+                var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Conversation0123, questActs);
+
+                Tuple<ObservableCollection<QuestEditorSayModel>, ObservableCollection<QuestEditorSayEndQuestModel>> ret = parseQuestSayConversations(questActProp, quest);
+                foreach (QuestEditorSayModel sayModel in ret.Item1)
+                {
+                    firstAct.ActConversationStart.Add(sayModel);
+                }
+                foreach (QuestEditorSayEndQuestModel sayModel in ret.Item2)
+                {
+                    firstAct.ActConversationStop.Add(sayModel);
+                }
+            }
+
         }
         private QuestEditorActInfoModel AddActItemIfNoneAndGet(QuestEditorActType actTypeEnum, ObservableCollection<QuestEditorActInfoModel> questActs)
         {
@@ -1079,7 +1103,7 @@ namespace HaCreator.GUI.Quest
                 }
                 else if (button.Name == "button_addNoResponse")
                 {
-                    questModel.YesResponses.Add(new QuestEditorSayResponseModel() { Text = "Add some text here." });
+                    questModel.NoResponses.Add(new QuestEditorSayResponseModel() { Text = "Add some text here." });
                 }
             }
         }
