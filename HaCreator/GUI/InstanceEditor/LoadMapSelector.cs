@@ -28,6 +28,8 @@ namespace HaCreator.GUI.InstanceEditor
         {
             InitializeComponent();
 
+            this.FormClosing += LoadQuestSelector_FormClosing;
+
             DialogResult = DialogResult.Cancel;
 
             this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
@@ -104,10 +106,12 @@ namespace HaCreator.GUI.InstanceEditor
         {
         }
 
+        #region Window
         private void Load_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
             {
+                _selectedMap = string.Empty;
                 Close();
             }
             else if (e.KeyCode == Keys.Enter)
@@ -115,5 +119,19 @@ namespace HaCreator.GUI.InstanceEditor
                 loadButton_Click(null, null);
             }
         }
+
+        /// <summary>
+        /// The form is being closed by the user (e.g., clicking the X button)
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                _selectedMap = string.Empty;
+            }
+        }
+        #endregion
     }
 }

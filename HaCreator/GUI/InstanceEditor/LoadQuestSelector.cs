@@ -65,6 +65,8 @@ namespace HaCreator.GUI.InstanceEditor
         {
             InitializeComponent();
 
+            this.FormClosing += LoadQuestSelector_FormClosing;
+
             // load items
             load();
         }
@@ -107,11 +109,25 @@ namespace HaCreator.GUI.InstanceEditor
         {
             if (e.KeyCode == Keys.Escape)
             {
+                _selectedQuestId = string.Empty;
                 Close(); // close window
             }
             else if (e.KeyCode == Keys.Enter)
             {
                 //loadButton_Click(null, null);
+            }
+        }
+
+        /// <summary>
+        /// The form is being closed by the user (e.g., clicking the X button)
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                _selectedQuestId = string.Empty;
             }
         }
         #endregion
