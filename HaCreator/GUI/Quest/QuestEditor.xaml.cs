@@ -435,14 +435,6 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*
-                    case "0":
-                    case "1":
-                    case "2":
-                    case "3":
-                    case "4":
-                    case "yes":
-                    case "no":*/
                     case "npc":
                         {
                             int npcId = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
@@ -527,9 +519,6 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*case "ask":
-                    case "stop":
-                        break;*/
                     case "money":
                         {
                             long mesosAmount = (actTypeProp as WzIntProperty)?.GetLong() ?? 0; // for 
@@ -573,10 +562,6 @@ namespace HaCreator.GUI.Quest
                             }
                             break;
                         }
-                    /*
-                    case "quest":
-                    case "skill":
-                    case "job":*/
                     case "pettameness":
                         {
                             int tame = (actTypeProp as WzIntProperty)?.GetInt() ?? 0;
@@ -615,6 +600,19 @@ namespace HaCreator.GUI.Quest
                              */
                             break;
                         }
+                    /*case "ask":
+                    case "stop":
+                        break;
+                    case "0":
+                    case "1":
+                    case "2":
+                    case "3":
+                    case "4":
+                    case "yes":
+                    case "no":
+                    case "quest":
+                    case "skill":
+                    case "job":*/
                     case "senseEXP": // traits
                     case "willEXP":
                     case "insightEXP":
@@ -1212,12 +1210,7 @@ namespace HaCreator.GUI.Quest
                 int selectedItem = itemSelector.SelectedItemId;
                 if (selectedItem != 0)
                 {
-                    actInfo.SelectedRewardItems.Add(
-                        new QuestEditorActInfoRewardModel()
-                        {
-                            ItemId = selectedItem,
-                            Quantity = 1,
-                        });
+                    actInfo.Amount = selectedItem;
                 }
             }
         }

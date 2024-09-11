@@ -18,6 +18,10 @@
     <Window.Resources>
         <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
         <converter:PetSkillFlagConverter x:Key="petSkillFlagConverter"/>
+        <converter:QuestIdToQuestNameConverter x:Key="questIdToQuestNameConverter"/>
+        <converter:NpcIdToNpcNameConverter x:Key="npcIdToNpcNameConverter"/>
+        <converter:ItemIdToItemNameConverter x:Key="itemIdToItemNameConverter"/>
+        <converter:MapIdToMapNameConverter x:Key="mapIdToMapNameConverter"/>
 
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -294,7 +298,7 @@
         <DataTemplate x:Key="ActFieldEnterTemplate">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition Width="110"/>
                     <ColumnDefinition MinWidth="150" Width="*"/>
                 </Grid.ColumnDefinitions>
 
@@ -308,7 +312,13 @@
                                         <ColumnDefinition MinWidth="100" Width="*"/>
                                         <ColumnDefinition Width="25"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"/>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" MinWidth="80"/>
+                                        <TextBlock Text="[" Margin="4,0,0,0"/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource mapIdToMapNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
                                     <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
                                                                             Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
                                                                             Click="DeleteMapResponse_Click"/>
@@ -397,6 +407,9 @@
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/2022240_buff_icon.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="Buff reward:" Margin="4,0,0,0"/>
+                    <TextBlock Text="[" Margin="4,0,0,0"/>
+                    <TextBlock Text="{Binding Amount, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                    <TextBlock Text="]"/>
                 </StackPanel>
 
                 <Grid Margin="0,2">
@@ -420,6 +433,9 @@
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.0.5.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="Next quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="["  Margin="10,0,0,0"/>
+                    <TextBlock Text="{Binding Amount, Converter={StaticResource questIdToQuestNameConverter}}"  FontWeight="Bold"/>
+                    <TextBlock Text="]"/>
                 </StackPanel>
 
                 <Grid Margin="0,2">
@@ -484,7 +500,12 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0">
-                    <TextBlock Text="Complete NPC ID:" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Complete NPC ID:" />
+                        <TextBlock Text="["  Margin="10,0,0,0"/>
+                        <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
+                        <TextBlock Text="]"/>
+                    </StackPanel>
                     <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
                 </StackPanel>
 
@@ -524,7 +545,7 @@
                                     <TextBlock Text="{Binding ItemId}"/>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="[" Margin="0,0,0,0"/>
-                                        <TextBlock Text="{Binding ItemName}"/>
+                                        <TextBlock Text="{Binding ItemId, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
                                         <TextBlock Text="]"/>
                                     </StackPanel>
                                 </StackPanel>

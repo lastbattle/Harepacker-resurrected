@@ -94,20 +94,6 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        public string ItemName
-        {
-            get
-            {
-                Tuple<string, string, string> nameCache = Program.InfoManager.ItemNameCache[ItemId]; // // itemid, <item category, item name, item desc>
-                if (nameCache != null)
-                {
-                    return nameCache.Item2;
-                }
-                return "NO NAME";
-            }
-            private set { }
-        }
-
         public bool IsEquip
         {
             get { return ItemIdsCategory.IsEquipment(_itemId); }
