@@ -37,6 +37,7 @@ using System.Threading;
 using System.Windows.Threading;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using Microsoft.Build.Framework.XamlTypes;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -52,6 +53,8 @@ namespace HaCreator.GUI.InstanceEditor
 
 
         private int _selectedItemId = 0;
+        private bool _bNotUserClosing = false;
+
         /// <summary>
         /// The selected itemId in the listbox
         /// </summary>
@@ -149,7 +152,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
             {
                 _selectedItemId = 0;
             }
@@ -332,6 +335,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void button_select_Click(object sender, EventArgs e)
         {
+            _bNotUserClosing = true;
             Close();
         }
     }

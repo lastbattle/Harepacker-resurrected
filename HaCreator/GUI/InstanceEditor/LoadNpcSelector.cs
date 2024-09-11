@@ -48,7 +48,7 @@ namespace HaCreator.GUI.InstanceEditor
         // dictionary
         private readonly List<string> itemNames = new List<string>(); // cache
 
-
+        private bool _bNotUserClosing = false;
         private string _selectedNpcId = string.Empty;
         /// <summary>
         /// The selected itemId in the listbox
@@ -122,7 +122,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
             {
                 _selectedNpcId = string.Empty; // set none
             }
@@ -297,6 +297,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void button_select_Click(object sender, EventArgs e)
         {
+            _bNotUserClosing = true;
             Close();
         }
     }

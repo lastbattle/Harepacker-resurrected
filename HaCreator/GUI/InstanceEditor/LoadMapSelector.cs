@@ -80,6 +80,9 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void loadButton_Click(object sender, EventArgs e)
         {
+            if (mapBrowser.SelectedItem == null)
+                return;
+
             string mapid = mapBrowser.SelectedItem.Substring(0, 9);
             string mapcat = "Map" + mapid.Substring(0, 1);
 
@@ -92,9 +95,11 @@ namespace HaCreator.GUI.InstanceEditor
             SelectedMap = mapid;
 
             DialogResult = DialogResult.OK;
+            _bNotUserClosing = true;
             Close();
         }
 
+        private bool _bNotUserClosing = false;
         private string _selectedMap = string.Empty;
         public string SelectedMap
         {
@@ -127,7 +132,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
             {
                 _selectedMap = string.Empty;
             }

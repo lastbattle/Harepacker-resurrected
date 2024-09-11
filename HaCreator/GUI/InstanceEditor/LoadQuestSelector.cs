@@ -49,6 +49,7 @@ namespace HaCreator.GUI.InstanceEditor
         private readonly List<string> questNames = new List<string>(); // cache
 
 
+        private bool _bNotUserClosing = false;
         private string _selectedQuestId = string.Empty;
         /// <summary>
         /// The selected itemId in the listbox
@@ -125,7 +126,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (e.CloseReason == CloseReason.UserClosing)
+            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
             {
                 _selectedQuestId = string.Empty;
             }
@@ -301,6 +302,7 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void button_select_Click(object sender, EventArgs e)
         {
+            _bNotUserClosing = true;
             Close();
         }
     }
