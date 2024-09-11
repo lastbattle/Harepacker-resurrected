@@ -8,6 +8,7 @@ using System;
 using System.Windows.Forms;
 using MapleLib.WzLib;
 using HaRepacker.GUI.Panels;
+using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
 using System.Linq;
 
@@ -69,12 +70,10 @@ namespace HaRepacker.GUI
             if (bIsLoading)
                 return;
 
-            int selectedIndex = encryptionBox.SelectedIndex;
-            WzMapleVersion wzMapleVersion = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
-            if (wzMapleVersion == WzMapleVersion.CUSTOM)
+            EncryptionKey selectedEncryption = (EncryptionKey)encryptionBox.SelectedItem;
+            if (selectedEncryption.MapleVersion == WzMapleVersion.CUSTOM)
             {
-                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
-                customWzInputBox.ShowDialog();
+                Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
             } else
             {
                 MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
