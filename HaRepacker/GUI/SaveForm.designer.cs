@@ -89,7 +89,6 @@ namespace HaRepacker.GUI
             this.Controls.Add(this.encryptionBox);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "SaveForm";
-            this.Load += new System.EventHandler(this.SaveForm_Load);
             this.ResumeLayout(false);
             this.PerformLayout();
 
