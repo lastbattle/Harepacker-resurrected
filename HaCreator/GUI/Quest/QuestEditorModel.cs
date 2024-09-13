@@ -28,6 +28,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace HaCreator.GUI.Quest
 {
@@ -71,6 +72,8 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         public QuestEditorModel()
         {
+            _sayInfoStartQuest.CollectionChanged += ActConversation_StartStop_CollectionChanged;
+            _sayInfoEndQuest.CollectionChanged += ActConversation_StartStop_CollectionChanged;
         }
 
         public int Id
@@ -303,6 +306,16 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private bool _bLoadingFromFile = false;
+        /// <summary>
+        /// Prevent input validation from working while loading from files. 
+        /// </summary>
+        public bool IsLoadingFromFile
+        {
+            get { return _bLoadingFromFile; }
+            set { this._bLoadingFromFile = value; }
+        }
+
         /// <summary>
         /// Say.img
         /// </summary>
@@ -379,6 +392,48 @@ namespace HaCreator.GUI.Quest
             {
             }
         }
+
+        #region Events
+        /// <summary>
+        /// On act conversation collection changed
+        /// for input validation
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ActConversation_StartStop_CollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (_bLoadingFromFile)
+                return;
+
+            var collection = sender as ObservableCollection<QuestEditorSayModel>;
+
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+            {
+                if (e.NewItems.Count == 0)
+                    return;
+
+                QuestEditorSayModel newItemAdded = e.NewItems[0] as QuestEditorSayModel;
+                if (collection.Count > 0) // only if more than 1
+                {
+                    QuestEditorSayModel lastItem = collection[collection.Count - 2];
+
+                    if (lastItem.IsYesNoConversation) // last time is YesNo, disallow more items to be added
+                    {
+                        // Remove the newly added item
+                        Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+                        {
+                            collection.Remove(newItemAdded);
+
+                            /*if (sender == _sayInfoStop_StartQuest)
+                                OnPropertyChanged(nameof(SayInfoStop_StartQuest));
+                            else if (sender == _sayInfoStop_EndQuest)
+                                OnPropertyChanged(nameof(SayInfoStop_EndQuest));*/
+                        }));
+                    }
+                }
+            }
+        }
+        #endregion
 
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;

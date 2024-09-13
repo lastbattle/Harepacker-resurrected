@@ -505,13 +505,13 @@
                 <TextBlock Text="Start" Margin="4,4,0,4" FontWeight="Bold"/>
                 <ContentControl x:Name="dataGrid_ConversationStart" Grid.Row="1" 
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
-                                Content="{Binding ActConversationStart}">
+                                Content="{Binding ActConversationStart, Mode=OneWay}">
                 </ContentControl>
                 
                 <TextBlock Text="Stop" Margin="4,4,0,4" FontWeight="Bold"/>
                 <ContentControl x:Name="dataGrid_ConversationStop" Grid.Row="1" 
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
-                                Content="{Binding ActConversationStop}">
+                                Content="{Binding ActConversationStop, Mode=OneWay}">
                 </ContentControl>
             </StackPanel>
         </DataTemplate>

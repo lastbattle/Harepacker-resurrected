@@ -239,25 +239,41 @@ namespace HaCreator.GUI.Quest
                     if (questSayStart0Prop != null)
                     {
                         var loadedModels = parseQuestSayConversations(questSayStart0Prop, quest);
-                        foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
+
+                        quest.IsLoadingFromFile = true;
+                        try
                         {
-                            quest.SayInfoStartQuest.Add(sayModel);
-                        }
-                        foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                            foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
+                            {
+                                quest.SayInfoStartQuest.Add(sayModel);
+                            }
+                            foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                            {
+                                quest.SayInfoStop_StartQuest.Add(sayStopModel);
+                            }
+                        } finally
                         {
-                            quest.SayInfoStop_StartQuest.Add(sayStopModel);
+                            quest.IsLoadingFromFile = false;
                         }
                     }
                     if (questSayEnd0Prop != null)
                     {
                         var loadedModels = parseQuestSayConversations(questSayEnd0Prop, quest);
-                        foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
+
+                        quest.IsLoadingFromFile = true;
+                        try
                         {
-                            quest.SayInfoEndQuest.Add(sayModel);
-                        }
-                        foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                            foreach (QuestEditorSayModel sayModel in loadedModels.Item1)
+                            {
+                                quest.SayInfoEndQuest.Add(sayModel);
+                            }
+                            foreach (QuestEditorSayEndQuestModel sayStopModel in loadedModels.Item2)
+                            {
+                                quest.SayInfoStop_EndQuest.Add(sayStopModel);
+                            }
+                        } finally
                         {
-                            quest.SayInfoStop_EndQuest.Add(sayStopModel);
+                            quest.IsLoadingFromFile = false;
                         }
                     }
 
@@ -367,6 +383,8 @@ namespace HaCreator.GUI.Quest
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
                                 WzStringProperty dateExpireProp = (itemProp["dateExpire"] as WzStringProperty);
                                 string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
+                                int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0;
+                                int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0;
 
                                 if (itemId != 0)
                                 {
@@ -401,11 +419,18 @@ namespace HaCreator.GUI.Quest
                                         }
                                     }
 
+                                    if (job != 0)
+                                    {
+                                        //MapleJobTypeExtensions.GetMatchingJobs(jobEx);
+                                    }
+
                                     QuestEditorActInfoRewardModel actReward = new QuestEditorActInfoRewardModel()
                                     {
                                         ItemId = itemId,
                                         Quantity = count,
                                         PotentialGrade = potentialType,
+                                        Job = job,
+                                        JobEx = jobEx,
                                     };
                                     if (dateExpireProp != null)
                                     {
@@ -703,14 +728,21 @@ namespace HaCreator.GUI.Quest
             {
                 var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Conversation0123, questActs);
 
-                Tuple<ObservableCollection<QuestEditorSayModel>, ObservableCollection<QuestEditorSayEndQuestModel>> ret = parseQuestSayConversations(questActProp, quest);
-                foreach (QuestEditorSayModel sayModel in ret.Item1)
+                firstAct.IsLoadingFromFile = true;
+                try
                 {
-                    firstAct.ActConversationStart.Add(sayModel);
-                }
-                foreach (QuestEditorSayEndQuestModel sayModel in ret.Item2)
+                    Tuple<ObservableCollection<QuestEditorSayModel>, ObservableCollection<QuestEditorSayEndQuestModel>> ret = parseQuestSayConversations(questActProp, quest);
+                    foreach (QuestEditorSayModel sayModel in ret.Item1)
+                    {
+                        firstAct.ActConversationStart.Add(sayModel);
+                    }
+                    foreach (QuestEditorSayEndQuestModel sayModel in ret.Item2)
+                    {
+                        firstAct.ActConversationStop.Add(sayModel);
+                    }
+                } finally
                 {
-                    firstAct.ActConversationStop.Add(sayModel);
+                    firstAct.IsLoadingFromFile = false;
                 }
             }
 
@@ -794,6 +826,7 @@ namespace HaCreator.GUI.Quest
                     }
                     else if (questConvProp.Name == "lost") // lost quest item
                     {
+                        // TODO
                         /*
                          * <imgdir name="lost">
                          * <string name="0" value="Oh no... you lost the letter? Well, it&apos;s not hard for me to write another on, though. Here it is, and please give this to #b#p2101001##k."/>
