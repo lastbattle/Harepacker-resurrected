@@ -201,10 +201,8 @@ namespace HaRepacker.GUI
         {
             if (Program.ConfigurationManager.UserSettings.Sort || sortFromTheParentNode)
             {
-                parent.TreeView.TreeViewNodeSorter = new TreeViewNodeSorter(sortFromTheParentNode ? parent : null);
-
                 parent.TreeView.BeginUpdate();
-                parent.TreeView.Sort();
+                parent.TreeView.TreeViewNodeSorter = new TreeViewNodeSorter(sortFromTheParentNode ? parent : null);
                 parent.TreeView.EndUpdate();
             }
         }
