@@ -838,12 +838,8 @@ namespace HaRepacker.GUI
                         Program.WzFileManager.BuildWzFileList();
                     }
 
-                    // List.wz file (pre-bb maplestory enc)
-                    if (WzTool.IsListFile(filePath)) {
-                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
-                    }
-                    // Other WZs
-                    else if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
+                    // Data.wz hotfix file
+                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
                         WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
                         if (img == null) {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
@@ -852,6 +848,11 @@ namespace HaRepacker.GUI
                         AddLoadedWzObjectToMainPanel(img);
 
                     }
+                    // List.wz file (pre-bb maplestory enc)
+                    else if (WzTool.IsListFile(filePath)) {
+                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
+                    }
+                    // Other WZs
                     else {
                         if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
                             WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
