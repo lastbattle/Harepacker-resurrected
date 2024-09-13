@@ -11,6 +11,7 @@ using System.IO;
 using MapleLib.WzLib.Util;
 using System.Diagnostics;
 using HaRepacker.GUI.Panels;
+using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
 using System.Linq;
 
@@ -27,9 +28,9 @@ namespace HaRepacker.GUI
 
         public string path;
         private readonly MainPanel _mainPanel;
+        private int defaultVersionIndex;
 
-
-        private bool bIsLoading = false;
+        private bool bIsLoaded = false;
 
         /// <summary>
         /// Constructor
@@ -43,51 +44,34 @@ namespace HaRepacker.GUI
             MainForm.AddWzEncryptionTypesToComboBox(encryptionBox);
 
             this.wzNode = wzNode;
-            if (wzNode.Tag is WzImage) // Data.wz hotfix file
+            if (wzNode.Tag is WzImage image) // Data.wz hotfix file
             {
-                this.wzImg = (WzImage)wzNode.Tag;
+                this.wzImg = image;
                 this.IsRegularWzFile = false;
+
+                // Data.wz uses BMS encryption... no sepcific version indicated
+                SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion.BMS);
 
                 versionBox.Enabled = false; // disable, not necessary
                 checkBox_64BitFile.Enabled = false; // disable, not necessary
-
             }
             else
             {
                 this.wzf = (WzFile)wzNode.Tag;
                 this.IsRegularWzFile = true;
+                
+                SetWzEncryptionBoxSelectionByWzMapleVersion(wzf.MapleVersion);
+
+                versionBox.Value = wzf.Version;
+                versionBox.Enabled = wzf.Is64BitWzFile ? false : true; // disable checkbox if its checked as 64-bit, since the version will always be 777
+                checkBox_64BitFile.Checked = wzf.Is64BitWzFile;
             }
             this._mainPanel = panel;
-        }
-
-        /// <summary>
-        /// On loading
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void SaveForm_Load(object sender, EventArgs e)
-        {
-            bIsLoading = true;
-
-            try
-            {
-                if (this.IsRegularWzFile)
-                {
-                    encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(wzf.MapleVersion);
-                    versionBox.Value = wzf.Version;
-
-                    checkBox_64BitFile.Checked = wzf.Is64BitWzFile;
-                    versionBox.Enabled = wzf.Is64BitWzFile ? false : true; // disable checkbox if its checked as 64-bit, since the version will always be 777
-                }
-                else
-                { // Data.wz uses BMS encryption... no sepcific version indicated
-                    encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(WzMapleVersion.BMS);
-                }
-            }
-            finally
-            {
-                bIsLoading = false;
-            }
+            
+            defaultVersionIndex = encryptionBox.SelectedIndex;
+            Closed += (sender, args) => encryptionBox.SelectedIndex = defaultVersionIndex;
+            
+            bIsLoaded = true;
         }
 
         /// <summary>
@@ -115,19 +99,26 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void encryptionBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (bIsLoading)
+            if (!bIsLoaded)
                 return;
 
-            int selectedIndex = encryptionBox.SelectedIndex;
-            WzMapleVersion wzMapleVersion = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
-            if (wzMapleVersion == WzMapleVersion.CUSTOM)
+            EncryptionKey selectedEncryption = (EncryptionKey)encryptionBox.SelectedItem;
+            if (selectedEncryption.MapleVersion == WzMapleVersion.CUSTOM)
             {
-                CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
-                customWzInputBox.ShowDialog();
+                Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
             }
             else
             {
                 MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
+            }
+        }
+        
+        private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
+        {
+            encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(versionSelected);
+            if (versionSelected == WzMapleVersion.CUSTOM)
+            {
+                Program.ConfigurationManager.SetCustomWzUserKeyFromConfig();
             }
         }
 
@@ -156,7 +147,7 @@ namespace HaRepacker.GUI
                     return;
 
                 bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
-                WzMapleVersion wzMapleVersionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex); // new encryption selected
+                WzMapleVersion wzMapleVersionSelected = ((EncryptionKey)encryptionBox.SelectedItem).MapleVersion; // new encryption selected
                 if (this.IsRegularWzFile)
                 {
 
@@ -260,11 +251,13 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void checkBox_64BitFile_CheckedChanged(object sender, EventArgs e)
         {
-            if (bIsLoading)
+            if (!bIsLoaded)
                 return;
 
-            CheckBox checkbox_64 = (CheckBox)sender;
-            versionBox.Enabled = checkbox_64.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
+            if (sender is CheckBox checkbox_64)
+            {
+                versionBox.Enabled = checkbox_64.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
+            }
         }
     }
 }
