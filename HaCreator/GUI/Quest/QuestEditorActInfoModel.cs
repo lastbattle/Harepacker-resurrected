@@ -175,6 +175,17 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private ObservableCollection<QuestEditorActSkillModel> _skillsAcquire = new ObservableCollection<QuestEditorActSkillModel>();
+        public ObservableCollection<QuestEditorActSkillModel> SkillsAcquire
+        {
+            get { return _skillsAcquire; }
+            set
+            {
+                this._skillsAcquire = value;
+                OnPropertyChanged(nameof(SkillsAcquire));
+            }
+        }
+
         // Say
         private readonly ObservableCollection<QuestEditorSayModel> _actConversationStart = new ObservableCollection<QuestEditorSayModel>();
         /// <summary>

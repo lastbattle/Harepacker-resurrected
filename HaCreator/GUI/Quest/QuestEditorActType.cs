@@ -36,6 +36,7 @@ namespace HaCreator.GUI.Quest
         LvMax,
         Info, // infoEx
         FieldEnter,
+        Skill,
 
         Message_Map,
 

@@ -79,18 +79,32 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private string _jobFor;
+        private int _job;
         /// <summary>
         /// The job group that the item is for <int name="job" value="32"/>
         /// TODO
         /// </summary>
-        public string JobFor
+        public int Job
         {
-            get { return _jobFor; }
+            get { return _job; }
             set
             {
-                this._jobFor = value;
-                OnPropertyChanged(nameof(JobFor));
+                this._job = value;
+                OnPropertyChanged(nameof(Job));
+            }
+        }
+
+        private int _jobEx;
+        /// <summary>
+        /// The job group that the item is for <int name="job" value="32"/>
+        /// </summary>
+        public int JobEx
+        {
+            get { return _jobEx; }
+            set
+            {
+                this._jobEx = value;
+                OnPropertyChanged(nameof(JobEx));
             }
         }
 

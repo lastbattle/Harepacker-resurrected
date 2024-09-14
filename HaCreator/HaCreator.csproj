@@ -163,10 +163,13 @@
     <Compile Include="Collections\SerializableEnumerator.cs" />
     <Compile Include="Converter\EnumToVisibilityConverter.cs" />
     <Compile Include="Converter\ItemIdToItemNameConverter.cs" />
+    <Compile Include="Converter\JobIdToJobNameConverter.cs" />
     <Compile Include="Converter\MapIdToMapNameConverter.cs" />
+    <Compile Include="Converter\NegativeOneToTrueConverter.cs" />
     <Compile Include="Converter\NpcIdToNpcNameConverter.cs" />
     <Compile Include="Converter\PetSkillFlagConverter.cs" />
     <Compile Include="Converter\QuestIdToQuestNameConverter.cs" />
+    <Compile Include="Converter\SkillIdToSkillNameConverter.cs" />
     <Compile Include="CustomControls\CheckboxButton.cs" />
     <Compile Include="CustomControls\HaList.xaml.cs">
       <DependentUpon>HaList.xaml</DependentUpon>
@@ -245,6 +248,18 @@
     </Compile>
     <Compile Include="GUI\Input\IntInputBox.Designer.cs">
       <DependentUpon>IntInputBox.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadJobSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadJobSelector.Designer.cs">
+      <DependentUpon>LoadJobSelector.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadSkillSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadSkillSelector.Designer.cs">
+      <DependentUpon>LoadSkillSelector.cs</DependentUpon>
     </Compile>
     <Compile Include="GUI\InstanceEditor\LoadQuestSelector.cs">
       <SubType>Form</SubType>
@@ -336,6 +351,7 @@
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoPotentialType.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoRewardModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActSkillModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActType.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
@@ -677,6 +693,12 @@
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\BackgroundInstanceEditor.resx">
       <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadJobSelector.resx">
+      <DependentUpon>LoadJobSelector.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="GUI\InstanceEditor\LoadSkillSelector.resx">
+      <DependentUpon>LoadSkillSelector.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="GUI\InstanceEditor\LoadQuestSelector.resx">
       <DependentUpon>LoadQuestSelector.cs</DependentUpon>

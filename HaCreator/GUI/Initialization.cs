@@ -149,6 +149,7 @@ namespace HaCreator.GUI
                 ExtractSoundFile();
                 ExtractQuestFile();
                 //ExtractCharacterFile(); // due to performance issue, its loaded on demand
+                ExtractSkillFile();
                 ExtractItemFile();
                 ExtractMapMarks();
                 ExtractMapPortals();
@@ -235,6 +236,16 @@ namespace HaCreator.GUI
                     Program.WzManager.LoadWzFile(characterWzDir, _wzMapleVersion);
                 }
                 //ExtractCharacterFile(); // due to performance issue, its loaded on demand
+
+                // Load skills
+                List<string> skillWzDirs = Program.WzManager.GetWzFileNameListFromBase("skill");
+                foreach (string skillWzDir in skillWzDirs)
+                {
+                    UpdateUI_CurrentLoadingWzFile(skillWzDir, true);
+
+                    Program.WzManager.LoadWzFile(skillWzDir, _wzMapleVersion);
+                }
+                ExtractSkillFile();
 
                 // Load Items
                 List<string> itemWzDirs = Program.WzManager.GetWzFileNameListFromBase("item");
@@ -682,6 +693,35 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
+        /// Skill.wz
+        /// </summary>
+        public void ExtractSkillFile()
+        {
+            if (Program.InfoManager.SkillWzImageCache.Count != 0)
+                return;
+
+            List<WzDirectory> skillWzDirs = Program.WzManager.GetWzDirectoriesFromBase("skill");
+            foreach (WzDirectory skillWzDir in skillWzDirs)
+            {
+                foreach (WzImage skillWzImage in skillWzDir.WzImages) // <imgdir name="9201.img">
+                {
+                    string skillDirectoryId = skillWzImage.Name;
+
+                    WzImageProperty imgSkill = skillWzImage["skill"]; // in each xml contains the skills
+                    if (imgSkill != null)
+                    {
+                        foreach (WzImageProperty skillItemImage in imgSkill.WzProperties)
+                        {
+                            string skillId = skillItemImage.Name;
+
+                            Program.InfoManager.SkillWzImageCache.Add(skillId, skillItemImage);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// Item.wz
         /// </summary>
         public void ExtractItemFile()
@@ -980,6 +1020,23 @@ namespace HaCreator.GUI
                 else
                 {
                     string error = string.Format("[Initialization] Duplicate [Mob] name in String.wz. MobId='{0}'", mobId);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            }
+
+            // Skill strings
+            WzImage stringSkillImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Skill.img");
+            foreach (WzSubProperty skillImg in stringSkillImg.WzProperties) // String.wz/Mob.img/100100
+            {
+                string skillId = skillImg.Name;
+                string skillName = (skillImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string skillDesc = (skillImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+
+                if (!Program.InfoManager.SkillNameCache.ContainsKey(skillId))
+                    Program.InfoManager.SkillNameCache[skillId] = new Tuple<string, string>(skillName, skillDesc);
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [Skill] name in String.wz. SkillId='{0}'", skillId);
                     ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                 }
             }

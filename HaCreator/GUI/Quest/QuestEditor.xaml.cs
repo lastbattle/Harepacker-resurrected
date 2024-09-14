@@ -32,6 +32,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -627,10 +628,43 @@ namespace HaCreator.GUI.Quest
                              */
                             break;
                         }
-                        /*
-                    case "quest":
+                    /*
+                case "quest":
+                case "job":*/
                     case "skill":
-                    case "job":*/
+                        {
+                            ObservableCollection<QuestEditorActSkillModel> skillsAcquire = new ObservableCollection<QuestEditorActSkillModel>();
+
+                            foreach (WzImageProperty jobItemProp in actTypeProp.WzProperties) // "0", "1", "2", "3"
+                            {
+                                QuestEditorActSkillModel skillModel = new QuestEditorActSkillModel();
+                                skillModel.Id = (jobItemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                skillModel.SkillLevel = (jobItemProp["skillLevel"] as WzIntProperty)?.GetInt() ?? 0;
+                                skillModel.MasterLevel = (jobItemProp["masterLevel"] as WzIntProperty)?.GetInt() ?? 0;
+                                skillModel.OnlyMasterLevel = ((jobItemProp["onlyMasterLevel"] as WzIntProperty)?.GetInt() ?? 0) > 0;
+                                skillModel.Acquire = (jobItemProp["acquire"] as WzShortProperty)?.GetShort() ?? 0; // if (short) -1 it means "remove this skill".. wtf nexon, why not bool
+
+                                if (jobItemProp["job"] != null)
+                                {
+                                    foreach (WzImageProperty jobProp in jobItemProp["job"].WzProperties)
+                                    {
+                                        int jobId = (jobProp as WzIntProperty)?.GetInt() ?? 0;
+                                        skillModel.JobIds.Add(new QuestEditorActSkillModelJobIdWrapper()
+                                        {
+                                            JobId = jobId
+                                        });
+                                    }
+                                }
+                                if (skillModel.Id != 0)
+                                {
+                                    skillsAcquire.Add(skillModel);
+                                }
+                            }
+
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Skill, questActs);
+                            firstAct.SkillsAcquire = skillsAcquire;
+                            break;
+                        }
                     case "senseEXP": // traits
                     case "willEXP":
                     case "insightEXP":
@@ -1405,6 +1439,97 @@ namespace HaCreator.GUI.Quest
             if (actInfoModel != null) 
             {
                 // actInfoModel.Amount = comboBoxSelectedItem.GetValue(); // no need via binding
+            }
+        }
+
+        /// <summary>
+        /// Add new skill button
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectAddSkill_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorActInfoModel actInfo)
+            {
+                if (actInfo.ActType != QuestEditorActType.Skill)
+                    return;
+
+                LoadSkillSelector skillSelector = new LoadSkillSelector(0);
+                skillSelector.ShowDialog();
+                int selectedSkillId = skillSelector.SelectedSkillId;
+                if (selectedSkillId != 0)
+                {
+                    QuestEditorActSkillModel skillModel = new QuestEditorActSkillModel()
+                    {
+                        Id = selectedSkillId,
+                    };
+                    actInfo.SkillsAcquire.Add(skillModel);
+                }
+
+            }
+        }
+
+        /// <summary>
+        /// Remove job
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeSkillJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataGridRow = FindAncestor<DataGridRow>(button);
+            var dataGridCell = FindAncestor<DataGridCell>(button);
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            ListBox listboxSkillParent = FindAncestor<ListBox>(listboxJobParent);
+            var questSkillModel = listboxSkillParent.DataContext as QuestEditorActSkillModel;
+
+            if (questSkillModel != null)
+            {
+                questSkillModel.JobIds.Remove((QuestEditorActSkillModelJobIdWrapper)button.DataContext);
+            }
+        }
+
+        /// <summary>
+        /// Remove job from a skill
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questSkillModel = button.DataContext as QuestEditorActSkillModel;
+
+            if (questSkillModel != null)
+            {
+                LoadJobSelector skillSelector = new LoadJobSelector();
+                skillSelector.ShowDialog();
+                CharacterJob selectedJob = skillSelector.SelectedJob;
+                if (selectedJob != CharacterJob.None)
+                {
+                    questSkillModel.JobIds.Add(new QuestEditorActSkillModelJobIdWrapper()
+                    {
+                        JobId = (int)selectedJob
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Remove skill
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeSkill_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questSkillModel = button.DataContext as QuestEditorActSkillModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorActInfoModel;
+
+            if (questSkillModel != null && questModel != null)
+            {
+                questModel.SkillsAcquire.Remove(questSkillModel);
             }
         }
         #endregion

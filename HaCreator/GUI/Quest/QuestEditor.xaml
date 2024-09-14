@@ -22,6 +22,9 @@
         <converter:NpcIdToNpcNameConverter x:Key="npcIdToNpcNameConverter"/>
         <converter:ItemIdToItemNameConverter x:Key="itemIdToItemNameConverter"/>
         <converter:MapIdToMapNameConverter x:Key="mapIdToMapNameConverter"/>
+        <converter:JobIdToJobNameConverter x:Key="jobIdToJobNameConverter"/>
+        <converter:NegativeOneToTrueConverter x:Key="negativeOneToTrueConverter"/>
+        <converter:SkillIdToSkillNameConverter x:Key="skillIdToSkillNameConverter"/>
 
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -175,7 +178,7 @@
                 </ListBox.ItemTemplate>
             </ListBox>
         </DataTemplate>
-        
+
         <!-- Define a reusable DataGridTemplate -->
         <DataTemplate x:Key="ConversationDataGridTemplate">
             <DataGrid ItemsSource="{Binding}"
@@ -319,7 +322,7 @@
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
         </DataTemplate>
-        
+
         <!-- Mesos-->
         <DataTemplate x:Key="ActMesosTemplate">
             <StackPanel>
@@ -409,11 +412,136 @@
             </StackPanel>
         </DataTemplate>
 
+        <!-- Skill -->
+        <DataTemplate x:Key="ActSkillTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <ListBox ItemsSource="{Binding SkillsAcquire}" MinHeight="30" Grid.Column="0" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition MaxHeight="20"/>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="25"/>
+                                    <RowDefinition Height="20"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Skill Id-->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,5" Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="Skill Id:" Width="100"/>
+                                        <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,5" Width="100"/>
+                                    </StackPanel>
+
+                                <!-- skill name desc -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0" VerticalAlignment="Top"
+                                            Grid.Row="1" Grid.Column="0">
+                                    <TextBlock Text="["/>
+                                    <TextBlock Text="{Binding Id, Converter={StaticResource skillIdToSkillNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                    <TextBlock Text="]" Margin="2,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Skill level-->
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" Margin="0,0,10,5">
+                                    <TextBlock Text="Skill Level:" Width="100"/>
+                                    <TextBox Text="{Binding SkillLevel, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+
+                                <!-- Master level-->
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="2" Margin="0,0,10,5">
+                                    <TextBlock Text="Master Level:" Width="100"/>
+                                    <TextBox Text="{Binding MasterLevel, UpdateSourceTrigger=PropertyChanged}"  InputScope="Number" Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+
+                                <!-- Only master level-->
+                                <CheckBox Content="Only Master Level" IsChecked="{Binding OnlyMasterLevel, UpdateSourceTrigger=PropertyChanged}" 
+                                          Grid.Row="2" Grid.Column="1" Margin="0,0,0,5"/>
+
+                                <!-- Acquire -->
+                                <CheckBox MinWidth="100" IsChecked="{Binding Acquire, Converter={StaticResource negativeOneToTrueConverter}, UpdateSourceTrigger=PropertyChanged}"
+                                              Content="Acquire (remove skill)"
+                                              Grid.Row="2" Grid.Column="2" Margin="0,0,10,5"/>
+
+                                <TextBlock Text="Given to jobs:" Grid.Row="4" Grid.Column="0" Margin="0,0,10,5"/>
+                                <ListBox ItemsSource="{Binding JobIds, Mode=TwoWay}" 
+                                          MinHeight="30"  Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,5">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition MinWidth="100" Width="5*"/>
+                                                    <ColumnDefinition MinWidth="200" Width="5*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                                         InputScope="Number" IsReadOnly="True"
+                                                         Margin="0,0,0,0"
+                                                         Grid.Column="0"/>
+
+                                                <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                    <TextBlock Text="["/>
+                                                    <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                    <TextBlock Text="]" Margin="2,0,0,0"/>
+                                                </StackPanel>
+
+                                                <Button x:Name="button_removeSkillJob" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
+                                                            VerticalAlignment="Top" 
+                                                                Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                        Click="button_removeSkillJob_Click"
+                                                                />
+                                            </Grid>
+                                        </DataTemplate>
+
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Button x:Name="button_addJob" Content="Add job" HorizontalAlignment="Right"
+                                        Width="100" Height="20" 
+                                        Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_addJob_Click"
+                                    />
+
+                                <Button x:Name="button_removeSkill" Grid.Column="3" Grid.Row="6" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeSkill_Click"
+                                        />
+
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
+                                  Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="3" 
+                                  Margin="0,0,0,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddSkill" Content="Add skill" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        Click="botton_selectAddSkill_Click"/>
+            </Grid>
+        </DataTemplate>
+
         <!-- lvMin -->
         <DataTemplate x:Key="ActLvMinTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level min:" Margin="4,0,0,0"/>
+                    <TextBlock Text="Level min:" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -421,7 +549,7 @@
         <DataTemplate x:Key="ActLvMaxTemplate">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Level max:" Margin="4,0,0,0"/>
+                    <TextBlock Text="Level max:" Margin="2,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
@@ -436,7 +564,7 @@
 
                 <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
                 <Grid Grid.Column="1">
-                    <ListBox ItemsSource="{Binding SelectedNumbersItem}" MinHeight="30">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}" MinHeight="30">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
@@ -464,8 +592,8 @@
                 </Grid>
             </Grid>
         </DataTemplate>
-        
-        
+
+
         <!-- Interval -->
         <DataTemplate x:Key="ActIntervalTemplate">
             <StackPanel>
@@ -507,7 +635,7 @@
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
                                 Content="{Binding ActConversationStart, Mode=OneWay}">
                 </ContentControl>
-                
+
                 <TextBlock Text="Stop" Margin="4,4,0,4" FontWeight="Bold"/>
                 <ContentControl x:Name="dataGrid_ConversationStop" Grid.Row="1" 
                                 ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
@@ -515,7 +643,7 @@
                 </ContentControl>
             </StackPanel>
         </DataTemplate>
-        
+
         <!-- Pet speed-->
         <DataTemplate x:Key="ActPetSpeedTemplate">
             <StackPanel>
@@ -548,7 +676,7 @@
                 </ComboBox>
             </StackPanel>
         </DataTemplate>
-        
+
         <!-- Buff -->
         <DataTemplate x:Key="ActBuffTemplate">
             <StackPanel>
@@ -616,7 +744,7 @@
 
                 <TextBlock Text="Maps to show in:" Grid.Column="2" Margin="4,0,0,0"/>
                 <StackPanel Orientation="Vertical" Grid.Column="3">
-                    <ListBox ItemsSource="{Binding SelectedNumbersItem}"  MinHeight="30">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}"  MinHeight="30">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
@@ -646,10 +774,10 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="120"/>
                 </Grid.ColumnDefinitions>
-                
+
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Complete NPC ID:" />
+                        <TextBlock Text="Complete NPC ID:" Margin="2,0,0,0"/>
                         <TextBlock Text="["  Margin="10,0,0,0"/>
                         <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
                         <TextBlock Text="]"/>
@@ -733,7 +861,7 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                
+
                 <Button x:Name="botton_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"
                         Click="botton_selectItem_Click"/>
@@ -743,7 +871,7 @@
         <!-- null-->
         <DataTemplate x:Key="ActNullTemplate">
         </DataTemplate>
-        
+
         <!-- Template selector for Act-->
         <DataTemplate x:Key="ActRewardsColumnTemplate">
             <ContentPresenter x:Name="RewardsContent" Content="{Binding}"/>
@@ -793,6 +921,9 @@
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Info}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActInfoExTemplate}"/>
                 </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Skill}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSkillTemplate}"/>
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.LvMin}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActLvMinTemplate}"/>
                 </DataTrigger>
@@ -834,7 +965,7 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
-        
+
     </Window.Resources>
 
     <Grid>
@@ -919,10 +1050,10 @@
                                     <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
                                     <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
                                     <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
-                                    
+
                                     <TextBlock Text="Show layer tag:" FontWeight="Bold" Margin="0,5,0,0"/>
                                     <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
-                                    
+
                                     <!-- paddings -->
                                     <Grid Margin="0,0,0,10"/>
 
@@ -973,7 +1104,7 @@
                                                 Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateRewardSummary_Click"
                                                 />
                                     </Grid>
-                                    
+
                                     <!-- paddings -->
                                     <Grid Margin="0,0,0,10"/>
 
@@ -1130,7 +1261,7 @@
                                                     </DataGridTemplateColumn>
 
                                                     <!-- Rewards Column -->
-                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                    <DataGridTemplateColumn Header="Rewards" Width="*">
                                                         <DataGridTemplateColumn.CellTemplate>
                                                             <StaticResource ResourceKey="ActRewardsColumnTemplate"/>
                                                         </DataGridTemplateColumn.CellTemplate>

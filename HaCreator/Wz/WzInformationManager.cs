@@ -43,6 +43,10 @@ namespace HaCreator.Wz
         // Mobs
         public Dictionary<string, string> MobNameCache = new Dictionary<string, string>();
 
+        // Skills
+        public Dictionary<string, Tuple<string, string>> SkillNameCache = new Dictionary<string, Tuple<string, string>>(); // skillId, <name, desc>
+        public Dictionary<string, WzImageProperty> SkillWzImageCache = new Dictionary<string, WzImageProperty>();
+
         // Npcs
         public Dictionary<string, string> NpcNameCache = new Dictionary<string, string>();
         public Dictionary<string, WzImage> NpcPropertyCache = new Dictionary<string, WzImage>();
