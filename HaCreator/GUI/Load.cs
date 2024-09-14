@@ -50,7 +50,7 @@ namespace HaCreator.GUI
             this._bAutoCloseUponSelection = bAutoCloseUponSelection;
             this.defaultMapNameFilter = defaultMapNameFilter;
 
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>
@@ -86,7 +86,7 @@ namespace HaCreator.GUI
                 this.searchBox.Focus();
                 this.searchBox.Text = defaultMapNameFilter;
 
-                this.mapBrowser.searchBox_TextChanged(this.searchBox, null);
+                this.mapBrowser.Search.TextChanged(this.searchBox, null);
             }
         }
 
@@ -100,7 +100,7 @@ namespace HaCreator.GUI
             this.mapBrowser.TownOnlyFilter = checkBox_townOnly.Checked;
 
             // search again
-            this.mapBrowser.searchMapsInternal(this.searchBox.Text == this.searchBox.WatermarkText ? "" : this.searchBox.Text);
+            this.mapBrowser.Search.TextChanged(this.searchBox.Text == this.searchBox.WatermarkText ? "" : this.searchBox.Text, null);
         }
 
         /// <summary>

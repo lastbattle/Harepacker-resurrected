@@ -138,7 +138,6 @@
             this.searchBox.Text = "Type here to search";
             this.searchBox.WatermarkActive = true;
             this.searchBox.WatermarkText = "Type here";
-            this.searchBox.TextChanged += new System.EventHandler(this.searchBox_TextChanged);
             // 
             // LoadJobSelector
             // 

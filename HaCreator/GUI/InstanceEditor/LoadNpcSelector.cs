@@ -65,6 +65,9 @@ namespace HaCreator.GUI.InstanceEditor
         {
             InitializeComponent();
 
+            LoadSearchHelper searchBox = new LoadSearchHelper(listBox_npcList, itemNames);
+            this.searchBox.TextChanged += searchBox.TextChanged;
+
             this.FormClosing += LoadQuestSelector_FormClosing;
 
             // load items
@@ -125,105 +128,6 @@ namespace HaCreator.GUI.InstanceEditor
             if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
             {
                 _selectedNpcId = string.Empty; // set none
-            }
-        }
-        #endregion
-
-        #region Search box
-        private string _previousSeachText = string.Empty;
-        private CancellationTokenSource _existingSearchTaskToken = null;
-
-        /// <summary>
-        /// Searchbox text changed
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void searchBox_TextChanged(object sender, EventArgs e)
-        {
-            TextBox searchBox = (TextBox)sender;
-            string searchText = searchBox.Text.ToLower();
-
-            if (_previousSeachText == searchText)
-                return;
-            _previousSeachText = searchText; // set
-
-            // start searching
-            searchItemInternal(searchText);
-        }
-
-        /// <summary>
-        /// Search and filters map according to the user's query
-        /// </summary>
-        /// <param name="searchText"></param>
-        public void searchItemInternal(string searchText)
-        {
-            if (!_bItemsLoaded)
-                return;
-
-            // Cancel existing task if any
-            if (_existingSearchTaskToken != null && !_existingSearchTaskToken.IsCancellationRequested)
-            {
-                _existingSearchTaskToken.Cancel();
-            }
-
-            // Clear 
-            listBox_npcList.Items.Clear();
-            if (searchText == string.Empty)
-            {
-                var filteredItems = itemNames.Where(kvp =>
-                {
-                    return true;
-                }).Select(kvp => kvp) // or kvp.Value or any transformation you need
-                  .Cast<object>()
-                  .ToArray();
-
-                listBox_npcList.Items.AddRange(filteredItems);
-
-                listBox_itemList_SelectedIndexChanged(null, null);
-            }
-            else
-            {
-
-                Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
-
-                // new task
-                _existingSearchTaskToken = new CancellationTokenSource();
-                var cancellationToken = _existingSearchTaskToken.Token;
-
-                Task t = Task.Run(() =>
-                {
-                    Thread.Sleep(500); // average key typing speed
-
-                    List<string> itemsFiltered = new List<string>();
-                    foreach (string map in itemNames)
-                    {
-                        if (_existingSearchTaskToken.IsCancellationRequested)
-                            return; // stop immediately
-
-                        // Filter by string first
-                        if (map.ToLower().Contains(searchText))
-                        {
-                            itemsFiltered.Add(map);
-                        }
-                    }
-
-                    currentDispatcher.BeginInvoke(new Action(() =>
-                    {
-                        foreach (string map in itemsFiltered)
-                        {
-                            if (_existingSearchTaskToken.IsCancellationRequested)
-                                return; // stop immediately
-
-                            listBox_npcList.Items.Add(map);
-                        }
-
-                        if (listBox_npcList.Items.Count > 0)
-                        {
-                            listBox_npcList.SelectedIndex = 0; // set default selection to reduce clicks
-                        }
-                    }));
-                }, cancellationToken);
-
             }
         }
         #endregion

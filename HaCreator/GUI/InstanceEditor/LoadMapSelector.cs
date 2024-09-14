@@ -32,7 +32,7 @@ namespace HaCreator.GUI.InstanceEditor
 
             DialogResult = DialogResult.Cancel;
 
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>
@@ -47,7 +47,7 @@ namespace HaCreator.GUI.InstanceEditor
             
             this.numericUpDown = numericUpDown;
 
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>
@@ -60,7 +60,7 @@ namespace HaCreator.GUI.InstanceEditor
             DialogResult = DialogResult.Cancel;
 
             this.textBox = textbox;
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>

@@ -255,6 +255,7 @@
     <Compile Include="GUI\InstanceEditor\LoadJobSelector.Designer.cs">
       <DependentUpon>LoadJobSelector.cs</DependentUpon>
     </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadSearchHelper.cs" />
     <Compile Include="GUI\InstanceEditor\LoadSkillSelector.cs">
       <SubType>Form</SubType>
     </Compile>
