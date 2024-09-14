@@ -158,24 +158,25 @@ namespace HaRepacker.GUI
                     wzf.Version = (short)versionBox.Value;
                     wzf.MapleVersion = wzMapleVersionSelected;
 
-                    if (wzf.FilePath != null && wzf.FilePath.ToLower() == dialog.FileName.ToLower())
+                    if (string.Equals(wzf.FilePath, dialog.FileName, StringComparison.OrdinalIgnoreCase))
                     {
                         wzf.SaveToDisk(dialog.FileName + "$tmp", bSaveAs64BitWzFile, wzMapleVersionSelected);
+                        _mainPanel.MainForm.UnloadWzFile(wzf);
                         try
                         {
-                            File.Delete(dialog.FileName);
+                            File.Delete(dialog.FileName); // delete existing file
                             File.Move(dialog.FileName + "$tmp", dialog.FileName);
                         }
                         catch (IOException ex)
                         {
-                            MessageBox.Show("Handle error overwriting WZ file", Properties.Resources.Error);
+                            MessageBox.Show("Handle error overwriting WZ file: " + ex.Message, Properties.Resources.Error);
                         }
                     }
                     else
                     {
                         wzf.SaveToDisk(dialog.FileName, bSaveAs64BitWzFile, wzMapleVersionSelected);
+                        _mainPanel.MainForm.UnloadWzFile(wzf);
                     }
-                    _mainPanel.MainForm.UnloadWzFile(wzf);
 
                     // Reload the new file
                     var loadedFiles = Program.WzFileManager.WzFileList;
