@@ -386,6 +386,7 @@ namespace HaCreator.GUI.Quest
                                 string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
                                 int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0;
                                 int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0;
+                                int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // TODO, The expiration period (in minutes) from the time that the item is received.
 
                                 if (itemId != 0)
                                 {
@@ -432,6 +433,7 @@ namespace HaCreator.GUI.Quest
                                         PotentialGrade = potentialType,
                                         Job = job,
                                         JobEx = jobEx,
+                                        Period = period,
                                     };
                                     if (dateExpireProp != null)
                                     {

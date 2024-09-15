@@ -48,6 +48,24 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private int _period;
+        /// <summary>
+        /// The expiration period (in minutes) from the time that the item is received.
+        /// </summary>
+        public int Period
+        {
+            get { return _period; }
+            set
+            {
+                int newValue = value;
+                
+                newValue = Math.Max(0, Math.Min(int.MaxValue, newValue));
+
+                this._period = newValue;
+                OnPropertyChanged(nameof(Period));
+            }
+        }
+
 
         private QuestEditorActInfoPotentialType _potentialGrade;
         /// <summary>

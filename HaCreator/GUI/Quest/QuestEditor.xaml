@@ -801,18 +801,13 @@
 
         <!-- Item -->
         <DataTemplate x:Key="ActItemTemplate">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="120"/>
-                </Grid.ColumnDefinitions>
-
+            <StackPanel Orientation="Vertical">
                 <ListBox ItemsSource="{Binding SelectedRewardItems}" Grid.Column="0" MinHeight="100">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition MinWidth="200" Width="4*"/>
+                                    <ColumnDefinition MinWidth="180" Width="4*"/>
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
@@ -842,7 +837,7 @@
 
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                                 Visibility="{Binding IsEquip, Converter={StaticResource booleanToVisibility2Converter}}">
-                                        <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100"
+                                        <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
                                                />
                                         <ComboBox x:Name="comboBox_potentialGrade" 
                                               ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
@@ -850,6 +845,12 @@
                                               >
                                         </ComboBox>
                                     </StackPanel>
+
+                                    <TextBlock Text="Period (minutes):" Margin="20,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Period, UpdateSourceTrigger=PropertyChanged}" Width="60" 
+                                             InputScope="Number" TextAlignment="Center"
+                                             />
                                 </StackPanel>
 
                                 <Button x:Name="button_deleteItem" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
@@ -863,9 +864,9 @@
                 </ListBox>
 
                 <Button x:Name="botton_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
-                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
                         Click="botton_selectItem_Click"/>
-            </Grid>
+            </StackPanel>
         </DataTemplate>
 
         <!-- null-->
