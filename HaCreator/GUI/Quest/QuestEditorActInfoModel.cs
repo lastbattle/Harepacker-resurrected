@@ -186,6 +186,17 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private ObservableCollection<QuestEditorQuestReqModel> _questReqs = new ObservableCollection<QuestEditorQuestReqModel>();
+        public ObservableCollection<QuestEditorQuestReqModel> QuestReqs
+        {
+            get { return _questReqs; }
+            set
+            {
+                this._questReqs = value;
+                OnPropertyChanged(nameof(QuestReqs));
+            }
+        }
+
         // Say
         private readonly ObservableCollection<QuestEditorSayModel> _actConversationStart = new ObservableCollection<QuestEditorSayModel>();
         /// <summary>

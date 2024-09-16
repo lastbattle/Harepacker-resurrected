@@ -24,8 +24,10 @@ using HaCreator.MapSimulator;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -384,10 +386,10 @@ namespace HaCreator.GUI.Quest
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
                                 WzStringProperty dateExpireProp = (itemProp["dateExpire"] as WzStringProperty);
                                 string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
-                                int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0;
-                                int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0;
-                                int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // TODO, The expiration period (in minutes) from the time that the item is received.
-
+                                int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0; // TODO
+                                int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0; // TODO
+                                int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
+           
                                 if (itemId != 0)
                                 {
                                     var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Item, questActs);
@@ -450,6 +452,34 @@ namespace HaCreator.GUI.Quest
                                         }
                                     }
                                     firstAct.SelectedRewardItems.Add(actReward);
+                                }
+                            }
+                            break;
+                        }
+                    case "quest":
+                        {
+                            var firstExpAct = AddActItemIfNoneAndGet(QuestEditorActType.Quest, questActs);
+
+                            foreach (WzImageProperty questProp in actTypeProp.WzProperties) // "0", "1", "2",
+                            {
+                                int questId = (questProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                int stateInt = (questProp["state"] as WzIntProperty)?.GetInt() ?? 0;
+
+                                if (Enum.IsDefined(typeof(QuestStateType), stateInt))
+                                {
+                                    QuestStateType state = (QuestStateType)stateInt;
+ 
+                                    QuestEditorQuestReqModel req = new QuestEditorQuestReqModel()
+                                    {
+                                        QuestId = questId,
+                                        QuestState = state,
+                                    };
+                                    firstExpAct.QuestReqs.Add(req);
+                                }
+                                else
+                                {
+                                    string error = string.Format("[QuestEditor] Incorrect quest state for QuestId={0}. IntValue={1}", questId, stateInt);
+                                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                                 }
                             }
                             break;
@@ -631,7 +661,6 @@ namespace HaCreator.GUI.Quest
                             break;
                         }
                     /*
-                case "quest":
                 case "job":*/
                     case "skill":
                         {
@@ -1532,6 +1561,51 @@ namespace HaCreator.GUI.Quest
             if (questSkillModel != null && questModel != null)
             {
                 questModel.SkillsAcquire.Remove(questSkillModel);
+            }
+        }
+
+        /// <summary>
+        /// Add quest for action 'quest'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectAddQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            QuestEditorActInfoModel questModel = button.DataContext as QuestEditorActInfoModel;
+
+            if (questModel.ActType != QuestEditorActType.Quest)
+                return;
+
+            LoadQuestSelector questSelector = new LoadQuestSelector();
+            questSelector.ShowDialog();
+
+            string selectedItem = questSelector.SelectedQuestId;
+            if (selectedItem != string.Empty)
+            {
+                questModel.QuestReqs.Add(new QuestEditorQuestReqModel()
+                {
+                    QuestId = int.Parse(selectedItem),
+                    QuestState = QuestStateType.Completed, // default is 2 for 'act' typically
+                });
+            }
+        }
+
+        /// <summary>
+        /// Remove quest for action 'quest'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questActModel = button.DataContext as QuestEditorQuestReqModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorActInfoModel;
+
+            if (questActModel != null && questModel != null)
+            {
+                questModel.QuestReqs.Remove(questActModel);
             }
         }
         #endregion

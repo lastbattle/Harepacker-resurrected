@@ -45,6 +45,7 @@ namespace HaCreator.GUI.Quest
         End,
         Conversation0123, // "0", "1", "2", "3"
 
+        Quest,
         NextQuest,
 
         PetSpeed,

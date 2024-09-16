@@ -169,6 +169,7 @@
     <Compile Include="Converter\NpcIdToNpcNameConverter.cs" />
     <Compile Include="Converter\PetSkillFlagConverter.cs" />
     <Compile Include="Converter\QuestIdToQuestNameConverter.cs" />
+    <Compile Include="Converter\QuestStateIdToQuestStateConverter.cs" />
     <Compile Include="Converter\SkillIdToSkillNameConverter.cs" />
     <Compile Include="CustomControls\CheckboxButton.cs" />
     <Compile Include="CustomControls\HaList.xaml.cs">
@@ -356,6 +357,7 @@
     <Compile Include="GUI\Quest\QuestEditorActType.cs" />
     <Compile Include="GUI\Quest\QuestEditorCheckInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorConversationType.cs" />
+    <Compile Include="GUI\Quest\QuestEditorQuestReqModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorSayEndQuestModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorStopConversationType.cs" />

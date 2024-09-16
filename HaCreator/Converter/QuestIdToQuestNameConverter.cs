@@ -17,14 +17,27 @@ namespace HaCreator.Converter
             if (value == null)
                 return string.Empty;
 
-            long questId = (long)value;
-
-            if (!Program.InfoManager.QuestInfos.ContainsKey(questId.ToString()))
+            string questIdString;
+            if (value is long longValue)
+            {
+                questIdString = longValue.ToString();
+            }
+            else if (value is int intValue)
+            {
+                questIdString = intValue.ToString();
+            }
+            else
             {
                 return string.Empty;
             }
-            WzSubProperty questProp = Program.InfoManager.QuestInfos[questId.ToString()];
-            
+
+            if (!Program.InfoManager.QuestInfos.ContainsKey(questIdString))
+            {
+                return string.Empty;
+            }
+
+            WzSubProperty questProp = Program.InfoManager.QuestInfos[questIdString];
+
             string questName = (questProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
             return questName;
         }
