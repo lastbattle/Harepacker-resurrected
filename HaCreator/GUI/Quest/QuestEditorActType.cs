@@ -37,6 +37,7 @@ namespace HaCreator.GUI.Quest
         Info, // infoEx
         FieldEnter,
         Skill,
+        Job,
 
         Message_Map,
 

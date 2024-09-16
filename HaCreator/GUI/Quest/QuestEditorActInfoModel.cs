@@ -186,6 +186,17 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private ObservableCollection<QuestEditorActSkillModelJobIdWrapper> _jobsReqs = new ObservableCollection<QuestEditorActSkillModelJobIdWrapper>();
+        public ObservableCollection<QuestEditorActSkillModelJobIdWrapper> JobsReqs
+        {
+            get { return _jobsReqs; }
+            set
+            {
+                this._jobsReqs = value;
+                OnPropertyChanged(nameof(JobsReqs));
+            }
+        }
+
         private ObservableCollection<QuestEditorQuestReqModel> _questReqs = new ObservableCollection<QuestEditorQuestReqModel>();
         public ObservableCollection<QuestEditorQuestReqModel> QuestReqs
         {

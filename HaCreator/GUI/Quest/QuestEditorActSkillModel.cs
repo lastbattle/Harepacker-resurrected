@@ -112,27 +112,4 @@ namespace HaCreator.GUI.Quest
         }
         #endregion
     }
-
-    public class QuestEditorActSkillModelJobIdWrapper : INotifyPropertyChanged
-    {
-        private int _jobId;
-        public int JobId
-        {
-            get => _jobId;
-            set
-            {
-                if (_jobId != value)
-                {
-                    _jobId = value;
-                    OnPropertyChanged(nameof(JobId));
-                }
-            }
-        }
-
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected virtual void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-    }
 }

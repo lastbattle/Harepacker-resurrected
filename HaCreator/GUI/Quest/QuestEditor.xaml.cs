@@ -660,8 +660,22 @@ namespace HaCreator.GUI.Quest
                              */
                             break;
                         }
-                    /*
-                case "job":*/
+                    case "job":
+                        {
+                            var firstExpAct = AddActItemIfNoneAndGet(QuestEditorActType.Job, questActs);
+
+                            foreach (WzImageProperty questProp in actTypeProp.WzProperties) // job Ids "0", "1", "2"
+                            {
+                                int jobId = (questProp as WzIntProperty)?.GetInt() ?? 0;
+
+                                QuestEditorActSkillModelJobIdWrapper jobModel = new QuestEditorActSkillModelJobIdWrapper()
+                                {
+                                    JobId = jobId
+                                };
+                                firstExpAct.JobsReqs.Add(jobModel);
+                            }
+                            break;
+                        }
                     case "skill":
                         {
                             ObservableCollection<QuestEditorActSkillModel> skillsAcquire = new ObservableCollection<QuestEditorActSkillModel>();
@@ -1606,6 +1620,49 @@ namespace HaCreator.GUI.Quest
             if (questActModel != null && questModel != null)
             {
                 questModel.QuestReqs.Remove(questActModel);
+            }
+        }
+
+        /// <summary>
+        /// Remove job for action 'job'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questActJobModel = button.DataContext as QuestEditorActSkillModelJobIdWrapper;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorActInfoModel;
+
+            if (questActJobModel != null && questModel != null)
+            {
+                questModel.JobsReqs.Remove(questActJobModel);
+            }
+        }
+
+        /// <summary>
+        /// Add job for action 'job'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectAddJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questModel = button.DataContext as QuestEditorActInfoModel;
+
+            if (questModel != null)
+            {
+                LoadJobSelector skillSelector = new LoadJobSelector();
+                skillSelector.ShowDialog();
+                CharacterJob selectedJob = skillSelector.SelectedJob;
+                if (selectedJob != CharacterJob.None)
+                {
+                    questModel.JobsReqs.Add(new QuestEditorActSkillModelJobIdWrapper()
+                    {
+                        JobId = (int)selectedJob
+                    });
+                }
             }
         }
         #endregion
