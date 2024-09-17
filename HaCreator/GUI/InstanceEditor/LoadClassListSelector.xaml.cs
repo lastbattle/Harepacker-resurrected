@@ -30,7 +30,7 @@ namespace HaCreator.GUI.InstanceEditor
     /// <summary>
     /// Interaction logic for LoadJobsListSelector.xaml
     /// </summary>
-    public partial class LoadJobsListSelector : Window
+    public partial class LoadClassListSelector : Window
     {
         private bool _bIsLoading = false;
         private bool _bNotUserClosing = false;
@@ -49,13 +49,74 @@ namespace HaCreator.GUI.InstanceEditor
         /// <summary>
         /// Constructor
         /// </summary>
-        public LoadJobsListSelector()
+        public LoadClassListSelector(int defaultClassListBitField)
         {
             InitializeComponent();
+
+            this._selectedClassCategoryBitfield = defaultClassListBitField;
+            Loaded += LoadClassListSelector_Loaded;
 
             this.Closing += Window_Closing;
         }
 
+        private void LoadClassListSelector_Loaded(object sender, RoutedEventArgs e)
+        {
+            // Init
+            Load();
+        }
+
+        /// <summary>
+        /// Load
+        /// </summary>
+        private void Load()
+        {
+            if (_bIsLoading)
+                return;
+
+            _bIsLoading = true;
+            try
+            {
+                var items = comboBox_jobsCategoryList.Items;
+                var itemsCount = items.Count;
+
+                for (int i = 0; i < itemsCount; i++)
+                {
+                    var item = comboBox_jobsCategoryList.ItemContainerGenerator.ContainerFromIndex(i) as ListBoxItem;
+                    if (item != null)
+                    {
+                        var contentPresenter = FindVisualChild<ContentPresenter>(item);
+                        if (contentPresenter != null)
+                        {
+                            var dataTemplate = contentPresenter.ContentTemplate;
+                            CheckBox checkbox = dataTemplate.FindName("checkbox_selectJobCategory", contentPresenter) as CheckBox;
+
+                            CharacterClassType classType = (CharacterClassType)items[i];
+                            int classBitField = (int)classType;
+
+                            if (classType != CharacterClassType.NULL && classType != CharacterClassType.UltimateAdventurer)
+                            {
+                                bool bSet = (_selectedClassCategoryBitfield & (1 << classBitField)) != 0;
+                                if (bSet) // check if the class bitfield is selected
+                                {
+                                    checkbox.IsChecked = true; // check the checkbox if so
+                                }
+                            }
+                        }
+                    }
+                }
+                textblock_bitfield.Text = _selectedClassCategoryBitfield.ToString();
+            }
+            finally
+            {
+                _bIsLoading = false;
+            }
+        }
+
+        /// <summary>
+        /// On window closing
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Window_Closing(object sender, CancelEventArgs e)
         {
             if (!_bNotUserClosing)

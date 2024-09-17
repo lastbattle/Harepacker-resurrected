@@ -1370,6 +1370,30 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+
+        /// <summary>
+        /// On select class types
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectClasses_Click(object sender, RoutedEventArgs e)
+        {
+            Button button = ((Button)sender);
+            QuestEditorActInfoRewardModel rewardModel = button.DataContext as QuestEditorActInfoRewardModel;
+
+            if (rewardModel != null)
+            {
+                LoadClassListSelector classListSelector = new LoadClassListSelector(rewardModel.Job);
+                classListSelector.ShowDialog();
+
+                long classesSelected = classListSelector.SelectedClassCategoryBitfield;
+                if (classesSelected != 0)
+                {
+                    rewardModel.Job = (int)classesSelected;
+                }
+            }
+        }
+
         /// <summary>
         /// Select map
         /// </summary>

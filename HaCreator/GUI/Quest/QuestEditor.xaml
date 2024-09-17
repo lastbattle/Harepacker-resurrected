@@ -27,6 +27,7 @@
         <converter:NegativeOneToTrueConverter x:Key="negativeOneToTrueConverter"/>
         <converter:SkillIdToSkillNameConverter x:Key="skillIdToSkillNameConverter"/>
         <converter:QuestStateIdToQuestStateConverter x:Key="questStateIdToQuestStateConverter"/>
+        <converter:JobClassBitfieldToClassNamesConverter x:Key="jobClassBitfieldToClassNamesConverter"/>
 
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -870,7 +871,7 @@
 
                 <StackPanel Grid.Column="0">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Complete NPC ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="NPC ID:" Margin="2,0,0,0"/>
                         <TextBlock Text="["  Margin="10,0,0,0"/>
                         <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
                         <TextBlock Text="]"/>
@@ -895,17 +896,24 @@
         <!-- Item -->
         <DataTemplate x:Key="ActItemTemplate">
             <StackPanel Orientation="Vertical">
-                <ListBox ItemsSource="{Binding SelectedRewardItems}" Grid.Column="0" MinHeight="100">
+                <ListBox ItemsSource="{Binding SelectedRewardItems}" Grid.Column="0" MinHeight="100"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="25"/>
+                                    <RowDefinition Height="25"/>
+                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition MinWidth="180" Width="4*"/>
+                                    <ColumnDefinition MinWidth="200" Width="4*"/>
                                     <ColumnDefinition Width="3*"/>
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
 
-                                <StackPanel Orientation="Vertical" Grid.Column="0"  HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding ItemId}"/>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="[" Margin="0,0,0,0"/>
@@ -914,7 +922,9 @@
                                     </StackPanel>
                                 </StackPanel>
 
-                                <StackPanel Orientation="Horizontal" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <TextBlock Text="Quantity:" Margin="0,0,5,0"
                                                VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
@@ -946,7 +956,24 @@
                                              />
                                 </StackPanel>
 
-                                <Button x:Name="button_deleteItem" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
+                                <!-- class categories -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1"
+                                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="Classes: "/>
+                                    <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 
+                                               Margin="5,0,5,0"
+                                             TextAlignment="Center"
+                                             />
+                                    <Button x:Name="button_selectClasses" Content="Select class"
+                                            Style="{StaticResource ButtonStyle_Black}" Background="Gray"
+                                            Width="100" Height="20" VerticalAlignment="Bottom"
+                                            Click="button_selectClasses_Click"/>
+                                </StackPanel>
+
+                                <Button x:Name="button_deleteItem" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
                                         HorizontalAlignment="Right"
                                         Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
                                         Click="button_deleteItem_Click"
