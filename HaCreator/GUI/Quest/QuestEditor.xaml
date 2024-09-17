@@ -148,6 +148,13 @@
                 <x:Type TypeName="local:QuestEditorActInfoPotentialType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <!-- Data template for item reward prop enum-->
+        <ObjectDataProvider x:Key="RewardPropTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActInfoRewardPropTypeModel"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
         <!-- Data template for pet skill enum-->
         <ObjectDataProvider x:Key="PetSkillTypeEnum" MethodName="GetValues"
                         ObjectType="{x:Type sys:Enum}">
@@ -904,10 +911,11 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="30"/>
                                     <RowDefinition Height="30"/>
+                                    <RowDefinition Height="30"/>
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition MinWidth="200" Width="4*"/>
-                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition MinWidth="150" Width="3*"/>
+                                    <ColumnDefinition Width="4*"/>
                                     <ColumnDefinition Width="20" />
                                 </Grid.ColumnDefinitions>
 
@@ -948,6 +956,19 @@
                                               >
                                         </ComboBox>
                                     </StackPanel>
+                                </StackPanel>
+                                
+                                <!-- Potential, prop -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="1"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Prop type:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="comboBox_itemPropType" 
+                                              ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"  
+                                              SelectedItem="{Binding Prop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              >
+                                    </ComboBox>
 
                                     <TextBlock Text="Period (minutes):" Margin="20,0,5,0"
                                                VerticalAlignment="Center"/>
@@ -955,10 +976,10 @@
                                              InputScope="Number" TextAlignment="Center"
                                              />
                                 </StackPanel>
-
+                                
                                 <!-- class categories -->
                                 <StackPanel Orientation="Horizontal" 
-                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="1"
+                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="2"
                                             HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <TextBlock Text="Classes: "/>
                                     <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 

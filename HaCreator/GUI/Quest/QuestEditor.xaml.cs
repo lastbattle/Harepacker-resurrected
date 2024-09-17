@@ -29,16 +29,21 @@ using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
+using NAudio.CoreAudioApi;
+using SharpDX.Direct3D9;
+using SharpDX.XAudio2;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
@@ -386,10 +391,12 @@ namespace HaCreator.GUI.Quest
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
                                 WzStringProperty dateExpireProp = (itemProp["dateExpire"] as WzStringProperty);
                                 string potentialGrade = (itemProp["potentialGrade"] as WzStringProperty)?.GetString() ?? null;
-                                int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0; // TODO
+                                int job = (itemProp["job"] as WzIntProperty)?.GetInt() ?? 0;
                                 int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0; // TODO
                                 int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
-           
+                                int prop = (itemProp["prop"] as WzIntProperty)?.GetInt() ?? 0;
+                                int gender = (itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2; // 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
+
                                 if (itemId != 0)
                                 {
                                     var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Item, questActs);
@@ -428,6 +435,15 @@ namespace HaCreator.GUI.Quest
                                         //MapleJobTypeExtensions.GetMatchingJobs(jobEx);
                                     }
 
+                                    QuestEditorActInfoRewardPropTypeModel propType = QuestEditorActInfoRewardPropTypeModel.AlwaysGiven;
+                                    if (prop == -1 || prop == 0 || prop == 1)
+                                    {
+                                        //If prop > 0: The item has a chance to be randomly selected.Higher values increase the likelihood.
+                                        //If prop == 0: The item is always given (no randomness involved).
+                                        //If prop == -1: The item is part of an external selection process(possibly player choice).
+                                        propType = (QuestEditorActInfoRewardPropTypeModel)prop;
+                                    }
+
                                     QuestEditorActInfoRewardModel actReward = new QuestEditorActInfoRewardModel()
                                     {
                                         ItemId = itemId,
@@ -436,6 +452,7 @@ namespace HaCreator.GUI.Quest
                                         Job = job,
                                         JobEx = jobEx,
                                         Period = period,
+                                        Prop = propType,
                                     };
                                     if (dateExpireProp != null)
                                     {

@@ -67,6 +67,25 @@ namespace HaCreator.GUI.Quest
         }
 
 
+        private QuestEditorActInfoRewardPropTypeModel _prob;
+        /// <summary>
+        /// If prop > 0: The item has a chance to be randomly selected.Higher values increase the likelihood.
+        /// If prop == 0: The item is always given (no randomness involved).
+        /// If prop == -1: The item is part of an external selection process(possibly player choice).
+        /// </summary>
+        public QuestEditorActInfoRewardPropTypeModel Prop
+        {
+            get { return _prob; }
+            set
+            {
+                QuestEditorActInfoRewardPropTypeModel newValue = value;
+
+                this._prob = newValue;
+                OnPropertyChanged(nameof(Prop));
+            }
+        }
+
+
         private QuestEditorActInfoPotentialType _potentialGrade;
         /// <summary>
         /// The potential grade of the item. "노멀" = normal, "레어" = rare, Epic 에픽, Unique 유니크, Legendary 레전드리
@@ -141,4 +160,5 @@ namespace HaCreator.GUI.Quest
         }
         #endregion
     }
+
 }

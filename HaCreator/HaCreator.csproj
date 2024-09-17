@@ -359,6 +359,7 @@
     <Compile Include="GUI\Quest\QuestEditorActInfoModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoPotentialType.cs" />
     <Compile Include="GUI\Quest\QuestEditorActInfoRewardModel.cs" />
+    <Compile Include="GUI\Quest\QuestEditorActInfoRewardPropTypeModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActSkillModel.cs" />
     <Compile Include="GUI\Quest\QuestEditorActSkillModelJobIdWrapper.cs" />
     <Compile Include="GUI\Quest\QuestEditorActType.cs" />
