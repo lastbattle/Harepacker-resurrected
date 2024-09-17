@@ -161,6 +161,8 @@
     <Compile Include="Collections\MapleLinesCollection.cs" />
     <Compile Include="Collections\MapleLinesEnumerator.cs" />
     <Compile Include="Collections\SerializableEnumerator.cs" />
+    <Compile Include="Converter\CharacterJobTypeToCharacterJobStrConverter.cs" />
+    <Compile Include="Converter\EnumToIntValueConverter.cs" />
     <Compile Include="Converter\EnumToVisibilityConverter.cs" />
     <Compile Include="Converter\ItemIdToItemNameConverter.cs" />
     <Compile Include="Converter\JobIdToJobNameConverter.cs" />
@@ -255,6 +257,9 @@
     </Compile>
     <Compile Include="GUI\InstanceEditor\LoadJobSelector.Designer.cs">
       <DependentUpon>LoadJobSelector.cs</DependentUpon>
+    </Compile>
+    <Compile Include="GUI\InstanceEditor\LoadJobsListSelector.xaml.cs">
+      <DependentUpon>LoadJobsListSelector.xaml</DependentUpon>
     </Compile>
     <Compile Include="GUI\InstanceEditor\LoadSearchHelper.cs" />
     <Compile Include="GUI\InstanceEditor\LoadSkillSelector.cs">
@@ -907,6 +912,10 @@
       <Generator>MSBuild:Compile</Generator>
     </Page>
     <Page Include="GUI\HaRibbon.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUI\InstanceEditor\LoadJobsListSelector.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
