@@ -15,12 +15,16 @@ namespace HaCreator.Converter
         {
             int bitfield = (int)value;
 
-            var classNames = Enum.GetValues(typeof(CharacterClassType))
+            IEnumerable<string> classNames = Enum.GetValues(typeof(CharacterClassType))
                 .Cast<CharacterClassType>()
                 .Where(c => c != CharacterClassType.NULL && c != CharacterClassType.UltimateAdventurer)
                 .Where(c => (bitfield & (1 << (int)c)) != 0)
                 .Select(c => c.ToString());
 
+            if (classNames.Count() == 0)
+            {
+                return "ALL CLASSES";
+            }
             return string.Join(", ", classNames);
         }
 
