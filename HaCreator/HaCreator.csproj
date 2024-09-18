@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>HaCreator</RootNamespace>
     <AssemblyName>HaCreator</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -959,7 +959,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DockPanelSuite">
-      <Version>3.1.0</Version>
+      <Version>3.1.1</Version>
     </PackageReference>
     <PackageReference Include="MonoGame.Framework.WindowsDX">
       <Version>3.8.0.1641</Version>
