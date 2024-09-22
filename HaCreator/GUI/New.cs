@@ -12,7 +12,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using System;
-using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using System.Windows.Forms;
 using XNA = Microsoft.Xna.Framework;
 

@@ -124,14 +124,14 @@ namespace HaCreator.GUI.EditorPanels
             {
                 if (bgInfo.Type == BackgroundInfoType.Spine) // only shows an animation preview window if its a spine object.
                 {
-                    ContextMenu cm = new ContextMenu();
+                    ContextMenuStrip cm = new ContextMenuStrip();
 
-                    MenuItem menuItem = new MenuItem();
+                    ToolStripMenuItem menuItem = new ToolStripMenuItem();
                     menuItem.Text = "Preview";
                     menuItem.Tag = bgInfo;
                     menuItem.Click += new EventHandler(delegate (object sender_, EventArgs e_)
                     {
-                        MenuItem menuItem_ = sender_ as MenuItem;
+                        ToolStripMenuItem menuItem_ = sender_ as ToolStripMenuItem;
                         BackgroundInfo bgInfo_ = menuItem_.Tag as BackgroundInfo;
 
                         WzImageProperty spineAtlasProp = bgInfo_.WzImageProperty.WzProperties.FirstOrDefault(
@@ -154,7 +154,7 @@ namespace HaCreator.GUI.EditorPanels
                             thread.Join();
                         }
                     });
-                    cm.MenuItems.Add(menuItem);
+                    cm.Items.Add(menuItem);
 
                     cm.Show(imageViewer, new Point(0, 50));
                 }

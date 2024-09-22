@@ -146,39 +146,67 @@ namespace HaRepacker.GUI.Panels {
         /// <typeparam name="T">The type containing the property</typeparam>
         /// <param name="obj">The object containing the property</param>
         /// <param name="propertySelector">A lambda expression to select the property</param>
-        public void ChangeReadOnlyAttribute<T>(bool bSet, T obj, Expression<Func<T, bool>> boolPropertyReadOnlySelector, Expression<Func<T, object>> setPropertySelector) {
-            // changing attribute does not update the UI state
+        public void ChangeReadOnlyAttribute<T>(bool bSet, T obj, Expression<Func<T, bool>> boolPropertyReadOnlySelector, Expression<Func<T, object>> setPropertySelector)
+        {
+            // Get the property name for the setter
             string setPropertyName = GetPropertyName(setPropertySelector);
+
+            // Get the property descriptor
             PropertyDescriptor descriptor = TypeDescriptor.GetProperties(typeof(T))[setPropertyName];
-            ReadOnlyAttribute attribute = (ReadOnlyAttribute)descriptor.Attributes[typeof(ReadOnlyAttribute)];
 
-            FieldInfo isReadOnlyField = typeof(ReadOnlyAttribute).GetField("isReadOnly", BindingFlags.NonPublic | BindingFlags.Instance);
-            //System.Diagnostics.Debug.WriteLine("From: " +attribute.IsReadOnly);
-            isReadOnlyField.SetValue(attribute, bSet);
-            //System.Diagnostics.Debug.WriteLine("To: " + attribute.IsReadOnly);
+            // Handle ReadOnlyAttribute
+            var readOnlyAttribute = descriptor.Attributes[typeof(ReadOnlyAttribute)] as ReadOnlyAttribute;
+            if (readOnlyAttribute != null)
+            {
+                // Create a new ReadOnlyAttribute with the desired value
+                var newReadOnlyAttribute = new ReadOnlyAttribute(bSet);
 
-            BrowsableAttribute browsableAttribute = (BrowsableAttribute)descriptor.Attributes[typeof(BrowsableAttribute)];
-            FieldInfo isBrowsableField = typeof(BrowsableAttribute).GetField("browsable", BindingFlags.NonPublic | BindingFlags.Instance);
-            isBrowsableField.SetValue(browsableAttribute, !bSet);
+                // Replace the old attribute with the new one
+                ReplaceAttribute(descriptor, newReadOnlyAttribute);
+            }
 
-            // Get the property
+            // Handle BrowsableAttribute
+            var browsableAttribute = descriptor.Attributes[typeof(BrowsableAttribute)] as BrowsableAttribute;
+            if (browsableAttribute != null)
+            {
+                // Create a new BrowsableAttribute with the inverse of bSet
+                var newBrowsableAttribute = new BrowsableAttribute(!bSet);
+
+                // Replace the old attribute with the new one
+                ReplaceAttribute(descriptor, newBrowsableAttribute);
+            }
+
+            // Get the property info for the boolean property
             PropertyInfo propInfo = ((MemberExpression)boolPropertyReadOnlySelector.Body).Member as PropertyInfo;
 
             // Update the boolean property
             propInfo.SetValue(obj, bSet);
-
-            // Note: OnPropertyChanged is called within the property setter, so we don't need to call it here
         }
 
-        private string GetPropertyName<T>(Expression<Func<T, object>> propertySelector) {
-            if (propertySelector.Body is MemberExpression memberExpression) {
+        private void ReplaceAttribute(PropertyDescriptor descriptor, Attribute newAttribute)
+        {
+            var attributes = new AttributeCollection(
+                descriptor.Attributes.Cast<Attribute>()
+                                     .Where(a => a.GetType() != newAttribute.GetType())
+                                     .Append(newAttribute)
+                                     .ToArray());
+
+            var field = typeof(PropertyDescriptor).GetField("attributeArray", BindingFlags.NonPublic | BindingFlags.Instance);
+            field?.SetValue(descriptor, attributes);
+        }
+
+        private string GetPropertyName<T>(Expression<Func<T, object>> expression)
+        {
+            if (expression.Body is MemberExpression memberExpression)
+            {
                 return memberExpression.Member.Name;
             }
-            else if (propertySelector.Body is UnaryExpression unaryExpression) {
-                return ((MemberExpression)unaryExpression.Operand).Member.Name;
+            else if (expression.Body is UnaryExpression unaryExpression &&
+                     unaryExpression.Operand is MemberExpression operandExpression)
+            {
+                return operandExpression.Member.Name;
             }
-
-            throw new ArgumentException("Invalid property selector", nameof(propertySelector));
+            throw new ArgumentException("Invalid expression", nameof(expression));
         }
 
         #region Events

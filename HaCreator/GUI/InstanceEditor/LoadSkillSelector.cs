@@ -37,7 +37,6 @@ using System.Threading;
 using System.Windows.Threading;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
-using Microsoft.Build.Framework.XamlTypes;
 
 namespace HaCreator.GUI.InstanceEditor
 {
