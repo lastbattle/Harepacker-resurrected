@@ -11,6 +11,10 @@ A collection of tools for MapleStory, including a .wz file and level/field/map e
 
 ----
 
+.NET 4.8.1. 
+This branch is no longer supported, it is only for archival purposes.
+
+
 ## Project contents
 * HaCreator - MapleStory level editor
 * HaRepacker - MapleStory .wz file editor
