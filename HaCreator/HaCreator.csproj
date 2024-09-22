@@ -78,10 +78,6 @@
     <GenerateManifests>true</GenerateManifests>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Build.Framework" />
-    <Reference Include="system.windows.controls.ribbon, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Update="CustomControls\WatermarkTextBox.cs">
       <SubType>Component</SubType>
     </Compile>
