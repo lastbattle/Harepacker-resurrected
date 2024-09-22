@@ -76,7 +76,7 @@ namespace HaRepacker.GUI
             this.xMLToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.rawDataToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.imgToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-            this.nXForamtToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.nXFormatToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.exportDataToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.xMLToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
             this.privateServerToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -406,7 +406,7 @@ namespace HaRepacker.GUI
             this.xMLToolStripMenuItem,
             this.rawDataToolStripMenuItem,
             this.imgToolStripMenuItem,
-            this.nXForamtToolStripMenuItem});
+            this.nXFormatToolStripMenuItem});
             this.exportFilesToXMLToolStripMenuItem.Image = global::HaRepacker.Properties.Resources.folder_go;
             this.exportFilesToXMLToolStripMenuItem.Name = "exportFilesToXMLToolStripMenuItem";
             resources.ApplyResources(this.exportFilesToXMLToolStripMenuItem, "exportFilesToXMLToolStripMenuItem");
@@ -429,11 +429,11 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.imgToolStripMenuItem, "imgToolStripMenuItem");
             this.imgToolStripMenuItem.Click += new System.EventHandler(this.imgToolStripMenuItem_Click);
             // 
-            // nXForamtToolStripMenuItem
+            // nXFormatToolStripMenuItem
             // 
-            this.nXForamtToolStripMenuItem.Name = "nXForamtToolStripMenuItem";
-            resources.ApplyResources(this.nXForamtToolStripMenuItem, "nXForamtToolStripMenuItem");
-            this.nXForamtToolStripMenuItem.Click += new System.EventHandler(this.nXForamtToolStripMenuItem_Click);
+            this.nXFormatToolStripMenuItem.Name = "nXFormatToolStripMenuItem";
+            resources.ApplyResources(this.nXFormatToolStripMenuItem, "nXFormatToolStripMenuItem");
+            this.nXFormatToolStripMenuItem.Click += new System.EventHandler(this.nXFormatToolStripMenuItem_Click);
             // 
             // exportDataToolStripMenuItem
             // 
@@ -715,7 +715,7 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator9;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator8;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator7;
-        private System.Windows.Forms.ToolStripMenuItem nXForamtToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem nXFormatToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_newWzFormat;
         private System.Windows.Forms.ToolStripMenuItem fHMappingToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem renderMapToolStripMenuItem;

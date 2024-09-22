@@ -498,11 +498,11 @@
   <data name="imgToolStripMenuItem.Text" xml:space="preserve">
     <value>IMG</value>
   </data>
-  <data name="nXForamtToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
+  <data name="nXFormatToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>172, 22</value>
   </data>
-  <data name="nXForamtToolStripMenuItem.Text" xml:space="preserve">
-    <value>NXForamt</value>
+  <data name="nXFormatToolStripMenuItem.Text" xml:space="preserve">
+    <value>NXFormat</value>
   </data>
   <data name="exportDataToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>168, 22</value>
@@ -2693,10 +2693,10 @@
   <data name="&gt;&gt;imgToolStripMenuItem.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="&gt;&gt;nXForamtToolStripMenuItem.Name" xml:space="preserve">
-    <value>nXForamtToolStripMenuItem</value>
+  <data name="&gt;&gt;nXFormatToolStripMenuItem.Name" xml:space="preserve">
+    <value>nXFormatToolStripMenuItem</value>
   </data>
-  <data name="&gt;&gt;nXForamtToolStripMenuItem.Type" xml:space="preserve">
+  <data name="&gt;&gt;nXFormatToolStripMenuItem.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;exportDataToolStripMenuItem.Name" xml:space="preserve">
