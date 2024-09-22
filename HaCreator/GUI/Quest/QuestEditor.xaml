@@ -428,6 +428,93 @@
                 <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
             </StackPanel>
         </DataTemplate>
+        
+        <!-- SP -->
+        <DataTemplate x:Key="ActSpTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SP}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="7*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="20"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Skill level-->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="0" Margin="2,0,10,5" Height="25">
+                                    <TextBlock Text="SP amount:" Width="100"/>
+                                    <TextBox Text="{Binding SPValue, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="1">
+                                    <TextBlock Text="Given to jobs:" Margin="0,0,10,5"/>
+
+                                    <ListBox ItemsSource="{Binding Jobs, Mode=TwoWay}" 
+                                                 MinHeight="30" >
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition MinWidth="100" Width="5*"/>
+                                                        <ColumnDefinition MinWidth="200" Width="5*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                                             InputScope="Number" IsReadOnly="True"
+                                                             Margin="0,0,0,0"
+                                                             Grid.Column="0"/>
+
+                                                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                        <TextBlock Text="["/>
+                                                        <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                        <TextBlock Text="]" Margin="2,0,0,0"/>
+                                                    </StackPanel>
+
+                                                    <Button x:Name="button_removeSPJob" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15"
+                                                            VerticalAlignment="Top" 
+                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                            Click="button_removeSPJob_Click"
+                                                            />
+                                                </Grid>
+                                            </DataTemplate>
+
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <Button x:Name="button_addSPJob" Content="Add job"
+                                            Width="100" Height="20" 
+                                            VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                            Click="button_addSPJob_Click"
+                                            />
+                                </StackPanel>
+
+
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
+                                      Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" 
+                                      Margin="0,0,0,0"/>
+
+                                <Button x:Name="button_removeSP" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeSP_Click"
+                            />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddSP" Content="Add SP" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectAddSP_Click"/>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Skill -->
         <DataTemplate x:Key="ActSkillTemplate">
@@ -1065,6 +1152,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Skill}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSkillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Sp}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSpTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Job}">
                     <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActJobTemplate}"/>

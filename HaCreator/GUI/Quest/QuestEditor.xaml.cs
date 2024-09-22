@@ -395,7 +395,7 @@ namespace HaCreator.GUI.Quest
                                 int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0; // TODO
                                 int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
                                 int prop = (itemProp["prop"] as WzIntProperty)?.GetInt() ?? 0;
-                                int gender = (itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2; // 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
+                                int gender = (itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2; // TODO 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
 
                                 if (itemId != 0)
                                 {
@@ -675,6 +675,31 @@ namespace HaCreator.GUI.Quest
                              * </imgdir>
                              * </imgdir>
                              */
+                            var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.Sp, questActs);
+
+                            foreach (WzImageProperty spItem in actTypeProp.WzProperties)
+                            {
+                                int sp_value = (spItem["sp_value"] as WzIntProperty)?.GetInt() ?? 0;
+
+                                if (sp_value == 0)
+                                    continue;
+
+                                QuestEditorActSpModel spModel = new QuestEditorActSpModel()
+                                {
+                                    SPValue = sp_value,
+                                };
+                                foreach (WzImageProperty jobProp in spItem["job"].WzProperties)
+                                {
+                                    int jobId = (jobProp as WzIntProperty)?.GetInt() ?? 0;
+
+                                    QuestEditorActSkillModelJobIdWrapper jobModel = new QuestEditorActSkillModelJobIdWrapper()
+                                    {
+                                        JobId = jobId
+                                    };
+                                    spModel.Jobs.Add(jobModel);
+                                }
+                                firstAct.SP.Add(spModel);
+                            }
                             break;
                         }
                     case "job":
@@ -1704,6 +1729,83 @@ namespace HaCreator.GUI.Quest
                         JobId = (int)selectedJob
                     });
                 }
+            }
+        }
+
+        /// <summary>
+        /// Add sp for 'sp'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_selectAddSP_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questModel = button.DataContext as QuestEditorActInfoModel;
+
+            if (questModel != null)
+            {
+                questModel.SP.Add(new QuestEditorActSpModel()
+                {
+                    SPValue = 1
+                });
+            }
+        }
+
+        /// <summary>
+        /// Remove sp for 'sp'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeSP_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorActInfoModel;
+            QuestEditorActSpModel spModel = button.DataContext as QuestEditorActSpModel;
+
+            if (questModel.SP.Contains(spModel))
+            {
+                questModel.SP.Remove(spModel);
+            }
+        }
+
+        /// <summary>
+        /// Add sp job for 'sp'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addSPJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            QuestEditorActSpModel spModel = button.DataContext as QuestEditorActSpModel;
+
+            LoadJobSelector skillSelector = new LoadJobSelector();
+            skillSelector.ShowDialog();
+            CharacterJob selectedJob = skillSelector.SelectedJob;
+            if (selectedJob != CharacterJob.None)
+            {
+                spModel.Jobs.Add(new QuestEditorActSkillModelJobIdWrapper()
+                {
+                    JobId = (int)selectedJob
+                });
+            }
+        }
+
+        /// <summary>
+        /// Remove sp job for 'sp'
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeSPJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var jobModel = button.DataContext as QuestEditorActSkillModelJobIdWrapper;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorActSpModel;
+
+            if (questModel.Jobs.Contains(jobModel))
+            {
+                questModel.Jobs.Remove(jobModel);
             }
         }
         #endregion

@@ -38,6 +38,7 @@ namespace HaCreator.GUI.Quest
         FieldEnter,
         Skill,
         Job,
+        Sp,
 
         Message_Map,
 
