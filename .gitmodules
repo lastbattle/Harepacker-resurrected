@@ -4,3 +4,6 @@
 [submodule "MapleLib"]
 	path = MapleLib
 	url = https://github.com/lastbattle/MapleLib
+[submodule "dockpanelsuite"]
+	path = dockpanelsuite
+	url = https://github.com/lastbattle/dockpanelsuiteCore
