@@ -4,3 +4,4 @@
 [submodule "MapleLib"]
 	path = MapleLib
 	url = https://github.com/lastbattle/MapleLib
+	branch = dotnet_4.8
