@@ -1971,7 +1971,7 @@ namespace HaCreator.GUI.Quest
                                 actSubItemRewardProperty.AddProperty(new WzIntProperty("id", reward.ItemId)); // id
                                 actSubItemRewardProperty.AddProperty(new WzIntProperty("count", reward.Quantity)); // count
 
-                                if (reward.ExpireDate != null) // date expire
+                                if (reward.ExpireDate != DateTime.MinValue) // date expire none = {1/1/0001 12:00:00 AM}
                                 {
                                     WzStringProperty strDateProp = new WzStringProperty("dateExpire", "0");
                                     strDateProp.SetDateValue(reward.ExpireDate);

@@ -119,7 +119,7 @@ namespace HaCreator.GUI.Quest
         private DateTime _expireDate;
         /// <summary>
         /// The expiry date of the item. "2009012300"
-        /// TODO
+        /// None = {1/1/0001 12:00:00 AM},
         /// </summary>
         public DateTime ExpireDate
         {
@@ -134,7 +134,6 @@ namespace HaCreator.GUI.Quest
         private int _job;
         /// <summary>
         /// The job group that the item is for <int name="job" value="32"/>
-        /// TODO
         /// </summary>
         public int Job
         {
