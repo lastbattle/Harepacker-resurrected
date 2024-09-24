@@ -406,7 +406,8 @@ namespace HaCreator.GUI.Quest
                 return;
 
             var collection = sender as ObservableCollection<QuestEditorSayModel>;
-
+            if (collection == null)
+                return;
             if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
             {
                 if (e.NewItems.Count == 0)
