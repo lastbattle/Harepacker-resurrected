@@ -155,6 +155,12 @@
                 <x:Type TypeName="local:QuestEditorActInfoRewardPropTypeModel"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <ObjectDataProvider x:Key="RewardGenderTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:CharacterGenderType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
         <!-- Data template for pet skill enum-->
         <ObjectDataProvider x:Key="PetSkillTypeEnum" MethodName="GetValues"
                         ObjectType="{x:Type sys:Enum}">
@@ -1045,7 +1051,7 @@
                                     </StackPanel>
                                 </StackPanel>
                                 
-                                <!-- Potential, prop -->
+                                <!-- Potential, prop, gender -->
                                 <StackPanel Orientation="Horizontal" 
                                             Grid.Column="1" Grid.Row="1"
                                             HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -1054,6 +1060,14 @@
                                     <ComboBox x:Name="comboBox_itemPropType" 
                                               ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"  
                                               SelectedItem="{Binding Prop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              >
+                                    </ComboBox>
+
+                                    <TextBlock Text="Gender:" Margin="20,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="comboBox_itemGenderType" 
+                                              ItemsSource="{Binding Source={StaticResource RewardGenderTypeEnum}}"  
+                                              SelectedItem="{Binding Gender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               >
                                     </ComboBox>
 

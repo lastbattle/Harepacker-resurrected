@@ -356,7 +356,7 @@ namespace HaCreator.GUI.Quest
                                 int jobEx = (itemProp["jobEx"] as WzIntProperty)?.GetInt() ?? 0; // TODO
                                 int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
                                 int prop = (itemProp["prop"] as WzIntProperty)?.GetInt() ?? 0;
-                                int gender = (itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2; // TODO 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
+                                CharacterGenderType gender = (CharacterGenderType)((itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2); // 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
 
                                 if (itemId != 0)
                                 {
@@ -397,6 +397,7 @@ namespace HaCreator.GUI.Quest
                                         JobEx = jobEx,
                                         Period = period,
                                         Prop = propType,
+                                        Gender = gender,
                                     };
                                     if (dateExpireProp != null)
                                     {
@@ -2000,10 +2001,10 @@ namespace HaCreator.GUI.Quest
                                     actSubItemRewardProperty.AddProperty(new WzIntProperty("prop", (int)reward.Prop));
                                 }
 
-                                //if (gender != 2)
-                                actSubItemRewardProperty.AddProperty(new WzIntProperty("gender", 2)); // TODO
-
-
+                                if (reward.Gender != CharacterGenderType.Both)
+                                {
+                                    actSubItemRewardProperty.AddProperty(new WzIntProperty("gender", (int)reward.Gender));
+                                }
                                 i++;
                             }
                             break;

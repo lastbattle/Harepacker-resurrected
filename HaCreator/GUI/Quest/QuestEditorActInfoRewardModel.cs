@@ -1,4 +1,5 @@
-﻿using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+﻿using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -89,7 +90,6 @@ namespace HaCreator.GUI.Quest
         private QuestEditorActInfoPotentialType _potentialGrade;
         /// <summary>
         /// The potential grade of the item. "노멀" = normal, "레어" = rare, Epic 에픽, Unique 유니크, Legendary 레전드리
-        /// TODO
         /// </summary>
         public QuestEditorActInfoPotentialType PotentialGrade
         {
@@ -98,6 +98,21 @@ namespace HaCreator.GUI.Quest
             {
                 this._potentialGrade = value;
                 OnPropertyChanged(nameof(PotentialGrade));
+            }
+        }
+
+        private CharacterGenderType _gender;
+        /// <summary>
+        /// The character gender used in WZ and client.
+        /// 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
+        /// </summary>
+        public CharacterGenderType Gender
+        {
+            get { return _gender; }
+            set
+            {
+                this._gender = value;
+                OnPropertyChanged(nameof(Gender));
             }
         }
 
