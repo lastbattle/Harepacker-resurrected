@@ -180,7 +180,8 @@ namespace HaRepacker
             }
             if (disposeFiles)
             {
-                WzFileManager.Dispose();
+                if (WzFileManager != null)
+                    WzFileManager.Dispose();
             }
             _ConfigurationManager.Save();
         }
