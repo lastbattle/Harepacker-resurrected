@@ -444,6 +444,11 @@ namespace HaRepacker.GUI
                 customWzInputBox.ShowDialog();
                 selectedEncryption.Name = string.Format(Properties.Resources.EncTypeCustom, Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName);
                 _handlingCustomEncryptionChange = false;
+            } 
+            else if (selectedEncryption.MapleVersion == WzMapleVersion.GENERATE)
+            {
+                WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
+                bfForm.ShowDialog(); // find needles in a haystack
             }
             else
             {
@@ -759,161 +764,6 @@ namespace HaRepacker.GUI
         }
         #endregion
 
-        #region WZ IV Key bruteforcing
-        private ulong wzKeyBruteforceTries = 0;
-        private DateTime wzKeyBruteforceStartTime = DateTime.Now;
-        private bool wzKeyBruteforceCompleted = false;
-
-        private System.Timers.Timer aTimer_wzKeyBruteforce = null;
-
-        /// <summary>
-        /// Find needles in a haystack o_O
-        /// </summary>
-        /// <param name="currentDispatcher"></param>
-        private void StartWzKeyBruteforcing(Dispatcher currentDispatcher)
-        {
-            // Generate WZ keys via a test WZ file
-            using (OpenFileDialog dialog = new OpenFileDialog()
-            {
-                Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|TamingMob.wz", HaRepacker.Properties.Resources.WzFilter), // Use the smallest possible file
-                Multiselect = false
-            })
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                // Show splash screen
-                MainPanel.OnSetPanelLoading(currentDispatcher);
-                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Visible);
-
-
-                // Reset variables
-                wzKeyBruteforceTries = 0;
-                wzKeyBruteforceStartTime = DateTime.Now;
-                wzKeyBruteforceCompleted = false;
-
-
-                int processorCount = Environment.ProcessorCount * 3; // 8 core = 16 (with ht, smt) , multiply by 3 seems to be the magic number. it falls off after 4
-                List<int> cpuIds = new List<int>();
-                for (int cpuId_ = 0; cpuId_ < processorCount; cpuId_++)
-                {
-                    cpuIds.Add(cpuId_);
-                }
-
-                // UI update thread
-                if (aTimer_wzKeyBruteforce != null)
-                {
-                    aTimer_wzKeyBruteforce.Stop();
-                    aTimer_wzKeyBruteforce = null;
-                }
-                aTimer_wzKeyBruteforce = new System.Timers.Timer();
-                aTimer_wzKeyBruteforce.Elapsed += new ElapsedEventHandler(OnWzIVKeyUIUpdateEvent);
-                aTimer_wzKeyBruteforce.Interval = 5000;
-                aTimer_wzKeyBruteforce.Enabled = true;
-
-
-                // Key finder thread
-                Task.Run(() =>
-                {
-                    Thread.Sleep(3000); // delay 3 seconds before starting
-
-                    var parallelOption = new ParallelOptions
-                    {
-                        MaxDegreeOfParallelism = processorCount,
-                    };
-                    ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
-                    {
-                        WzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
-                    });
-                });
-            }
-        }
-
-        /// <summary>
-        /// UI Updating thread
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="e"></param>
-        private void OnWzIVKeyUIUpdateEvent(object source, ElapsedEventArgs e)
-        {
-            if (aTimer_wzKeyBruteforce == null)
-                return;
-            if (wzKeyBruteforceCompleted)
-            {
-                aTimer_wzKeyBruteforce.Stop();
-                aTimer_wzKeyBruteforce = null;
-
-                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
-            }
-
-            MainPanel.loadingPanel.WzIvKeyDuration = DateTime.Now.Ticks - wzKeyBruteforceStartTime.Ticks;
-            MainPanel.loadingPanel.WzIvKeyTries = wzKeyBruteforceTries;
-        }
-
-        /// <summary>
-        /// Internal compute task for figuring out the WzKey automaticagically 
-        /// </summary>
-        /// <param name="cpuId_"></param>
-        /// <param name="processorCount"></param>
-        /// <param name="dialog"></param>
-        /// <param name="currentDispatcher"></param>
-        private void WzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
-        {
-            int cpuId = cpuId_;
-
-            // try bruteforce keys
-            const long startValue = int.MinValue;
-            const long endValue = int.MaxValue;
-
-            long lookupRangePerCPU = (endValue - startValue) / processorCount;
-
-            Debug.WriteLine("CPUID {0}. Looking up from {1} to {2}. [Range = {3}]  TEST: {4} {5}",
-                cpuId,
-                (startValue + (lookupRangePerCPU * cpuId)),
-                (startValue + (lookupRangePerCPU * (cpuId + 1))),
-                lookupRangePerCPU,
-                (lookupRangePerCPU * cpuId), (lookupRangePerCPU * (cpuId + 1)));
-
-            for (long i = (startValue + (lookupRangePerCPU * cpuId)); i < (startValue + (lookupRangePerCPU * (cpuId + 1))); i++)  // 2 bill key pairs? o_O
-            {
-                if (wzKeyBruteforceCompleted)
-                    break;
-
-                byte[] bytes = new byte[4];
-                unsafe
-                {
-                    fixed (byte* pbytes = &bytes[0])
-                    {
-                        *(int*)pbytes = (int)i;
-                    }
-                }
-                bool tryDecrypt = WzTool.TryBruteforcingWzIVKey(dialog.FileName, bytes);
-                //Debug.WriteLine("{0} = {1}", cpuId, HexTool.ToString(new PacketWriter(bytes).ToArray()));
-                if (tryDecrypt)
-                {
-                    wzKeyBruteforceCompleted = true;
-
-                    // Hide panel splash sdcreen
-                    Action action = () =>
-                    {
-                        MainPanel.OnSetPanelLoadingCompleted(currentDispatcher);
-                        MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
-                    };
-                    currentDispatcher.BeginInvoke(action);
-
-
-                    PacketWriter writer = new PacketWriter(4);
-                    writer.WriteBytes(bytes);
-                    MessageBox.Show("Found the encryption key to the WZ file:\r\n" + HexTool.ToString(writer.ToArray()), "Success");
-                    Debug.WriteLine("Found key. Key = " + HexTool.ToString(writer.ToArray()));
-
-                    break;
-                }
-                wzKeyBruteforceTries++;
-            }
-        }
-        #endregion
 
         #region Open WZ File
         private async void OpenFileInternal(string[] fileNames) {
@@ -1002,7 +852,8 @@ namespace HaRepacker.GUI
                     }
                     else {
                         if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
-                            StartWzKeyBruteforcing(currentDispatcher); // find needles in a haystack
+                            WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
+                            bfForm.ShowDialog(); // find needles in a haystack
                             return;
                         }
 

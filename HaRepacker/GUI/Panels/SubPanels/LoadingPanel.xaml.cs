@@ -58,42 +58,6 @@ namespace HaRepacker.GUI.Panels.SubPanels
             //imageController.Pause();
         }
 
-        /// <summary>
-        /// Sets the visibility for the stats on wzIv bruteforcing
-        /// </summary>
-        /// <param name="visibility"></param>
-        public void SetWzIvBruteforceStackpanelVisiblity(Visibility visibility)
-        {
-            stackPanel_wzIvBruteforceStat.Dispatcher.BeginInvoke(new Action(() =>
-            {
-                stackPanel_wzIvBruteforceStat.Visibility = visibility;
-            }));
-        }
-
-        #region Exported Fields
-        private ulong _WzIvKeyTries = 0;
-        public ulong WzIvKeyTries
-        {
-            get { return _WzIvKeyTries; }
-            set
-            {
-                _WzIvKeyTries = value;
-                OnPropertyChanged("WzIvKeyTries");
-            }
-        }
-
-        private long _WzIvKeyDuration = 0; // number of ticks
-        public long WzIvKeyDuration
-        {
-            get { return _WzIvKeyDuration; }
-            set
-            {
-                _WzIvKeyDuration = value;
-                OnPropertyChanged("WzIvKeyDuration");
-            }
-        }
-        #endregion
-
 
         #region PropertyChanged
         /// <summary>

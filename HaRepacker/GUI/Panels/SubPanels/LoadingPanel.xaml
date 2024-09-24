@@ -30,28 +30,8 @@
                gif:ImageBehavior.AnimationLoaded="ImageLoadingGif_AnimationLoaded"
                gif:ImageBehavior.RepeatBehavior="Forever"
                gif:ImageBehavior.AnimatedSource="../../../Resources/loading.gif"></Image>
-        
+
         <TextBlock Text="{x:Static p:Resources.Subpanel_Loading}" FontSize="25" Foreground="Black" 
                    Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Roboto Mono Medium"/>
-
-        <!-- wzIv-->
-        <StackPanel x:Name="stackPanel_wzIvBruteforceStat"
-                    Visibility="Collapsed"
-            Orientation="Vertical" 
-            Grid.Row="0"
-            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="30">
-            <TextBlock Text="Wz IV Key bruteforcer"/>
-
-            <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
-                <TextBlock Text="Keys tested: " Foreground="Gray"/>
-                <TextBlock Text="{Binding WzIvKeyTries, Converter={StaticResource integerULongCommasConverter}}"  Foreground="Gray"/>
-                <TextBlock Text="/ " Foreground="Gray"/>
-                <TextBlock Text="4,294,967,294" Foreground="Gray"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="10,0,0,0">
-                <TextBlock Text="Duration: "  Foreground="Gray"/>
-                <TextBlock Text="{Binding WzIvKeyDuration, Converter={StaticResource ticksToRelativeTimeConverter}}"  Foreground="Gray"/>
-            </StackPanel>
-        </StackPanel>
     </Grid>
 </UserControl>

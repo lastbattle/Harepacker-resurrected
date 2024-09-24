@@ -75,6 +75,9 @@
     <Compile Update="GUI\Input\IntegerInput.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Update="GUI\WzKeyBruteforceForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Update="TreeViewMS.cs">
       <SubType>Component</SubType>
     </Compile>
