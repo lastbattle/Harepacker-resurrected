@@ -40,7 +40,18 @@ namespace HaRepacker.GUI
         {
             InitializeComponent();
 
+            FormClosed += WzKeyBruteforceForm_FormClosed;
+
             bIsLoaded = true;
+        }
+
+        private void WzKeyBruteforceForm_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            if (t_runningTask != null)
+            {
+                _cts.Cancel();
+                wzKeyBruteforceCompleted = true;
+            }
         }
 
         /// <summary>
@@ -66,6 +77,9 @@ namespace HaRepacker.GUI
         }
 
         #region WZ IV Key bruteforcing
+        private Task t_runningTask = null;
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
         private ulong wzKeyBruteforceTries = 0;
         private DateTime wzKeyBruteforceStartTime = DateTime.Now;
         private bool wzKeyBruteforceCompleted = false;
@@ -120,7 +134,7 @@ namespace HaRepacker.GUI
 
 
                 // Key finder thread
-                Task.Run(() =>
+                t_runningTask = Task.Run(() =>
                 {
                     Thread.Sleep(1000); // delay 3 seconds before starting
 
@@ -132,7 +146,7 @@ namespace HaRepacker.GUI
                     {
                         WzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
                     });
-                });
+                }, _cts.Token);
             }
         }
 
