@@ -36,6 +36,7 @@ namespace HaCreator.CustomControls
         /// </summary>
         public ThumbnailFlowLayoutPanel()
         {
+            InitializeComponent();
         }
 
         protected override Point ScrollToControl(Control activeControl)
@@ -43,7 +44,7 @@ namespace HaCreator.CustomControls
             return this.AutoScrollPosition;
         }
 
-        public ImageViewer Add(Bitmap bitmap, String name, bool Text)
+        public ImageViewer Add(Bitmap bitmap, string name, bool Text)
         {
             ImageViewer imageViewer = new ImageViewer();
             imageViewer.Dock = DockStyle.Left;
@@ -64,11 +65,17 @@ namespace HaCreator.CustomControls
             }
             imageViewer.IsText = Text;
             imageViewer.Name = name;
-            imageViewer.IsThumbnail = false;
+            imageViewer.IsThumbnail = true;
+            //imageViewer.Visible = true;
 
             Controls.Add(imageViewer);
 
             return imageViewer;
+        }
+
+        public void Remove(ImageViewer imageViewer)
+        {
+            Controls.Remove(imageViewer);
         }
 
         private void InitializeComponent()
@@ -77,8 +84,11 @@ namespace HaCreator.CustomControls
             // 
             // ThumbnailFlowLayoutPanel
             // 
+            this.Dock = System.Windows.Forms.DockStyle.Fill;
             this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            this.WrapContents = false;
             this.ResumeLayout(false);
+
         }
     }
 }

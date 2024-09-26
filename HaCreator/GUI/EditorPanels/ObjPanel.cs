@@ -14,7 +14,10 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+
 using System.Windows.Forms;
+using System.Xml.Linq;
+using Xceed.Wpf.AvalonDock.Controls;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -22,12 +25,19 @@ namespace HaCreator.GUI.EditorPanels
     {
         private HaCreatorStateManager hcsm;
 
+        // ContextMenuStrip for the 'obj'
+        private readonly ContextMenuStrip contextMenu_delete = new ContextMenuStrip();
+
         /// <summary>
         /// Constructor
         /// </summary>
         public ObjPanel()
         {
             InitializeComponent();
+
+            ToolStripMenuItem deleteItem = new ToolStripMenuItem("Delete");
+            deleteItem.Click += DeleteItem_Click;
+            contextMenu_delete.Items.Add(deleteItem);
         }
 
         /// <summary>
@@ -58,7 +68,7 @@ namespace HaCreator.GUI.EditorPanels
         /// <param name="e"></param>
         private void objSetListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (objSetListBox.SelectedItem == null) 
+            if (objSetListBox.SelectedItem == null)
                 return;
 
             objL0ListBox.Items.Clear();
@@ -96,7 +106,7 @@ namespace HaCreator.GUI.EditorPanels
             foreach (WzImageProperty l1Prop in l0Prop.WzProperties)
             {
                 objL1ListBox.Items.Add(l1Prop.Name);
-            }            
+            }
             // select the first item automatically
             if (objL1ListBox.Items.Count > 0)
             {
@@ -157,10 +167,18 @@ namespace HaCreator.GUI.EditorPanels
                 {
                     return;
                 }
-                hcsm.EnterEditMode(ItemTypes.Objects);
-                hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((ObjectInfo)((ImageViewer)sender).Tag);
-                hcsm.MultiBoard.Focus();
-                ((ImageViewer)sender).IsActive = true;
+                if (e.Button == MouseButtons.Right) // context menu when right clicked
+                {
+                    // Show context menu for delete option
+                    ShowDeleteContextMenu((ImageViewer)sender, e.Location);
+                }
+                else if (e.Button == MouseButtons.Left)
+                {
+                    hcsm.EnterEditMode(ItemTypes.Objects);
+                    hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((ObjectInfo)((ImageViewer)sender).Tag);
+                    hcsm.MultiBoard.Focus();
+                    ((ImageViewer)sender).IsActive = true;
+                }
             }
         }
 
@@ -203,53 +221,29 @@ namespace HaCreator.GUI.EditorPanels
                         ObjectInfo newObjectInfo;
                         WzImageProperty newL2Prop_;
 
-                        bool bAnimated = false;
-                        if (bAnimated)  // if its canvas property, its 1 frame, otherwise its animated
-                        {
-                            // Create a new WzSubProperty for the L2 object
-                            WzCanvasProperty newL2Prop = new WzCanvasProperty("0");
-                            newL2Prop.PngProperty = new WzPngProperty();
-                            newL2Prop.PngProperty.PNG = newImage;
-                            newL2Prop_ = newL2Prop;
+                        // Create a new WzSubProperty for the L2 object
+                        WzSubProperty newL2Prop = new WzSubProperty(newObjL2Name);
 
-                            // Add the new L2 property to the L1 property
-                            l1Prop.WzProperties.Add(newL2Prop);
+                        // Add necessary properties to the new L2 object
+                        newL2Prop["z"] = new WzIntProperty("z", 0); // Default z-index
+                        WzCanvasProperty canvasProp = new WzCanvasProperty("0");
+                        canvasProp.PngProperty = new WzPngProperty();
+                        canvasProp.PngProperty.PNG = newImage;
+                        newL2Prop["0"] = canvasProp;
 
-                            // there's no fixed place or consistency in the WZ
-                            // sometimes its at the top-center
-                            // sometimes bottom-left or bottom-right
-                            // it depends on nexon-devs, better off making this automatic for the user.
-                            Point point = new Point(newImage.Width / 2, newImage.Height); // set at bottom-center
+                        newL2Prop_ = newL2Prop;
 
-                            // Create a new ObjectInfo
-                            newObjectInfo = new ObjectInfo(newImage, point, objSetName, l0Name, l1Name, newObjL2Name, newL2Prop);
-                        }
-                        else
-                        {
-                            // Create a new WzSubProperty for the L2 object
-                            WzSubProperty newL2Prop = new WzSubProperty(newObjL2Name);
+                        // Add the new L2 property to the L1 property
+                        l1Prop.WzProperties.Add(newL2Prop);
 
-                            // Add necessary properties to the new L2 object
-                            newL2Prop["z"] = new WzIntProperty("z", 0); // Default z-index
-                            WzCanvasProperty canvasProp = new WzCanvasProperty("0");
-                            canvasProp.PngProperty = new WzPngProperty();
-                            canvasProp.PngProperty.PNG = newImage;
-                            newL2Prop["0"] = canvasProp;
+                        // there's no fixed place or consistency in the WZ
+                        // sometimes its at the top-center
+                        // sometimes bottom-left or bottom-right
+                        // it depends on nexon-devs, better off making this automatic for the user.
+                        Point point = new Point(newImage.Width / 2, newImage.Height); // set at bottom-center
 
-                            newL2Prop_ = newL2Prop;
-
-                            // Add the new L2 property to the L1 property
-                            l1Prop.WzProperties.Add(newL2Prop);
-
-                            // there's no fixed place or consistency in the WZ
-                            // sometimes its at the top-center
-                            // sometimes bottom-left or bottom-right
-                            // it depends on nexon-devs, better off making this automatic for the user.
-                            Point point = new Point(newImage.Width / 2, newImage.Height); // set at bottom-center
-
-                            // Create a new ObjectInfo
-                            newObjectInfo = new ObjectInfo(newImage, point, objSetName, l0Name, l1Name, newObjL2Name, newL2Prop);
-                        }
+                        // Create a new ObjectInfo
+                        newObjectInfo = new ObjectInfo(newImage, point, objSetName, l0Name, l1Name, newObjL2Name, newL2Prop);
 
                         // Add the new image to the objImagesContainer
                         ImageViewer newItem = objImagesContainer.Add(newImage, newObjL2Name, true);
@@ -291,6 +285,52 @@ namespace HaCreator.GUI.EditorPanels
                 counter++;
             }
             return counter.ToString();
+        }
+
+        /// <summary>
+        /// Delete context menu
+        /// </summary>
+        /// <param name="item"></param>
+        /// <param name="location"></param>
+        private void ShowDeleteContextMenu(ImageViewer item, Point location)
+        {
+            contextMenu_delete.Show(item, location);
+        }
+
+        /// <summary>
+        /// Event handler for the Delete menu item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void DeleteItem_Click(object sender, EventArgs e)
+        {
+            ImageViewer selectedItem = contextMenu_delete.SourceControl as ImageViewer;
+            if (selectedItem != null)
+            {
+                // delete off cached obj
+                ObjectInfo objInfo = (ObjectInfo) selectedItem.Tag;
+
+                WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1];
+
+                if (l1Prop != null)
+                {
+                    WzImageProperty removeL2Prop = l1Prop[objInfo.l2];
+
+                    if (l1Prop.WzProperties.Contains(removeL2Prop))
+                    {
+                        l1Prop.WzProperties.Remove(removeL2Prop);
+
+                        // Perform delete operation
+                        objImagesContainer.Remove(selectedItem);
+                        selectedItem.Dispose();
+
+                        // flag WZ files changed to save it
+                        WzObject topMostWzDir = l1Prop.GetTopMostWzDirectory();
+                        WzObject topMostWzImg = l1Prop.GetTopMostWzImage();
+                        Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
+                    }
+                }
+            }
         }
     }
 }
