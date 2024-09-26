@@ -30,155 +30,200 @@ namespace HaCreator.GUI.EditorPanels
         /// </summary>
         private void InitializeComponent()
         {
-            this.splitContainer3 = new System.Windows.Forms.SplitContainer();
-            this.splitContainer4 = new System.Windows.Forms.SplitContainer();
-            this.objSetListBox = new System.Windows.Forms.ListBox();
-            this.objL0ListBox = new System.Windows.Forms.ListBox();
-            this.splitContainer5 = new System.Windows.Forms.SplitContainer();
-            this.objL1ListBox = new System.Windows.Forms.ListBox();
-            this.objImagesContainer = new ThumbnailFlowLayoutPanel();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer3)).BeginInit();
-            this.splitContainer3.Panel1.SuspendLayout();
-            this.splitContainer3.Panel2.SuspendLayout();
-            this.splitContainer3.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer4)).BeginInit();
-            this.splitContainer4.Panel1.SuspendLayout();
-            this.splitContainer4.Panel2.SuspendLayout();
-            this.splitContainer4.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer5)).BeginInit();
-            this.splitContainer5.Panel1.SuspendLayout();
-            this.splitContainer5.Panel2.SuspendLayout();
-            this.splitContainer5.SuspendLayout();
-            this.SuspendLayout();
+            splitContainer_all = new System.Windows.Forms.SplitContainer();
+            splitContainer_topPanel = new System.Windows.Forms.SplitContainer();
+            objSetListBox = new System.Windows.Forms.ListBox();
+            objL0ListBox = new System.Windows.Forms.ListBox();
+            splitContainer_bottomPanel = new System.Windows.Forms.SplitContainer();
+            objL1ListBox = new System.Windows.Forms.ListBox();
+            objImagesContainer = new ThumbnailFlowLayoutPanel();
+            button_addImage = new System.Windows.Forms.Button();
+            splitContainer_whole = new System.Windows.Forms.SplitContainer();
+            ((System.ComponentModel.ISupportInitialize)splitContainer_all).BeginInit();
+            splitContainer_all.Panel1.SuspendLayout();
+            splitContainer_all.Panel2.SuspendLayout();
+            splitContainer_all.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer_topPanel).BeginInit();
+            splitContainer_topPanel.Panel1.SuspendLayout();
+            splitContainer_topPanel.Panel2.SuspendLayout();
+            splitContainer_topPanel.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer_bottomPanel).BeginInit();
+            splitContainer_bottomPanel.Panel1.SuspendLayout();
+            splitContainer_bottomPanel.Panel2.SuspendLayout();
+            splitContainer_bottomPanel.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer_whole).BeginInit();
+            splitContainer_whole.Panel1.SuspendLayout();
+            splitContainer_whole.Panel2.SuspendLayout();
+            splitContainer_whole.SuspendLayout();
+            SuspendLayout();
             // 
-            // splitContainer3
+            // splitContainer_all
             // 
-            this.splitContainer3.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer3.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer3.Name = "splitContainer3";
-            this.splitContainer3.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer_all.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer_all.Location = new System.Drawing.Point(0, 0);
+            splitContainer_all.Name = "splitContainer_all";
+            splitContainer_all.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
-            // splitContainer3.Panel1
+            // splitContainer_all.Panel1
             // 
-            this.splitContainer3.Panel1.Controls.Add(this.splitContainer4);
+            splitContainer_all.Panel1.Controls.Add(splitContainer_topPanel);
             // 
-            // splitContainer3.Panel2
+            // splitContainer_all.Panel2
             // 
-            this.splitContainer3.Panel2.Controls.Add(this.splitContainer5);
-            this.splitContainer3.Size = new System.Drawing.Size(284, 658);
-            this.splitContainer3.SplitterDistance = 189;
-            this.splitContainer3.TabIndex = 2;
+            splitContainer_all.Panel2.Controls.Add(splitContainer_bottomPanel);
+            splitContainer_all.Size = new System.Drawing.Size(284, 629);
+            splitContainer_all.SplitterDistance = 180;
+            splitContainer_all.TabIndex = 2;
             // 
-            // splitContainer4
+            // splitContainer_topPanel
             // 
-            this.splitContainer4.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer4.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer4.Name = "splitContainer4";
-            this.splitContainer4.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer_topPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer_topPanel.Location = new System.Drawing.Point(0, 0);
+            splitContainer_topPanel.Name = "splitContainer_topPanel";
+            splitContainer_topPanel.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
-            // splitContainer4.Panel1
+            // splitContainer_topPanel.Panel1
             // 
-            this.splitContainer4.Panel1.Controls.Add(this.objSetListBox);
+            splitContainer_topPanel.Panel1.Controls.Add(objSetListBox);
             // 
-            // splitContainer4.Panel2
+            // splitContainer_topPanel.Panel2
             // 
-            this.splitContainer4.Panel2.Controls.Add(this.objL0ListBox);
-            this.splitContainer4.Size = new System.Drawing.Size(284, 189);
-            this.splitContainer4.SplitterDistance = 113;
-            this.splitContainer4.TabIndex = 0;
+            splitContainer_topPanel.Panel2.Controls.Add(objL0ListBox);
+            splitContainer_topPanel.Size = new System.Drawing.Size(284, 180);
+            splitContainer_topPanel.SplitterDistance = 107;
+            splitContainer_topPanel.TabIndex = 0;
             // 
             // objSetListBox
             // 
-            this.objSetListBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.objSetListBox.FormattingEnabled = true;
-            this.objSetListBox.Location = new System.Drawing.Point(0, 0);
-            this.objSetListBox.Name = "objSetListBox";
-            this.objSetListBox.Size = new System.Drawing.Size(284, 113);
-            this.objSetListBox.TabIndex = 0;
-            this.objSetListBox.SelectedIndexChanged += new System.EventHandler(this.objSetListBox_SelectedIndexChanged);
+            objSetListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            objSetListBox.FormattingEnabled = true;
+            objSetListBox.ItemHeight = 13;
+            objSetListBox.Location = new System.Drawing.Point(0, 0);
+            objSetListBox.Name = "objSetListBox";
+            objSetListBox.Size = new System.Drawing.Size(284, 107);
+            objSetListBox.TabIndex = 0;
+            objSetListBox.SelectedIndexChanged += objSetListBox_SelectedIndexChanged;
             // 
             // objL0ListBox
             // 
-            this.objL0ListBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.objL0ListBox.FormattingEnabled = true;
-            this.objL0ListBox.Location = new System.Drawing.Point(0, 0);
-            this.objL0ListBox.Name = "objL0ListBox";
-            this.objL0ListBox.Size = new System.Drawing.Size(284, 72);
-            this.objL0ListBox.TabIndex = 0;
-            this.objL0ListBox.SelectedIndexChanged += new System.EventHandler(this.objL0ListBox_SelectedIndexChanged);
+            objL0ListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            objL0ListBox.FormattingEnabled = true;
+            objL0ListBox.ItemHeight = 13;
+            objL0ListBox.Location = new System.Drawing.Point(0, 0);
+            objL0ListBox.Name = "objL0ListBox";
+            objL0ListBox.Size = new System.Drawing.Size(284, 69);
+            objL0ListBox.TabIndex = 0;
+            objL0ListBox.SelectedIndexChanged += objL0ListBox_SelectedIndexChanged;
             // 
-            // splitContainer5
+            // splitContainer_bottomPanel
             // 
-            this.splitContainer5.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer5.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer5.Name = "splitContainer5";
-            this.splitContainer5.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer_bottomPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer_bottomPanel.Location = new System.Drawing.Point(0, 0);
+            splitContainer_bottomPanel.Name = "splitContainer_bottomPanel";
+            splitContainer_bottomPanel.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
-            // splitContainer5.Panel1
+            // splitContainer_bottomPanel.Panel1
             // 
-            this.splitContainer5.Panel1.Controls.Add(this.objL1ListBox);
+            splitContainer_bottomPanel.Panel1.Controls.Add(objL1ListBox);
             // 
-            // splitContainer5.Panel2
+            // splitContainer_bottomPanel.Panel2
             // 
-            this.splitContainer5.Panel2.Controls.Add(this.objImagesContainer);
-            this.splitContainer5.Size = new System.Drawing.Size(284, 465);
-            this.splitContainer5.SplitterDistance = 67;
-            this.splitContainer5.TabIndex = 0;
+            splitContainer_bottomPanel.Panel2.Controls.Add(objImagesContainer);
+            splitContainer_bottomPanel.Size = new System.Drawing.Size(284, 445);
+            splitContainer_bottomPanel.SplitterDistance = 64;
+            splitContainer_bottomPanel.TabIndex = 0;
             // 
             // objL1ListBox
             // 
-            this.objL1ListBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.objL1ListBox.FormattingEnabled = true;
-            this.objL1ListBox.Location = new System.Drawing.Point(0, 0);
-            this.objL1ListBox.Name = "objL1ListBox";
-            this.objL1ListBox.Size = new System.Drawing.Size(284, 67);
-            this.objL1ListBox.TabIndex = 0;
-            this.objL1ListBox.SelectedIndexChanged += new System.EventHandler(this.objL1ListBox_SelectedIndexChanged);
+            objL1ListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            objL1ListBox.FormattingEnabled = true;
+            objL1ListBox.ItemHeight = 13;
+            objL1ListBox.Location = new System.Drawing.Point(0, 0);
+            objL1ListBox.Name = "objL1ListBox";
+            objL1ListBox.Size = new System.Drawing.Size(284, 64);
+            objL1ListBox.TabIndex = 0;
+            objL1ListBox.SelectedIndexChanged += objL1ListBox_SelectedIndexChanged;
             // 
             // objImagesContainer
             // 
-            this.objImagesContainer.AutoScroll = true;
-            this.objImagesContainer.BackColor = System.Drawing.Color.White;
-            this.objImagesContainer.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.objImagesContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
-            this.objImagesContainer.Location = new System.Drawing.Point(0, 0);
-            this.objImagesContainer.Name = "objImagesContainer";
-            this.objImagesContainer.Size = new System.Drawing.Size(284, 394);
-            this.objImagesContainer.TabIndex = 0;
-            this.objImagesContainer.WrapContents = false;
+            objImagesContainer.AutoScroll = true;
+            objImagesContainer.BackColor = System.Drawing.Color.White;
+            objImagesContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            objImagesContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
+            objImagesContainer.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            objImagesContainer.Location = new System.Drawing.Point(0, 0);
+            objImagesContainer.Name = "objImagesContainer";
+            objImagesContainer.Size = new System.Drawing.Size(284, 377);
+            objImagesContainer.TabIndex = 0;
+            objImagesContainer.WrapContents = false;
+            // 
+            // button_addImage
+            // 
+            button_addImage.Dock = System.Windows.Forms.DockStyle.Fill;
+            button_addImage.Enabled = false;
+            button_addImage.Location = new System.Drawing.Point(0, 0);
+            button_addImage.Name = "button_addImage";
+            button_addImage.Size = new System.Drawing.Size(284, 25);
+            button_addImage.TabIndex = 0;
+            button_addImage.Text = "Add Image";
+            button_addImage.UseVisualStyleBackColor = true;
+            button_addImage.Click += button_addImage_Click;
+            // 
+            // splitContainer_whole
+            // 
+            splitContainer_whole.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer_whole.Location = new System.Drawing.Point(0, 0);
+            splitContainer_whole.Name = "splitContainer_whole";
+            splitContainer_whole.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            // 
+            // splitContainer_whole.Panel1
+            // 
+            splitContainer_whole.Panel1.Controls.Add(splitContainer_all);
+            // 
+            // splitContainer_whole.Panel2
+            // 
+            splitContainer_whole.Panel2.Controls.Add(button_addImage);
+            splitContainer_whole.Size = new System.Drawing.Size(284, 658);
+            splitContainer_whole.SplitterDistance = 629;
+            splitContainer_whole.TabIndex = 1;
             // 
             // ObjPanel
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.Controls.Add(this.splitContainer3);
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            this.Name = "ObjPanel";
-            this.Size = new System.Drawing.Size(284, 658);
-            this.splitContainer3.Panel1.ResumeLayout(false);
-            this.splitContainer3.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer3)).EndInit();
-            this.splitContainer3.ResumeLayout(false);
-            this.splitContainer4.Panel1.ResumeLayout(false);
-            this.splitContainer4.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer4)).EndInit();
-            this.splitContainer4.ResumeLayout(false);
-            this.splitContainer5.Panel1.ResumeLayout(false);
-            this.splitContainer5.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer5)).EndInit();
-            this.splitContainer5.ResumeLayout(false);
-            this.ResumeLayout(false);
-
+            AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            Controls.Add(splitContainer_whole);
+            Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            Name = "ObjPanel";
+            Size = new System.Drawing.Size(284, 658);
+            splitContainer_all.Panel1.ResumeLayout(false);
+            splitContainer_all.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer_all).EndInit();
+            splitContainer_all.ResumeLayout(false);
+            splitContainer_topPanel.Panel1.ResumeLayout(false);
+            splitContainer_topPanel.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer_topPanel).EndInit();
+            splitContainer_topPanel.ResumeLayout(false);
+            splitContainer_bottomPanel.Panel1.ResumeLayout(false);
+            splitContainer_bottomPanel.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer_bottomPanel).EndInit();
+            splitContainer_bottomPanel.ResumeLayout(false);
+            splitContainer_whole.Panel1.ResumeLayout(false);
+            splitContainer_whole.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer_whole).EndInit();
+            splitContainer_whole.ResumeLayout(false);
+            ResumeLayout(false);
         }
 
         #endregion
 
-        private System.Windows.Forms.SplitContainer splitContainer3;
-        private System.Windows.Forms.SplitContainer splitContainer4;
+        private System.Windows.Forms.SplitContainer splitContainer_all;
+        private System.Windows.Forms.SplitContainer splitContainer_topPanel;
         private System.Windows.Forms.ListBox objSetListBox;
         private System.Windows.Forms.ListBox objL0ListBox;
-        private System.Windows.Forms.SplitContainer splitContainer5;
+        private System.Windows.Forms.SplitContainer splitContainer_bottomPanel;
         private System.Windows.Forms.ListBox objL1ListBox;
         private ThumbnailFlowLayoutPanel objImagesContainer;
+        private System.Windows.Forms.Button button_addImage;
+        private System.Windows.Forms.SplitContainer splitContainer_whole;
     }
 }
