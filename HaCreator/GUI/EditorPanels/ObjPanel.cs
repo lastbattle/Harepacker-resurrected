@@ -207,7 +207,7 @@ namespace HaCreator.GUI.EditorPanels
                         if (bAnimated)  // if its canvas property, its 1 frame, otherwise its animated
                         {
                             // Create a new WzSubProperty for the L2 object
-                            WzCanvasProperty newL2Prop = new WzCanvasProperty("0", l1Prop);
+                            WzCanvasProperty newL2Prop = new WzCanvasProperty("0");
                             newL2Prop.PngProperty = new WzPngProperty();
                             newL2Prop.PngProperty.PNG = newImage;
                             newL2Prop_ = newL2Prop;
