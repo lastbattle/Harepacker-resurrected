@@ -47,6 +47,9 @@ namespace HaCreator.GUI.EditorPanels
 
             contextMenu.Items.Add(deleteItem);
             contextMenu.Items.Add(aiUpscaleItem);
+
+            // localisation
+            button_addImage.Text = this.ResourceManager.GetString("Button_AddImage");
         }
 
         /// <summary>
@@ -170,19 +173,19 @@ namespace HaCreator.GUI.EditorPanels
 
         private void objItem_Click(object sender, MouseEventArgs e)
         {
-            lock (hcsm.MultiBoard)
+            if (e.Button == MouseButtons.Right) // context menu when right clicked
             {
-                if (!hcsm.MultiBoard.AssertLayerSelected())
+                // Show context menu for delete option
+                ShowContextMenu((ImageViewer)sender, e.Location);
+            }
+            else if (e.Button == MouseButtons.Left)
+            {
+                lock (hcsm.MultiBoard)
                 {
-                    return;
-                }
-                if (e.Button == MouseButtons.Right) // context menu when right clicked
-                {
-                    // Show context menu for delete option
-                    ShowDeleteContextMenu((ImageViewer)sender, e.Location);
-                }
-                else if (e.Button == MouseButtons.Left)
-                {
+                    if (!hcsm.MultiBoard.AssertLayerSelected())
+                    {
+                        return;
+                    }
                     hcsm.EnterEditMode(ItemTypes.Objects);
                     hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo((ObjectInfo)((ImageViewer)sender).Tag);
                     hcsm.MultiBoard.Focus();
@@ -300,11 +303,11 @@ namespace HaCreator.GUI.EditorPanels
 
         #region Context Menu
         /// <summary>
-        /// Delete context menu
+        /// Show context menu
         /// </summary>
         /// <param name="item"></param>
         /// <param name="location"></param>
-        private void ShowDeleteContextMenu(ImageViewer item, Point location)
+        private void ShowContextMenu(ImageViewer item, Point location)
         {
             contextMenu.Show(item, location);
         }
@@ -322,24 +325,22 @@ namespace HaCreator.GUI.EditorPanels
             {
                 return;
             }
-            // Show confirmation dialog
-            DialogResult result = MessageBox.Show(
-                this.ResourceManager.GetString("ConfirmItemUpscale"),
-                this.ResourceManager.GetString("ConfirmItemUpscaleTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
-            if (result == DialogResult.Yes)
+            ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
+
+            WzImageProperty l2Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1]?[objInfo.l2];
+
+            if (l2Prop != null)
             {
-                ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
+                WzSubProperty l2SubProp = (WzSubProperty)l2Prop;
+                WzCanvasProperty l2SubImg = (WzCanvasProperty)l2SubProp["0"];
+                Bitmap bitmap = l2SubImg.GetLinkedWzCanvasBitmap();
 
-                WzImageProperty l2Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1]?[objInfo.l2];
-
-                if (l2Prop != null)
+                UpscaleImageForm upscaleForm = new UpscaleImageForm(bitmap);
+                upscaleForm.ShowDialog();
+                if (upscaleForm.UserAcceptedImage)
                 {
-                    WzSubProperty l2SubProp = (WzSubProperty)l2Prop;
-                    WzCanvasProperty l2SubImg = (WzCanvasProperty)l2SubProp["0"];
-                    Bitmap bitmap = l2SubImg.GetLinkedWzCanvasBitmap();
-
-                    Bitmap upscaledBitmap = await AiSingleImageUpscale(bitmap, 0.25f);
+                    Bitmap upscaledBitmap = upscaleForm.UpscaledImage;
                     l2SubImg.PngProperty.PNG = upscaledBitmap;
                     objInfo.Image = upscaledBitmap;
                     selectedItem.Image = upscaledBitmap;
@@ -393,67 +394,6 @@ namespace HaCreator.GUI.EditorPanels
                         }
                     }
                 }
-            }
-        }
-        #endregion
-
-        #region Image upscale
-        private async Task<Bitmap> AiSingleImageUpscale(Bitmap inputImage, float downscaleFactorAfter)
-        {
-            const float SCALE_UP_FACTOR = 4; // factor to scale up with neural networks
-
-            // Create temporary directories
-            string pathIn = Path.Combine(Path.GetTempPath(), "HaCreator_ImageUpscaleInput_" + Guid.NewGuid().ToString());
-            string pathOut = Path.Combine(Path.GetTempPath(), "HaCreator_ImageUpscaleOutput_" + Guid.NewGuid().ToString());
-
-            try
-            {
-                Directory.CreateDirectory(pathIn);
-                Directory.CreateDirectory(pathOut);
-
-                // Save input image
-                string inputFilePath = Path.Combine(pathIn, "input.png");
-                inputImage.Save(inputFilePath, System.Drawing.Imaging.ImageFormat.Png);
-
-                // Upscale image
-                await RealESRGAN_AI_Upscale.EsrganNcnn.Run(pathIn, pathOut, (int)SCALE_UP_FACTOR);
-
-                // Load upscaled image
-                string outputFilePath = Path.Combine(pathOut, "input.png");
-                using (Bitmap upscaledBitmap = new Bitmap(outputFilePath))
-                {
-                    // Downscale if necessary
-                    if (downscaleFactorAfter != 1)
-                    {
-                        int newWidth = (int)(upscaledBitmap.Width * downscaleFactorAfter);
-                        int newHeight = (int)(upscaledBitmap.Height * downscaleFactorAfter);
-
-                        Bitmap finalBitmap = new Bitmap(newWidth, newHeight);
-                        using (Graphics g = Graphics.FromImage(finalBitmap))
-                        {
-                            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-                            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-                            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
-
-                            g.DrawImage(upscaledBitmap, 0, 0, newWidth, newHeight);
-                        }
-
-                        return finalBitmap;
-                    }
-                    else
-                    {
-                        return new Bitmap(upscaledBitmap);
-                    }
-                }
-            }
-            finally
-            {
-                // Clean up temporary directories
-                if (Directory.Exists(pathIn))
-                    Directory.Delete(pathIn, true);
-                if (Directory.Exists(pathOut))
-                    Directory.Delete(pathOut, true);
             }
         }
         #endregion

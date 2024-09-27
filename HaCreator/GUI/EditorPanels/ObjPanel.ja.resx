@@ -144,10 +144,7 @@
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
     <value>削除の確認</value>
   </data>
-  <data name="ConfirmItemUpscale" xml:space="preserve">
-    <value>このアイテムをAI拡大してもよろしいですか？</value>
-  </data>
-  <data name="ConfirmItemUpscaleTitle" xml:space="preserve">
-    <value>拡大の確認</value>
+  <data name="Button_AddImage" xml:space="preserve">
+    <value>画像を追加</value>
   </data>
 </root>

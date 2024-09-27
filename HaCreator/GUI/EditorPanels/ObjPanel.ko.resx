@@ -144,10 +144,7 @@
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
     <value>삭제 확인</value>
   </data>
-  <data name="ConfirmItemUpscale" xml:space="preserve">
-    <value>이 항목을 AI 확대하시겠습니까?</value>
-  </data>
-  <data name="ConfirmItemUpscaleTitle" xml:space="preserve">
-    <value>확대 확인</value>
+  <data name="Button_AddImage" xml:space="preserve">
+    <value>이미지 추가</value>
   </data>
 </root>

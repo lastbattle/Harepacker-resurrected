@@ -144,10 +144,7 @@
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
     <value>確認刪除</value>
   </data>
-  <data name="ConfirmItemUpscale" xml:space="preserve">
-    <value>您確定要對此項目進行AI放大嗎？</value>
-  </data>
-  <data name="ConfirmItemUpscaleTitle" xml:space="preserve">
-    <value>確認放大</value>
+  <data name="Button_AddImage" xml:space="preserve">
+    <value>新增圖像</value>
   </data>
 </root>

@@ -144,10 +144,7 @@
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
     <value>Confirm Delete</value>
   </data>
-  <data name="ConfirmItemUpscale" xml:space="preserve">
-    <value>Are you sure you want to AI-upscale this item?</value>
-  </data>
-  <data name="ConfirmItemUpscaleTitle" xml:space="preserve">
-    <value>Confirm upscale</value>
+  <data name="Button_AddImage" xml:space="preserve">
+    <value>Add image</value>
   </data>
 </root>
