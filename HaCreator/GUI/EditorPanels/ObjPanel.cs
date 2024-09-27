@@ -13,8 +13,11 @@ using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
-
+using System.Reflection;
+using System.Resources;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Xceed.Wpf.AvalonDock.Controls;
@@ -26,7 +29,7 @@ namespace HaCreator.GUI.EditorPanels
         private HaCreatorStateManager hcsm;
 
         // ContextMenuStrip for the 'obj'
-        private readonly ContextMenuStrip contextMenu_delete = new ContextMenuStrip();
+        private readonly ContextMenuStrip contextMenu = new ContextMenuStrip();
 
         /// <summary>
         /// Constructor
@@ -35,9 +38,15 @@ namespace HaCreator.GUI.EditorPanels
         {
             InitializeComponent();
 
-            ToolStripMenuItem deleteItem = new ToolStripMenuItem("Delete");
+            // context menu
+            ToolStripMenuItem deleteItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Delete"));
             deleteItem.Click += DeleteItem_Click;
-            contextMenu_delete.Items.Add(deleteItem);
+
+            ToolStripMenuItem aiUpscaleItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_AIUpscale"));
+            aiUpscaleItem.Click += aiUpscaleItem_Click;
+
+            contextMenu.Items.Add(deleteItem);
+            contextMenu.Items.Add(aiUpscaleItem);
         }
 
         /// <summary>
@@ -191,7 +200,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (objSetListBox.SelectedItem == null || objL0ListBox.SelectedItem == null || objL1ListBox.SelectedItem == null)
             {
-                MessageBox.Show("Please select an object set, L0, and L1 category before adding an image.", "Selection Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this.ResourceManager.GetString("SelectAnImageBefore"), this.ResourceManager.GetString("SelectAnImageBeforeTitle"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -199,7 +208,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 //openFileDialog.Filter = "Image Files (*.png;*.jpg;*.jpeg;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.gif;*.bmp";
                 openFileDialog.Filter = "Image Files (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg";
-                openFileDialog.Title = "Select an image to add";
+                openFileDialog.Title = this.ResourceManager.GetString("SelectAnImageToAdd");
 
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
@@ -258,7 +267,9 @@ namespace HaCreator.GUI.EditorPanels
                         WzObject topMostWzImg = l1Prop.GetTopMostWzImage();
                         Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
 
-                        MessageBox.Show($"Image '{newObjL2Name}' added successfully.", "Image Added", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        MessageBox.Show(
+                            string.Format(this.ResourceManager.GetString("ImageAddSuccessful"), openFileDialog.FileName, newObjL2Name), 
+                            this.ResourceManager.GetString("ImageAddSuccessfulTitle"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }
                     catch (Exception ex)
                     {
@@ -287,6 +298,7 @@ namespace HaCreator.GUI.EditorPanels
             return counter.ToString();
         }
 
+        #region Context Menu
         /// <summary>
         /// Delete context menu
         /// </summary>
@@ -294,7 +306,50 @@ namespace HaCreator.GUI.EditorPanels
         /// <param name="location"></param>
         private void ShowDeleteContextMenu(ImageViewer item, Point location)
         {
-            contextMenu_delete.Show(item, location);
+            contextMenu.Show(item, location);
+        }
+
+        /// <summary>
+        /// Upscale context menu
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        /// <exception cref="NotImplementedException"></exception>
+        private async void aiUpscaleItem_Click(object sender, EventArgs e)
+        {
+            ImageViewer selectedItem = contextMenu.SourceControl as ImageViewer;
+            if (selectedItem == null)
+            {
+                return;
+            }
+            // Show confirmation dialog
+            DialogResult result = MessageBox.Show(
+                this.ResourceManager.GetString("ConfirmItemUpscale"),
+                this.ResourceManager.GetString("ConfirmItemUpscaleTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
+
+                WzImageProperty l2Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1]?[objInfo.l2];
+
+                if (l2Prop != null)
+                {
+                    WzSubProperty l2SubProp = (WzSubProperty)l2Prop;
+                    WzCanvasProperty l2SubImg = (WzCanvasProperty)l2SubProp["0"];
+                    Bitmap bitmap = l2SubImg.GetLinkedWzCanvasBitmap();
+
+                    Bitmap upscaledBitmap = await AiSingleImageUpscale(bitmap, 0.25f);
+                    l2SubImg.PngProperty.PNG = upscaledBitmap;
+                    objInfo.Image = upscaledBitmap;
+                    selectedItem.Image = upscaledBitmap;
+
+                    // flag WZ files changed to save it
+                    WzObject topMostWzDir = l2Prop.GetTopMostWzDirectory();
+                    WzObject topMostWzImg = l2Prop.GetTopMostWzImage();
+                    Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
+                }
+            }
         }
 
         /// <summary>
@@ -304,33 +359,103 @@ namespace HaCreator.GUI.EditorPanels
         /// <param name="e"></param>
         private void DeleteItem_Click(object sender, EventArgs e)
         {
-            ImageViewer selectedItem = contextMenu_delete.SourceControl as ImageViewer;
+            ImageViewer selectedItem = contextMenu.SourceControl as ImageViewer;
             if (selectedItem != null)
             {
-                // delete off cached obj
-                ObjectInfo objInfo = (ObjectInfo) selectedItem.Tag;
+                // Show confirmation dialog
+                DialogResult result = MessageBox.Show(
+                    this.ResourceManager.GetString("ConfirmItemDelete"), 
+                    this.ResourceManager.GetString("ConfirmItemDeleteTitle"), MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
-                WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1];
-
-                if (l1Prop != null)
+                if (result == DialogResult.Yes)
                 {
-                    WzImageProperty removeL2Prop = l1Prop[objInfo.l2];
+                    // delete off cached obj
+                    ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
 
-                    if (l1Prop.WzProperties.Contains(removeL2Prop))
+                    WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1];
+
+                    if (l1Prop != null)
                     {
-                        l1Prop.WzProperties.Remove(removeL2Prop);
+                        WzImageProperty removeL2Prop = l1Prop[objInfo.l2];
 
-                        // Perform delete operation
-                        objImagesContainer.Remove(selectedItem);
-                        selectedItem.Dispose();
+                        if (l1Prop.WzProperties.Contains(removeL2Prop))
+                        {
+                            l1Prop.WzProperties.Remove(removeL2Prop);
 
-                        // flag WZ files changed to save it
-                        WzObject topMostWzDir = l1Prop.GetTopMostWzDirectory();
-                        WzObject topMostWzImg = l1Prop.GetTopMostWzImage();
-                        Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
+                            // Perform delete operation
+                            objImagesContainer.Remove(selectedItem);
+                            selectedItem.Dispose();
+
+                            // flag WZ files changed to save it
+                            WzObject topMostWzDir = l1Prop.GetTopMostWzDirectory();
+                            WzObject topMostWzImg = l1Prop.GetTopMostWzImage();
+                            Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
+                        }
                     }
                 }
             }
         }
+        #endregion
+
+        #region Image upscale
+        private async Task<Bitmap> AiSingleImageUpscale(Bitmap inputImage, float downscaleFactorAfter)
+        {
+            const float SCALE_UP_FACTOR = 4; // factor to scale up with neural networks
+
+            // Create temporary directories
+            string pathIn = Path.Combine(Path.GetTempPath(), "HaCreator_ImageUpscaleInput_" + Guid.NewGuid().ToString());
+            string pathOut = Path.Combine(Path.GetTempPath(), "HaCreator_ImageUpscaleOutput_" + Guid.NewGuid().ToString());
+
+            try
+            {
+                Directory.CreateDirectory(pathIn);
+                Directory.CreateDirectory(pathOut);
+
+                // Save input image
+                string inputFilePath = Path.Combine(pathIn, "input.png");
+                inputImage.Save(inputFilePath, System.Drawing.Imaging.ImageFormat.Png);
+
+                // Upscale image
+                await RealESRGAN_AI_Upscale.EsrganNcnn.Run(pathIn, pathOut, (int)SCALE_UP_FACTOR);
+
+                // Load upscaled image
+                string outputFilePath = Path.Combine(pathOut, "input.png");
+                using (Bitmap upscaledBitmap = new Bitmap(outputFilePath))
+                {
+                    // Downscale if necessary
+                    if (downscaleFactorAfter != 1)
+                    {
+                        int newWidth = (int)(upscaledBitmap.Width * downscaleFactorAfter);
+                        int newHeight = (int)(upscaledBitmap.Height * downscaleFactorAfter);
+
+                        Bitmap finalBitmap = new Bitmap(newWidth, newHeight);
+                        using (Graphics g = Graphics.FromImage(finalBitmap))
+                        {
+                            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+                            g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                            g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+
+                            g.DrawImage(upscaledBitmap, 0, 0, newWidth, newHeight);
+                        }
+
+                        return finalBitmap;
+                    }
+                    else
+                    {
+                        return new Bitmap(upscaledBitmap);
+                    }
+                }
+            }
+            finally
+            {
+                // Clean up temporary directories
+                if (Directory.Exists(pathIn))
+                    Directory.Delete(pathIn, true);
+                if (Directory.Exists(pathOut))
+                    Directory.Delete(pathOut, true);
+            }
+        }
+        #endregion
     }
 }

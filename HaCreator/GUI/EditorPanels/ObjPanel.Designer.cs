@@ -216,6 +216,21 @@ namespace HaCreator.GUI.EditorPanels
 
         #endregion
 
+        private global::System.Resources.ResourceManager resourceMan;
+        public global::System.Resources.ResourceManager ResourceManager
+        {
+            get
+            {
+                if (object.ReferenceEquals(resourceMan, null))
+                {
+                    string baseName = this.GetType().Namespace + "." + this.GetType().Name;
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager(baseName, this.GetType().Assembly);
+                    resourceMan = temp;
+                }
+                return resourceMan;
+            }
+        }
+
         private System.Windows.Forms.SplitContainer splitContainer_all;
         private System.Windows.Forms.SplitContainer splitContainer_topPanel;
         private System.Windows.Forms.ListBox objSetListBox;

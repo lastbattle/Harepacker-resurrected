@@ -118,36 +118,36 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="ContextStripMenu_Delete" xml:space="preserve">
-    <value>Delete</value>
+    <value>删除</value>
   </data>
   <data name="ContextStripMenu_AIUpscale" xml:space="preserve">
-    <value>AI-Upscale</value>
+    <value>AI放大</value>
   </data>
   <data name="SelectAnImageBefore" xml:space="preserve">
-    <value>Please select an object set, L0, and L1 category before adding an image.</value>
+    <value>请在添加图像之前选择对象集、L0和L1类别。</value>
   </data>
   <data name="SelectAnImageBeforeTitle" xml:space="preserve">
-    <value>Selection Required</value>
+    <value>需要选择</value>
   </data>
   <data name="SelectAnImageToAdd" xml:space="preserve">
-    <value>Select an image to add</value>
+    <value>选择要添加的图像</value>
   </data>
   <data name="ImageAddSuccessful" xml:space="preserve">
-    <value>Image '{0}' has been added successfully as '{1}'.</value>
+    <value>图像'{0}'已成功添加为'{1}'。</value>
   </data>
   <data name="ImageAddSuccessfulTitle" xml:space="preserve">
-    <value>Image Added</value>
+    <value>图像已添加</value>
   </data>
   <data name="ConfirmItemDelete" xml:space="preserve">
-    <value>Are you sure you want to delete this item?</value>
+    <value>您确定要删除此项目吗？</value>
   </data>
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
-    <value>Confirm Delete</value>
+    <value>确认删除</value>
   </data>
   <data name="ConfirmItemUpscale" xml:space="preserve">
-    <value>Are you sure you want to AI-upscale this item?</value>
+    <value>您确定要对此项目进行AI放大吗？</value>
   </data>
   <data name="ConfirmItemUpscaleTitle" xml:space="preserve">
-    <value>Confirm upscale</value>
+    <value>确认放大</value>
   </data>
 </root>
