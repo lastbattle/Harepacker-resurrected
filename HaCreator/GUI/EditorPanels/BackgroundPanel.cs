@@ -18,13 +18,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Windows.Shapes;
 using WeifenLuo.WinFormsUI.Docking;
 using Xceed.Wpf.AvalonDock.Controls;
 
@@ -44,12 +44,16 @@ namespace HaCreator.GUI.EditorPanels
             InitializeComponent();
 
             // context menu
+            ToolStripMenuItem saveItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Save"));
+            saveItem.Click += saveItem_Click;
+
             ToolStripMenuItem deleteItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Delete"));
             deleteItem.Click += DeleteItem_Click;
 
             ToolStripMenuItem aiUpscaleItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_AIUpscale"));
             aiUpscaleItem.Click += aiUpscaleItem_Click;
 
+            contextMenu.Items.Add(saveItem);
             contextMenu.Items.Add(deleteItem);
             contextMenu.Items.Add(aiUpscaleItem);
 
@@ -60,6 +64,7 @@ namespace HaCreator.GUI.EditorPanels
             ToolStripMenuItem previewItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Preview"));
             previewItem.Click += previewItem_Click;
 
+           
             contextMenu_spine.Items.Add(previewItem);
             contextMenu_spine.Items.Add(deleteItem2);
 
@@ -343,6 +348,56 @@ namespace HaCreator.GUI.EditorPanels
                 });
                 thread.Start();
                 thread.Join();
+            }
+        }
+
+
+        /// <summary>
+        /// Event handler for save menu item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void saveItem_Click(object sender, EventArgs e)
+        {
+            ImageViewer selectedItem = contextMenu.SourceControl as ImageViewer;
+            if (selectedItem != null)
+            {
+                BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
+
+                if (infoType != BackgroundInfoType.Spine)
+                {
+                    BackgroundInfo objInfo = (BackgroundInfo)selectedItem.Tag;
+
+                    if (objInfo.Image != null)
+                    {
+                        System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+                        {
+                            FileName = string.Format("{0}.{1}.{2}", (string)bgSetListBox.SelectedItem, infoType.ToPropertyString(), objInfo.no),
+                            Title = "Select where to save the image...",
+                            Filter = "Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
+                        };
+                        if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                            return;
+                        switch (dialog.FilterIndex)
+                        {
+                            case 1: //png
+                                objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Png);
+                                break;
+                            case 2: //gif
+                                objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Gif);
+                                break;
+                            case 3: //bmp
+                                objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Bmp);
+                                break;
+                            case 4: //jpg
+                                objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                                break;
+                            case 5: //tiff
+                                objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Tiff);
+                                break;
+                        }
+                    }
+                }
             }
         }
 

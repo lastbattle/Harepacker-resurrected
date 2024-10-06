@@ -39,12 +39,16 @@ namespace HaCreator.GUI.EditorPanels
             InitializeComponent();
 
             // context menu
+            ToolStripMenuItem saveItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Save"));
+            saveItem.Click += saveItem_Click;
+
             ToolStripMenuItem deleteItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_Delete"));
             deleteItem.Click += DeleteItem_Click;
 
             ToolStripMenuItem aiUpscaleItem = new ToolStripMenuItem(this.ResourceManager.GetString("ContextStripMenu_AIUpscale"));
             aiUpscaleItem.Click += aiUpscaleItem_Click;
 
+            contextMenu.Items.Add(saveItem);
             contextMenu.Items.Add(deleteItem);
             contextMenu.Items.Add(aiUpscaleItem);
 
@@ -349,6 +353,50 @@ namespace HaCreator.GUI.EditorPanels
                     WzObject topMostWzDir = l2Prop.GetTopMostWzDirectory();
                     WzObject topMostWzImg = l2Prop.GetTopMostWzImage();
                     Program.WzManager.SetWzFileUpdated(topMostWzDir.Name, topMostWzImg as WzImage);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Event handler for save menu item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void saveItem_Click(object sender, EventArgs e)
+        {
+            ImageViewer selectedItem = contextMenu.SourceControl as ImageViewer;
+            if (selectedItem != null)
+            {
+                ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
+
+                if (objInfo.Image != null)
+                {
+                    System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+                    {
+                        FileName = string.Format("{0}.{1}.{2}", objInfo.oS, objInfo.l0, objInfo.l1),
+                        Title = "Select where to save the image...",
+                        Filter = "Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
+                    };
+                    if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                        return;
+                    switch (dialog.FilterIndex)
+                    {
+                        case 1: //png
+                            objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Png);
+                            break;
+                        case 2: //gif
+                            objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Gif);
+                            break;
+                        case 3: //bmp
+                            objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Bmp);
+                            break;
+                        case 4: //jpg
+                            objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                            break;
+                        case 5: //tiff
+                            objInfo.Image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Tiff);
+                            break;
+                    }
                 }
             }
         }

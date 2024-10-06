@@ -147,4 +147,7 @@
   <data name="Button_AddImage" xml:space="preserve">
     <value>Add image</value>
   </data>
+  <data name="ContextStripMenu_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
 </root>

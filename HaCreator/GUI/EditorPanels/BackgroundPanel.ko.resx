@@ -147,4 +147,7 @@
   <data name="SelectAnImageToAdd" xml:space="preserve">
     <value>추가할 이미지를 선택하세요</value>
   </data>
+  <data name="ContextStripMenu_Save" xml:space="preserve">
+    <value>저장</value>
+  </data>
 </root>

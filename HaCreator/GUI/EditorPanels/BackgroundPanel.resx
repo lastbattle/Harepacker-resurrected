@@ -147,4 +147,7 @@
   <data name="SelectAnImageToAdd" xml:space="preserve">
     <value>Select an image to add</value>
   </data>
+  <data name="ContextStripMenu_Save" xml:space="preserve">
+    <value>Save</value>
+  </data>
 </root>

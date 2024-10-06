@@ -147,4 +147,7 @@
   <data name="Button_AddImage" xml:space="preserve">
     <value>이미지 추가</value>
   </data>
+  <data name="ContextStripMenu_Save" xml:space="preserve">
+    <value>저장</value>
+  </data>
 </root>
