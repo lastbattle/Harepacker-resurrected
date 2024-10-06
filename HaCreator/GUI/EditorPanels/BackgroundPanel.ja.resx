@@ -118,33 +118,33 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Button_AddImage" xml:space="preserve">
-    <value>Add image</value>
+    <value>画像を追加</value>
   </data>
   <data name="ConfirmItemDelete" xml:space="preserve">
-    <value>Are you sure you want to delete this item?</value>
+    <value>このアイテムを削除してもよろしいですか？</value>
   </data>
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
-    <value>Confirm Delete</value>
+    <value>削除の確認</value>
   </data>
   <data name="ContextStripMenu_AIUpscale" xml:space="preserve">
-    <value>AI-Upscale</value>
+    <value>AI拡大</value>
   </data>
   <data name="ContextStripMenu_Delete" xml:space="preserve">
-    <value>Delete</value>
+    <value>削除</value>
   </data>
   <data name="ImageAddSuccessful" xml:space="preserve">
-    <value>Image '{0}' has been added successfully as '{1}'.</value>
+    <value>画像'{0}'が'{1}'として正常に追加されました。</value>
   </data>
   <data name="ImageAddSuccessfulTitle" xml:space="preserve">
-    <value>Image Added</value>
+    <value>画像が追加されました</value>
   </data>
   <data name="SelectAnImageBefore" xml:space="preserve">
-    <value>Please select an object set, L0, and L1 category before adding an image.</value>
+    <value>画像を追加する前に、オブジェクトセット、L0、L1カテゴリーを選択してください。</value>
   </data>
   <data name="SelectAnImageBeforeTitle" xml:space="preserve">
-    <value>Selection Required</value>
+    <value>選択が必要です</value>
   </data>
   <data name="SelectAnImageToAdd" xml:space="preserve">
-    <value>Select an image to add</value>
+    <value>追加する画像を選択してください</value>
   </data>
 </root>

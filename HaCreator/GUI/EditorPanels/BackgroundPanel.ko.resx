@@ -118,33 +118,33 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Button_AddImage" xml:space="preserve">
-    <value>Add image</value>
+    <value>이미지 추가</value>
   </data>
   <data name="ConfirmItemDelete" xml:space="preserve">
-    <value>Are you sure you want to delete this item?</value>
+    <value>이 항목을 삭제하시겠습니까?</value>
   </data>
   <data name="ConfirmItemDeleteTitle" xml:space="preserve">
-    <value>Confirm Delete</value>
+    <value>삭제 확인</value>
   </data>
   <data name="ContextStripMenu_AIUpscale" xml:space="preserve">
-    <value>AI-Upscale</value>
+    <value>AI 확대</value>
   </data>
   <data name="ContextStripMenu_Delete" xml:space="preserve">
-    <value>Delete</value>
+    <value>삭제</value>
   </data>
   <data name="ImageAddSuccessful" xml:space="preserve">
-    <value>Image '{0}' has been added successfully as '{1}'.</value>
+    <value>이미지 '{0}'이(가) '{1}'(으)로 성공적으로 추가되었습니다.</value>
   </data>
   <data name="ImageAddSuccessfulTitle" xml:space="preserve">
-    <value>Image Added</value>
+    <value>이미지 추가됨</value>
   </data>
   <data name="SelectAnImageBefore" xml:space="preserve">
-    <value>Please select an object set, L0, and L1 category before adding an image.</value>
+    <value>이미지를 추가하기 전에 객체 세트, L0 및 L1 카테고리를 선택하세요.</value>
   </data>
   <data name="SelectAnImageBeforeTitle" xml:space="preserve">
-    <value>Selection Required</value>
+    <value>선택 필요</value>
   </data>
   <data name="SelectAnImageToAdd" xml:space="preserve">
-    <value>Select an image to add</value>
+    <value>추가할 이미지를 선택하세요</value>
   </data>
 </root>
