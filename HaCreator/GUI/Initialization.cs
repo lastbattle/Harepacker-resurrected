@@ -761,7 +761,10 @@ namespace HaCreator.GUI
                                             int intName = 0;
                                             int.TryParse(itemId, out intName);
 
-                                            Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                            lock (Program.InfoManager.ItemIconCache)
+                                            {
+                                                Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                            }
                                         }
                                     }
                                 }
@@ -778,7 +781,10 @@ namespace HaCreator.GUI
                                         int intName = 0;
                                         int.TryParse(itemId, out intName);
 
-                                        Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                        lock (Program.InfoManager.ItemIconCache)
+                                        {
+                                            Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                        }
                                     }
                                 }
                                 break;
