@@ -190,10 +190,10 @@ namespace HaCreator.GUI.EditorPanels
                         Bitmap newImage = new Bitmap(openFileDialog.FileName); // dont close this
 
                         string bgSetName = (string)bgSetListBox.SelectedItem;
-                        BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
+                        BackgroundInfoType infoType = BackgroundInfoType.Background;// GetBackGroundInfoTypeByCheckbox();
 
                         WzImage bgSetImage = Program.InfoManager.BackgroundSets[bgSetName];
-                        WzSubProperty parentProp = (WzSubProperty)bgSetImage[infoType.ToPropertyString()];
+                        WzSubProperty parentProp = (WzSubProperty)bgSetImage[infoType.ToPropertyString()]; // "back" WzSubProperty
 
                         // Generate a new unique name for the background
                         string newBgName = GenerateUniqueBgName(bgSetName, infoType.ToPropertyString());
@@ -202,6 +202,9 @@ namespace HaCreator.GUI.EditorPanels
                         WzCanvasProperty newBgProp = new WzCanvasProperty(newBgName);
                         newBgProp.PngProperty = new WzPngProperty();
                         newBgProp.PngProperty.PNG = newImage;
+
+                        newBgProp.AddProperty(new WzIntProperty("z", 0));
+                        newBgProp.AddProperty(new WzVectorProperty("origin", 0, 0));
 
                         // Add the new property to the parent
                         parentProp.AddProperty(newBgProp);
@@ -213,7 +216,7 @@ namespace HaCreator.GUI.EditorPanels
                         Point point = new Point(newImage.Width / 2, newImage.Height); // set at bottom-center
 
                         // Create a new BackgroundInfo object
-                        BackgroundInfo newBgInfo = new BackgroundInfo(newBgProp, newImage, point, bgSetName, infoType, newBgName, parentProp, null);
+                        BackgroundInfo newBgInfo = new BackgroundInfo(newBgProp, newImage, point, bgSetName, infoType, newBgName, newBgProp, null);
                         // BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject, WzSpineAnimationItem wzSpineAnimationItem)
                         //BackgroundInfo newBgInfo = BackgroundInfo.Get(hcsm.MultiBoard.GraphicsDevice, bgSetName, infoType, newBgName);
 
