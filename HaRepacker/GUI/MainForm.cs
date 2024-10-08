@@ -39,6 +39,8 @@ using HaSharedLibrary.SystemInterop;
 using MapleLib;
 using System.Text.RegularExpressions;
 using MapleLib.Configuration;
+using System.Runtime.CompilerServices;
+using HaSharedLibrary.Util;
 
 namespace HaRepacker.GUI
 {
@@ -766,6 +768,10 @@ namespace HaRepacker.GUI
 
 
         #region Open WZ File
+        /// <summary>
+        /// Open WZ or ZLZ file internal
+        /// </summary>
+        /// <param name="fileNames"></param>
         private async void OpenFileInternal(string[] fileNames) {
             Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
 
@@ -776,42 +782,39 @@ namespace HaRepacker.GUI
             foreach (string filePath in fileNames) {
                 string filePathLowerCase = filePath.ToLower();
 
-                if (filePathLowerCase.EndsWith("zlz.dll")) // ZLZ.dll encryption keys
+                if (filePathLowerCase.EndsWith("zlz.dll") || filePathLowerCase.EndsWith("zlz64.dll"))
                 {
-                    AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-                    //similarly to find process architecture  
-                    var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
+                    var is64BitDll = filePathLowerCase.EndsWith("zlz64.dll");
+                    var assemblyBitness = AssemblyBitnessDetector.GetAssemblyBitness();
 
-                    if (assemblyArchitecture == ProcessorArchitecture.X86) {
-                        ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                        bool opened = form.OpenZLZDllFile_32Bit(filePath);
+                    bool isCompatible = (is64BitDll && (assemblyBitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
+                                        (!is64BitDll && (assemblyBitness == AssemblyBitnessDetector.Bitness.Bit32));
+
+                    if (isCompatible)
+                    {
+                        var form = new ZLZPacketEncryptionKeyForm();
+                        var opened = is64BitDll
+                            ? form.OpenZLZDllFile_64Bit(filePath)
+                            : form.OpenZLZDllFile_32Bit(filePath);
 
                         if (opened)
+                        {
                             form.Show();
+                        }
                     }
-                    else {
-                        MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
+                    else
+                    {
+                        var errorMessage = is64BitDll
+                            ? HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired
+                            : HaRepacker.Properties.Resources.ExecutingAssemblyError;
+
+                        MessageBox.Show(errorMessage, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
                     }
                     return;
+
                 }
-                else if (filePathLowerCase.EndsWith("zlz64.dll")) // ZLZ.dll encryption keys
+                else 
                 {
-                    AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-                    //similarly to find process architecture  
-                    var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
-
-                    if (Environment.Is64BitProcess) {
-                        ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                        bool opened = form.OpenZLZDllFile_64Bit(filePath);
-
-                        if (opened)
-                            form.Show();
-                    }
-                    else {
-                        MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
-                    }
-                    return;
-                } else {
                     // Load WZFileManager here if its not loaded
                     if (Program.WzFileManager == null) {
                         // Pattern 1: Match paths containing "Data" directory, but capture up to "Data" (for post 64-bit wz files after V-Update)
