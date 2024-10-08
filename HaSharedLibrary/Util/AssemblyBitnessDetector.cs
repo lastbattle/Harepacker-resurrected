@@ -17,7 +17,16 @@ namespace HaSharedLibrary.Util
             AnyCPU
         }
 
-        public static Bitness GetAssemblyBitness()
+        public enum Architecture
+        {
+            X86,
+            X64,
+            ARM,
+            ARM64,
+            Unknown
+        }
+
+        public static (Bitness bitness, Architecture architecture) GetAssemblyInfo()
         {
             var assembly = Assembly.GetExecutingAssembly();
             var assemblyPath = assembly.Location;
@@ -46,21 +55,27 @@ namespace HaSharedLibrary.Util
                 switch (machine)
                 {
                     case 0x014c: // IMAGE_FILE_MACHINE_I386
-                        return Bitness.Bit32;
+                        return (Bitness.Bit32, Architecture.X86);
                     case 0x8664: // IMAGE_FILE_MACHINE_AMD64
-                        return Bitness.Bit64;
+                        return (Bitness.Bit64, Architecture.X64);
                     case 0x0200: // IMAGE_FILE_MACHINE_IA64
-                        return Bitness.Bit64;
+                        return (Bitness.Bit64, Architecture.X64);
+                    case 0x01c0: // IMAGE_FILE_MACHINE_ARM
+                        return (Bitness.Bit32, Architecture.ARM);
+                    case 0x01c4: // IMAGE_FILE_MACHINE_ARMNT
+                        return (Bitness.Bit32, Architecture.ARM);
+                    case 0xaa64: // IMAGE_FILE_MACHINE_ARM64
+                        return (Bitness.Bit64, Architecture.ARM64);
                     default:
-                        // If it's not explicitly 32-bit or 64-bit, assume it's AnyCPU
-                        return Bitness.AnyCPU;
+                        // If it's not explicitly recognized, return AnyCPU and Unknown
+                        return (Bitness.AnyCPU, Architecture.Unknown);
                 }
             }
             catch (Exception ex)
             {
                 // Log the exception or handle it as appropriate for your application
-                Console.WriteLine($"Error detecting assembly bitness: {ex.Message}");
-                return Bitness.AnyCPU; // Default to AnyCPU if detection fails
+                Console.WriteLine($"Error detecting assembly info: {ex.Message}");
+                return (Bitness.AnyCPU, Architecture.Unknown); // Default if detection fails
             }
         }
     }

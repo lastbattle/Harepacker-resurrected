@@ -785,10 +785,10 @@ namespace HaRepacker.GUI
                 if (filePathLowerCase.EndsWith("zlz.dll") || filePathLowerCase.EndsWith("zlz64.dll"))
                 {
                     var is64BitDll = filePathLowerCase.EndsWith("zlz64.dll");
-                    var assemblyBitness = AssemblyBitnessDetector.GetAssemblyBitness();
+                    var (bitness, architecture) = AssemblyBitnessDetector.GetAssemblyInfo();
 
-                    bool isCompatible = (is64BitDll && (assemblyBitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
-                                        (!is64BitDll && (assemblyBitness == AssemblyBitnessDetector.Bitness.Bit32));
+                    bool isCompatible = (is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
+                                        (!is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit32));
 
                     if (isCompatible)
                     {
