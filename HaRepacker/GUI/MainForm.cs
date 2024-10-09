@@ -21,11 +21,9 @@ using System.Threading;
 using System.Reflection;
 
 using MapleLib.WzLib;
-using MapleLib.WzLib.Serialization;
 using MapleLib.WzLib.Util;
 using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
-using MapleLib.WzLib.Nx;
 using static MapleLib.Configuration.UserSettings;
 
 using HaRepacker.GUI.Panels;
@@ -41,6 +39,7 @@ using System.Text.RegularExpressions;
 using MapleLib.Configuration;
 using System.Runtime.CompilerServices;
 using HaSharedLibrary.Util;
+using MapleLib.WzLib.Serializer;
 
 namespace HaRepacker.GUI
 {

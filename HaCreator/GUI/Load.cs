@@ -14,10 +14,10 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
-using MapleLib.WzLib.Serialization;
 using System.Collections.Generic;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.Serializer;
 
 namespace HaCreator.GUI
 {
