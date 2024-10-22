@@ -47,7 +47,7 @@ namespace HaCreator.GUI.EditorPanels
             {
                 npcs.Add(entry.Key + " - " + entry.Value);
             }
-            foreach (KeyValuePair<string, string> entry in Program.InfoManager.Mobs)
+            foreach (KeyValuePair<string, string> entry in Program.InfoManager.MobNameCache)
             {
                 mobs.Add(entry.Key + " - " + entry.Value);
             }

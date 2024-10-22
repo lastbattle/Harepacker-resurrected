@@ -22,7 +22,6 @@ namespace HaCreator.Wz
 {
     public class WzInformationManager
     {
-        public Dictionary<string, string> Mobs = new Dictionary<string, string>();
         public Dictionary<string, ReactorInfo> Reactors = new Dictionary<string, ReactorInfo>();
         public Dictionary<string, WzImage> TileSets = new Dictionary<string, WzImage>();
         public Dictionary<string, WzImage> ObjectSets = new Dictionary<string, WzImage>();
@@ -41,7 +40,8 @@ namespace HaCreator.Wz
         public Dictionary<int, WzImage> EquipItemCache = new Dictionary<int, WzImage>();
 
         // Mobs
-        public Dictionary<string, string> MobNameCache = new Dictionary<string, string>();
+        public Dictionary<string, string> MobNameCache = new();
+        public Dictionary<int, WzImageProperty> MobIconCache = new();
 
         // Skills
         public Dictionary<string, Tuple<string, string>> SkillNameCache = new Dictionary<string, Tuple<string, string>>(); // skillId, <name, desc>
@@ -98,7 +98,8 @@ namespace HaCreator.Wz
         public void Clear()
         {
             NpcNameCache.Clear();
-            Mobs.Clear();
+            MobNameCache.Clear();
+            MobIconCache.Clear();
             Reactors.Clear();
             TileSets.Clear();
             ObjectSets.Clear();

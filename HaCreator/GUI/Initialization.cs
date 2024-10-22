@@ -509,7 +509,7 @@ namespace HaCreator.GUI
         /// </summary>
         public void ExtractMobFile()
         {
-            if (Program.InfoManager.Mobs.Count != 0)
+            if (Program.InfoManager.MobIconCache.Count != 0)
                 return;
 
             // Mob.wz
@@ -517,22 +517,17 @@ namespace HaCreator.GUI
 
             foreach (WzDirectory mobWzDir in mobWzDirs)
             {
-            }
-
-            // String.wz
-            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
-            foreach (WzDirectory stringWzDir in stringWzDirs)
-            {
-                WzImage mobStringImage = (WzImage)stringWzDir?["mob.img"];
-                if (mobStringImage == null)
-                    continue; // not in this wz
-
-                foreach (WzSubProperty mob in mobStringImage.WzProperties)
+                foreach (WzImage mobImage in mobWzDir.WzImages)
                 {
-                    WzStringProperty nameProp = (WzStringProperty)mob["name"];
-                    string name = nameProp == null ? "" : nameProp.Value;
+                    string mobIdStr = mobImage.Name.Replace(".img", "");
+                    int mobId = int.Parse(mobIdStr);
 
-                    Program.InfoManager.Mobs.Add(WzInfoTools.AddLeadingZeros(mob.Name, 7), name);
+                    WzImageProperty standCanvas = (WzCanvasProperty) mobImage["stand"]?["0"].GetLinkedWzImageProperty();
+
+                    if (standCanvas == null) continue;
+
+                    if (!Program.InfoManager.MobIconCache.ContainsKey(mobId))
+                        Program.InfoManager.MobIconCache.Add(mobId, standCanvas);
                 }
             }
         }
@@ -1020,6 +1015,8 @@ namespace HaCreator.GUI
             {
                 string mobId = mobImg.Name;
                 string itemName = (mobImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                
+                //string WzInfoTools.AddLeadingZeros(mob.Name, 7)
 
                 if (!Program.InfoManager.MobNameCache.ContainsKey(mobId))
                     Program.InfoManager.MobNameCache[mobId] = itemName;
@@ -1151,9 +1148,31 @@ namespace HaCreator.GUI
                         Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
                     else
                     {
-                        string error = string.Format("[Initialization] Duplicate [Etc] item name in String.wz. ItemId='{0}', Category={1}", itemId, etcSubProp.Name);
+                        string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, etcSubProp.Name);
                         ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                     }
+                }
+            }
+
+            WzImage stringPetImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Pet.img");
+            foreach (WzSubProperty petSubProp in stringPetImg.WzProperties)
+            {
+                const string itemCategory = "Pet";
+
+                string itemId = petSubProp.Name;
+                string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
+
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, petSubProp.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                 }
             }
 
