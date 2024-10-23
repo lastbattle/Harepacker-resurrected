@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -9,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace HaCreator.GUI.Quest
 {
-    public class QuestEditorActSkillModel : INotifyPropertyChanged
+    public class QuestEditorCheckSkillModel : INotifyPropertyChanged
     {
         private int _id = 0;
         public int Id
@@ -22,6 +21,9 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        /// <summary>
+        /// <int name="level" value="5"/>
+        /// </summary>
         private int _skillLevel = 0;
         public int SkillLevel
         {
@@ -44,44 +46,12 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private int _masterLevel = 0;
-        public int MasterLevel
-        {
-            get { return _masterLevel; }
-            set
-            {
-                if (_masterLevel != value)
-                {
-                    int setAmount = value;
-
-                    // input validation
-                    if (setAmount < 0)
-                        setAmount = 0;
-                    else if (setAmount > 50)
-                        setAmount = 50;
-
-                    this._masterLevel = setAmount;
-                    OnPropertyChanged(nameof(MasterLevel));
-                }
-            }
-        }
-
-        private bool _onlyMasterLevel = false;
-        public bool OnlyMasterLevel
-        {
-            get { return _onlyMasterLevel; }
-            set
-            {
-                this._onlyMasterLevel = value;
-                OnPropertyChanged(nameof(OnlyMasterLevel));
-            }
-        }
-
-        private short _acquire = 0;
+        private bool _acquire = false;
         /// <summary>
-        /// Acquire (kinda 'remove skill', badly named in the wz files)  <short name="acquire" value="65535"/> == -1
+        /// Acquire 
+        /// This is different than 'acquire' from Act.img. 
         /// </summary>
-        public short Acquire // <imgdir name="6034">
+        public bool Acquire
         {
             get { return _acquire; }
             set
@@ -91,17 +61,19 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorSkillModelJobIdWrapper> _jobIds = new ObservableCollection<QuestEditorSkillModelJobIdWrapper>();
-        public ObservableCollection<QuestEditorSkillModelJobIdWrapper> JobIds
+        private QuestEditorCheckSkillCondType _conditionType = QuestEditorCheckSkillCondType.None;
+        /// <summary>
+        /// <string name="levelCondition" value="이상"/>
+        /// </summary>
+        public QuestEditorCheckSkillCondType ConditionType
         {
-            get { return _jobIds; }
+            get { return _conditionType; }
             set
             {
-                this._jobIds = value;
-                OnPropertyChanged(nameof(JobIds));
+                this._conditionType = value;
+                OnPropertyChanged(nameof(ConditionType));
             }
         }
-
 
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;

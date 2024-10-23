@@ -211,7 +211,7 @@ namespace HaCreator.GUI.Quest
                 quest.Parent = (questProp["parent"] as WzStringProperty)?.Value;
 
                 // area, order
-                quest.Area = (questProp["area"] as WzIntProperty)?.Value ?? 0;
+                quest.Area = QuestAreaCodeTypeExt.ToEnum( (questProp["area"] as WzIntProperty)?.Value ?? 0);
                 quest.Order = (questProp["order"] as WzIntProperty)?.Value ?? 0;
 
                 // parse autoStart, autoPreComplete
@@ -314,10 +314,26 @@ namespace HaCreator.GUI.Quest
                     WzSubProperty questActStart0Prop = (WzSubProperty)questActProp["0"];
                     WzSubProperty questActEnd1Prop = (WzSubProperty)questActProp["1"];
 
-                    parseQuestAct(questActStart0Prop, quest.ActStartInfo, quest);
-                    parseQuestAct(questActEnd1Prop, quest.ActEndInfo, quest);
+                    if (questActStart0Prop != null)
+                        parseQuestAct(questActStart0Prop, quest.ActStartInfo, quest); // start
+                    if (questActEnd1Prop != null)
+                        parseQuestAct(questActEnd1Prop, quest.ActEndInfo, quest); // end quest
                 }
 
+                // Parse Check.img
+                if (Program.InfoManager.QuestChecks.ContainsKey(key)) // sometimes it does not exist in the Quest.wz/Say.img
+                {
+                    WzSubProperty questCheckProp = Program.InfoManager.QuestChecks[key];
+
+                    WzSubProperty questCheckStart0Prop = (WzSubProperty)questCheckProp["0"];
+                    WzSubProperty questCheckEnd1Prop = (WzSubProperty)questCheckProp["1"];
+
+                    if (questCheckStart0Prop != null)
+                        parseQuestCheck(questCheckStart0Prop, quest.CheckStartInfo, quest); // start
+                    if (questCheckEnd1Prop != null)
+                        parseQuestCheck(questCheckEnd1Prop, quest.CheckEndInfo, quest); // end quest
+                }
+                
                 // add
                 Quests.Add(quest);
             }
@@ -329,9 +345,575 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        /// <summary>
+        /// Parses "Quest.wz/Check.img/0", "Quest.wz/Check.img/1"
+        /// </summary>
+        /// <param name="questCheckProp"></param>
+        /// <param name="quest"></param>
+        private void parseQuestCheck(WzSubProperty questCheckProp, ObservableCollection<QuestEditorCheckInfoModel> questChecks, QuestEditorModel quest)
+        {
+            foreach (WzImageProperty checkTypeProp in questCheckProp.WzProperties)
+            {
+                QuestEditorCheckType checkType = checkTypeProp.Name.ToQuestEditorCheckType();
+                switch (checkType)
+                {
+                    case QuestEditorCheckType.Npc:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;  
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Job:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty jobProps in checkTypeProp.WzProperties) // job Ids "0", "1", "2"
+                            {
+                                int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
+
+                                QuestEditorSkillModelJobIdWrapper jobModel = new QuestEditorSkillModelJobIdWrapper()
+                                {
+                                    JobId = jobId
+                                };
+                                firstCheck.Jobs.Add(jobModel);
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Quest:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty questProp in checkTypeProp.WzProperties) // "0", "1", "2",
+                            {
+                                int questId = (questProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                int stateInt = (questProp["state"] as WzIntProperty)?.GetInt() ?? 0;
+
+                                if (Enum.IsDefined(typeof(QuestStateType), stateInt))
+                                {
+                                    QuestStateType state = (QuestStateType)stateInt;
+
+                                    QuestEditorQuestReqModel req = new QuestEditorQuestReqModel()
+                                    {
+                                        QuestId = questId,
+                                        QuestState = state,
+                                    };
+                                    firstCheck.QuestReqs.Add(req);
+                                }
+                                else
+                                {
+                                    string error = string.Format("[QuestEditor] Incorrect quest state for QuestId={0}. IntValue={1}", questId, stateInt);
+                                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Item:
+                        {
+                            foreach (WzImageProperty itemProp in checkTypeProp.WzProperties)
+                            {
+
+                                // for future versions, dev debug
+#if DEBUG
+                                foreach (WzImageProperty itemSubProperties in itemProp.WzProperties)
+                                {
+                                    switch (itemSubProperties.Name)
+                                    {
+                                        case "id":
+                                        case "count":
+                                            break;
+                                        default:
+                                            {
+                                                string error = string.Format("[QuestEditor] Unhandled quest Check.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
+                                                ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                                                break;
+                                            }
+                                    }
+                                }
+#endif
+
+                                int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
+                                
+                                if (itemId != 0)
+                                {
+                                    var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                    QuestEditorCheckItemReqModel actReward = new QuestEditorCheckItemReqModel()
+                                    {
+                                        ItemId = itemId,
+                                        Quantity = count,
+                                    };
+                                    firstCheck.SelectedReqItems.Add(actReward);
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Info:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty infoProp in checkTypeProp.WzProperties) // "0", "1", "2"
+                            {
+                                string info = (infoProp as WzStringProperty)?.ToString() ?? string.Empty;
+
+                                if (info != string.Empty)
+                                {
+                                    firstCheck.QuestInfo.Add(new QuestEditorCheckQuestInfoModel()
+                                    {
+                                        Text = info
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.InfoNumber:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            int questId = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0; // "infoNumber"
+
+                            firstCheck.Amount = questId;
+                            break;
+                        }
+                    case QuestEditorCheckType.InfoEx:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty infoProp in checkTypeProp.WzProperties) // "0", "1", "2"
+                            {
+                                string infoValue = (infoProp["value"] as WzStringProperty)?.ToString() ?? string.Empty;
+                                int cond = (infoProp["cond"] as WzIntProperty)?.GetInt() ?? 0; // 0, 1, 2. probably equal, above or below?
+
+                                // infoEx
+                                // [29004] The One Who Stood on Top - Value = "5", Condition = "1" (Stand on 5 top areas)
+                                // [29005] Beginner Explorer - Value = "20", Condition = "1" (20 areas)
+                                // [29006] El Nath Explorer - Value = "10", Condition = "1" (10 areas)
+                                // [29012] Ossyria Explorer - Value = "1", Condition = "1" (1 areas)
+                                // [53172] Gaga's Crayons -  Value = "254", Condition = "2" 
+                                // [11120] Ribbit Ribbit Spring Picnic - Value = "4", Condition = "2" 
+                                // [11360] [Artifact Hunt Contest] Announcement! - Value = "6", Condition = "2" 
+                                // [53228] Rainbow Week: Yellow Magic -  Value = "2", Condition = "2" 
+                                // [53230] Rainbow Week: Yellow Magic -  Value = "2", Condition = "2" 
+
+                                if (infoValue != string.Empty)
+                                {
+                                    firstCheck.QuestInfoEx.Add(new QuestEditorCheckQuestInfoExModel()
+                                    {
+                                        Value = infoValue,
+                                        Condition = cond
+                                    });
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.DayByDay:
+                        {
+                            //  <int name="dayByDay" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.DayOfWeek:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.DayOfWeek =
+                                [
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
+                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
+                                ];
+
+                            foreach (WzImageProperty dayOfWeekProp in checkTypeProp.WzProperties)
+                            {
+                                string dayOfWeekStr = (dayOfWeekProp as WzStringProperty)?.ToString() ?? string.Empty;
+
+                                if (dayOfWeekStr != string.Empty)
+                                {
+                                    QuestEditorCheckDayOfWeekType dayOfWeekType = QuestEditorCheckDayOfWeekTypeExt.FromWzString(dayOfWeekStr);
+
+                                    QuestEditorCheckDayOfWeekModel modelSet = firstCheck.DayOfWeek.Where(x => x.DayOfWeek == dayOfWeekType).FirstOrDefault();
+                                    modelSet.IsSelected = true;
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.FieldEnter:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty fieldProp in checkTypeProp.WzProperties)
+                            {
+                                int mapId = (fieldProp as WzIntProperty)?.GetInt() ?? 0;
+
+                                firstCheck.SelectedNumbersItem.Add(mapId);
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.SubJobFlags:
+                        {
+                            break;
+                        }
+                    case QuestEditorCheckType.Premium:
+                        {
+                            //  <int name="premium" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Pop:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0; // fame 
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Skill:
+                        {
+                            ObservableCollection<QuestEditorCheckSkillModel> skillsAcquire = new();
+
+                            foreach (WzImageProperty skillItemProp in checkTypeProp.WzProperties) // "0", "1", "2", "3"
+                            {
+                                // for future versions, dev debug
+#if DEBUG
+                                foreach (WzImageProperty itemSubProperties in skillItemProp.WzProperties)
+                                {
+                                    switch (itemSubProperties.Name)
+                                    {
+                                        case "id":
+                                        case "level":
+                                        case "acquire":
+                                        case "levelCondition":
+                                            break;
+                                        default:
+                                            {
+                                                string error = string.Format("[QuestEditor] Unhandled quest Check.img skill property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
+                                                ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                                                break;
+                                            }
+                                    }
+                                }
+#endif
+                                QuestEditorCheckSkillModel skillModel = new()
+                                {
+                                    Id = (skillItemProp["id"] as WzIntProperty)?.GetInt() ?? 0,
+                                    SkillLevel = (skillItemProp["level"] as WzIntProperty)?.GetInt() ?? 0, // for Act.img its "skillLevel"
+                                    Acquire = ((skillItemProp["acquire"] as WzIntProperty)?.GetInt() ?? 0) > 0 
+                                };
+
+                                string conditionTypeStr = (skillItemProp["levelCondition"] as WzStringProperty)?.GetString() ?? "none";
+                                if (conditionTypeStr != null) // its ok if is null
+                                {
+                                    skillModel.ConditionType = QuestEditorCheckSkillCondTypeExt.FromWzString(conditionTypeStr);
+                                }
+
+                                if (skillModel.Id != 0)
+                                {
+                                    skillsAcquire.Add(skillModel);
+                                }
+                            }
+
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+                            firstCheck.Skills = skillsAcquire;
+                            break;
+                        }
+                    case QuestEditorCheckType.Mob:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty mobProp in checkTypeProp.WzProperties) // "0", "1", "2", "3"
+                            {
+                                int mobId = (mobProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+                                int mobCount = (mobProp["count"] as WzIntProperty)?.GetInt() ?? 0;
+
+                                QuestEditorCheckMobModel mobModel = new()
+                                {
+                                    Id = mobId,
+                                    Count = mobCount,
+                                };
+                                firstCheck.MobReqs.Add(mobModel);
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.EndMeso:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0; //  
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Pet:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty petProp in checkTypeProp.WzProperties) // "0" "1" "2" pets
+                            {
+                                int petId = (petProp["id"] as WzIntProperty)?.GetInt() ?? 0;
+
+                                firstCheck.SelectedNumbersItem.Add(petId);
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.PetTamenessMin:
+                    case QuestEditorCheckType.PetTamenessMax:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0; //  
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.PetRecallLimit:
+                    case QuestEditorCheckType.PetAutoSpeakingLimit:
+                        {
+                            //  <int name="petRecallLimit" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.TamingMobLevelMin:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.WeeklyRepeat:
+                        {
+                            //  <int name="weeklyRepeat" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Married:
+                        {
+                            //  <int name="marriaged" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.CharmMin:
+                    case QuestEditorCheckType.CharismaMin:
+                    case QuestEditorCheckType.InsightMin:
+                    case QuestEditorCheckType.WillMin:
+                    case QuestEditorCheckType.CraftMin:
+                    case QuestEditorCheckType.SenseMin:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0; // sense 
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.ExceptBuff:
+                        {
+                            // <string name="exceptbuff" value="2022631"/> // its a string somehow, omg nexon!
+                            int buffId = (checkTypeProp as WzStringProperty)?.GetInt() ?? 0;
+                            if (buffId != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = buffId;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.EquipAllNeed:
+                    case QuestEditorCheckType.EquipSelectNeed:
+                        {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            foreach (WzImageProperty eqpProp in checkTypeProp.WzProperties)
+                            {
+                                int itemId = (eqpProp as WzIntProperty)?.GetInt() ?? 0;
+                                if (itemId != 0)
+                                {
+                                    firstCheck.SelectedNumbersItem.Add(itemId);
+                                }
+                            }
+
+                            break;
+                        }
+                    case QuestEditorCheckType.WorldMin:
+                        {
+                            //  <string name="worldmin" value="23"/>
+                            // oddly enough, worldmin and worldmax uses a WzStringProperty
+                            int amount = (checkTypeProp as WzStringProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.WorldMax:
+                        {
+                            int amount = (checkTypeProp as WzStringProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.LvMin:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.LvMax:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.NormalAutoStart:
+                        {
+                            //  <int name="normalAutoStart" value="1"/> bool
+                            bool set = ((checkTypeProp as WzIntProperty)?.GetInt() ?? 0) > 0;
+                            if (set)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Boolean = set;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Interval:
+                        {
+                            int amount = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                            if (amount != 0)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Amount = amount;
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Start:
+                    case QuestEditorCheckType.End:
+                    case QuestEditorCheckType.Start_t:
+                    case QuestEditorCheckType.End_t:
+                        {
+                            //<string name="start" value="2006072000"/>
+                            //<string name="end" value="2006100100" />
+                            //<string name="start_t" value="200809050000"/>
+                            //<string name="end_t" value="200809260000"/>
+                            WzStringProperty dateStr = (checkTypeProp as WzStringProperty);
+                            if (dateStr != null)
+                            {
+                                DateTime? date = dateStr.GetDateTime();
+
+                                if (date != null)
+                                {
+                                    var firstExpAct = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                    firstExpAct.Date = date.Value;
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Startscript:
+                    case QuestEditorCheckType.Endscript:
+                        {
+                            string text = (checkTypeProp as WzStringProperty)?.GetString() ?? null;
+                            if (text != null)
+                            {
+                                var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                                firstCheck.Text = text;
+                            }
+                            break;
+                        }
+                    default:
+                        {
+                            string error = string.Format("[QuestEditor] Unhandled quest check type. Name='{0}', QuestId={1}", checkTypeProp.Name, quest.Id);
+                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            break;
+                        }
+                }
+            }
+        }
+        private QuestEditorCheckInfoModel AddCheckItemIfNoneAndGet(QuestEditorCheckType checkTypeEnum, ObservableCollection<QuestEditorCheckInfoModel> questChecks)
+        {
+            bool containsItemCheckType = questChecks.Any(act => act.CheckType == checkTypeEnum);
+            if (!containsItemCheckType)
+            {
+                questChecks.Add(new QuestEditorCheckInfoModel()
+                {
+                    CheckType = checkTypeEnum,
+                });
+            }
+            var firstCheck = questChecks.FirstOrDefault(act => act.CheckType == checkTypeEnum);
+            return firstCheck;
+        }
 
         /// <summary>
-        /// Parses Quest.wz/Act.img/0, Quest.wz/Act.img/1
+        /// Parses "Quest.wz/Act.img/0", "Quest.wz/Act.img/1"
         /// </summary>
         /// <param name="questActProp"></param>
         /// <param name="quest"></param>
@@ -348,6 +930,36 @@ namespace HaCreator.GUI.Quest
                         {
                             foreach (WzImageProperty itemProp in actTypeProp.WzProperties)
                             {
+                                // for future versions, dev debug
+#if DEBUG
+                                foreach (WzImageProperty itemSubProperties in itemProp.WzProperties)
+                                {
+                                    switch (itemSubProperties.Name)
+                                    {
+                                        case "id":
+                                        case "count":
+                                        case "dateExpire":
+                                        case "potentialGrade":
+                                        case "job":
+                                        case "jobEx":
+                                        case "period":
+                                        case "prop":
+                                        case "gender":
+                                        case "var":
+                                        case "resignRemove":
+                                        case "name":
+                                        case "potentialCount": // only quest '11396' seems to use this.
+                                            break;
+                                        default:
+                                            {
+                                                string error = string.Format("[QuestEditor] Unhandled quest Act.img item property. Name='{0}', QuestId={1}", itemSubProperties.Name, quest.Id);
+                                                ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                                                break;
+                                            }
+                                    }
+                                }
+#endif
+
                                 int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
                                 WzStringProperty dateExpireProp = (itemProp["dateExpire"] as WzStringProperty);
@@ -357,6 +969,7 @@ namespace HaCreator.GUI.Quest
                                 int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
                                 int prop = (itemProp["prop"] as WzIntProperty)?.GetInt() ?? 0;
                                 CharacterGenderType gender = (CharacterGenderType)((itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2); // 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
+                                //int unk_var = (itemProp["var"] as WzIntProperty)?.GetInt() ?? 0;
 
                                 if (itemId != 0)
                                 {
@@ -576,9 +1189,9 @@ namespace HaCreator.GUI.Quest
                         {
                             var firstAct = AddActItemIfNoneAndGet(QuestEditorActType.FieldEnter, questActs);
 
-                            foreach (WzImageProperty itemProp in actTypeProp.WzProperties)
+                            foreach (WzImageProperty fieldProp in actTypeProp.WzProperties)
                             {
-                                int mapId = (itemProp as WzIntProperty)?.GetInt() ?? 0;
+                                int mapId = (fieldProp as WzIntProperty)?.GetInt() ?? 0;
 
                                 firstAct.SelectedNumbersItem.Add(mapId);
                             }
@@ -637,7 +1250,7 @@ namespace HaCreator.GUI.Quest
                                 {
                                     int jobId = (jobProp as WzIntProperty)?.GetInt() ?? 0;
 
-                                    QuestEditorActSkillModelJobIdWrapper jobModel = new QuestEditorActSkillModelJobIdWrapper()
+                                    QuestEditorSkillModelJobIdWrapper jobModel = new QuestEditorSkillModelJobIdWrapper()
                                     {
                                         JobId = jobId
                                     };
@@ -651,11 +1264,11 @@ namespace HaCreator.GUI.Quest
                         {
                             var firstExpAct = AddActItemIfNoneAndGet(QuestEditorActType.Job, questActs);
 
-                            foreach (WzImageProperty questProp in actTypeProp.WzProperties) // job Ids "0", "1", "2"
+                            foreach (WzImageProperty jobProp in actTypeProp.WzProperties) // job Ids "0", "1", "2"
                             {
-                                int jobId = (questProp as WzIntProperty)?.GetInt() ?? 0;
+                                int jobId = (jobProp as WzIntProperty)?.GetInt() ?? 0;
 
-                                QuestEditorActSkillModelJobIdWrapper jobModel = new QuestEditorActSkillModelJobIdWrapper()
+                                QuestEditorSkillModelJobIdWrapper jobModel = new QuestEditorSkillModelJobIdWrapper()
                                 {
                                     JobId = jobId
                                 };
@@ -681,7 +1294,7 @@ namespace HaCreator.GUI.Quest
                                     foreach (WzImageProperty jobProp in jobItemProp["job"].WzProperties)
                                     {
                                         int jobId = (jobProp as WzIntProperty)?.GetInt() ?? 0;
-                                        skillModel.JobIds.Add(new QuestEditorActSkillModelJobIdWrapper()
+                                        skillModel.JobIds.Add(new QuestEditorSkillModelJobIdWrapper()
                                         {
                                             JobId = jobId
                                         });
@@ -1076,6 +1689,31 @@ namespace HaCreator.GUI.Quest
 
         #region Quest QuestInfo.img
         /// <summary>
+        /// On click - select a quest name from the list of quests
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectParentFromList_Click(object sender, RoutedEventArgs e)
+        {
+            LoadQuestSelector questSelector = new();
+            questSelector.ShowDialog();
+
+            if (questSelector.SelectedQuestId == string.Empty)
+                return;
+
+            string selectedQId = questSelector.SelectedQuestId;
+
+            if (Program.InfoManager.QuestInfos.ContainsKey(selectedQId)) 
+            {
+                WzSubProperty subQuestProp = Program.InfoManager.QuestInfos[selectedQId];
+
+                string questName = (subQuestProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+
+                SelectedQuest.Parent = questName;
+            }
+        }
+
+        /// <summary>
         /// On click - button to generate the demand summary requirements from items in "Demand" tab
         /// </summary>
         /// <param name="sender"></param>
@@ -1135,6 +1773,9 @@ namespace HaCreator.GUI.Quest
 
                             foreach (QuestEditorActInfoRewardModel reward in act.SelectedRewardItems)
                             {
+                                if (reward.Quantity < 0)
+                                    continue; // dont put it as a reward for requirements.
+
                                 sb.Append(string.Format("#i{0}:# #t{0}:# x {1}", reward.ItemId, reward.Quantity.ToString("#,##0")));
                                 sb.Append("\r\n");
 
@@ -1332,7 +1973,7 @@ namespace HaCreator.GUI.Quest
                 if (actInfo.ActType != QuestEditorActType.BuffItemId)
                     return;
 
-                LoadItemSelector itemSelector = new LoadItemSelector(ItemIdsCategory.BUFF_CATEGORY);
+                LoadItemSelector itemSelector = new LoadItemSelector(ItemIdsCategory.BUFF_CATEGORY, InventoryType.USE);
                 itemSelector.ShowDialog();
                 int selectedItem = itemSelector.SelectedItemId;
                 if (selectedItem != 0)
@@ -1546,7 +2187,7 @@ namespace HaCreator.GUI.Quest
 
             if (questSkillModel != null)
             {
-                questSkillModel.JobIds.Remove((QuestEditorActSkillModelJobIdWrapper)button.DataContext);
+                questSkillModel.JobIds.Remove((QuestEditorSkillModelJobIdWrapper)button.DataContext);
             }
         }
 
@@ -1567,7 +2208,7 @@ namespace HaCreator.GUI.Quest
                 CharacterJob selectedJob = skillSelector.SelectedJob;
                 if (selectedJob != CharacterJob.None)
                 {
-                    questSkillModel.JobIds.Add(new QuestEditorActSkillModelJobIdWrapper()
+                    questSkillModel.JobIds.Add(new QuestEditorSkillModelJobIdWrapper()
                     {
                         JobId = (int)selectedJob
                     });
@@ -1646,7 +2287,7 @@ namespace HaCreator.GUI.Quest
         private void button_removeJob_Click(object sender, RoutedEventArgs e)
         {
             var button = (Button)sender;
-            var questActJobModel = button.DataContext as QuestEditorActSkillModelJobIdWrapper;
+            var questActJobModel = button.DataContext as QuestEditorSkillModelJobIdWrapper;
             ListBox listboxJobParent = FindAncestor<ListBox>(button);
             var questModel = listboxJobParent.DataContext as QuestEditorActInfoModel;
 
@@ -1673,7 +2314,7 @@ namespace HaCreator.GUI.Quest
                 CharacterJob selectedJob = skillSelector.SelectedJob;
                 if (selectedJob != CharacterJob.None)
                 {
-                    questModel.JobsReqs.Add(new QuestEditorActSkillModelJobIdWrapper()
+                    questModel.JobsReqs.Add(new QuestEditorSkillModelJobIdWrapper()
                     {
                         JobId = (int)selectedJob
                     });
@@ -1733,7 +2374,7 @@ namespace HaCreator.GUI.Quest
             CharacterJob selectedJob = skillSelector.SelectedJob;
             if (selectedJob != CharacterJob.None)
             {
-                spModel.Jobs.Add(new QuestEditorActSkillModelJobIdWrapper()
+                spModel.Jobs.Add(new QuestEditorSkillModelJobIdWrapper()
                 {
                     JobId = (int)selectedJob
                 });
@@ -1748,13 +2389,521 @@ namespace HaCreator.GUI.Quest
         private void button_removeSPJob_Click(object sender, RoutedEventArgs e)
         {
             var button = (Button)sender;
-            var jobModel = button.DataContext as QuestEditorActSkillModelJobIdWrapper;
+            var jobModel = button.DataContext as QuestEditorSkillModelJobIdWrapper;
             ListBox listboxJobParent = FindAncestor<ListBox>(button);
             var questModel = listboxJobParent.DataContext as QuestEditorActSpModel;
 
             if (questModel.Jobs.Contains(jobModel))
             {
                 questModel.Jobs.Remove(jobModel);
+            }
+        }
+        #endregion
+
+        #region Quest Check.img
+        /// <summary>
+        /// Select NPC for Check.img
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_checkSelectNPC_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel actInfo)
+            {
+                if (actInfo.CheckType != QuestEditorCheckType.Npc)
+                    return;
+
+                LoadNpcSelector npcSelector = new LoadNpcSelector();
+                npcSelector.ShowDialog();
+
+                string selectedItem = npcSelector.SelectedNpcId;
+                if (selectedItem != string.Empty)
+                {
+                    actInfo.Amount = int.Parse(selectedItem);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Select except buff for Check.img
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_Check_selectBuff_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel actInfo)
+            {
+                if (actInfo.CheckType != QuestEditorCheckType.ExceptBuff)
+                    return;
+
+                LoadItemSelector itemSelector = new(ItemIdsCategory.BUFF_CATEGORY);
+                itemSelector.ShowDialog();
+                int selectedItem = itemSelector.SelectedItemId;
+                if (selectedItem != 0)
+                {
+                    actInfo.Amount = selectedItem;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img -- Delete an item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_deleteItem_Click(object sender, RoutedEventArgs e)
+        {
+            Button btnSender = ((Button)sender);
+            QuestEditorCheckInfoModel checkType = FindAncestor<ListBox>(btnSender).DataContext as QuestEditorCheckInfoModel; // bz button is binded to <int>
+
+            if (checkType.CheckType != QuestEditorCheckType.Item)
+                return;
+
+            if (btnSender.DataContext is QuestEditorCheckItemReqModel selectedItem)
+            {
+                checkType.SelectedReqItems.Remove(selectedItem);
+            }
+        }
+
+        /// <summary>
+        /// Check.img select an item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectItem_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkInfo)
+            {
+                if (checkInfo.CheckType != QuestEditorCheckType.Item)
+                    return;
+
+                LoadItemSelector itemSelector = new(0);
+                itemSelector.ShowDialog();
+                int selectedItem = itemSelector.SelectedItemId;
+                if (selectedItem != 0)
+                {
+                    checkInfo.SelectedReqItems.Add(
+                        new QuestEditorCheckItemReqModel()
+                        {
+                            ItemId = selectedItem,
+                            Quantity = 1,
+                        });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img "mob" delete mob
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_deleteMob_Click(object sender, RoutedEventArgs e)
+        {
+            Button btnSender = ((Button)sender);
+            QuestEditorCheckInfoModel checkType = FindAncestor<ListBox>(btnSender).DataContext as QuestEditorCheckInfoModel; // bz button is binded to <int>
+
+            if (checkType.CheckType != QuestEditorCheckType.Mob)
+                return;
+
+            if (btnSender.DataContext is QuestEditorCheckMobModel selectedMob)
+            {
+                checkType.MobReqs.Remove(selectedMob);
+            }
+        }
+
+        /// <summary>
+        /// Check.img "mob" add mob
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_addMob_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkInfo)
+            {
+                if (checkInfo.CheckType != QuestEditorCheckType.Mob)
+                    return;
+
+                LoadMobSelector mobSelector = new();
+                mobSelector.ShowDialog();
+                int selectedMobId = mobSelector.SelectedMonsterId;
+                if (selectedMobId != 0)
+                {
+                    checkInfo.MobReqs.Add(
+                        new QuestEditorCheckMobModel()
+                        {
+                            Id = selectedMobId,
+                            Count = 1,
+                        });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img "pet" add item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectPetItem_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkInfo)
+            {
+                if (checkInfo.CheckType != QuestEditorCheckType.Pet)
+                    return;
+
+                LoadItemSelector itemSelector = new(ItemIdsCategory.PET_CATEGORY, InventoryType.CASH);
+                itemSelector.ShowDialog();
+                int selectedPetId = itemSelector.SelectedItemId;
+                if (selectedPetId != 0)
+                {
+                    checkInfo.SelectedNumbersItem.Add(selectedPetId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img "pet" remove item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_deletePetItem_Click(object sender, RoutedEventArgs e)
+        {
+            Button btnSender = ((Button)sender);
+            QuestEditorCheckInfoModel checkType = FindAncestor<ListBox>(btnSender).DataContext as QuestEditorCheckInfoModel; // bz button is binded to <int>
+
+            if (checkType.CheckType != QuestEditorCheckType.Pet)
+                return;
+
+            if (btnSender.DataContext is int selectedPetId)
+            {
+                checkType.SelectedNumbersItem.Remove(selectedPetId);
+            }
+        }
+
+        /// <summary>
+        /// Check.img select equipment to add
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectEquip_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkInfo)
+            {
+                if ((checkInfo.CheckType != QuestEditorCheckType.EquipAllNeed) && (checkInfo.CheckType != QuestEditorCheckType.EquipSelectNeed))
+                    return;
+
+                LoadItemSelector itemSelector = new(0, InventoryType.EQUIP);
+                itemSelector.ShowDialog();
+                int selectedItem = itemSelector.SelectedItemId;
+                if (selectedItem != 0)
+                {
+                    checkInfo.SelectedNumbersItem.Add(selectedItem);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img delete equipment
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_deleteEquip_Click(object sender, RoutedEventArgs e)
+        {
+            Button btnSender = ((Button)sender);
+            QuestEditorCheckInfoModel checkType = FindAncestor<ListBox>(btnSender).DataContext as QuestEditorCheckInfoModel; // bz button is binded to <int>
+            
+            if ((checkType.CheckType != QuestEditorCheckType.EquipAllNeed) && (checkType.CheckType != QuestEditorCheckType.EquipSelectNeed))
+                return;
+
+            if (btnSender.DataContext is int selectedItem)
+            {
+                checkType.SelectedNumbersItem.Remove(selectedItem);
+            }
+        }
+
+        /// <summary>
+        /// Check.img remove skill
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_removeSkill_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questSkillModel = button.DataContext as QuestEditorCheckSkillModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (questSkillModel != null && questModel != null)
+            {
+                questModel.Skills.Remove(questSkillModel);
+            }
+        }
+
+        /// <summary>
+        /// Check.img add skill
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectAddSkill_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkModel)
+            {
+                if (checkModel.CheckType != QuestEditorCheckType.Skill)
+                    return;
+
+                LoadSkillSelector skillSelector = new(0);
+                skillSelector.ShowDialog();
+                int selectedSkillId = skillSelector.SelectedSkillId;
+                if (selectedSkillId != 0)
+                {
+                    QuestEditorCheckSkillModel skillModel = new()
+                    {
+                        Id = selectedSkillId,
+                    };
+                    checkModel.Skills.Add(skillModel);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img remove job
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_removeJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questActJobModel = button.DataContext as QuestEditorSkillModelJobIdWrapper;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (questActJobModel != null && questModel != null)
+            {
+                questModel.Jobs.Remove(questActJobModel);
+            }
+
+        }
+
+        /// <summary>
+        /// Check.img add job
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectAddJob_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questModel = button.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel != null)
+            {
+                LoadJobSelector skillSelector = new();
+                skillSelector.ShowDialog();
+                CharacterJob selectedJob = skillSelector.SelectedJob;
+                if (selectedJob != CharacterJob.None)
+                {
+                    questModel.Jobs.Add(new QuestEditorSkillModelJobIdWrapper()
+                    {
+                        JobId = (int)selectedJob
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img add quest
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectAddQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            QuestEditorCheckInfoModel questModel = button.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel.CheckType != QuestEditorCheckType.Quest)
+                return;
+
+            LoadQuestSelector questSelector = new();
+            questSelector.ShowDialog();
+
+            string questId = questSelector.SelectedQuestId;
+            if (questId != string.Empty)
+            {
+                questModel.QuestReqs.Add(new QuestEditorQuestReqModel()
+                {
+                    QuestId = int.Parse(questId),
+                    QuestState = QuestStateType.Completed, // default is 2 for 'act' typically
+                });
+            }
+        }
+
+        /// <summary>
+        /// Check.img "infoNumber" select quest
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_selectQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            QuestEditorCheckInfoModel questModel = button.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel.CheckType != QuestEditorCheckType.InfoNumber)
+                return;
+
+            LoadQuestSelector questSelector = new();
+            questSelector.ShowDialog();
+
+            string questId = questSelector.SelectedQuestId;
+            if (questId != string.Empty)
+            {
+                questModel.Amount = long.Parse(questId);
+            }
+        }
+
+        /// <summary>
+        /// Check.img "info" add info
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_info_addQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            StackPanel stackPanelParent = FindAncestor<StackPanel>(button);
+            var questModel = stackPanelParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel != null)
+            {
+                questModel.QuestInfo.Add(new QuestEditorCheckQuestInfoModel()
+                {
+                     Text = "0",
+                });
+            }
+        }
+
+        /// <summary>
+        /// Check.img "info" remove info
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_info_remove_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var infoModel = button.DataContext as QuestEditorCheckQuestInfoModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (infoModel != null && questModel != null)
+            {
+                questModel.QuestInfo.Remove(infoModel);
+            }
+        }
+
+        /// <summary>
+        /// Check.img "infoEx" add info
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_infoEx_addQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            StackPanel stackPanelParent = FindAncestor<StackPanel>(button);
+            var questModel = stackPanelParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel != null)
+            {
+                questModel.QuestInfoEx.Add(new QuestEditorCheckQuestInfoExModel()
+                {
+                     Value = "1",
+                     Condition = 0,
+                });
+            }
+        }
+
+        /// <summary>
+        /// Check.img "infoEx" remove info
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_infoEx_remove_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var infoExModel = button.DataContext as QuestEditorCheckQuestInfoExModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (infoExModel != null && questModel != null)
+            {
+                questModel.QuestInfoEx.Remove(infoExModel);
+            }
+        }
+
+        /// <summary>
+        /// Check.img remove quest
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_removeQuest_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questActModel = button.DataContext as QuestEditorQuestReqModel;
+            ListBox listboxJobParent = FindAncestor<ListBox>(button);
+            var questModel = listboxJobParent.DataContext as QuestEditorCheckInfoModel;
+
+            if (questActModel != null && questModel != null)
+            {
+                questModel.QuestReqs.Remove(questActModel);
+            }
+        }
+
+        /// <summary>
+        /// Check.img fieldEnter select maps
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void botton_check_selectMaps_Click(object sender, RoutedEventArgs e)
+        {
+            // Get the DataContext of the button
+            if (((Button)sender).DataContext is QuestEditorCheckInfoModel checkInfo)
+            {
+                if (checkInfo.CheckType != QuestEditorCheckType.FieldEnter)
+                    return;
+
+                LoadMapSelector mapSelector = new LoadMapSelector();
+                mapSelector.ShowDialog();
+
+                string selectedItem = mapSelector.SelectedMap;
+                if (selectedItem != string.Empty)
+                {
+                    checkInfo.SelectedNumbersItem.Add(int.Parse(selectedItem));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img fieldEnter delete maps
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_fieldEnter_delete_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var dataGridRow = FindAncestor<DataGridRow>(button);
+            var dataGridCell = FindAncestor<DataGridCell>(button);
+            var response = (int)button.DataContext;
+            var questModel = dataGridCell.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel != null)
+            {
+                // find the listbox first
+                // then get the ObservableCollection<QuestEditorSayResponseModel> it is binded to
+                ListBox listboxParent = FindAncestor<ListBox>(button);
+
+                questModel.SelectedNumbersItem.Remove(response);
             }
         }
         #endregion
@@ -1796,7 +2945,7 @@ namespace HaCreator.GUI.Quest
                 // area, order
                 if (quest.Area != 0)
                 {
-                    questWzSubProp.AddProperty(new WzIntProperty("area", quest.Area));
+                    questWzSubProp.AddProperty(new WzIntProperty("area", (int) quest.Area));
                 }
                 if (quest.Order != 0)
                 {

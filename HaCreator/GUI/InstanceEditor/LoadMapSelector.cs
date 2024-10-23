@@ -29,6 +29,7 @@ namespace HaCreator.GUI.InstanceEditor
             InitializeComponent();
 
             this.FormClosing += LoadQuestSelector_FormClosing;
+            this.KeyDown += Load_KeyDown;
 
             DialogResult = DialogResult.Cancel;
 

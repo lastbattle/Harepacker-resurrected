@@ -31,8 +31,8 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorActSkillModelJobIdWrapper> _jobs = new ObservableCollection<QuestEditorActSkillModelJobIdWrapper>();
-        public ObservableCollection<QuestEditorActSkillModelJobIdWrapper> Jobs
+        private ObservableCollection<QuestEditorSkillModelJobIdWrapper> _jobs = new ObservableCollection<QuestEditorSkillModelJobIdWrapper>();
+        public ObservableCollection<QuestEditorSkillModelJobIdWrapper> Jobs
         {
             get { return _jobs; }
             set

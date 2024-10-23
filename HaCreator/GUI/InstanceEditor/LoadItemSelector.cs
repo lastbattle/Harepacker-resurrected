@@ -45,7 +45,8 @@ namespace HaCreator.GUI.InstanceEditor
         private bool _isLoading = false;
         private bool _bItemsLoaded = false;
 
-        private int _filterItemId = 0; // 0 = no filter, 243 = _itemId / 10000
+        private int _filterItemCategoryId = 0; // 0 = no filter, 243 = _itemId / 10000
+        private InventoryType _filterInventoryType = InventoryType.NONE; // 0 = no filter, 1 = equip only
 
         // dictionary
         private readonly List<string> itemNames = new List<string>(); // cache
@@ -65,8 +66,9 @@ namespace HaCreator.GUI.InstanceEditor
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="filterItemId"></param>
-        public LoadItemSelector(int filterItemId)
+        /// <param name="filterItemId">Filter by item category type</param>
+        /// <param name="filterInventoryType">Filter by inventory type</param>
+        public LoadItemSelector(int filterItemId, InventoryType filterInventoryType = InventoryType.NONE)
         {
             InitializeComponent();
 
@@ -75,7 +77,8 @@ namespace HaCreator.GUI.InstanceEditor
 
             this.FormClosing += LoadQuestSelector_FormClosing;
 
-            this._filterItemId = filterItemId;
+            this._filterItemCategoryId = filterItemId;
+            this._filterInventoryType = filterInventoryType;
 
             // load items
             load();
@@ -99,7 +102,9 @@ namespace HaCreator.GUI.InstanceEditor
                     string itemName = item.Value.Item2;
                     string itemDesc = item.Value.Item3;
 
-                    if (_filterItemId != 0 && (itemId / 10000 != _filterItemId)) // filters for item category
+                    if (_filterItemCategoryId != 0 && (itemId / 10000 != _filterItemCategoryId)) // filters for item category
+                        continue;
+                    if (_filterInventoryType != InventoryType.NONE && (InventoryTypeExtensions.GetByType((byte) (itemId / 1000000)) != _filterInventoryType)) // filters for item category
                         continue;
 
                     if (ItemIdsCategory.IsEquipment(itemId))

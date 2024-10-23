@@ -20,6 +20,7 @@ SOFTWARE.
 */
 
 
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -39,7 +40,7 @@ namespace HaCreator.GUI.Quest
         private string _name = string.Empty;
         private string _parent = string.Empty;
         private string _summary = string.Empty, _questInfoDesc0 = string.Empty, _questInfoDesc1 = string.Empty, _questInfoDesc2 = string.Empty;
-        private int _area;
+        private QuestAreaCodeType _area;
         private bool _blocked;
         private int _order;
         private bool _autoPreComplete, _autoComplete, _autoStart;
@@ -65,7 +66,8 @@ namespace HaCreator.GUI.Quest
         private readonly ObservableCollection<QuestEditorActInfoModel> _actEndInfo = new ObservableCollection<QuestEditorActInfoModel>();
 
         // Check
-        private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
+        private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkStartInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
+        private readonly ObservableCollection<QuestEditorCheckInfoModel> _checkEndInfo = new ObservableCollection<QuestEditorCheckInfoModel>();
 
         /// <summary>
         /// Constructor
@@ -106,7 +108,7 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        public int Area
+        public QuestAreaCodeType Area
         {
             get => _area;
             set
@@ -383,11 +385,21 @@ namespace HaCreator.GUI.Quest
         }
 
         /// <summary>
-        /// Check.img
+        /// Check.img start "0"
         /// </summary>
-        public ObservableCollection<QuestEditorCheckInfoModel> CheckInfo
+        public ObservableCollection<QuestEditorCheckInfoModel> CheckStartInfo
         {
-            get => _checkInfo;
+            get => _checkStartInfo;
+            private set
+            {
+            }
+        }
+        /// <summary>
+        /// Check.img end "1"
+        /// </summary>
+        public ObservableCollection<QuestEditorCheckInfoModel> CheckEndInfo
+        {
+            get => _checkEndInfo;
             private set
             {
             }

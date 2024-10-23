@@ -77,7 +77,8 @@ namespace HaCreator.GUI.InstanceEditor
 
                 try
                 {
-                    await Task.Delay(500, cancellationToken); // Delay for 500ms or until cancelled
+                    // 100ms is the limit at which hoomans think its instant!
+                    await Task.Delay(100, cancellationToken); // Delay until cancelled
 
                     List<string> itemsFiltered = _itemNames
                         .Where(item => item.ToLower().Contains(searchText))

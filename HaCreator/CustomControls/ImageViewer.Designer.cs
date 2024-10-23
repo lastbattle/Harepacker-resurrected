@@ -32,7 +32,8 @@ namespace HaCreator.CustomControls
             // 
             // ImageViewer
             // 
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Inherit;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.AutoValidate = System.Windows.Forms.AutoValidate.EnableAllowFocusChange;
             this.BackColor = System.Drawing.SystemColors.ControlLightLight;
             this.DoubleBuffered = true;

@@ -1189,7 +1189,8 @@ namespace HaRepacker.GUI.Panels
                 Title = "Select where to save the image...",
                 Filter = "Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
             };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) 
+                return;
             switch (dialog.FilterIndex)
             {
                 case 1: //png

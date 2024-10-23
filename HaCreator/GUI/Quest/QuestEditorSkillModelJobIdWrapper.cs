@@ -1,13 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.ComponentModel;
 
 namespace HaCreator.GUI.Quest
 { 
-    public class QuestEditorActSkillModelJobIdWrapper : INotifyPropertyChanged
+    /// <summary>
+    /// Dual-use class model between Act and Check
+    /// </summary>
+    public class QuestEditorSkillModelJobIdWrapper : INotifyPropertyChanged
     {
         private int _jobId;
         public int JobId

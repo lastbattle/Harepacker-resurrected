@@ -52,7 +52,7 @@ namespace HaCreator.GUI.Quest
             _actConversationStop.CollectionChanged += ActConversation_StartStop_CollectionChanged;
         }
 
-        private ObservableCollection<QuestEditorActInfoRewardModel> _selectedRewardItems = new ObservableCollection<QuestEditorActInfoRewardModel>();
+        private ObservableCollection<QuestEditorActInfoRewardModel> _selectedRewardItems = new();
         public ObservableCollection<QuestEditorActInfoRewardModel> SelectedRewardItems
         {
             get { return _selectedRewardItems; }
@@ -197,8 +197,8 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorActSkillModelJobIdWrapper> _jobsReqs = new ObservableCollection<QuestEditorActSkillModelJobIdWrapper>();
-        public ObservableCollection<QuestEditorActSkillModelJobIdWrapper> JobsReqs
+        private ObservableCollection<QuestEditorSkillModelJobIdWrapper> _jobsReqs = new ObservableCollection<QuestEditorSkillModelJobIdWrapper>();
+        public ObservableCollection<QuestEditorSkillModelJobIdWrapper> JobsReqs
         {
             get { return _jobsReqs; }
             set

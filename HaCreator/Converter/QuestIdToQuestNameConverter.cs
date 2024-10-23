@@ -14,8 +14,10 @@ namespace HaCreator.Converter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
+            const string NO_NAME = "NO NAME";
+
             if (value == null)
-                return string.Empty;
+                return NO_NAME;
 
             string questIdString;
             if (value is long longValue)
@@ -28,17 +30,17 @@ namespace HaCreator.Converter
             }
             else
             {
-                return string.Empty;
+                return NO_NAME;
             }
 
             if (!Program.InfoManager.QuestInfos.ContainsKey(questIdString))
             {
-                return string.Empty;
+                return NO_NAME;
             }
 
             WzSubProperty questProp = Program.InfoManager.QuestInfos[questIdString];
 
-            string questName = (questProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+            string questName = (questProp["name"] as WzStringProperty)?.Value ?? NO_NAME;
             return questName;
         }
 
