@@ -86,24 +86,19 @@ namespace HaRepacker
         /// <returns></returns>
         private static CultureInfo GetMainCulture(CultureInfo ci)
         {
-            if (!ci.Name.Contains("-"))
+            var hyphen = ci.Name.IndexOf('-');
+            if (hyphen < 0)
                 return ci;
-            switch (ci.Name.Split("-".ToCharArray())[0])
+            return ci.Name.AsSpan(0, hyphen) switch
             {
-                case "ko":
-                    return new CultureInfo("ko");
-                case "ja":
-                    return new CultureInfo("ja");
-                case "en":
-                    return new CultureInfo("en");
-                case "zh":
-                    if (ci.EnglishName.Contains("Simplified"))
-                        return new CultureInfo("zh-CHS");
-                    else
-                        return new CultureInfo("zh-CHT");
-                default:
-                    return ci;
-            }
+                "ko" => new CultureInfo("ko"),
+                "ja" => new CultureInfo("ja"),
+                "en" => new CultureInfo("en"),
+                "zh" => ci.ThreeLetterWindowsLanguageName == "CHS"
+                    ? new CultureInfo("zh-CHS")
+                    : new CultureInfo("zh-CHT"),
+                _ => ci
+            };
         }
 
         private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
