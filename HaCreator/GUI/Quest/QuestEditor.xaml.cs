@@ -566,6 +566,11 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.SubJobFlags:
                         {
+                            var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
+
+                            int subJobFlag = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+
+                            firstCheck.Amount = subJobFlag;
                             break;
                         }
                     case QuestEditorCheckType.Premium:

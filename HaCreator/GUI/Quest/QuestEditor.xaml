@@ -30,6 +30,7 @@
         <converter:QuestStateIdToQuestStateConverter x:Key="questStateIdToQuestStateConverter"/>
         <converter:JobClassBitfieldToClassNamesConverter x:Key="jobClassBitfieldToClassNamesConverter"/>
         <converter:EnumNameIntValueConverter x:Key="enumNameIntValueConverter"/>
+        <converter:CharacterSubJobTypeConverter x:Key="characterSubJobTypeConverter"/>
 
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -203,6 +204,13 @@
                         ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
                 <x:Type TypeName="local:QuestEditorCheckDayOfWeekType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for sub job flag enum-->
+        <ObjectDataProvider x:Key="characterSubJobFlagEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:CharacterSubJobFlagType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
 
@@ -1506,7 +1514,28 @@
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
             </StackPanel>
         </DataTemplate>
-        
+
+        <!-- CheckSubJobFlagsTemplate -->
+        <DataTemplate x:Key="CheckSubJobFlagsTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Sub job flag:" Margin="2,0,0,0"/>
+                </StackPanel>
+                
+                <ComboBox 
+                    ItemsSource="{Binding Source={StaticResource characterSubJobFlagEnum}}"  
+                    SelectedValue="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource characterSubJobTypeConverter}}"
+                    SelectedValuePath="."
+                    DisplayMemberPath=".">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </DataTemplate>
+
         <!-- TamingMobLevelMin -->
         <DataTemplate x:Key="CheckTamingMobLevelMinTemplate">
             <StackPanel>
@@ -1898,7 +1927,7 @@
 
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Condition:" Width="70" Margin="10,0,0,0"/>
-                                        <TextBox Text="{Binding Condition}" InputScope="Text" Width="70" Margin="10,0,0,0"/>
+                                        <TextBox Text="{Binding Condition}" InputScope="Default" Width="70" Margin="10,0,0,0"/>
                                     </StackPanel>
                                     <!--<ComboBox x:Name="comboBox_questInfoEx_Condition" 
                                               ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
@@ -2277,6 +2306,9 @@
                 </DataTrigger>
                 <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.WorldMax}">
                     <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckWorldMaxTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.SubJobFlags}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckSubJobFlagsTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.PetTamenessMin}">
                     <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetTamenessMinTemplate}"/>
