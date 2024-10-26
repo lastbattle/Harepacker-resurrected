@@ -33,7 +33,16 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         public QuestEditorCheckInfoModel()
         {
-
+            DayOfWeek =
+                [
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
+                ];
         }
 
         private QuestEditorCheckType _checkType = QuestEditorCheckType.Null;

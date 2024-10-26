@@ -14,8 +14,9 @@ namespace HaCreator.Converter
         {
             if (value is Enum enumValue)
             {
-                string name = enumValue.ToString();
+                string name = enumValue.ToString().Replace("_", " ");
                 int intValue = System.Convert.ToInt32(enumValue);
+
                 return $"{name} ({intValue})";
             }
             return string.Empty;

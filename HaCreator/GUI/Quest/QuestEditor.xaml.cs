@@ -416,7 +416,6 @@ namespace HaCreator.GUI.Quest
                         {
                             foreach (WzImageProperty itemProp in checkTypeProp.WzProperties)
                             {
-
                                 // for future versions, dev debug
 #if DEBUG
                                 foreach (WzImageProperty itemSubProperties in itemProp.WzProperties)
@@ -527,17 +526,6 @@ namespace HaCreator.GUI.Quest
                         {
                             var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
 
-                                firstCheck.DayOfWeek =
-                                [
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
-                                    new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
-                                ];
-
                             foreach (WzImageProperty dayOfWeekProp in checkTypeProp.WzProperties)
                             {
                                 string dayOfWeekStr = (dayOfWeekProp as WzStringProperty)?.ToString() ?? string.Empty;
@@ -569,6 +557,15 @@ namespace HaCreator.GUI.Quest
                             var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
 
                             int subJobFlag = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+
+#if DEBUG // developer
+                            CharacterSubJobFlagType flag = CharacterSubJobFlagTypeExt.ToEnum(subJobFlag);
+                            if (subJobFlag != 0 && flag == CharacterSubJobFlagType.Any)
+                            {
+                                string error = string.Format("[QuestEditor] Unhandled quest Check.img 'subJobFlag' property. Flag='{0}', QuestId={1}", subJobFlag, quest.Id);
+                                ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                            }
+#endif
 
                             firstCheck.Amount = subJobFlag;
                             break;
@@ -3041,67 +3038,423 @@ namespace HaCreator.GUI.Quest
             ///////////////////
             ////// Save Say.img
             ///////////////////
-            WzSubProperty newSayWzProp = new WzSubProperty(quest.Id.ToString());
-            WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
+            {
+                WzSubProperty newSayWzProp = new WzSubProperty(quest.Id.ToString());
+                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
 
-            // start quest
-            WzSubProperty startQuestSubProperty = new WzSubProperty("0");
-            WzSubProperty endQuestSubProperty = new WzSubProperty("1");
+                // start quest
+                WzSubProperty startQuestSubProperty = new WzSubProperty("0");
+                WzSubProperty endQuestSubProperty = new WzSubProperty("1");
 
-            newSayWzProp.AddProperty(startQuestSubProperty);
-            newSayWzProp.AddProperty(endQuestSubProperty);
+                newSayWzProp.AddProperty(startQuestSubProperty);
+                newSayWzProp.AddProperty(endQuestSubProperty);
 
-            saveQuestSayConversation(quest.SayInfoStartQuest, startQuestSubProperty); // start quest save
-            saveQuestSayConversation(quest.SayInfoEndQuest, endQuestSubProperty); // end quest save
+                saveQuestSayConversation(quest.SayInfoStartQuest, startQuestSubProperty); // start quest save
+                saveQuestSayConversation(quest.SayInfoEndQuest, endQuestSubProperty); // end quest save
 
-            saveQuestStopSayConversation(quest.SayInfoStop_StartQuest, startQuestSubProperty);
-            saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
+                saveQuestStopSayConversation(quest.SayInfoStop_StartQuest, startQuestSubProperty);
+                saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
+
+                // select any parent node
+                WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
+                if (questSayParentImg == null)
+                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
+
+                if (oldSayWzProp != null)
+                    oldSayWzProp.Remove();
+
+                questSayParentImg.AddProperty(newSayWzProp); // add new to the parent
+
+                // replace the old 
+                Program.InfoManager.QuestSays[quest.Id.ToString()] = newSayWzProp;
+
+                // flag wz file unsaved
+                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+            }
 
             ///////////////////
             ////// Save Act.img
             ///////////////////
-            WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
-            WzSubProperty questAct_New = new WzSubProperty(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
+            {
+                WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
+                WzSubProperty questAct_New = new WzSubProperty(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
 
-            WzSubProperty act_startSubProperty = new WzSubProperty("0");
-            WzSubProperty act_endSubProperty = new WzSubProperty("1");
-            questAct_New.AddProperty(act_startSubProperty);
-            questAct_New.AddProperty(act_endSubProperty);
+                WzSubProperty act_startSubProperty = new WzSubProperty("0");
+                WzSubProperty act_endSubProperty = new WzSubProperty("1");
+                questAct_New.AddProperty(act_startSubProperty);
+                questAct_New.AddProperty(act_endSubProperty);
 
-            SaveActInfo(quest.ActStartInfo, act_startSubProperty, quest);
-            SaveActInfo(quest.ActEndInfo, act_endSubProperty, quest);
+                SaveActInfo(quest.ActStartInfo, act_startSubProperty, quest);
+                SaveActInfo(quest.ActEndInfo, act_endSubProperty, quest);
 
-            // select any parent node
-            WzImage questActParentImg;
-            if (questAct_SubPropOriginal == null)
-                questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
-            else
-                questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+                // select any parent node
+                WzImage questActParentImg;
+                if (questAct_SubPropOriginal == null)
+                    questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
+                else
+                    questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
 
-            questActParentImg.AddProperty(questAct_New); // add new to the parent
+                questActParentImg.AddProperty(questAct_New); // add new to the parent
 
-            // replace the old 
-            Program.InfoManager.QuestActs[quest.Id.ToString()] = questAct_New;
+                // replace the old 
+                Program.InfoManager.QuestActs[quest.Id.ToString()] = questAct_New;
+
+                // flag wz file unsaved
+                Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+            }
 
             ///////////////////
-            ////// remove previous quest say wzImage
+            ////// Save Check.img
             ///////////////////
-            WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
-            if (questSayParentImg == null)
-                questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
+            {
+                WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null; // old quest "Check" to reference
+                WzSubProperty questCheck_New = new WzSubProperty(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
 
-            if (oldSayWzProp != null)
-                oldSayWzProp.Remove();
+                WzSubProperty check_startSubProperty = new WzSubProperty("0");
+                WzSubProperty check_endSubProperty = new WzSubProperty("1");
+                questCheck_New.AddProperty(check_startSubProperty);
+                questCheck_New.AddProperty(check_endSubProperty);
 
-            questSayParentImg.AddProperty(newSayWzProp); // add new to the parent
+                SaveCheck(quest.CheckStartInfo, check_startSubProperty, quest);
+                SaveCheck(quest.CheckEndInfo, check_endSubProperty, quest);
 
-            // replace the old 
-            Program.InfoManager.QuestSays[quest.Id.ToString()] = newSayWzProp;
+                // select any parent node
+                WzImage questCheckParentImg;
+                if (questCheck_SubPropOriginal == null)
+                    questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
+                else
+                    questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+
+                questCheckParentImg.AddProperty(questCheck_New); // add new to the parent
+
+                // replace the old 
+                Program.InfoManager.QuestChecks[quest.Id.ToString()] = questCheck_New;
+
+                // flag wz file unsaved
+                Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+            }
 
             // flag unsaved changes bool
             _unsavedChanges = true;
-            Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
 
+        }
+
+        private void SaveCheck(ObservableCollection<QuestEditorCheckInfoModel> checkModels, WzSubProperty act01Property, QuestEditorModel quest)
+        {
+            foreach (QuestEditorCheckInfoModel check in checkModels)
+            {
+                switch (check.CheckType)
+                {
+                    case QuestEditorCheckType.Npc:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty("npc", (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.Job:
+                        {
+                            WzSubProperty jobSubProperty = new WzSubProperty("job");
+                            act01Property.AddProperty(jobSubProperty);
+
+                            for (int i = 0; i < check.Jobs.Count; i++)
+                            {
+                                jobSubProperty.AddProperty(new WzIntProperty(i.ToString(), check.Jobs[i].JobId));
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Quest:
+                        {
+                            WzSubProperty questSubProperty = new WzSubProperty("quest");
+                            act01Property.AddProperty(questSubProperty);
+
+                            for (int i = 0; i < check.QuestReqs.Count; i++)
+                            {
+                                var req = check.QuestReqs[i];
+                                WzSubProperty reqSubProperty = new WzSubProperty(i.ToString());
+                                questSubProperty.AddProperty(reqSubProperty);
+
+                                reqSubProperty.AddProperty(new WzIntProperty("id", req.QuestId));
+                                reqSubProperty.AddProperty(new WzIntProperty("state", (int)req.QuestState));
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Item:
+                        {
+                            if (check.SelectedReqItems.Count > 0)
+                            {
+                                WzSubProperty itemSubProperty = new WzSubProperty("item");
+                                act01Property.AddProperty(itemSubProperty);
+
+                                for (int i = 0; i < check.SelectedReqItems.Count; i++)
+                                {
+                                    var reqItem = check.SelectedReqItems[i];
+                                    WzSubProperty itemReqProperty = new WzSubProperty(i.ToString());
+                                    itemSubProperty.AddProperty(itemReqProperty);
+
+                                    itemReqProperty.AddProperty(new WzIntProperty("id", reqItem.ItemId));
+                                    itemReqProperty.AddProperty(new WzIntProperty("count", reqItem.Quantity));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Info:
+                        {
+                            WzSubProperty infoSubProperty = new WzSubProperty("info");
+                            act01Property.AddProperty(infoSubProperty);
+
+                            for (int i = 0; i < check.QuestInfo.Count; i++)
+                            {
+                                infoSubProperty.AddProperty(new WzStringProperty(i.ToString(), check.QuestInfo[i].Text));
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.InfoNumber:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty("infoNumber", (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.InfoEx:
+                        {
+                            if (check.QuestInfoEx.Count > 0)
+                            {
+                                WzSubProperty infoExSubProperty = new WzSubProperty("infoEx");
+                                act01Property.AddProperty(infoExSubProperty);
+
+                                for (int i = 0; i < check.QuestInfoEx.Count; i++)
+                                {
+                                    var infoEx = check.QuestInfoEx[i];
+                                    WzSubProperty infoExItemProperty = new WzSubProperty(i.ToString());
+                                    infoExSubProperty.AddProperty(infoExItemProperty);
+
+                                    infoExItemProperty.AddProperty(new WzStringProperty("value", infoEx.Value));
+                                    if (infoEx.Condition != 0)
+                                        infoExItemProperty.AddProperty(new WzIntProperty("cond", infoEx.Condition));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.DayByDay:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty("dayByDay", check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.DayOfWeek:
+                        {
+                            if (check.DayOfWeek != null && check.DayOfWeek.Any(x => x.IsSelected))
+                            {
+                                WzSubProperty dayOfWeekSubProperty = new WzSubProperty("dayOfWeek");
+                                act01Property.AddProperty(dayOfWeekSubProperty);
+
+                                int i = 0;
+                                foreach (var day in check.DayOfWeek.Where(x => x.IsSelected))
+                                {
+                                    dayOfWeekSubProperty.AddProperty(new WzStringProperty(i.ToString(), day.DayOfWeek.ToWzString()));
+                                    i++;
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.FieldEnter:
+                        {
+                            if (check.SelectedNumbersItem.Count > 0)
+                            {
+                                WzSubProperty fieldEnterSubProperty = new WzSubProperty("fieldEnter");
+                                act01Property.AddProperty(fieldEnterSubProperty);
+
+                                for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
+                                {
+                                    fieldEnterSubProperty.AddProperty(new WzIntProperty(i.ToString(), check.SelectedNumbersItem[i]));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.SubJobFlags:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty("subJobFlags", (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.Premium:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty("premium", check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.Pop:
+                    case QuestEditorCheckType.CharmMin:
+                    case QuestEditorCheckType.CharismaMin:
+                    case QuestEditorCheckType.InsightMin:
+                    case QuestEditorCheckType.WillMin:
+                    case QuestEditorCheckType.CraftMin:
+                    case QuestEditorCheckType.SenseMin:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.Skill:
+                        {
+                            if (check.Skills.Count > 0)
+                            {
+                                WzSubProperty skillSubProperty = new WzSubProperty("skill");
+                                act01Property.AddProperty(skillSubProperty);
+
+                                for (int i = 0; i < check.Skills.Count; i++)
+                                {
+                                    var skill = check.Skills[i];
+                                    WzSubProperty skillItemProperty = new WzSubProperty(i.ToString());
+                                    skillSubProperty.AddProperty(skillItemProperty);
+
+                                    skillItemProperty.AddProperty(new WzIntProperty("id", skill.Id));
+                                    if (skill.SkillLevel != 0)
+                                        skillItemProperty.AddProperty(new WzIntProperty("level", skill.SkillLevel));
+                                    if (skill.Acquire)
+                                        skillItemProperty.AddProperty(new WzIntProperty("acquire", skill.Acquire ? 1 : 0));
+                                    if (skill.ConditionType != QuestEditorCheckSkillCondType.None)
+                                        skillItemProperty.AddProperty(new WzStringProperty("levelCondition", skill.ConditionType.ToWzString()));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Mob:
+                        {
+                            if (check.MobReqs.Count > 0)
+                            {
+                                WzSubProperty mobSubProperty = new WzSubProperty("mob");
+                                act01Property.AddProperty(mobSubProperty);
+
+                                for (int i = 0; i < check.MobReqs.Count; i++)
+                                {
+                                    var mob = check.MobReqs[i];
+                                    WzSubProperty mobItemProperty = new WzSubProperty(i.ToString());
+                                    mobSubProperty.AddProperty(mobItemProperty);
+
+                                    mobItemProperty.AddProperty(new WzIntProperty("id", mob.Id));
+                                    mobItemProperty.AddProperty(new WzIntProperty("count", mob.Count));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.EndMeso:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty("endmeso", (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.Pet:
+                        {
+                            if (check.SelectedNumbersItem.Count > 0)
+                            {
+                                WzSubProperty petSubProperty = new WzSubProperty("pet");
+                                act01Property.AddProperty(petSubProperty);
+
+                                for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
+                                {
+                                    WzSubProperty petItemProperty = new WzSubProperty(i.ToString());
+                                    petSubProperty.AddProperty(petItemProperty);
+                                    petItemProperty.AddProperty(new WzIntProperty("id", check.SelectedNumbersItem[i]));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.PetTamenessMin:
+                    case QuestEditorCheckType.PetTamenessMax:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.PetRecallLimit:
+                    case QuestEditorCheckType.PetAutoSpeakingLimit:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.TamingMobLevelMin:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty("tamingmoblevelmin", (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.WeeklyRepeat:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty("weeklyRepeat", check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.Married:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty("marriaged", check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.ExceptBuff:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzStringProperty("exceptbuff", check.Amount.ToString()));
+                            break;
+                        }
+                    case QuestEditorCheckType.EquipAllNeed:
+                    case QuestEditorCheckType.EquipSelectNeed:
+                        {
+                            if (check.SelectedNumbersItem.Count > 0)
+                            {
+                                WzSubProperty equipSubProperty = new WzSubProperty(check.CheckType.ToOriginalString());
+                                act01Property.AddProperty(equipSubProperty);
+
+                                for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
+                                {
+                                    equipSubProperty.AddProperty(new WzIntProperty(i.ToString(), check.SelectedNumbersItem[i]));
+                                }
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.WorldMin:
+                    case QuestEditorCheckType.WorldMax:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzStringProperty(check.CheckType.ToOriginalString(), check.Amount.ToString()));
+                            break;
+                        }
+                    case QuestEditorCheckType.LvMin:
+                    case QuestEditorCheckType.LvMax:
+                    case QuestEditorCheckType.Interval:
+                        {
+                            if (check.Amount != 0)
+                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                            break;
+                        }
+                    case QuestEditorCheckType.NormalAutoStart:
+                        {
+                            if (check.Boolean)
+                                act01Property.AddProperty(new WzIntProperty("normalAutoStart", check.Boolean ? 1 : 0));
+                            break;
+                        }
+                    case QuestEditorCheckType.Start:
+                    case QuestEditorCheckType.End:
+                    case QuestEditorCheckType.Start_t:
+                    case QuestEditorCheckType.End_t:
+                        {
+                            if (check.Date != DateTime.MinValue)
+                            {
+                                WzStringProperty dateProp = new WzStringProperty(check.CheckType.ToOriginalString(), "0");
+                                dateProp.SetDateValue(check.Date);
+                                act01Property.AddProperty(dateProp);
+                            }
+                            break;
+                        }
+                    case QuestEditorCheckType.Startscript:
+                    case QuestEditorCheckType.Endscript:
+                        {
+                            if (!string.IsNullOrEmpty(check.Text))
+                                act01Property.AddProperty(new WzStringProperty(check.CheckType.ToOriginalString(), check.Text));
+                            break;
+                        }
+                }
+            }
         }
 
         private void SaveActInfo(ObservableCollection<QuestEditorActInfoModel> actInfo, WzSubProperty act01Property, QuestEditorModel quest)
