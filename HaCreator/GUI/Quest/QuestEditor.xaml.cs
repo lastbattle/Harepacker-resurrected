@@ -19,8 +19,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+using HaCreator.GUI.Input;
 using HaCreator.GUI.InstanceEditor;
-using HaCreator.MapSimulator;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -28,29 +28,17 @@ using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
-using Microsoft.Xna.Framework;
-using NAudio.CoreAudioApi;
-using SharpDX.Direct3D9;
-using SharpDX.XAudio2;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Security.Policy;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace HaCreator.GUI.Quest
 {
@@ -158,7 +146,7 @@ namespace HaCreator.GUI.Quest
                 string key = kvp.Key;
                 WzSubProperty questProp = kvp.Value;
 
-#if DEBUG
+// developer debug
                 foreach (WzImageProperty questImgProp in questProp.WzProperties)
                 {
                     switch (questImgProp.Name)
@@ -191,12 +179,12 @@ namespace HaCreator.GUI.Quest
                             break;
                     }
                 }
-#endif
+// end developer debug
 
                 // Quest name
                 string questName = (questProp["name"] as WzStringProperty)?.Value;
 
-                QuestEditorModel quest = new QuestEditorModel
+                QuestEditorModel quest = new()
                 {
                     Id = int.Parse(key),
                     Name = questName == null ? string.Empty : questName,
@@ -284,22 +272,6 @@ namespace HaCreator.GUI.Quest
                             quest.IsLoadingFromFile = false;
                         }
                     }
-
-                    /*QuestEditorSayEndQuestModel test1 = new QuestEditorSayEndQuestModel()
-                    {
-                        ConversationType = QuestEditorStopConversationType.Default
-                    };
-                    test1.Responses.Add(new QuestEditorSayResponseModel() { Text = "You haven&apos;t collected 9 #b#t3994199#s#k yet." });
-                    test1.Responses.Add(new QuestEditorSayResponseModel() { Text = "Now #b go back to check the wreckage of the carriage, There&apos;s bound to have some clue out there." });
-                    quest.SayInfoStopQuest.Add(test1);
-
-                    QuestEditorSayEndQuestModel test2 = new QuestEditorSayEndQuestModel()
-                    {
-                        ConversationType = QuestEditorStopConversationType.Item
-                    };
-                    test2.Responses.Add(new QuestEditorSayResponseModel() { Text = "You haven&apos;t collected 9 #b#t3994199#s#k yet." });
-                    test2.Responses.Add(new QuestEditorSayResponseModel() { Text = "Now #b go back to check the wreckage of the carriage, There&apos;s bound to have some clue out there." });
-                    quest.SayInfoStopQuest.Add(test2);*/
                 }
                 else
                 {
@@ -350,7 +322,7 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         /// <param name="questCheckProp"></param>
         /// <param name="quest"></param>
-        private void parseQuestCheck(WzSubProperty questCheckProp, ObservableCollection<QuestEditorCheckInfoModel> questChecks, QuestEditorModel quest)
+        private static void parseQuestCheck(WzSubProperty questCheckProp, ObservableCollection<QuestEditorCheckInfoModel> questChecks, QuestEditorModel quest)
         {
             foreach (WzImageProperty checkTypeProp in questCheckProp.WzProperties)
             {
@@ -417,7 +389,7 @@ namespace HaCreator.GUI.Quest
                             foreach (WzImageProperty itemProp in checkTypeProp.WzProperties)
                             {
                                 // for future versions, dev debug
-#if DEBUG
+// developer debug
                                 foreach (WzImageProperty itemSubProperties in itemProp.WzProperties)
                                 {
                                     switch (itemSubProperties.Name)
@@ -433,7 +405,7 @@ namespace HaCreator.GUI.Quest
                                             }
                                     }
                                 }
-#endif
+// end developer debug
 
                                 int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
@@ -558,14 +530,14 @@ namespace HaCreator.GUI.Quest
 
                             int subJobFlag = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
 
-#if DEBUG // developer
+// developer debug
                             CharacterSubJobFlagType flag = CharacterSubJobFlagTypeExt.ToEnum(subJobFlag);
                             if (subJobFlag != 0 && flag == CharacterSubJobFlagType.Any)
                             {
                                 string error = string.Format("[QuestEditor] Unhandled quest Check.img 'subJobFlag' property. Flag='{0}', QuestId={1}", subJobFlag, quest.Id);
                                 ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             }
-#endif
+// end developer debug
 
                             firstCheck.Amount = subJobFlag;
                             break;
@@ -600,7 +572,7 @@ namespace HaCreator.GUI.Quest
                             foreach (WzImageProperty skillItemProp in checkTypeProp.WzProperties) // "0", "1", "2", "3"
                             {
                                 // for future versions, dev debug
-#if DEBUG
+// developer debug
                                 foreach (WzImageProperty itemSubProperties in skillItemProp.WzProperties)
                                 {
                                     switch (itemSubProperties.Name)
@@ -618,7 +590,7 @@ namespace HaCreator.GUI.Quest
                                             }
                                     }
                                 }
-#endif
+// end developer debug
                                 QuestEditorCheckSkillModel skillModel = new()
                                 {
                                     Id = (skillItemProp["id"] as WzIntProperty)?.GetInt() ?? 0,
@@ -900,15 +872,12 @@ namespace HaCreator.GUI.Quest
                 }
             }
         }
-        private QuestEditorCheckInfoModel AddCheckItemIfNoneAndGet(QuestEditorCheckType checkTypeEnum, ObservableCollection<QuestEditorCheckInfoModel> questChecks)
+        private static QuestEditorCheckInfoModel AddCheckItemIfNoneAndGet(QuestEditorCheckType checkTypeEnum, ObservableCollection<QuestEditorCheckInfoModel> questChecks)
         {
             bool containsItemCheckType = questChecks.Any(act => act.CheckType == checkTypeEnum);
             if (!containsItemCheckType)
             {
-                questChecks.Add(new QuestEditorCheckInfoModel()
-                {
-                    CheckType = checkTypeEnum,
-                });
+                questChecks.Add(new QuestEditorCheckInfoModel(checkTypeEnum));
             }
             var firstCheck = questChecks.FirstOrDefault(act => act.CheckType == checkTypeEnum);
             return firstCheck;
@@ -933,7 +902,7 @@ namespace HaCreator.GUI.Quest
                             foreach (WzImageProperty itemProp in actTypeProp.WzProperties)
                             {
                                 // for future versions, dev debug
-#if DEBUG
+// developer debug
                                 foreach (WzImageProperty itemSubProperties in itemProp.WzProperties)
                                 {
                                     switch (itemSubProperties.Name)
@@ -960,7 +929,7 @@ namespace HaCreator.GUI.Quest
                                             }
                                     }
                                 }
-#endif
+// end developer debug
 
                                 int itemId = (itemProp["id"] as WzIntProperty)?.GetInt() ?? 0;
                                 short count = (itemProp["count"] as WzIntProperty)?.GetShort() ?? 0;
@@ -1432,7 +1401,7 @@ namespace HaCreator.GUI.Quest
             }
 
         }
-        private QuestEditorActInfoModel AddActItemIfNoneAndGet(QuestEditorActType actTypeEnum, ObservableCollection<QuestEditorActInfoModel> questActs)
+        private static QuestEditorActInfoModel AddActItemIfNoneAndGet(QuestEditorActType actTypeEnum, ObservableCollection<QuestEditorActInfoModel> questActs)
         {
             bool containsItemActType = questActs.Any(act => act.ActType == actTypeEnum);
             if (!containsItemActType)
@@ -1452,7 +1421,7 @@ namespace HaCreator.GUI.Quest
         /// <param name="questSayStart0Prop"></param>
         /// <param name="quest"></param>
         /// <returns></returns>
-        private Tuple<
+        private static Tuple<
             ObservableCollection<QuestEditorSayModel>, 
             ObservableCollection<QuestEditorSayEndQuestModel>> parseQuestSayConversations(WzSubProperty questSayStart0Prop, QuestEditorModel quest)
         {
@@ -1647,7 +1616,60 @@ namespace HaCreator.GUI.Quest
         /// <param name="e"></param>
         private void button_addNewQuest_Click(object sender, RoutedEventArgs e)
         {
+            using (var inputForm = new NameValueInput((questName, questId) =>
+            {
+                bool existingQuestId = Program.InfoManager.QuestInfos.ContainsKey(questId.ToString());
+                if (existingQuestId)
+                    return string.Format("This quest ID [{0}] was already being used.", questId);
 
+                if (questName.Length == 0 || questName.Length > 100)
+                    return "Quest name is too long.";
+
+                return string.Empty;
+            }))
+            {
+                inputForm.SetWindowInfo("Quest Name", "Quest Id", "Add a new quest:");
+
+                if (inputForm.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    string name = inputForm.SelectedName;
+                    int questId = inputForm.SelectedValue;
+
+                    // Add quest to the list
+                    WzSubProperty questWzSubProp = new WzSubProperty(questId.ToString());
+
+                    {
+                        questWzSubProp.AddProperty(new WzStringProperty("name", name));
+
+                        // select any questInfo from the list, to get the CheckInfo parent directory
+                        WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
+
+                        // replace the old 
+                        Program.InfoManager.QuestInfos[questId.ToString()] = questWzSubProp;
+
+                        // add back the newly created image
+                        anyQuestInfoParentImg.AddProperty(questWzSubProp);
+
+                        // flag unsaved changes bool
+                        _unsavedChanges = true;
+                        Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+
+
+                        // Navigate to this quest on the scrollviewer
+                        QuestEditorModel quest = new()
+                        {
+                            Id = questId,
+                            Name = name,
+                        };
+
+                        // add
+                        Quests.Add(quest);
+                        SelectedQuest = quest;
+                        listbox_Quest.SelectedItem = SelectedQuest;
+                        listbox_Quest.ScrollIntoView(SelectedQuest); // Add this line
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -3043,8 +3065,8 @@ namespace HaCreator.GUI.Quest
                 WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
 
                 // start quest
-                WzSubProperty startQuestSubProperty = new WzSubProperty("0");
-                WzSubProperty endQuestSubProperty = new WzSubProperty("1");
+                WzSubProperty startQuestSubProperty = new("0");
+                WzSubProperty endQuestSubProperty = new("1");
 
                 newSayWzProp.AddProperty(startQuestSubProperty);
                 newSayWzProp.AddProperty(endQuestSubProperty);
@@ -3056,7 +3078,7 @@ namespace HaCreator.GUI.Quest
                 saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
 
                 // select any parent node
-                WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
+                WzImage questSayParentImg = oldSayWzProp?.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
                 if (questSayParentImg == null)
                     questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
 
@@ -3077,10 +3099,10 @@ namespace HaCreator.GUI.Quest
             ///////////////////
             {
                 WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
-                WzSubProperty questAct_New = new WzSubProperty(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
+                WzSubProperty questAct_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
 
-                WzSubProperty act_startSubProperty = new WzSubProperty("0");
-                WzSubProperty act_endSubProperty = new WzSubProperty("1");
+                WzSubProperty act_startSubProperty = new("0");
+                WzSubProperty act_endSubProperty = new("1");
                 questAct_New.AddProperty(act_startSubProperty);
                 questAct_New.AddProperty(act_endSubProperty);
 
@@ -3089,7 +3111,7 @@ namespace HaCreator.GUI.Quest
 
                 // select any parent node
                 WzImage questActParentImg;
-                if (questAct_SubPropOriginal == null)
+                if (questAct_SubPropOriginal != null)
                     questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
                 else
                     questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
@@ -3108,10 +3130,10 @@ namespace HaCreator.GUI.Quest
             ///////////////////
             {
                 WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null; // old quest "Check" to reference
-                WzSubProperty questCheck_New = new WzSubProperty(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
+                WzSubProperty questCheck_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
 
-                WzSubProperty check_startSubProperty = new WzSubProperty("0");
-                WzSubProperty check_endSubProperty = new WzSubProperty("1");
+                WzSubProperty check_startSubProperty = new("0");
+                WzSubProperty check_endSubProperty = new("1");
                 questCheck_New.AddProperty(check_startSubProperty);
                 questCheck_New.AddProperty(check_endSubProperty);
 
@@ -3120,7 +3142,7 @@ namespace HaCreator.GUI.Quest
 
                 // select any parent node
                 WzImage questCheckParentImg;
-                if (questCheck_SubPropOriginal == null)
+                if (questCheck_SubPropOriginal != null)
                     questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
                 else
                     questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
@@ -3143,17 +3165,19 @@ namespace HaCreator.GUI.Quest
         {
             foreach (QuestEditorCheckInfoModel check in checkModels)
             {
+                string originalCheckTypeName = QuestEditorCheckTypeExtensions.ToOriginalString(check.CheckType);
+
                 switch (check.CheckType)
                 {
                     case QuestEditorCheckType.Npc:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty("npc", (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.Job:
                         {
-                            WzSubProperty jobSubProperty = new WzSubProperty("job");
+                            WzSubProperty jobSubProperty = new WzSubProperty(originalCheckTypeName);
                             act01Property.AddProperty(jobSubProperty);
 
                             for (int i = 0; i < check.Jobs.Count; i++)
@@ -3164,7 +3188,7 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.Quest:
                         {
-                            WzSubProperty questSubProperty = new WzSubProperty("quest");
+                            WzSubProperty questSubProperty = new WzSubProperty(originalCheckTypeName);
                             act01Property.AddProperty(questSubProperty);
 
                             for (int i = 0; i < check.QuestReqs.Count; i++)
@@ -3182,7 +3206,7 @@ namespace HaCreator.GUI.Quest
                         {
                             if (check.SelectedReqItems.Count > 0)
                             {
-                                WzSubProperty itemSubProperty = new WzSubProperty("item");
+                                WzSubProperty itemSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(itemSubProperty);
 
                                 for (int i = 0; i < check.SelectedReqItems.Count; i++)
@@ -3199,7 +3223,7 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.Info:
                         {
-                            WzSubProperty infoSubProperty = new WzSubProperty("info");
+                            WzSubProperty infoSubProperty = new WzSubProperty(originalCheckTypeName);
                             act01Property.AddProperty(infoSubProperty);
 
                             for (int i = 0; i < check.QuestInfo.Count; i++)
@@ -3211,14 +3235,14 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.InfoNumber:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty("infoNumber", (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.InfoEx:
                         {
                             if (check.QuestInfoEx.Count > 0)
                             {
-                                WzSubProperty infoExSubProperty = new WzSubProperty("infoEx");
+                                WzSubProperty infoExSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(infoExSubProperty);
 
                                 for (int i = 0; i < check.QuestInfoEx.Count; i++)
@@ -3237,14 +3261,14 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.DayByDay:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty("dayByDay", check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.DayOfWeek:
                         {
                             if (check.DayOfWeek != null && check.DayOfWeek.Any(x => x.IsSelected))
                             {
-                                WzSubProperty dayOfWeekSubProperty = new WzSubProperty("dayOfWeek");
+                                WzSubProperty dayOfWeekSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(dayOfWeekSubProperty);
 
                                 int i = 0;
@@ -3260,7 +3284,7 @@ namespace HaCreator.GUI.Quest
                         {
                             if (check.SelectedNumbersItem.Count > 0)
                             {
-                                WzSubProperty fieldEnterSubProperty = new WzSubProperty("fieldEnter");
+                                WzSubProperty fieldEnterSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(fieldEnterSubProperty);
 
                                 for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
@@ -3273,13 +3297,13 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.SubJobFlags:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty("subJobFlags", (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.Premium:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty("premium", check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.Pop:
@@ -3291,14 +3315,14 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.SenseMin:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.Skill:
                         {
                             if (check.Skills.Count > 0)
                             {
-                                WzSubProperty skillSubProperty = new WzSubProperty("skill");
+                                WzSubProperty skillSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(skillSubProperty);
 
                                 for (int i = 0; i < check.Skills.Count; i++)
@@ -3322,7 +3346,7 @@ namespace HaCreator.GUI.Quest
                         {
                             if (check.MobReqs.Count > 0)
                             {
-                                WzSubProperty mobSubProperty = new WzSubProperty("mob");
+                                WzSubProperty mobSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(mobSubProperty);
 
                                 for (int i = 0; i < check.MobReqs.Count; i++)
@@ -3340,14 +3364,14 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.EndMeso:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty("endmeso", (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.Pet:
                         {
                             if (check.SelectedNumbersItem.Count > 0)
                             {
-                                WzSubProperty petSubProperty = new WzSubProperty("pet");
+                                WzSubProperty petSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(petSubProperty);
 
                                 for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
@@ -3363,38 +3387,38 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.PetTamenessMax:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.PetRecallLimit:
                     case QuestEditorCheckType.PetAutoSpeakingLimit:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.TamingMobLevelMin:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty("tamingmoblevelmin", (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.WeeklyRepeat:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty("weeklyRepeat", check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.Married:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty("marriaged", check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.ExceptBuff:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzStringProperty("exceptbuff", check.Amount.ToString()));
+                                act01Property.AddProperty(new WzStringProperty(originalCheckTypeName, check.Amount.ToString()));
                             break;
                         }
                     case QuestEditorCheckType.EquipAllNeed:
@@ -3402,7 +3426,7 @@ namespace HaCreator.GUI.Quest
                         {
                             if (check.SelectedNumbersItem.Count > 0)
                             {
-                                WzSubProperty equipSubProperty = new WzSubProperty(check.CheckType.ToOriginalString());
+                                WzSubProperty equipSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(equipSubProperty);
 
                                 for (int i = 0; i < check.SelectedNumbersItem.Count; i++)
@@ -3416,7 +3440,7 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.WorldMax:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzStringProperty(check.CheckType.ToOriginalString(), check.Amount.ToString()));
+                                act01Property.AddProperty(new WzStringProperty(originalCheckTypeName, check.Amount.ToString()));
                             break;
                         }
                     case QuestEditorCheckType.LvMin:
@@ -3424,13 +3448,13 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.Interval:
                         {
                             if (check.Amount != 0)
-                                act01Property.AddProperty(new WzIntProperty(check.CheckType.ToOriginalString(), (int)check.Amount));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, (int)check.Amount));
                             break;
                         }
                     case QuestEditorCheckType.NormalAutoStart:
                         {
                             if (check.Boolean)
-                                act01Property.AddProperty(new WzIntProperty("normalAutoStart", check.Boolean ? 1 : 0));
+                                act01Property.AddProperty(new WzIntProperty(originalCheckTypeName, check.Boolean ? 1 : 0));
                             break;
                         }
                     case QuestEditorCheckType.Start:
@@ -3440,7 +3464,7 @@ namespace HaCreator.GUI.Quest
                         {
                             if (check.Date != DateTime.MinValue)
                             {
-                                WzStringProperty dateProp = new WzStringProperty(check.CheckType.ToOriginalString(), "0");
+                                WzStringProperty dateProp = new WzStringProperty(originalCheckTypeName, "0");
                                 dateProp.SetDateValue(check.Date);
                                 act01Property.AddProperty(dateProp);
                             }
@@ -3450,7 +3474,13 @@ namespace HaCreator.GUI.Quest
                     case QuestEditorCheckType.Endscript:
                         {
                             if (!string.IsNullOrEmpty(check.Text))
-                                act01Property.AddProperty(new WzStringProperty(check.CheckType.ToOriginalString(), check.Text));
+                                act01Property.AddProperty(new WzStringProperty(originalCheckTypeName, check.Text));
+                            break;
+                        }
+                    default:
+                        {
+                            string error = string.Format("[QuestEditor] SaveCheck() Unhandled CheckType save. Name='{0}', QuestId={1}", originalCheckTypeName, quest.Id);
+                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
                             break;
                         }
                 }

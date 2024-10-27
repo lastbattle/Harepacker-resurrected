@@ -31,18 +31,23 @@ namespace HaCreator.GUI.Quest
         /// <summary>
         /// Constructor
         /// </summary>
-        public QuestEditorCheckInfoModel()
+        public QuestEditorCheckInfoModel(QuestEditorCheckType checkType)
         {
-            DayOfWeek =
-                [
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
-                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
-                ];
+            CheckType = checkType;
+
+            if (checkType == QuestEditorCheckType.DayOfWeek)
+            {
+                DayOfWeek =
+                    [
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
+                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
+                    ];
+            }
         }
 
         private QuestEditorCheckType _checkType = QuestEditorCheckType.Null;
