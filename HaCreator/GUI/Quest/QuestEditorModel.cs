@@ -425,8 +425,10 @@ namespace HaCreator.GUI.Quest
                 if (e.NewItems.Count == 0)
                     return;
 
+                // a new item has been added at this point
+
                 QuestEditorSayModel newItemAdded = e.NewItems[0] as QuestEditorSayModel;
-                if (collection.Count > 0) // only if more than 1
+                if (collection.Count > 1) // only if more than 1
                 {
                     QuestEditorSayModel lastItem = collection[collection.Count - 2];
 

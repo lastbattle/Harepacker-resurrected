@@ -16,13 +16,13 @@ namespace HaCreator.GUI.Quest
     /// </summary>
     public class QuestEditorSayModel : INotifyPropertyChanged
     {
-        private string _npcConversation;
+        private string _npcConversation = string.Empty;
 
         public QuestEditorConversationType _questEditorConversationType;
 
-        private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = new ObservableCollection<QuestEditorSayResponseModel>();
-        private ObservableCollection<QuestEditorSayResponseModel> _noResponses = new ObservableCollection<QuestEditorSayResponseModel>();
-        private ObservableCollection<QuestEditorSayResponseModel> _askResponses = new ObservableCollection<QuestEditorSayResponseModel>();
+        private ObservableCollection<QuestEditorSayResponseModel> _yesResponses = [];
+        private ObservableCollection<QuestEditorSayResponseModel> _noResponses = [];
+        private ObservableCollection<QuestEditorSayResponseModel> _askResponses = [];
 
         /// <summary>
         /// The NPC conversation
