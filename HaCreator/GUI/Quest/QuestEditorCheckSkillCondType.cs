@@ -18,10 +18,14 @@ namespace HaCreator.GUI.Quest
     {
         private static readonly Dictionary<string, QuestEditorCheckSkillCondType> StringToEnum = new(StringComparer.OrdinalIgnoreCase)
         {
+            // MapleStorySEA, Europe, Korea
             {"이상", QuestEditorCheckSkillCondType.OrGreater}, // "more"
             {"or higher", QuestEditorCheckSkillCondType.OrGreater},
             {"일치", QuestEditorCheckSkillCondType.Equal},
             {"none", QuestEditorCheckSkillCondType.None}, // dont write to wz if none, this is a non-standard text as a place-holder
+
+            // MapleStoryGlobal
+            {"Match", QuestEditorCheckSkillCondType.Equal},
         };
 
         /// <summary>

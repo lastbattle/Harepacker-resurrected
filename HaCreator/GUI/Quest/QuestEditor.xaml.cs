@@ -229,7 +229,14 @@ namespace HaCreator.GUI.Quest
                 {
                     WzSubProperty questSayProp = Program.InfoManager.QuestSays[key];
 
-                    WzSubProperty questSayStart0Prop = (WzSubProperty)questSayProp["0"];
+                    WzSubProperty questSayStart0Prop = null;
+                    if (questSayProp["0"] is WzSubProperty)
+                        questSayStart0Prop = (WzSubProperty)questSayProp["0"]; // GMS shit 
+                    else
+                    {
+                        //FullPath = "Quest.wz\\Say.img\\10670\\0"
+                        // {Hi there! Did you hear that MapleStory is celebrating its 6th Anniversary? Time flies, doesn't it? To mark the occasion, I made a bunch of Jigsaw Puzzles. Do you want to try them?}
+                    }
                     WzSubProperty questSayEnd0Prop = (WzSubProperty)questSayProp["1"];
 
                     if (questSayStart0Prop != null)
@@ -504,6 +511,10 @@ namespace HaCreator.GUI.Quest
 
                                 if (dayOfWeekStr != string.Empty)
                                 {
+                                    /*if (dayOfWeekStr == "1") // [8248] - Maple 7th Day Market opens tomorrow!
+                                    {
+
+                                    }*/
                                     QuestEditorCheckDayOfWeekType dayOfWeekType = QuestEditorCheckDayOfWeekTypeExt.FromWzString(dayOfWeekStr);
 
                                     QuestEditorCheckDayOfWeekModel modelSet = firstCheck.DayOfWeek.Where(x => x.DayOfWeek == dayOfWeekType).FirstOrDefault();

@@ -18,6 +18,7 @@ namespace HaCreator.GUI.Quest
     {
         private static readonly Dictionary<string, QuestEditorCheckDayOfWeekType> StringToEnum = new(StringComparer.OrdinalIgnoreCase)
         {
+            // MapleStorySEA, Europe, Korea
             {"Monday", QuestEditorCheckDayOfWeekType.Monday},
             {"Tuesday", QuestEditorCheckDayOfWeekType.Tuesday},
             {"Wednesday", QuestEditorCheckDayOfWeekType.Wednesday},
@@ -25,6 +26,9 @@ namespace HaCreator.GUI.Quest
             {"Friday", QuestEditorCheckDayOfWeekType.Friday},
             {"Saturday", QuestEditorCheckDayOfWeekType.Saturday},
             {"Sunday", QuestEditorCheckDayOfWeekType.Sunday},
+
+            // MapleStoryGlobal
+            {"1", QuestEditorCheckDayOfWeekType.Sunday}, // [8248] - Maple 7th Day Market opens tomorrow!
         };
 
         /// <summary>
@@ -37,6 +41,7 @@ namespace HaCreator.GUI.Quest
         {
             if (StringToEnum.TryGetValue(dayString, out var result))
             {
+                Debug.WriteLine("Day of week: " + dayString);
                 return result;
             }
             throw new ArgumentException($"Invalid dayOfWeek type: {dayString}", nameof(dayString));

@@ -20,11 +20,19 @@ namespace HaCreator.GUI.Quest
     {
         private static readonly Dictionary<string, QuestEditorActInfoPotentialType> StringToEnum = new Dictionary<string, QuestEditorActInfoPotentialType>(StringComparer.OrdinalIgnoreCase)
         {
+            // MapleStorySEA, MapleStoryKorea
             {"노멀", QuestEditorActInfoPotentialType.Normal},
             {"레어", QuestEditorActInfoPotentialType.Rare},
             {"에픽", QuestEditorActInfoPotentialType.Epic},
             {"유니크", QuestEditorActInfoPotentialType.Unique},
-            {"레전드리", QuestEditorActInfoPotentialType.Legendary}
+            {"레전드리", QuestEditorActInfoPotentialType.Legendary},
+
+            // MapleStory Global
+            {"Normal", QuestEditorActInfoPotentialType.Normal},
+            {"Rare", QuestEditorActInfoPotentialType.Rare},
+            {"Epic", QuestEditorActInfoPotentialType.Epic},
+            {"Unique", QuestEditorActInfoPotentialType.Unique},
+            {"Legendary", QuestEditorActInfoPotentialType.Legendary},
         };
 
         /// <summary>
