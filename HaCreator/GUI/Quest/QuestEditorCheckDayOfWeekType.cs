@@ -41,7 +41,7 @@ namespace HaCreator.GUI.Quest
         {
             if (StringToEnum.TryGetValue(dayString, out var result))
             {
-                Debug.WriteLine("Day of week: " + dayString);
+                //Debug.WriteLine("Day of week: " + dayString);
                 return result;
             }
             throw new ArgumentException($"Invalid dayOfWeek type: {dayString}", nameof(dayString));

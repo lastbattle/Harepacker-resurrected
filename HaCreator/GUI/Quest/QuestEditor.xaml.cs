@@ -3347,7 +3347,7 @@ namespace HaCreator.GUI.Quest
                                         skillItemProperty.AddProperty(new WzIntProperty("level", skill.SkillLevel));
                                     if (skill.Acquire)
                                         skillItemProperty.AddProperty(new WzIntProperty("acquire", skill.Acquire ? 1 : 0));
-                                    if (skill.ConditionType != QuestEditorCheckSkillCondType.None)
+                                    if (skill.ConditionType != QuestEditorCheckSkillCondType.None) // custom placeholder
                                         skillItemProperty.AddProperty(new WzStringProperty("levelCondition", skill.ConditionType.ToWzString()));
                                 }
                             }
