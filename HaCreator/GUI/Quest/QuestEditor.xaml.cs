@@ -355,7 +355,7 @@ namespace HaCreator.GUI.Quest
                             {
                                 int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
 
-                                QuestEditorSkillModelJobIdWrapper jobModel = new QuestEditorSkillModelJobIdWrapper()
+                                QuestEditorSkillModelJobIdWrapper jobModel = new()
                                 {
                                     JobId = jobId
                                 };
@@ -376,7 +376,7 @@ namespace HaCreator.GUI.Quest
                                 {
                                     QuestStateType state = (QuestStateType)stateInt;
 
-                                    QuestEditorQuestReqModel req = new QuestEditorQuestReqModel()
+                                    QuestEditorQuestReqModel req = new()
                                     {
                                         QuestId = questId,
                                         QuestState = state,
@@ -951,7 +951,7 @@ namespace HaCreator.GUI.Quest
                                 int period = (itemProp["period"] as WzIntProperty)?.GetInt() ?? 0; // The expiration period (in minutes) from the time that the item is received.
                                 int prop = (itemProp["prop"] as WzIntProperty)?.GetInt() ?? 0;
                                 CharacterGenderType gender = (CharacterGenderType)((itemProp["gender"] as WzIntProperty)?.GetInt() ?? 2); // 0 = Male, 1 = Female, 2 = both [default = 2 for extraction if unavailable]
-                                //int unk_var = (itemProp["var"] as WzIntProperty)?.GetInt() ?? 0;
+                                int unk_var = (itemProp["var"] as WzIntProperty)?.GetInt() ?? 0; // TODO
 
                                 if (itemId != 0)
                                 {
@@ -983,13 +983,14 @@ namespace HaCreator.GUI.Quest
                                         propType = (QuestEditorActInfoRewardPropTypeModel)prop;
                                     }
 
-                                    QuestEditorActInfoRewardModel actReward = new QuestEditorActInfoRewardModel()
+                                    QuestEditorActInfoRewardModel actReward = new()
                                     {
                                         ItemId = itemId,
                                         Quantity = count,
                                         PotentialGrade = potentialType,
                                         Job = job,
                                         JobEx = jobEx,
+                                        Var = unk_var,
                                         Period = period,
                                         Prop = propType,
                                         Gender = gender,
@@ -3540,6 +3541,11 @@ namespace HaCreator.GUI.Quest
                                 if (reward.JobEx != 0) // jobEx
                                 {
                                     actSubItemRewardProperty.AddProperty(new WzIntProperty("JobEx", reward.JobEx));
+                                }
+
+                                if (reward.Var != 0) // Var
+                                {
+                                    actSubItemRewardProperty.AddProperty(new WzIntProperty("var", reward.Var));
                                 }
 
                                 actSubItemRewardProperty.AddProperty(new WzIntProperty("period", reward.Period));

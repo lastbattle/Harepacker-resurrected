@@ -67,6 +67,25 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        private int _var;
+        /// <summary>
+        /// TODO: No idea what is this value.
+        /// </summary>
+        public int Var
+        {
+            get { return _var; }
+            set
+            {
+                if (value != _var)
+                {
+                    int newValue = value;
+
+                    this._var = newValue;
+                    OnPropertyChanged(nameof(Var));
+                }
+            }
+        }
+
 
         private QuestEditorActInfoRewardPropTypeModel _prob;
         /// <summary>

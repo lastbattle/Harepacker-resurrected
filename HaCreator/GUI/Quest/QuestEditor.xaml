@@ -1153,11 +1153,30 @@
                                                 DisplayDate="01/01/2020 00:00:00"
                                                 SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
                                                 />
+
+                                    <TextBlock Text="Var: " Margin="20,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Var, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             Margin="5,0,0,0"
+                                             InputScope="Number"
+                                             />
                                 </StackPanel>
-                                
+
+
+                                <!-- Job -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="4"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="JobEx: " VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding JobEx, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             Margin="5,0,0,0"
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+
                                 <!-- class categories -->
                                 <StackPanel Orientation="Horizontal" 
-                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="3"
+                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="4"
                                             HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <TextBlock Text="Classes: "/>
                                     <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 
