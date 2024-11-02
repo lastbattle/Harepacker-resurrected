@@ -192,6 +192,13 @@
                 <x:Type TypeName="mapleLibQuestStruct:QuestStateType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <!-- Data template for quest medal type enum-->
+        <ObjectDataProvider x:Key="QuestMedalTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibQuestStruct:QuestMedalType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
         <!-- Data template for skill cond enum-->
         <ObjectDataProvider x:Key="SkillCondTypeEnum" MethodName="GetValues"
                         ObjectType="{x:Type sys:Enum}">
@@ -2494,11 +2501,11 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="7*"/>
                                             <ColumnDefinition Width="10"/>
-                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="120"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Parent}" Grid.Column="0"/>
                                         <Button x:Name="button_selectParentFromList" Content="Select" 
-                                                Grid.Column="2" Margin="5,0,0,0"  Width="120"  VerticalAlignment="Top"
+                                                Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
                                                 Style="{DynamicResource ButtonStyle_Black}"
                                                 Click="button_selectParentFromList_Click"
                                                 />
@@ -2591,11 +2598,46 @@
                                     <!-- For medals -->
                                     <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
                                     <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
-                                    <StackPanel Margin="20,0,0,0" Visibility="{Binding SelectedQuest.IsMedal, Converter={StaticResource booleanToVisibility2Converter}}">
-                                        <TextBlock Text="Medal Category:"/>
-                                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.MedalCategory}"/>
-                                        <TextBlock Text="View medal Item Id:"/>
-                                        <TextBox Margin="0,5" Text="{Binding SelectedQuest.ViewMedalItem}"/>
+                                    <StackPanel Margin="20,0,0,0" 
+                                                Visibility="{Binding SelectedQuest.IsMedal, Mode=TwoWay, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Medal category:"/>
+                                            <ComboBox 
+                                                ItemsSource="{Binding Source={StaticResource QuestMedalTypeEnum}}"  
+                                                SelectedValue="{Binding SelectedQuest.MedalCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                SelectedValuePath="."
+                                                Margin="20,0,0,0" Width="100">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <TextBlock Text="View medal Item:"/>
+                                            <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                <TextBlock Text="["/>
+                                                <TextBlock Text="{Binding SelectedQuest.ViewMedalItem, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                <TextBlock Text="]" Margin="2,0,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="8*"/>
+                                                <ColumnDefinition Width="10"/>
+                                                <ColumnDefinition Width="120"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ViewMedalItem}" Grid.Column="0"/>
+                                            <Button x:Name="button_selectmedalItem" Content="Select" 
+                                                Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                Style="{DynamicResource ButtonStyle_Black}"
+                                                    Click="button_selectmedalItem_Click"
+                                                />
+                                        </Grid>
+
                                     </StackPanel>
 
                                     <!-- bottom padding-->

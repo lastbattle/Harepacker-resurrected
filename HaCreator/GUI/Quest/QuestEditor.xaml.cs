@@ -223,6 +223,11 @@ namespace HaCreator.GUI.Quest
                 // misc properties
                 quest.ShowLayerTag = (questProp["showLayerTag"] as WzStringProperty)?.Value;
 
+                // medal
+                quest.ViewMedalItem = (questProp["viewMedalItem"] as WzIntProperty)?.Value ?? 0;
+                quest.MedalCategory = QuestMedalTypeExt.ToEnum((questProp["medalCategory"] as WzIntProperty)?.Value ?? 0);
+                quest.IsMedal = quest.ViewMedalItem > 0 && quest.MedalCategory != QuestMedalType.NoneOrUnknown;
+
                 // Parse quest Say.img
                 // the NPC conversations
                 if (Program.InfoManager.QuestSays.ContainsKey(key)) // sometimes it does not exist in the Quest.wz/Say.img
@@ -1750,6 +1755,21 @@ namespace HaCreator.GUI.Quest
         }
 
         /// <summary>
+        /// Select medal item selection
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectmedalItem_Click(object sender, RoutedEventArgs e)
+        {
+            LoadItemSelector itemSelector = new(ItemIdsCategory.MEDAL_CATEGORY, InventoryType.EQUIP);
+            itemSelector.ShowDialog();
+
+            if (itemSelector.SelectedItemId == 0)
+                return;
+            SelectedQuest.ViewMedalItem = itemSelector.SelectedItemId;
+        }
+
+        /// <summary>
         /// On click - button to generate the demand summary requirements from items in "Demand" tab
         /// </summary>
         /// <param name="sender"></param>
@@ -3049,6 +3069,13 @@ namespace HaCreator.GUI.Quest
                 if (quest.ShowLayerTag != null && quest.ShowLayerTag != string.Empty)
                 {
                     questWzSubProp.AddProperty(new WzStringProperty("showLayerTag", quest.ShowLayerTag));
+                }
+
+                // medal
+                if (quest.IsMedal)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("viewMedalItem", quest.ViewMedalItem));
+                    questWzSubProp.AddProperty(new WzIntProperty("medalCategory", (int) quest.MedalCategory));
                 }
 
                 // remove the original image

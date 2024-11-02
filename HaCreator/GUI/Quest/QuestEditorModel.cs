@@ -47,6 +47,8 @@ namespace HaCreator.GUI.Quest
 
         // custom properties for UI
         public bool _isMedal;
+        private int _viewMedalItem = 0;
+        private QuestMedalType _medalCategory;
 
         // Say
         private readonly ObservableCollection<QuestEditorSayModel> _sayInfoStartQuest = new ObservableCollection<QuestEditorSayModel>();
@@ -140,6 +142,24 @@ namespace HaCreator.GUI.Quest
             {
                 _isMedal = value;
                 OnPropertyChanged(nameof(IsMedal));
+            }
+        }
+
+        public int ViewMedalItem
+        {
+            get => _viewMedalItem;
+            set {
+                _viewMedalItem = value;
+                OnPropertyChanged(nameof(ViewMedalItem));
+            }
+        }
+        public QuestMedalType MedalCategory
+        {
+            get => _medalCategory;
+            set
+            {
+                _medalCategory = value;
+                OnPropertyChanged(nameof(MedalCategory));
             }
         }
 
