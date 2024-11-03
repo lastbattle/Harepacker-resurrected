@@ -87,18 +87,22 @@ namespace HaCreator.GUI.InstanceEditor
             try
             {
                 // Jobs
+                var jobsList = new List<(int jobId, string displayName)>();
                 foreach (CharacterJob job in Enum.GetValues(typeof(CharacterJob)))
                 {
-                    string jobId = ((int)job).ToString();
+                    int jobId = (int)job;
                     string jobName = job.GetFormattedJobName(false);
 
                     string combinedId_JobName = string.Format("[{0}] - {1}", jobId, jobName);
-                    jobNames.Add(combinedId_JobName);
-                }
-                jobNames.Sort();
 
-                object[] itemObjs = jobNames.Cast<object>().ToArray();
-                listBox_npcList.Items.AddRange(itemObjs);
+                    jobsList.Add((jobId, combinedId_JobName));
+                }
+                jobsList.Sort((a, b) => a.jobId.CompareTo(b.jobId));
+
+                // Extract the display names in sorted order
+                jobNames.AddRange(jobsList.Select(x => x.displayName));
+
+                listBox_npcList.Items.AddRange(jobNames.ToArray());
             }
             finally
             {

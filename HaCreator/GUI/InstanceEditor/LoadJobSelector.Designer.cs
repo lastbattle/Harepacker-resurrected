@@ -28,140 +28,148 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.splitContainer1 = new System.Windows.Forms.SplitContainer();
-            this.listBox_npcList = new System.Windows.Forms.ListBox();
-            this.splitContainer2 = new System.Windows.Forms.SplitContainer();
-            this.label_itemDesc = new System.Windows.Forms.Label();
-            this.pictureBox_IconPreview = new System.Windows.Forms.PictureBox();
-            this.button_select = new System.Windows.Forms.Button();
-            this.searchBox = new HaCreator.CustomControls.WatermarkTextBox();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
-            this.splitContainer1.Panel1.SuspendLayout();
-            this.splitContainer1.Panel2.SuspendLayout();
-            this.splitContainer1.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer2)).BeginInit();
-            this.splitContainer2.Panel1.SuspendLayout();
-            this.splitContainer2.Panel2.SuspendLayout();
-            this.splitContainer2.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.pictureBox_IconPreview)).BeginInit();
-            this.SuspendLayout();
+            splitContainer1 = new System.Windows.Forms.SplitContainer();
+            listBox_npcList = new System.Windows.Forms.ListBox();
+            splitContainer2 = new System.Windows.Forms.SplitContainer();
+            label_itemDesc = new System.Windows.Forms.Label();
+            pictureBox_IconPreview = new System.Windows.Forms.PictureBox();
+            button_select = new System.Windows.Forms.Button();
+            searchBox = new CustomControls.WatermarkTextBox();
+            ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
+            splitContainer1.Panel1.SuspendLayout();
+            splitContainer1.Panel2.SuspendLayout();
+            splitContainer1.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer2).BeginInit();
+            splitContainer2.Panel1.SuspendLayout();
+            splitContainer2.Panel2.SuspendLayout();
+            splitContainer2.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)pictureBox_IconPreview).BeginInit();
+            SuspendLayout();
             // 
             // splitContainer1
             // 
-            this.splitContainer1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer1.Location = new System.Drawing.Point(0, 20);
-            this.splitContainer1.Name = "splitContainer1";
-            this.splitContainer1.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer1.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer1.Location = new System.Drawing.Point(0, 23);
+            splitContainer1.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            splitContainer1.Name = "splitContainer1";
+            splitContainer1.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
             // splitContainer1.Panel1
             // 
-            this.splitContainer1.Panel1.Controls.Add(this.listBox_npcList);
+            splitContainer1.Panel1.Controls.Add(listBox_npcList);
             // 
             // splitContainer1.Panel2
             // 
-            this.splitContainer1.Panel2.Controls.Add(this.splitContainer2);
-            this.splitContainer1.Size = new System.Drawing.Size(400, 641);
-            this.splitContainer1.SplitterDistance = 555;
-            this.splitContainer1.SplitterWidth = 1;
-            this.splitContainer1.TabIndex = 9;
+            splitContainer1.Panel2.Controls.Add(splitContainer2);
+            splitContainer1.Size = new System.Drawing.Size(467, 740);
+            splitContainer1.SplitterDistance = 640;
+            splitContainer1.SplitterWidth = 1;
+            splitContainer1.TabIndex = 9;
             // 
             // listBox_npcList
             // 
-            this.listBox_npcList.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.listBox_npcList.FormattingEnabled = true;
-            this.listBox_npcList.Location = new System.Drawing.Point(0, 0);
-            this.listBox_npcList.Name = "listBox_npcList";
-            this.listBox_npcList.Size = new System.Drawing.Size(400, 555);
-            this.listBox_npcList.TabIndex = 0;
-            this.listBox_npcList.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.listBox_itemList_drawItem);
-            this.listBox_npcList.MeasureItem += new System.Windows.Forms.MeasureItemEventHandler(this.listBox_itemList_measureItem);
-            this.listBox_npcList.SelectedIndexChanged += new System.EventHandler(this.listBox_itemList_SelectedIndexChanged);
+            listBox_npcList.Dock = System.Windows.Forms.DockStyle.Fill;
+            listBox_npcList.FormattingEnabled = true;
+            listBox_npcList.ItemHeight = 15;
+            listBox_npcList.Location = new System.Drawing.Point(0, 0);
+            listBox_npcList.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            listBox_npcList.Name = "listBox_npcList";
+            listBox_npcList.Size = new System.Drawing.Size(467, 640);
+            listBox_npcList.TabIndex = 0;
+            listBox_npcList.DrawItem += listBox_itemList_drawItem;
+            listBox_npcList.MeasureItem += listBox_itemList_measureItem;
+            listBox_npcList.SelectedIndexChanged += listBox_itemList_SelectedIndexChanged;
             // 
             // splitContainer2
             // 
-            this.splitContainer2.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer2.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer2.Name = "splitContainer2";
+            splitContainer2.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer2.Location = new System.Drawing.Point(0, 0);
+            splitContainer2.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            splitContainer2.Name = "splitContainer2";
             // 
             // splitContainer2.Panel1
             // 
-            this.splitContainer2.Panel1.Controls.Add(this.label_itemDesc);
-            this.splitContainer2.Panel1.Controls.Add(this.pictureBox_IconPreview);
+            splitContainer2.Panel1.Controls.Add(label_itemDesc);
+            splitContainer2.Panel1.Controls.Add(pictureBox_IconPreview);
             // 
             // splitContainer2.Panel2
             // 
-            this.splitContainer2.Panel2.Controls.Add(this.button_select);
-            this.splitContainer2.Size = new System.Drawing.Size(400, 85);
-            this.splitContainer2.SplitterDistance = 280;
-            this.splitContainer2.SplitterWidth = 1;
-            this.splitContainer2.TabIndex = 0;
+            splitContainer2.Panel2.Controls.Add(button_select);
+            splitContainer2.Size = new System.Drawing.Size(467, 99);
+            splitContainer2.SplitterDistance = 326;
+            splitContainer2.SplitterWidth = 1;
+            splitContainer2.TabIndex = 0;
             // 
             // label_itemDesc
             // 
-            this.label_itemDesc.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.label_itemDesc.Font = new System.Drawing.Font("Segoe UI", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.label_itemDesc.Location = new System.Drawing.Point(96, 0);
-            this.label_itemDesc.Name = "label_itemDesc";
-            this.label_itemDesc.Size = new System.Drawing.Size(184, 85);
-            this.label_itemDesc.TabIndex = 1;
-            this.label_itemDesc.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            label_itemDesc.Dock = System.Windows.Forms.DockStyle.Fill;
+            label_itemDesc.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, 0);
+            label_itemDesc.Location = new System.Drawing.Point(112, 0);
+            label_itemDesc.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            label_itemDesc.Name = "label_itemDesc";
+            label_itemDesc.Size = new System.Drawing.Size(214, 99);
+            label_itemDesc.TabIndex = 1;
+            label_itemDesc.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             // 
             // pictureBox_IconPreview
             // 
-            this.pictureBox_IconPreview.Dock = System.Windows.Forms.DockStyle.Left;
-            this.pictureBox_IconPreview.Location = new System.Drawing.Point(0, 0);
-            this.pictureBox_IconPreview.Name = "pictureBox_IconPreview";
-            this.pictureBox_IconPreview.Size = new System.Drawing.Size(96, 85);
-            this.pictureBox_IconPreview.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.pictureBox_IconPreview.TabIndex = 0;
-            this.pictureBox_IconPreview.TabStop = false;
+            pictureBox_IconPreview.Dock = System.Windows.Forms.DockStyle.Left;
+            pictureBox_IconPreview.Location = new System.Drawing.Point(0, 0);
+            pictureBox_IconPreview.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            pictureBox_IconPreview.Name = "pictureBox_IconPreview";
+            pictureBox_IconPreview.Size = new System.Drawing.Size(112, 99);
+            pictureBox_IconPreview.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
+            pictureBox_IconPreview.TabIndex = 0;
+            pictureBox_IconPreview.TabStop = false;
             // 
             // button_select
             // 
-            this.button_select.Enabled = false;
-            this.button_select.Location = new System.Drawing.Point(3, 0);
-            this.button_select.Name = "button_select";
-            this.button_select.Size = new System.Drawing.Size(113, 82);
-            this.button_select.TabIndex = 0;
-            this.button_select.Text = "Select";
-            this.button_select.UseVisualStyleBackColor = true;
-            this.button_select.Click += new System.EventHandler(this.button_select_Click);
+            button_select.Enabled = false;
+            button_select.Location = new System.Drawing.Point(4, 0);
+            button_select.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            button_select.Name = "button_select";
+            button_select.Size = new System.Drawing.Size(132, 95);
+            button_select.TabIndex = 0;
+            button_select.Text = "Select";
+            button_select.UseVisualStyleBackColor = true;
+            button_select.Click += button_select_Click;
             // 
             // searchBox
             // 
-            this.searchBox.Dock = System.Windows.Forms.DockStyle.Top;
-            this.searchBox.ForeColor = System.Drawing.Color.Gray;
-            this.searchBox.Location = new System.Drawing.Point(0, 0);
-            this.searchBox.Name = "searchBox";
-            this.searchBox.Size = new System.Drawing.Size(400, 20);
-            this.searchBox.TabIndex = 8;
-            this.searchBox.Text = "Type here to search";
-            this.searchBox.WatermarkActive = true;
-            this.searchBox.WatermarkText = "Type here";
+            searchBox.Dock = System.Windows.Forms.DockStyle.Top;
+            searchBox.ForeColor = System.Drawing.Color.Gray;
+            searchBox.Location = new System.Drawing.Point(0, 0);
+            searchBox.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            searchBox.Name = "searchBox";
+            searchBox.Size = new System.Drawing.Size(467, 23);
+            searchBox.TabIndex = 8;
+            searchBox.Text = "Type here to search";
+            searchBox.WatermarkActive = true;
+            searchBox.WatermarkText = "Type here";
             // 
             // LoadJobSelector
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(400, 661);
-            this.Controls.Add(this.splitContainer1);
-            this.Controls.Add(this.searchBox);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
-            this.Name = "LoadJobSelector";
-            this.Text = "Select a job";
-            this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Load_KeyDown);
-            this.splitContainer1.Panel1.ResumeLayout(false);
-            this.splitContainer1.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).EndInit();
-            this.splitContainer1.ResumeLayout(false);
-            this.splitContainer2.Panel1.ResumeLayout(false);
-            this.splitContainer2.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer2)).EndInit();
-            this.splitContainer2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.pictureBox_IconPreview)).EndInit();
-            this.ResumeLayout(false);
-            this.PerformLayout();
-
+            AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            ClientSize = new System.Drawing.Size(467, 763);
+            Controls.Add(splitContainer1);
+            Controls.Add(searchBox);
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            Name = "LoadJobSelector";
+            Text = "Select a job";
+            KeyDown += Load_KeyDown;
+            splitContainer1.Panel1.ResumeLayout(false);
+            splitContainer1.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer1).EndInit();
+            splitContainer1.ResumeLayout(false);
+            splitContainer2.Panel1.ResumeLayout(false);
+            splitContainer2.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer2).EndInit();
+            splitContainer2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)pictureBox_IconPreview).EndInit();
+            ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
