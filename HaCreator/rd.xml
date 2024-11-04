@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<Directives>
+	<Application>
+		<!-- Windows Forms -->
+		<Assembly Name="System.Windows.Forms" Dynamic="Required All" />
+		<Assembly Name="System.Drawing" Dynamic="Required All" />
+		<Assembly Name="System.Drawing.Common" Dynamic="Required All" />
+
+		<!-- WPF -->
+		<Assembly Name="PresentationFramework" Dynamic="Required All" />
+		<Assembly Name="PresentationCore" Dynamic="Required All" />
+		<Assembly Name="WindowsBase" Dynamic="Required All" />
+
+		<!-- Your application assembly -->
+		<Assembly Name="HaCreator" Dynamic="Required All">
+			<Type Name="HaCreator.Program" Dynamic="Required All" />
+			<!-- Add other types that need reflection -->
+		</Assembly>
+
+		<!-- SharpDX -->
+		<Assembly Name="SharpDX" Dynamic="Required All" />
+		<Assembly Name="SharpDX.Direct2D1" Dynamic="Required All" />
+		<Assembly Name="SharpDX.Direct3D11" Dynamic="Required All" />
+		<Assembly Name="SharpDX.Direct3D9" Dynamic="Required All" />
+		<Assembly Name="SharpDX.DXGI" Dynamic="Required All" />
+
+		<!-- MonoGame -->
+		<Assembly Name="MonoGame.Framework" Dynamic="Required All" />
+	</Application>
+</Directives>
