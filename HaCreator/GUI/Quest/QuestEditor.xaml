@@ -31,6 +31,8 @@
         <converter:JobClassBitfieldToClassNamesConverter x:Key="jobClassBitfieldToClassNamesConverter"/>
         <converter:EnumNameIntValueConverter x:Key="enumNameIntValueConverter"/>
         <converter:CharacterSubJobTypeConverter x:Key="characterSubJobTypeConverter"/>
+        <converter:BoolToTemplateConverter x:Key="BoolToTemplateConverter"/>
+        <converter:JobBitfieldToJobNamesConverter x:Key="jobBitfieldToJobNamesConverter"/>
 
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -1847,7 +1849,37 @@
                         Click="botton_check_selectAddJob_Click"/>
             </StackPanel>
         </DataTemplate>
+        <DataTemplate x:Key="CheckJobTemplate_PreBB">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
 
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="Job flags:" Margin="2,0,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="5,0,0,0">
+                            <TextBlock Text="[" Margin="0,0,0,0"/>
+                            <!-- Added MaxWidth and proper text wrapping -->
+                            <TextBlock Text="{Binding Amount, Converter={StaticResource jobBitfieldToJobNamesConverter}}" 
+                                       FontWeight="Bold" 
+                                       TextWrapping="Wrap"
+                                       MaxWidth="600"/>
+                            <!-- Adjust MaxWidth as needed -->
+                            <TextBlock Text="]"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" IsEnabled="False" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button x:Name="button_check_jobCLassFlags" Content="Select jobs" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_check_jobCLassFlags_Click"/>
+            </Grid>
+        </DataTemplate>
+        
+        
         <!-- Quest -->
         <DataTemplate x:Key="CheckQuestTemplate">
             <StackPanel Orientation="Vertical">
@@ -2367,7 +2399,19 @@
                     <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckMobTemplate}"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Job}">
-                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckJobTemplate}"/>
+                    <Setter TargetName="CheckContent" Property="ContentTemplate">
+                        <Setter.Value>
+                            <Binding Path="IsPreBBDataWzFormat" 
+                                     Converter="{StaticResource BoolToTemplateConverter}">
+                                <Binding.ConverterParameter>
+                                    <x:Array Type="DataTemplate">
+                                        <StaticResource ResourceKey="CheckJobTemplate_PreBB"/>
+                                        <StaticResource ResourceKey="CheckJobTemplate"/>
+                                    </x:Array>
+                                </Binding.ConverterParameter>
+                            </Binding>
+                        </Setter.Value>
+                    </Setter>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Quest}">
                     <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckQuestTemplate}"/>

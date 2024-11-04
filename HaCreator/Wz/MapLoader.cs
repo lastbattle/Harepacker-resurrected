@@ -30,6 +30,7 @@ using HaCreator.Exceptions;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Wz;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
 namespace HaCreator.Wz
 {
@@ -243,7 +244,7 @@ namespace HaCreator.Wz
                         questInfo = new List<ObjectInstanceQuest>();
                         foreach (WzIntProperty info in questParent.WzProperties)
                         {
-                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestState)info.Value));
+                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
                         }
                     }
                     bool flip = InfoTool.GetBool(obj["f"]);

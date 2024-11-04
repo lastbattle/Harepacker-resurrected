@@ -32,6 +32,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics.Eventing.Reader;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -226,7 +227,7 @@ namespace HaCreator.GUI.Quest
                 // medal
                 quest.ViewMedalItem = (questProp["viewMedalItem"] as WzIntProperty)?.Value ?? 0;
                 quest.MedalCategory = QuestMedalTypeExt.ToEnum((questProp["medalCategory"] as WzIntProperty)?.Value ?? 0);
-                quest.IsMedal = quest.ViewMedalItem > 0 && quest.MedalCategory != QuestMedalType.NoneOrUnknown;
+                quest.IsMedal = quest.MedalCategory != QuestMedalType.NoneOrUnknown;
 
                 // Parse quest Say.img
                 // the NPC conversations
@@ -356,15 +357,33 @@ namespace HaCreator.GUI.Quest
                         {
                             var firstCheck = AddCheckItemIfNoneAndGet(checkType, questChecks);
 
-                            foreach (WzImageProperty jobProps in checkTypeProp.WzProperties) // job Ids "0", "1", "2"
-                            {
-                                int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
+                            // if this property is an int, its prob for beta maplestory.
+                            // maybe a bitfield here or something
 
-                                QuestEditorSkillModelJobIdWrapper jobModel = new()
+                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
+                            {
+                                foreach (WzImageProperty jobProps in checkTypeProp.WzProperties) // job Ids "0", "1", "2"
                                 {
-                                    JobId = jobId
-                                };
-                                firstCheck.Jobs.Add(jobModel);
+                                    int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
+
+                                    QuestEditorSkillModelJobIdWrapper jobModel = new()
+                                    {
+                                        JobId = jobId
+                                    };
+                                    firstCheck.Jobs.Add(jobModel);
+                                }
+                            } else // beta ms
+                            {
+                                // <int name="job" value="30"/>
+                                // <int name="job" value="16"/>
+                                // <int name="job" value="8"/>
+                                // <int name="job" value="4"/>
+                                // <int name="job" value="2"/>
+
+                                int jobBF = (checkTypeProp as WzIntProperty)?.GetInt() ?? 0;
+                                //IEnumerable<CharacterJob> jobs = CharacterJobPreBBExt.DecodeJobCodes((CharacterJobBF_PreBB)jobBF);
+
+                                firstCheck.Amount = jobBF;
                             }
                             break;
                         }
@@ -2758,15 +2777,37 @@ namespace HaCreator.GUI.Quest
 
             if (questModel != null)
             {
-                LoadJobSelector skillSelector = new();
-                skillSelector.ShowDialog();
-                CharacterJob selectedJob = skillSelector.SelectedJob;
+                LoadJobSelector jobSelector = new();
+                jobSelector.ShowDialog();
+                CharacterJob selectedJob = jobSelector.SelectedJob;
                 if (selectedJob != CharacterJob.None)
                 {
                     questModel.Jobs.Add(new QuestEditorSkillModelJobIdWrapper()
                     {
                         JobId = (int)selectedJob
                     });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Check.img add job class
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_check_jobCLassFlags_Click(object sender, RoutedEventArgs e)
+        {
+            var button = (Button)sender;
+            var questModel = button.DataContext as QuestEditorCheckInfoModel;
+
+            if (questModel != null)
+            {
+                LoadJobListSelector jobSelector = new((CharacterJobPreBBType) questModel.Amount);
+                jobSelector.ShowDialog();
+                CharacterJobPreBBType selectedJob = jobSelector.SelectedJobListBitfield;
+                if (selectedJob != CharacterJobPreBBType.None)
+                {
+                    questModel.Amount = (long) selectedJob;
                 }
             }
         }
@@ -3216,12 +3257,20 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.Job:
                         {
-                            WzSubProperty jobSubProperty = new WzSubProperty(originalCheckTypeName);
-                            act01Property.AddProperty(jobSubProperty);
-
-                            for (int i = 0; i < check.Jobs.Count; i++)
+                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
-                                jobSubProperty.AddProperty(new WzIntProperty(i.ToString(), check.Jobs[i].JobId));
+                                WzSubProperty jobSubProperty = new WzSubProperty(originalCheckTypeName);
+                                act01Property.AddProperty(jobSubProperty);
+
+                                for (int i = 0; i < check.Jobs.Count; i++)
+                                {
+                                    jobSubProperty.AddProperty(new WzIntProperty(i.ToString(), check.Jobs[i].JobId));
+                                }
+                            }
+                            else
+                            {
+                                WzIntProperty jobIntProperty = new WzIntProperty(originalCheckTypeName, (int) check.Amount);
+                                act01Property.AddProperty(jobIntProperty);
                             }
                             break;
                         }

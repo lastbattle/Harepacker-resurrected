@@ -198,7 +198,7 @@
     <PackageReference Include="System.Data.SQLite">
       <Version>1.0.119</Version>
     </PackageReference>
-    <PackageReference Include="System.Drawing.Common" Version="8.0.8" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="HaLogo.ico" />
@@ -233,8 +233,5 @@
     <Resource Include="Images\Quest\summary_icon.summary.png" />
     <Resource Include="Images\Quest\questIcon_0.png" />
     <Resource Include="Images\box_edit-big.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Remove="GUI\Input\IntegerInput.resx" />
   </ItemGroup>
 </Project>

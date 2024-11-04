@@ -279,6 +279,15 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+
+        #region Misc
+        public bool IsPreBBDataWzFormat
+        {
+            get { return Program.WzManager.IsPreBBDataWzFormat; }
+            private set { }
+        }
+        #endregion
+
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;
 

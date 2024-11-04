@@ -72,6 +72,8 @@ namespace HaCreator.GUI
             try {
                 ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
                 ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
+                ApplicationSettings.MapleStoryClientLocalisation = (int) comboBox_localisation.SelectedValue;
+
                 string wzPath = pathBox.Text;
 
                 if (wzPath == "Select MapleStory Folder") {
@@ -361,11 +363,28 @@ namespace HaCreator.GUI
             {
                 pathBox.SelectedIndex = ApplicationSettings.MapleFolderIndex;
             }
+
+            // Populate the MapleStory localisation box
+            var values = Enum.GetValues(typeof(MapleLib.ClientLib.MapleStoryLocalisation))
+                    .Cast<MapleLib.ClientLib.MapleStoryLocalisation>()
+                    .Select(v => new
+                    {
+                        Text = v.ToString().Replace("MapleStory", "MapleStory "),
+                        Value = (int)v
+                    })
+                    .ToList();
+            // set ComboBox properties
+            comboBox_localisation.DataSource = values;
+            comboBox_localisation.DisplayMember = "Text";
+            comboBox_localisation.ValueMember = "Value";
+
+            var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault(); // get the saved location from settings
+            comboBox_localisation.SelectedItem = savedLocaliation ?? values[0]; // KMS if null
         }
 
         private void button2_Click(object sender, EventArgs e)
         {
-            using (FolderBrowserDialog mapleSelect = new FolderBrowserDialog()
+            using (FolderBrowserDialog mapleSelect = new()
             {
                 ShowNewFolderButton = true,
                 //   RootFolder = Environment.SpecialFolder.ProgramFilesX86,

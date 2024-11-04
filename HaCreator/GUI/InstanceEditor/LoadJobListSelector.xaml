@@ -1,4 +1,4 @@
-﻿<Window x:Class="HaCreator.GUI.InstanceEditor.LoadClassListSelector"
+﻿<Window x:Class="HaCreator.GUI.InstanceEditor.LoadJobListSelector"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -9,7 +9,7 @@
         xmlns:charStructEnum="clr-namespace:MapleLib.WzLib.WzStructure.Data.CharacterStructure;assembly=MapleLib"
         xmlns:converter="clr-namespace:HaCreator.Converter"
 
-        mc:Ignorable="d" Height="600" Width="321" Title="Select class categories:" 
+        mc:Ignorable="d" Height="600" Width="321" Title="Select job categories:" 
         ResizeMode="NoResize">
 
     <Window.Resources>
@@ -17,13 +17,13 @@
         <ObjectDataProvider x:Key="CharacterJobTypeEnum" MethodName="GetValues"
                         ObjectType="{x:Type sys:Enum}">
             <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="charStructEnum:CharacterClassType"/>
+                <x:Type TypeName="charStructEnum:CharacterJobPreBBType"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
         
         <!-- Converters -->
         <converter:CharacterJobTypeToCharacterJobStrConverter x:Key="characterJobTypeToCharacterJobStrConverter"/>
-        <converter:EnumToIntValueConverter x:Key="enumToIntValueConverter"/>
+        <converter:EnumToIntHexValueConverter x:Key="enumToIntHexValueConverter"/>
     </Window.Resources>
 
     <Grid>
@@ -50,7 +50,7 @@
                         <StackPanel Orientation="Horizontal" Grid.Column="0">
                             <TextBlock Text="{Binding .}" />
                             <TextBlock Text="(" Margin="5,0,0,0"/>
-                            <TextBlock Text="{Binding ., Converter={StaticResource enumToIntValueConverter}}" />
+                            <TextBlock Text="{Binding ., Converter={StaticResource enumToIntHexValueConverter}}" />
                             <TextBlock Text=")" Margin="0,0,0,0"/>
                         </StackPanel>
 

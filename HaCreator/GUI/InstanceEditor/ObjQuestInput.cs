@@ -14,6 +14,7 @@ using System.Text;
 using System.Windows.Forms;
 using MapleLib.WzLib.WzStructure.Data;
 using HaCreator.MapEditor.Instance;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
 namespace HaCreator.GUI.InstanceEditor
 {
@@ -25,7 +26,7 @@ namespace HaCreator.GUI.InstanceEditor
         {
             InitializeComponent();
 
-            foreach (QuestState state in Enum.GetValues(typeof(QuestState)))
+            foreach (QuestStateType state in Enum.GetValues(typeof(QuestStateType)))
             {
                 stateInput.Items.Add(state.ToString());
             }
@@ -41,7 +42,7 @@ namespace HaCreator.GUI.InstanceEditor
 
         protected override void okButton_Click(object sender, EventArgs e)
         {
-            result = new ObjectInstanceQuest((int)idInput.Value, (QuestState)stateInput.SelectedIndex);
+            result = new ObjectInstanceQuest((int)idInput.Value, (QuestStateType)stateInput.SelectedIndex);
             DialogResult = DialogResult.OK;
             Close();
         }

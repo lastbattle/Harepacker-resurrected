@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System;
 using System.Collections.Generic;
 using System.Dynamic;
@@ -21,9 +22,9 @@ namespace HaCreator.MapEditor.Instance
         [DataMember]
         public int questId;
         [DataMember]
-        public QuestState state;
+        public QuestStateType state;
 
-        public ObjectInstanceQuest(int questId, QuestState state)
+        public ObjectInstanceQuest(int questId, QuestStateType state)
         {
             this.questId = questId;
             this.state = state;
@@ -31,7 +32,7 @@ namespace HaCreator.MapEditor.Instance
 
         public override string ToString()
         {
-            return questId.ToString() + " - " + Enum.GetName(typeof(QuestState), state);
+            return questId.ToString() + " - " + Enum.GetName(typeof(QuestStateType), state);
         }
 
         /*public dynamic Serialize()
