@@ -77,6 +77,8 @@ namespace HaCreator.MapSimulator
             // Frames
             if (n != null && s != null && w != null && e != null && ne != null && sw != null && nw != null && se != null)
             {
+                const int MARGIN_HORIZONTAL_BORDER_PX = 1;
+
                 for (int i = nw.Width; i <= (targetImageWidth - nw.Width); i += n.Width) // Fill top from (Top left to top right)
                     graphics.DrawImage(n.ToImage(), new PointF(i, 0));
 
@@ -87,13 +89,14 @@ namespace HaCreator.MapSimulator
                     graphics.DrawImage(w.ToImage(), new PointF(0, i));
 
                 for (int i = targetImageHeight - sw.Height; i >= nw.Height; i -= e.Height) // Fill right from (Bottom right to top right)
-                    graphics.DrawImage(e.ToImage(), new PointF(targetImageWidth - e.Width, i));
+                    graphics.DrawImage(e.ToImage(), new PointF(targetImageWidth - e.Width + MARGIN_HORIZONTAL_BORDER_PX, i));
 
                 // Frame corners
-                graphics.DrawImage(ne.ToImage(), new PointF(targetImageWidth - ne.Width, 0)); // top right
                 graphics.DrawImage(nw.ToImage(), new PointF(0, 0)); // top left
-                graphics.DrawImage(se.ToImage(), new PointF(targetImageWidth - ne.Width, targetImageHeight - sw.Height)); // bottom right
+                graphics.DrawImage(ne.ToImage(), new PointF(targetImageWidth - ne.Width + MARGIN_HORIZONTAL_BORDER_PX, 0)); // top right
+
                 graphics.DrawImage(sw.ToImage(), new PointF(0, targetImageHeight - sw.Height)); // bottom left
+                graphics.DrawImage(se.ToImage(), new PointF(targetImageWidth - ne.Width + MARGIN_HORIZONTAL_BORDER_PX, targetImageHeight - sw.Height)); // bottom right
             }
         }
     }

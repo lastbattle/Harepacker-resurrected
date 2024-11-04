@@ -5,7 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using MapleLib.WzLib;
-using MapleLib.WzLib.Serialization;
+using MapleLib.WzLib.Serializer;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;

@@ -4,9 +4,6 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//uncomment the line below to create a space-time tradeoff (saving RAM by wasting more CPU cycles)
-#define SPACETIME
-
 using System;
 using System.Windows.Forms;
 
@@ -25,7 +22,22 @@ namespace HaCreator.GUI.InstanceEditor
         private TextBox textBox = null;
 
         /// <summary>
-        /// Load map selector
+        /// Constructor for no NumericUpDown or TextBox
+        /// </summary>
+        public LoadMapSelector()
+        {
+            InitializeComponent();
+
+            this.FormClosing += LoadQuestSelector_FormClosing;
+            this.KeyDown += Load_KeyDown;
+
+            DialogResult = DialogResult.Cancel;
+
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
+        }
+
+        /// <summary>
+        /// Load map selector for NumericUpDown
         /// </summary>
         /// <param name="numericUpDown"></param>
         public LoadMapSelector(NumericUpDown numericUpDown)
@@ -33,13 +45,14 @@ namespace HaCreator.GUI.InstanceEditor
             InitializeComponent();
 
             DialogResult = DialogResult.Cancel;
-
+            
             this.numericUpDown = numericUpDown;
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>
-        /// Load map selector
+        /// Load map selector for TextBox
         /// </summary>
         /// <param name="textbox"></param>
         public LoadMapSelector(TextBox textbox) {
@@ -48,7 +61,7 @@ namespace HaCreator.GUI.InstanceEditor
             DialogResult = DialogResult.Cancel;
 
             this.textBox = textbox;
-            this.searchBox.TextChanged += this.mapBrowser.searchBox_TextChanged;
+            this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
         }
 
         /// <summary>
@@ -68,26 +81,43 @@ namespace HaCreator.GUI.InstanceEditor
         /// <param name="e"></param>
         private void loadButton_Click(object sender, EventArgs e)
         {
+            if (mapBrowser.SelectedItem == null)
+                return;
+
             string mapid = mapBrowser.SelectedItem.Substring(0, 9);
             string mapcat = "Map" + mapid.Substring(0, 1);
 
             if (numericUpDown != null) {
                 this.numericUpDown.Value = long.Parse(mapid);
-            } else {
+            } else if (textBox != null) {
                 this.textBox.Text = mapid;
             }
+            // set selected map
+            SelectedMap = mapid;
+
             DialogResult = DialogResult.OK;
+            _bNotUserClosing = true;
             Close();
+        }
+
+        private bool _bNotUserClosing = false;
+        private string _selectedMap = string.Empty;
+        public string SelectedMap
+        {
+            get { return _selectedMap; }
+            set { this._selectedMap = value; }
         }
 
         private void mapBrowser_SelectionChanged()
         {
         }
 
+        #region Window
         private void Load_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
             {
+                _selectedMap = string.Empty;
                 Close();
             }
             else if (e.KeyCode == Keys.Enter)
@@ -95,5 +125,19 @@ namespace HaCreator.GUI.InstanceEditor
                 loadButton_Click(null, null);
             }
         }
+
+        /// <summary>
+        /// The form is being closed by the user (e.g., clicking the X button)
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void LoadQuestSelector_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing && !_bNotUserClosing)
+            {
+                _selectedMap = string.Empty;
+            }
+        }
+        #endregion
     }
 }

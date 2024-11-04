@@ -1,60 +1,21 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{0B7155EF-1EB0-4FAE-BA56-8064CBAF2BEA}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>HaRepacker</RootNamespace>
     <AssemblyName>HaRepackerResurrected</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
-    <FileAlignment>512</FileAlignment>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
-    <NuGetPackageImportStamp>
-    </NuGetPackageImportStamp>
-    <PublishUrl>C:\Users\twili\Desktop\Publish\</PublishUrl>
-    <Install>true</Install>
-    <InstallFrom>Disk</InstallFrom>
-    <UpdateEnabled>false</UpdateEnabled>
-    <UpdateMode>Foreground</UpdateMode>
-    <UpdateInterval>7</UpdateInterval>
-    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
-    <UpdatePeriodically>false</UpdatePeriodically>
-    <UpdateRequired>false</UpdateRequired>
-    <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>0</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <UseApplicationTrust>false</UseApplicationTrust>
-    <BootstrapperEnabled>true</BootstrapperEnabled>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>..\Compiled\Debug\x86\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>..\Compiled\Release\x86\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>HaLogo.ico</ApplicationIcon>
@@ -62,815 +23,87 @@
   <PropertyGroup>
     <StartupObject>HaRepacker.Program</StartupObject>
   </PropertyGroup>
-  <PropertyGroup>
-    <Win32Resource>
-    </Win32Resource>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\Compiled\Debug\x64\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DebugType>full</DebugType>
-    <PlatformTarget>x64</PlatformTarget>
     <CodeAnalysisLogFile>bin\Debug\HaRepacker.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
-    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
-    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
     <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
     <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
-    <Prefer32Bit>false</Prefer32Bit>
-    <Optimize>false</Optimize>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <OutputPath>..\Compiled\Release\x64\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Optimize>true</Optimize>
-    <DebugType>pdbonly</DebugType>
-    <PlatformTarget>x64</PlatformTarget>
     <CodeAnalysisLogFile>bin\Release\HaRepacker.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
-    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
-    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
     <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
     <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\Compiled\Debug\AnyCPU\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DebugType>full</DebugType>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <OutputPath>..\Compiled\Release\AnyCPU\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Optimize>true</Optimize>
-    <DebugType>pdbonly</DebugType>
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <ErrorReport>prompt</ErrorReport>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
-  <PropertyGroup>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-  </PropertyGroup>
-  <PropertyGroup />
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="ICSharpCode.AvalonEdit, Version=6.3.0.90, Culture=neutral, PublicKeyToken=9cc39be672370310, processorArchitecture=MSIL">
-      <HintPath>..\packages\AvalonEdit.6.3.0.90\lib\net462\ICSharpCode.AvalonEdit.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Bcl.AsyncInterfaces, Version=8.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Bcl.AsyncInterfaces.8.0.0\lib\net462\Microsoft.Bcl.AsyncInterfaces.dll</HintPath>
-    </Reference>
-    <Reference Include="MonoGame.Framework, Version=3.8.0.1641, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\lib\net452\MonoGame.Framework.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="SharpDX, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.4.2.0\lib\net45\SharpDX.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.Direct2D1, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.Direct2D1.4.2.0\lib\net45\SharpDX.Direct2D1.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.Direct3D11, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.Direct3D11.4.2.0\lib\net45\SharpDX.Direct3D11.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.Direct3D9, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.Direct3D9.4.2.0\lib\net45\SharpDX.Direct3D9.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.DXGI, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.DXGI.4.2.0\lib\net45\SharpDX.DXGI.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.Mathematics, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.Mathematics.4.2.0\lib\net45\SharpDX.Mathematics.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.MediaFoundation, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.MediaFoundation.4.2.0\lib\net45\SharpDX.MediaFoundation.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.XAudio2, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.XAudio2.4.2.0\lib\net45\SharpDX.XAudio2.dll</HintPath>
-    </Reference>
-    <Reference Include="SharpDX.XInput, Version=4.2.0.0, Culture=neutral, PublicKeyToken=b4dcf0f35e5521f1, processorArchitecture=MSIL">
-      <HintPath>..\packages\SharpDX.XInput.4.2.0\lib\net45\SharpDX.XInput.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.ComponentModel.Composition" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Drawing.Primitives, Version=4.0.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Drawing.Primitives.4.3.0\lib\net45\System.Drawing.Primitives.dll</HintPath>
-      <Private>True</Private>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Runtime, Version=4.1.1.1, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Runtime.4.3.1\lib\net462\System.Runtime.dll</HintPath>
-      <Private>True</Private>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.0.0\lib\net461\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Runtime.InteropServices.RuntimeInformation, Version=4.0.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Runtime.InteropServices.RuntimeInformation.4.3.0\lib\net45\System.Runtime.InteropServices.RuntimeInformation.dll</HintPath>
-      <Private>True</Private>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Threading.Tasks.Extensions, Version=4.2.0.1, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Threading.Tasks.Extensions.4.5.4\lib\net461\System.Threading.Tasks.Extensions.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.Xml" />
-    <Reference Include="WeifenLuo.WinFormsUI.Docking, Version=2.1.6643.41644, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\WeifenLuo.WinFormsUI.Docking.2.1.0\lib\net20\WeifenLuo.WinFormsUI.Docking.dll</HintPath>
-    </Reference>
-    <Reference Include="WindowsBase" />
-    <Reference Include="WindowsFormsIntegration" />
-    <Reference Include="WpfAnimatedGif, Version=2.0.0.0, Culture=neutral, PublicKeyToken=9e7cd3b544a090dc, processorArchitecture=MSIL">
-      <HintPath>..\packages\WpfAnimatedGif.2.0.2\lib\net40\WpfAnimatedGif.dll</HintPath>
-    </Reference>
-    <Reference Include="Xceed.Wpf.AvalonDock, Version=4.6.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
-      <HintPath>..\packages\Extended.Wpf.Toolkit.4.6.0\lib\net40\Xceed.Wpf.AvalonDock.dll</HintPath>
-    </Reference>
-    <Reference Include="Xceed.Wpf.AvalonDock.Themes.Aero, Version=4.6.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
-      <HintPath>..\packages\Extended.Wpf.Toolkit.4.6.0\lib\net40\Xceed.Wpf.AvalonDock.Themes.Aero.dll</HintPath>
-    </Reference>
-    <Reference Include="Xceed.Wpf.AvalonDock.Themes.Metro, Version=4.6.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
-      <HintPath>..\packages\Extended.Wpf.Toolkit.4.6.0\lib\net40\Xceed.Wpf.AvalonDock.Themes.Metro.dll</HintPath>
-    </Reference>
-    <Reference Include="Xceed.Wpf.AvalonDock.Themes.VS2010, Version=4.6.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
-      <HintPath>..\packages\Extended.Wpf.Toolkit.4.6.0\lib\net40\Xceed.Wpf.AvalonDock.Themes.VS2010.dll</HintPath>
-    </Reference>
-    <Reference Include="Xceed.Wpf.Toolkit, Version=4.6.0.0, Culture=neutral, PublicKeyToken=3e4669d2f30244f4, processorArchitecture=MSIL">
-      <HintPath>..\packages\Extended.Wpf.Toolkit.4.6.0\lib\net40\Xceed.Wpf.Toolkit.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="AnimationBuilder.cs" />
-    <Compile Include="Comparer\SemiNumericComparer.cs" />
-    <Compile Include="Comparer\TreeViewNodeSorter.cs" />
-    <Compile Include="Converter\BooleanToVisibilityConverter.cs" />
-    <Compile Include="Converter\CheckboxToBorderTransparencyConverter.cs" />
-    <Compile Include="Converter\PointFConverter.cs" />
-    <Compile Include="Converter\PointFValueConverter.cs" />
-    <Compile Include="GUI\ContextMenuManager.cs" />
-    <Compile Include="Converter\CheckboxToVisibilityConverter.cs" />
-    <Compile Include="Converter\ImageSizeDoubleToIntegerConverter.cs" />
-    <Compile Include="Converter\ImageWidthOrHeightToScreenDPIConverter.cs" />
-    <Compile Include="Converter\IntegerULongCommasConverter.cs" />
-    <Compile Include="Converter\PointFOriginToStringConverter.cs" />
-    <Compile Include="Converter\PointFToVisiblityConverter.cs" />
-    <Compile Include="Converter\TicksToRelativeTimeConverter.cs" />
-    <Compile Include="Converter\VectorOriginPointFToMarginConverter.cs" />
-    <Compile Include="FHMapper\FHMapper.cs" />
-    <Compile Include="GUI\AboutForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\AboutForm.Designer.cs">
-      <DependentUpon>AboutForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Controls\NotifyPointF.cs" />
-    <Compile Include="GUI\Controls\PointFEditor.cs" />
-    <Compile Include="GUI\Controls\PointFEditorControl.cs" />
-    <Compile Include="GUI\Input\SearchSelectionForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\SearchSelectionForm.Designer.cs">
-      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="FHMapper\DisplayMap.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="FHMapper\DisplayMap.designer.cs">
-      <DependentUpon>DisplayMap.cs</DependentUpon>
-    </Compile>
-    <Compile Include="FHMapper\Edit.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="FHMapper\Edit.designer.cs">
-      <DependentUpon>Edit.cs</DependentUpon>
-    </Compile>
-    <Compile Include="FHMapper\EditPortals.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="FHMapper\EditPortals.designer.cs">
-      <DependentUpon>EditPortals.cs</DependentUpon>
-    </Compile>
-    <Compile Include="FHMapper\FootHold.cs" />
-    <Compile Include="FHMapper\Portals.cs" />
-    <Compile Include="FHMapper\Settings.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="FHMapper\Settings.designer.cs">
-      <DependentUpon>Settings.cs</DependentUpon>
-    </Compile>
-    <Compile Include="FHMapper\SpawnPoint.cs" />
-    <Compile Include="FHMapper\SpawnpointInfo.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="FHMapper\SpawnpointInfo.designer.cs">
-      <DependentUpon>SpawnpointInfo.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\FirstRunForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\FirstRunForm.Designer.cs">
-      <DependentUpon>FirstRunForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\BitmapInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\BitmapInputBox.Designer.cs">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\DoubleInput.cs">
+    <Compile Update="GUI\Input\DoubleInput.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="GUI\Input\FloatingPointInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\FloatingPointInputBox.Designer.cs">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\IntegerInput.cs">
+    <Compile Update="GUI\Input\IntegerInput.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="GUI\Input\IntInputBox.cs">
+    <Compile Update="GUI\WzKeyBruteforceForm.cs">
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="GUI\Input\IntInputBox.Designer.cs">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\LongInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\LongInputBox.designer.cs">
-      <DependentUpon>LongInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\NameInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\NameInputBox.Designer.cs">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\NameValueInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\NameValueInputBox.Designer.cs">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\RenameInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\RenameInputBox.Designer.cs">
-      <DependentUpon>RenameInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\ReplaceBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\ReplaceBox.Designer.cs">
-      <DependentUpon>ReplaceBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\SearchOptionsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\SearchOptionsForm.Designer.cs">
-      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\SoundInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\SoundInputBox.Designer.cs">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\VectorInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\VectorInputBox.Designer.cs">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Interaction\WzMapleVersionInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Interaction\WzMapleVersionInputBox.Designer.cs">
-      <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\ListEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\ListEditor.Designer.cs">
-      <DependentUpon>ListEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\MainForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\MainForm.Designer.cs">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\NewForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\NewForm.Designer.cs">
-      <DependentUpon>NewForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\OptionsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\OptionsForm.Designer.cs">
-      <DependentUpon>OptionsForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\ImageAnimationPreviewWindow.cs" />
-    <Compile Include="GUI\Panels\MainPanel.xaml.cs">
-      <DependentUpon>MainPanel.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\MainPanelPropertyItems.cs" />
-    <Compile Include="GUI\Panels\SubPanels\AvalonTextEditor.xaml.cs">
-      <DependentUpon>AvalonTextEditor.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml.cs">
-      <DependentUpon>ImageRenderViewer.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\ImageRenderViewerItem.cs" />
-    <Compile Include="GUI\Panels\SubPanels\LoadingPanel.xaml.cs">
-      <DependentUpon>LoadingPanel.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Panels\SubPanels\XYPanel.xaml.cs">
-      <DependentUpon>XYPanel.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\CustomWZEncryptionInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\CustomWZEncryptionInputBox.designer.cs">
-      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Properties\Resources.ja.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.ja.resx</DependentUpon>
-    </Compile>
-    <Compile Include="Properties\Resources.ko.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.ko.resx</DependentUpon>
-    </Compile>
-    <Compile Include="Properties\Resources.zh-CHS.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.zh-CHS.resx</DependentUpon>
-    </Compile>
-    <Compile Include="Properties\Resources.zh-CHT.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.zh-CHT.resx</DependentUpon>
-    </Compile>
-    <Compile Include="SavedFolderBrowser.cs" />
-    <Compile Include="TreeViewMS.cs">
+    <Compile Update="TreeViewMS.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="UndoRedoManager.cs" />
-    <Compile Include="Warning.cs" />
-    <Compile Include="GUI\WzStringSearchForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\WzStringSearchForm.Designer.cs">
-      <DependentUpon>WzStringSearchForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\WzStringSearchFormDataCache.cs" />
-    <Compile Include="GUI\ZLZPacketEncryptionKeyForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\ZLZPacketEncryptionKeyForm.designer.cs">
-      <DependentUpon>ZLZPacketEncryptionKeyForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="GUI\SaveForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\SaveForm.designer.cs">
-      <DependentUpon>SaveForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="WzNode.cs" />
-    <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHS.resx">
-      <DependentUpon>DisplayMap.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\DisplayMap.zh-CHT.resx">
-      <DependentUpon>DisplayMap.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Edit.zh-CHS.resx">
-      <DependentUpon>Edit.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Edit.zh-CHT.resx">
-      <DependentUpon>Edit.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\EditPortals.zh-CHS.resx">
-      <DependentUpon>EditPortals.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\EditPortals.zh-CHT.resx">
-      <DependentUpon>EditPortals.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Settings.zh-CHS.resx">
-      <DependentUpon>Settings.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Settings.zh-CHT.resx">
-      <DependentUpon>Settings.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\SpawnpointInfo.zh-CHS.resx">
-      <DependentUpon>SpawnpointInfo.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\SpawnpointInfo.zh-CHT.resx">
-      <DependentUpon>SpawnpointInfo.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\AboutForm.resx">
-      <DependentUpon>AboutForm.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\AboutForm.zh-CHS.resx">
-      <DependentUpon>AboutForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\AboutForm.zh-CHT.resx">
-      <DependentUpon>AboutForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.resx">
-      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\DisplayMap.resx">
-      <DependentUpon>DisplayMap.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Edit.resx">
-      <DependentUpon>Edit.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\EditPortals.resx">
-      <DependentUpon>EditPortals.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\Settings.resx">
-      <DependentUpon>Settings.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="FHMapper\SpawnpointInfo.resx">
-      <DependentUpon>SpawnpointInfo.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.zh-CHS.resx">
-      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchSelectionForm.zh-CHT.resx">
-      <DependentUpon>SearchSelectionForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\FirstRunForm.resx">
-      <DependentUpon>FirstRunForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\FirstRunForm.zh-CHS.resx">
-      <DependentUpon>FirstRunForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\FirstRunForm.zh-CHT.resx">
-      <DependentUpon>FirstRunForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\BitmapInputBox.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\BitmapInputBox.zh-CHS.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\BitmapInputBox.zh-CHT.resx">
-      <DependentUpon>BitmapInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.zh-CHS.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\FloatingPointInputBox.zh-CHT.resx">
-      <DependentUpon>FloatingPointInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHS.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHT.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\LongInputBox.resx">
-      <DependentUpon>LongInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\LongInputBox.zh-CHS.resx">
-      <DependentUpon>LongInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\LongInputBox.zh-CHT.resx">
-      <DependentUpon>LongInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameInputBox.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameInputBox.zh-CHS.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameInputBox.zh-CHT.resx">
-      <DependentUpon>NameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameValueInputBox.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameValueInputBox.zh-CHS.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\NameValueInputBox.zh-CHT.resx">
-      <DependentUpon>NameValueInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\RenameInputBox.resx">
-      <DependentUpon>RenameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\RenameInputBox.zh-CHS.resx">
-      <DependentUpon>RenameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\RenameInputBox.zh-CHT.resx">
-      <DependentUpon>RenameInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\ReplaceBox.resx">
-      <DependentUpon>ReplaceBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\ReplaceBox.zh-CHS.resx">
-      <DependentUpon>ReplaceBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\ReplaceBox.zh-CHT.resx">
-      <DependentUpon>ReplaceBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.resx">
-      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.zh-CHS.resx">
-      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SearchOptionsForm.zh-CHT.resx">
-      <DependentUpon>SearchOptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SoundInputBox.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SoundInputBox.zh-CHS.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\SoundInputBox.zh-CHT.resx">
-      <DependentUpon>SoundInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\VectorInputBox.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\VectorInputBox.zh-CHS.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\VectorInputBox.zh-CHT.resx">
-      <DependentUpon>VectorInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.resx">
-      <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.zh-CHS.resx">
-      <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Interaction\WzMapleVersionInputBox.zh-CHT.resx">
-      <DependentUpon>WzMapleVersionInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ListEditor.resx">
-      <DependentUpon>ListEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ListEditor.zh-CHS.resx">
-      <DependentUpon>ListEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ListEditor.zh-CHT.resx">
-      <DependentUpon>ListEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\MainForm.resx">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\MainForm.zh-CHS.resx">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\MainForm.zh-CHT.resx">
-      <DependentUpon>MainForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\NewForm.resx">
-      <DependentUpon>NewForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\NewForm.zh-CHS.resx">
-      <DependentUpon>NewForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\NewForm.zh-CHT.resx">
-      <DependentUpon>NewForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\OptionsForm.resx">
-      <DependentUpon>OptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\OptionsForm.zh-CHS.resx">
-      <DependentUpon>OptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\OptionsForm.zh-CHT.resx">
-      <DependentUpon>OptionsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.resx">
-      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.zh-CHS.resx">
-      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\CustomWZEncryptionInputBox.zh-CHT.resx">
-      <DependentUpon>CustomWZEncryptionInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\SaveForm.zh-CHS.resx">
-      <DependentUpon>SaveForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\SaveForm.zh-CHT.resx">
-      <DependentUpon>SaveForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\WzStringSearchForm.resx">
-      <DependentUpon>WzStringSearchForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ZLZPacketEncryptionKeyForm.resx">
-      <DependentUpon>ZLZPacketEncryptionKeyForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.ja.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.ja.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.ko.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.ko.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-      <DesignTime>True</DesignTime>
-    </Compile>
-    <EmbeddedResource Include="GUI\SaveForm.resx">
-      <DependentUpon>SaveForm.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.zh-CHS.resx">
-      <SubType>Designer</SubType>
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.zh-CHS.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.zh-CHT.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.zh-CHT.Designer.cs</LastGenOutput>
-    </EmbeddedResource>
-    <EmbeddedResource Include="TreeViewMS.resx">
-      <DependentUpon>TreeViewMS.cs</DependentUpon>
-    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <None Include="app.config" />
-    <None Include="app.manifest" />
-    <None Include="HaRepacker.res" />
-    <None Include="packages.config" />
-    <None Include="Resources\page_white.png" />
-    <None Include="Resources\folder.png" />
-    <None Include="Resources\folder_add.png" />
-    <None Include="Resources\disk.png" />
-    <None Include="Resources\cog.png" />
-    <None Include="Resources\delete.png" />
-    <None Include="Resources\folder_go.png" />
-    <None Include="Resources\map.png" />
-    <None Include="Resources\information.png" />
-    <None Include="Resources\help.png" />
-    <None Include="Resources\add.png" />
-    <None Include="Resources\page_go.png" />
-    <None Include="Resources\arrow_refresh1.png" />
-    <None Include="Resources\lightning.png" />
-    <None Include="Resources\page_edit.png" />
-    <None Include="Resources\page_add.png" />
-    <None Include="Resources\find.png" />
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj" />
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />
+    <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
-      <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
-      <Name>HaSharedLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
-      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
-      <Name>spine-csharp 2.1.25</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj">
-      <Project>{2abc5d88-2f6c-4721-a0a7-ca15970ac999}</Project>
-      <Name>RealESRGAN_AI_Upscale</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Windows.Installer.3.1">
-      <Visible>False</Visible>
-      <ProductName>Windows Installer 3.1</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\sort.png" />
-    <None Include="Resources\Pause_.png" />
-    <None Include="Resources\Play.png" />
-    <None Include="Resources\207px-Circle-undo.svg.png" />
-    <None Include="Resources\8800000_attack_10.png" />
     <Content Include="HaLogo.ico" />
     <Content Include="Resources\arrow_left.png" />
-    <None Include="Resources\red_x1.png" />
-    <None Include="Resources\rename.png" />
-    <None Include="Resources\arrow_refresh.png" />
     <Content Include="Resources\arrow_right.png" />
-    <None Include="Resources\img_default.png" />
     <Resource Include="Resources\loading.gif" />
-    <None Include="Resources\expand.png" />
-    <None Include="Resources\collapse.png" />
-    <None Include="Resources\ladyboss_test_attack2_0.png" />
-    <None Include="Resources\copyFile.png" />
-    <None Include="Resources\batch_edit_icon.png" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
     <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
-    <None Include="Resources\pasteFile.png" />
     <Content Include="Resources\Pause.png" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="GUI\Panels\MainPanel.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Panels\SubPanels\AvalonTextEditor.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Panels\SubPanels\ImageRenderViewer.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Panels\SubPanels\LoadingPanel.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\Panels\SubPanels\XYPanel.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
+    <PackageReference Include="System.ComponentModel.Composition" Version="8.0.0" />
   </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Import Project="..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets" Condition="Exists('..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets')" />
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\MonoGame.Framework.WindowsDX.3.8.0.1641\build\MonoGame.Framework.WindowsDX.targets'))" />
-  </Target>
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
+    <PackageReference Include="Extended.Wpf.Toolkit" Version="4.6.1" />
+    <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.2.1105" />
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D9" Version="4.2.0" />
+    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <PackageReference Include="SharpDX.MediaFoundation" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XAudio2" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
+    <PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="GUI\Resources.Designer.cs" />
+    <EmbeddedResource Remove="GUI\Input\DoubleInput.resx" />
+    <EmbeddedResource Remove="GUI\Input\FindInputBox.resx" />
+    <EmbeddedResource Remove="GUI\Input\IntegerInput.resx" />
+    <EmbeddedResource Remove="GUI\Resources.resx" />
+  </ItemGroup>
 </Project>

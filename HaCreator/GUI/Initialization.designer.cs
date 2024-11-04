@@ -29,127 +29,159 @@
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Initialization));
-            this.button_initialise = new System.Windows.Forms.Button();
-            this.versionBox = new System.Windows.Forms.ComboBox();
-            this.toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
-            this.label2 = new System.Windows.Forms.Label();
-            this.label3 = new System.Windows.Forms.Label();
-            this.textBox2 = new System.Windows.Forms.TextBox();
-            this.pathBox = new System.Windows.Forms.ComboBox();
-            this.button2 = new System.Windows.Forms.Button();
-            this.button_checkMapErrors = new System.Windows.Forms.Button();
-            this.SuspendLayout();
+            button_initialise = new System.Windows.Forms.Button();
+            versionBox = new System.Windows.Forms.ComboBox();
+            toolStripProgressBar1 = new System.Windows.Forms.ToolStripProgressBar();
+            label2 = new System.Windows.Forms.Label();
+            label3 = new System.Windows.Forms.Label();
+            textBox2 = new System.Windows.Forms.TextBox();
+            pathBox = new System.Windows.Forms.ComboBox();
+            button2 = new System.Windows.Forms.Button();
+            button_checkMapErrors = new System.Windows.Forms.Button();
+            label1 = new System.Windows.Forms.Label();
+            comboBox_localisation = new System.Windows.Forms.ComboBox();
+            label4 = new System.Windows.Forms.Label();
+            SuspendLayout();
             // 
             // button_initialise
             // 
-            this.button_initialise.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button_initialise.Location = new System.Drawing.Point(5, 65);
-            this.button_initialise.Name = "button_initialise";
-            this.button_initialise.Size = new System.Drawing.Size(186, 28);
-            this.button_initialise.TabIndex = 1;
-            this.button_initialise.Text = "Initialize";
-            this.button_initialise.Click += new System.EventHandler(this.button_initialise_Click);
+            button_initialise.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            button_initialise.Location = new System.Drawing.Point(4, 137);
+            button_initialise.Name = "button_initialise";
+            button_initialise.Size = new System.Drawing.Size(247, 28);
+            button_initialise.TabIndex = 1;
+            button_initialise.Text = "Initialize";
+            button_initialise.Click += button_initialise_Click;
             // 
             // versionBox
             // 
-            this.versionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.versionBox.FormattingEnabled = true;
-            this.versionBox.Items.AddRange(new object[] {
-            "GMS",
-            "EMS , MSEA , KMS",
-            "BMS , JMS",
-            "Auto-Detect"});
-            this.versionBox.Location = new System.Drawing.Point(74, 38);
-            this.versionBox.Name = "versionBox";
-            this.versionBox.Size = new System.Drawing.Size(237, 21);
-            this.versionBox.TabIndex = 3;
+            versionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            versionBox.FormattingEnabled = true;
+            versionBox.Items.AddRange(new object[] { "GMS", "EMS , MSEA , KMS", "BMS , JMS", "Auto-Detect" });
+            versionBox.Location = new System.Drawing.Point(142, 38);
+            versionBox.Name = "versionBox";
+            versionBox.Size = new System.Drawing.Size(227, 21);
+            versionBox.TabIndex = 3;
             // 
             // toolStripProgressBar1
             // 
-            this.toolStripProgressBar1.Name = "toolStripProgressBar1";
-            this.toolStripProgressBar1.Size = new System.Drawing.Size(150, 16);
+            toolStripProgressBar1.Name = "toolStripProgressBar1";
+            toolStripProgressBar1.Size = new System.Drawing.Size(150, 16);
             // 
             // label2
             // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(6, 40);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(62, 13);
-            this.label2.TabIndex = 8;
-            this.label2.Text = "Encryption";
+            label2.AutoSize = true;
+            label2.Location = new System.Drawing.Point(6, 40);
+            label2.Name = "label2";
+            label2.Size = new System.Drawing.Size(85, 13);
+            label2.TabIndex = 8;
+            label2.Text = "WZ encryption:";
             // 
             // label3
             // 
-            this.label3.AutoSize = true;
-            this.label3.Location = new System.Drawing.Point(6, 15);
-            this.label3.Name = "label3";
-            this.label3.Size = new System.Drawing.Size(49, 13);
-            this.label3.TabIndex = 9;
-            this.label3.Text = "MS Path";
+            label3.AutoSize = true;
+            label3.Location = new System.Drawing.Point(6, 15);
+            label3.Name = "label3";
+            label3.Size = new System.Drawing.Size(33, 13);
+            label3.TabIndex = 9;
+            label3.Text = "Path:";
             // 
             // textBox2
             // 
-            this.textBox2.Location = new System.Drawing.Point(5, 99);
-            this.textBox2.Name = "textBox2";
-            this.textBox2.ReadOnly = true;
-            this.textBox2.Size = new System.Drawing.Size(354, 22);
-            this.textBox2.TabIndex = 2;
+            textBox2.Location = new System.Drawing.Point(4, 171);
+            textBox2.Name = "textBox2";
+            textBox2.ReadOnly = true;
+            textBox2.Size = new System.Drawing.Size(364, 22);
+            textBox2.TabIndex = 2;
             // 
             // pathBox
             // 
-            this.pathBox.FormattingEnabled = true;
-            this.pathBox.Location = new System.Drawing.Point(74, 12);
-            this.pathBox.Name = "pathBox";
-            this.pathBox.Size = new System.Drawing.Size(237, 21);
-            this.pathBox.TabIndex = 13;
+            pathBox.FormattingEnabled = true;
+            pathBox.Location = new System.Drawing.Point(74, 12);
+            pathBox.Name = "pathBox";
+            pathBox.Size = new System.Drawing.Size(237, 21);
+            pathBox.TabIndex = 13;
             // 
             // button2
             // 
-            this.button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.button2.Location = new System.Drawing.Point(315, 11);
-            this.button2.Name = "button2";
-            this.button2.Size = new System.Drawing.Size(54, 21);
-            this.button2.TabIndex = 14;
-            this.button2.Text = "...";
-            this.button2.Click += new System.EventHandler(this.button2_Click);
+            button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            button2.Location = new System.Drawing.Point(315, 11);
+            button2.Name = "button2";
+            button2.Size = new System.Drawing.Size(54, 21);
+            button2.TabIndex = 14;
+            button2.Text = "...";
+            button2.Click += button2_Click;
             // 
             // button_checkMapErrors
             // 
-            this.button_checkMapErrors.Location = new System.Drawing.Point(197, 65);
-            this.button_checkMapErrors.Name = "button_checkMapErrors";
-            this.button_checkMapErrors.Size = new System.Drawing.Size(172, 28);
-            this.button_checkMapErrors.TabIndex = 15;
-            this.button_checkMapErrors.Text = "Check map errors";
-            this.button_checkMapErrors.UseVisualStyleBackColor = true;
-            this.button_checkMapErrors.Click += new System.EventHandler(this.debugButton_Click);
+            button_checkMapErrors.Location = new System.Drawing.Point(257, 137);
+            button_checkMapErrors.Name = "button_checkMapErrors";
+            button_checkMapErrors.Size = new System.Drawing.Size(111, 28);
+            button_checkMapErrors.TabIndex = 15;
+            button_checkMapErrors.Text = "Check map errors";
+            button_checkMapErrors.UseVisualStyleBackColor = true;
+            button_checkMapErrors.Click += debugButton_Click;
+            // 
+            // label1
+            // 
+            label1.AutoSize = true;
+            label1.Enabled = false;
+            label1.Location = new System.Drawing.Point(5, 69);
+            label1.Name = "label1";
+            label1.Size = new System.Drawing.Size(102, 13);
+            label1.TabIndex = 17;
+            label1.Text = "Client localisation:";
+            // 
+            // comboBox_localisation
+            // 
+            comboBox_localisation.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            comboBox_localisation.Enabled = false;
+            comboBox_localisation.FormattingEnabled = true;
+            comboBox_localisation.Items.AddRange(new object[] { "GMS", "EMS , MSEA , KMS", "BMS , JMS", "Auto-Detect" });
+            comboBox_localisation.Location = new System.Drawing.Point(141, 67);
+            comboBox_localisation.Name = "comboBox_localisation";
+            comboBox_localisation.Size = new System.Drawing.Size(228, 21);
+            comboBox_localisation.TabIndex = 16;
+            // 
+            // label4
+            // 
+            label4.Enabled = false;
+            label4.Font = new System.Drawing.Font("Segoe UI", 6.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
+            label4.Location = new System.Drawing.Point(4, 91);
+            label4.Name = "label4";
+            label4.Size = new System.Drawing.Size(365, 33);
+            label4.TabIndex = 18;
+            label4.Text = "Please select the right localisation, as the saved .wz data parameters might be different.";
             // 
             // Initialization
             // 
-            this.AccessibleRole = System.Windows.Forms.AccessibleRole.ScrollBar;
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(372, 133);
-            this.Controls.Add(this.button_checkMapErrors);
-            this.Controls.Add(this.button2);
-            this.Controls.Add(this.pathBox);
-            this.Controls.Add(this.label3);
-            this.Controls.Add(this.label2);
-            this.Controls.Add(this.versionBox);
-            this.Controls.Add(this.textBox2);
-            this.Controls.Add(this.button_initialise);
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
-            this.KeyPreview = true;
-            this.MaximizeBox = false;
-            this.Name = "Initialization";
-            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "HaCreator";
-            this.Load += new System.EventHandler(this.Initialization_Load);
-            this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Initialization_KeyDown);
-            this.ResumeLayout(false);
-            this.PerformLayout();
-
+            AccessibleRole = System.Windows.Forms.AccessibleRole.ScrollBar;
+            AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            ClientSize = new System.Drawing.Size(372, 196);
+            Controls.Add(label4);
+            Controls.Add(label1);
+            Controls.Add(comboBox_localisation);
+            Controls.Add(button_checkMapErrors);
+            Controls.Add(button2);
+            Controls.Add(pathBox);
+            Controls.Add(label3);
+            Controls.Add(label2);
+            Controls.Add(versionBox);
+            Controls.Add(textBox2);
+            Controls.Add(button_initialise);
+            Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
+            KeyPreview = true;
+            MaximizeBox = false;
+            Name = "Initialization";
+            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            Text = "HaCreator";
+            Load += Initialization_Load;
+            KeyDown += Initialization_KeyDown;
+            ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
@@ -163,6 +195,9 @@
         private System.Windows.Forms.ComboBox pathBox;
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.Button button_checkMapErrors;
+        private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.ComboBox comboBox_localisation;
+        private System.Windows.Forms.Label label4;
     }
 }
 

@@ -22,7 +22,6 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance.Misc;
 using XNA = Microsoft.Xna.Framework;
-using System.Runtime.Remoting.Channels;
 using System.Windows.Media;
 using HaSharedLibrary.Util;
 using HaCreator.GUI;
@@ -31,6 +30,7 @@ using HaCreator.Exceptions;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Wz;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
 namespace HaCreator.Wz
 {
@@ -244,7 +244,7 @@ namespace HaCreator.Wz
                         questInfo = new List<ObjectInstanceQuest>();
                         foreach (WzIntProperty info in questParent.WzProperties)
                         {
-                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestState)info.Value));
+                            questInfo.Add(new ObjectInstanceQuest(int.Parse(info.Name), (QuestStateType)info.Value));
                         }
                     }
                     bool flip = InfoTool.GetBool(obj["f"]);
@@ -953,7 +953,7 @@ namespace HaCreator.Wz
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
         /// <param name="rightClickHandler"></param>
-        public static void CreateMapFromImage(int mapId, WzImage mapImage, MapInfo info, string mapName, string streetName, string categoryName, WzSubProperty strMapProp, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
+        public static void CreateMapFromImage(int mapId, WzImage mapImage, MapInfo info, string mapName, string streetName, string categoryName, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             if (!mapImage.Parsed)
                 mapImage.ParseImage();

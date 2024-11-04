@@ -27,6 +27,7 @@ using MapleLib.Helpers;
 using SharpDX.Direct2D1.Effects;
 using System.Drawing.Printing;
 using HaCreator.MapSimulator.MapObjects.UIObject.Controls;
+using System.Windows.Forms;
 
 namespace HaCreator.MapSimulator {
     public class MapSimulatorLoader {
@@ -849,6 +850,7 @@ namespace HaCreator.MapSimulator {
             System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
 
             HaUIGrid minimapUiGrid = new HaUIGrid(1, 1);
+            minimapUiGrid.GetInfo().Margins.Top = 10;
             minimapUiGrid.GetInfo().HorizontalAlignment = HaUIAlignment.Center;
             minimapUiGrid.GetInfo().VerticalAlignment = HaUIAlignment.Center;
             minimapUiGrid.AddRenderable(minimapUiImage);
@@ -980,6 +982,10 @@ namespace HaCreator.MapSimulator {
             // tooltip property
             string title = tooltip.Title;
             string desc = tooltip.Desc;
+            if (desc != null)
+            {
+                desc = desc.Replace("\\n\\n", "\n \n"); // Add a space between consecutive newlines, due to how the DrawString method handles newline characters in the Graphics class
+            }
 
             string renderText = string.Format("{0}{1}{2}", title, Environment.NewLine, desc);
 

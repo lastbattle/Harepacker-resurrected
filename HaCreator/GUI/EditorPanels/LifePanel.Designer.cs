@@ -102,7 +102,7 @@
             // 
             this.lifeSearchBox.Location = new System.Drawing.Point(44, 28);
             this.lifeSearchBox.Name = "lifeSearchBox";
-            this.lifeSearchBox.Size = new System.Drawing.Size(146, 22);
+            this.lifeSearchBox.Size = new System.Drawing.Size(222, 22);
             this.lifeSearchBox.TabIndex = 3;
             this.lifeSearchBox.TextChanged += new System.EventHandler(this.lifeModeChanged);
             // 

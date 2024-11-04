@@ -19,7 +19,7 @@ namespace HaRepacker.GUI.Interaction
             bool result = form.ShowDialog() == DialogResult.OK;
 
             if (result)
-                MapleVersionEncryptionSelected = (WzMapleVersion)form.comboBox_wzEncryptionType.SelectedIndex;
+                MapleVersionEncryptionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(form.comboBox_wzEncryptionType.SelectedIndex);
             else
                 MapleVersionEncryptionSelected = WzMapleVersion.BMS; // default
 
@@ -33,7 +33,7 @@ namespace HaRepacker.GUI.Interaction
             Text = title;
 
             MainForm.AddWzEncryptionTypesToComboBox(comboBox_wzEncryptionType);
-            comboBox_wzEncryptionType.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
+            comboBox_wzEncryptionType.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
 
             // Localization
             label_wzEncrytionType.Text = HaRepacker.Properties.Resources.InteractionWzMapleVersionInfo;

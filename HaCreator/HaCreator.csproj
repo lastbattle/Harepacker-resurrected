@@ -1,124 +1,51 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{679DD557-5E1E-447E-B48C-0F082E5FB1F4}</ProjectGuid>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>HaCreator</RootNamespace>
-    <AssemblyName>HaCreator</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <FileUpgradeFlags>
-    </FileUpgradeFlags>
-    <OldToolsVersion>3.5</OldToolsVersion>
-    <UpgradeBackupLocation />
-    <TargetFrameworkProfile>
-    </TargetFrameworkProfile>
     <ApplicationIcon>HaLogo.ico</ApplicationIcon>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
-    <PublishUrl>E:\Server\Harepacker-resurrected\publish\</PublishUrl>
-    <Install>true</Install>
-    <InstallFrom>Disk</InstallFrom>
-    <UpdateEnabled>false</UpdateEnabled>
-    <UpdateMode>Foreground</UpdateMode>
-    <UpdateInterval>7</UpdateInterval>
-    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
-    <UpdatePeriodically>false</UpdatePeriodically>
-    <UpdateRequired>false</UpdateRequired>
-    <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>3</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <UseApplicationTrust>false</UseApplicationTrust>
-    <PublishWizardCompleted>true</PublishWizardCompleted>
-    <BootstrapperEnabled>true</BootstrapperEnabled>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-    <DebugSymbols>true</DebugSymbols>
-    <PlatformTarget>x86</PlatformTarget>
-    <OutputPath>..\Compiled\Debug\x86\</OutputPath>
-    <DebugType>full</DebugType>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-    <PlatformTarget>x86</PlatformTarget>
-    <OutputPath>..\Compiled\Release\x86\</OutputPath>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <DefineConstants>TRACE</DefineConstants>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup>
     <Win32Resource>
     </Win32Resource>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\Compiled\Debug\x64\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PlatformTarget>x64</PlatformTarget>
-    <DebugType>full</DebugType>
     <CodeAnalysisLogFile>bin\x86\Debug\HaCreator.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
-    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
-    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
     <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
     <CodeAnalysisIgnoreBuiltInRules>false</CodeAnalysisIgnoreBuiltInRules>
-    <CodeAnalysisFailOnMissingRules>false</CodeAnalysisFailOnMissingRules>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <OutputPath>..\Compiled\Release\x64\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Optimize>true</Optimize>
-    <PlatformTarget>x64</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
     <CodeAnalysisLogFile>bin\x86\Release\HaCreator.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
-    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
-    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
     <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
-    <DebugSymbols>true</DebugSymbols>
-    <OutputPath>..\Compiled\Debug\AnyCPU\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
-    <DebugType>full</DebugType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <OutputPath>..\Compiled\Release\AnyCPU\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Optimize>true</Optimize>
-    <DebugType>pdbonly</DebugType>
-    <PlatformTarget>AnyCPU</PlatformTarget>
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
-    <Prefer32Bit>false</Prefer32Bit>
     <WarningLevel>3</WarningLevel>
   </PropertyGroup>
   <PropertyGroup>
     <StartupObject>HaCreator.Program</StartupObject>
-  </PropertyGroup>
-  <PropertyGroup />
-  <PropertyGroup>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -136,653 +63,62 @@
     <GenerateManifests>true</GenerateManifests>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Build.Framework" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="Microsoft.VisualBasic" />
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
-    <Reference Include="System" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="system.windows.controls.ribbon, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL" />
-    <Reference Include="System.Windows.Forms" />
-    <Reference Include="System.Xaml" />
-    <Reference Include="System.XML" />
-    <Reference Include="UIAutomationProvider" />
-    <Reference Include="UIAutomationTypes" />
-    <Reference Include="WindowsBase" />
-    <Reference Include="WindowsFormsIntegration" />
+    <Compile Update="CustomControls\WatermarkTextBox.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="CustomControls\MapBrowser.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="CustomControls\ScrollablePictureBox.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\BackgroundPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\CommonPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\LifePanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\ObjPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\PortalPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\TilePanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\Input\IntegerInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="CustomControls\ImageViewer.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="CustomControls\AlphaColorPicker.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="CustomControls\BetterCheckedListBox.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="CustomControls\ThumbnailFlowLayoutPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="CustomControls\DirectXHolder.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\InstanceEditor\LoadMobSelector.cs">
+      <SubType>Form</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Collections\BoardItemsCollection.cs" />
-    <Compile Include="Collections\BoardItemsEnumerator.cs" />
-    <Compile Include="Collections\ItemsCollectionBase.cs" />
-    <Compile Include="Collections\MapleLinesCollection.cs" />
-    <Compile Include="Collections\MapleLinesEnumerator.cs" />
-    <Compile Include="Collections\SerializableEnumerator.cs" />
-    <Compile Include="CustomControls\CheckboxButton.cs" />
-    <Compile Include="CustomControls\HaList.xaml.cs">
-      <DependentUpon>HaList.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\WatermarkTextBox.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="Exceptions\DeserializationException.cs" />
-    <Compile Include="Exceptions\NameAlreadyUsedException.cs" />
-    <Compile Include="Exceptions\NoVRException.cs" />
-    <Compile Include="GUI\HaEditor.xaml.cs">
-      <DependentUpon>HaEditor.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\HaRibbon.xaml.cs">
-      <DependentUpon>HaRibbon.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\MapBrowser.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="CustomControls\MapBrowser.Designer.cs">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\ScrollablePictureBox.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="CustomControls\ScrollablePictureBox.Designer.cs">
-      <DependentUpon>ScrollablePictureBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\CancelableWaitWindow.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\CancelableWaitWindow.Designer.cs">
-      <DependentUpon>CancelableWaitWindow.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\BackgroundPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\BackgroundPanel.Designer.cs">
-      <DependentUpon>BackgroundPanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\CommonPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\CommonPanel.Designer.cs">
-      <DependentUpon>CommonPanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\LifePanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\LifePanel.Designer.cs">
-      <DependentUpon>LifePanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\ObjPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\ObjPanel.Designer.cs">
-      <DependentUpon>ObjPanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\PortalPanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\PortalPanel.Designer.cs">
-      <DependentUpon>PortalPanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\TilePanel.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorPanels\TilePanel.Designer.cs">
-      <DependentUpon>TilePanel.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Input\IntegerInput.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\IntInputBox.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Input\IntInputBox.Designer.cs">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MassZmEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MassZmEditor.Designer.cs">
-      <DependentUpon>MassZmEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MirrorFieldDataEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\MirrorFieldDataEditor.Designer.cs">
-      <DependentUpon>MirrorFieldDataEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\TileInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\TileInstanceEditor.Designer.cs">
-      <DependentUpon>TileInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\TooltipInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\TooltipInstanceEditor.Designer.cs">
-      <DependentUpon>TooltipInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\EditorBase.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\EditorBase.Designer.cs">
-      <DependentUpon>EditorBase.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\LayerChange.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\LayerChange.Designer.cs">
-      <DependentUpon>LayerChange.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\LoadMapSelector.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\LoadMapSelector.designer.cs">
-      <DependentUpon>LoadMapSelector.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\ManageUserObjects.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\ManageUserObjects.Designer.cs">
-      <DependentUpon>ManageUserObjects.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\MapPhysicsEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\MapPhysicsEditor.Designer.cs">
-      <DependentUpon>MapPhysicsEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\New.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\New.Designer.cs">
-      <DependentUpon>New.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\NewPlatform.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\NewPlatform.Designer.cs">
-      <DependentUpon>NewPlatform.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Repack.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Repack.Designer.cs">
-      <DependentUpon>Repack.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Save.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Save.Designer.cs">
-      <DependentUpon>Save.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\WaitWindow.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\WaitWindow.Designer.cs">
-      <DependentUpon>WaitWindow.cs</DependentUpon>
-    </Compile>
-    <Compile Include="MapEditor\BackupManager.cs" />
-    <Compile Include="MapEditor\BoardItem.cs" />
-    <Compile Include="MapEditor\BoardItemContextMenu.cs" />
-    <Compile Include="MapEditor\FPSCounter.cs" />
-    <Compile Include="MapEditor\GraphicsDeviceService.cs" />
-    <Compile Include="Collections\ItemsEnumeratorBase.cs" />
-    <Compile Include="Collections\BoardItemPair.cs" />
-    <Compile Include="Collections\IMapleList.cs" />
-    <Compile Include="Collections\MapleList.cs" />
-    <Compile Include="MapEditor\Info\BackgroundInfo.cs" />
-    <Compile Include="MapEditor\Info\BackgroundInfoType.cs" />
-    <Compile Include="MapEditor\Info\MapleExtractableInfo.cs" />
-    <Compile Include="MapEditor\Info\MapleDrawableInfo.cs" />
-    <Compile Include="MapEditor\Info\MobInfo.cs" />
-    <Compile Include="MapEditor\Info\NpcInfo.cs" />
-    <Compile Include="MapEditor\Info\ObjectInfo.cs" />
-    <Compile Include="MapEditor\Info\PortalInfo.cs" />
-    <Compile Include="MapEditor\Info\ReactorInfo.cs" />
-    <Compile Include="MapEditor\Info\TileInfo.cs" />
-    <Compile Include="MapEditor\Input\MouseState.cs" />
-    <Compile Include="MapEditor\Instance\BackgroundInstance.cs" />
-    <Compile Include="MapEditor\Instance\IContainsLayerInfo.cs" />
-    <Compile Include="MapEditor\Instance\IFlippable.cs" />
-    <Compile Include="MapEditor\Instance\ISerializable.cs" />
-    <Compile Include="MapEditor\Instance\LayeredItem.cs" />
-    <Compile Include="MapEditor\Instance\LifeInstance.cs" />
-    <Compile Include="MapEditor\Instance\Misc\Area.cs" />
-    <Compile Include="MapEditor\Instance\Misc\BuffZone.cs" />
-    <Compile Include="MapEditor\Instance\Misc\Clock.cs" />
-    <Compile Include="MapEditor\Instance\Misc\Healer.cs" />
-    <Compile Include="MapEditor\Instance\Misc\INamedMisc.cs" />
-    <Compile Include="MapEditor\Instance\Misc\MirrorFieldData.cs" />
-    <Compile Include="MapEditor\Instance\Misc\MiscLine.cs" />
-    <Compile Include="MapEditor\Instance\Misc\MiscDot.cs" />
-    <Compile Include="MapEditor\Instance\Misc\MiscRectangle.cs" />
-    <Compile Include="MapEditor\Instance\Misc\Pulley.cs" />
-    <Compile Include="MapEditor\Instance\Misc\ShipObject.cs" />
-    <Compile Include="MapEditor\Instance\Misc\SwimArea.cs" />
-    <Compile Include="MapEditor\Instance\MobInstance.cs" />
-    <Compile Include="MapEditor\Instance\NpcInstance.cs" />
-    <Compile Include="MapEditor\Instance\ObjectInstance.cs" />
-    <Compile Include="MapEditor\Instance\ObjectInstanceQuest.cs" />
-    <Compile Include="MapEditor\Instance\PortalInstance.cs" />
-    <Compile Include="MapEditor\Instance\ReactorInstance.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\Chair.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\FootholdAnchor.cs" />
-    <Compile Include="MapEditor\Instance\ISerializableSelector.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MapleDot.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MinimapDot.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\RopeAnchor.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\ToolTipDot.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\VRDot.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\FootholdLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MapleLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MinimapLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\RopeLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\ToolTipLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\VRLine.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MapleEmptyRectangle.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MapleRectangle.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\MinimapRectangle.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\VRRectangle.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\ToolTipInstance.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\ToolTipChar.cs" />
-    <Compile Include="MapEditor\Instance\Shapes\Rope.cs" />
-    <Compile Include="MapEditor\Instance\TileInstance.cs" />
-    <Compile Include="MapEditor\MultiBoard.xaml.cs">
-      <DependentUpon>MultiBoard.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="MapEditor\Scheduler.cs" />
-    <Compile Include="MapEditor\SelectionInfo.cs" />
-    <Compile Include="MapEditor\SerializationManager.cs" />
-    <Compile Include="MapEditor\Text\CharTexture.cs" />
-    <Compile Include="MapEditor\TilesDesign\bsc.cs" />
-    <Compile Include="MapEditor\TilesDesign\edD.cs" />
-    <Compile Include="MapEditor\TilesDesign\edU.cs" />
-    <Compile Include="MapEditor\TilesDesign\enH0.cs" />
-    <Compile Include="MapEditor\TilesDesign\enH1.cs" />
-    <Compile Include="MapEditor\TilesDesign\enV0.cs" />
-    <Compile Include="MapEditor\TilesDesign\enV1.cs" />
-    <Compile Include="MapEditor\TilesDesign\MapTileDesign.cs" />
-    <Compile Include="MapEditor\TilesDesign\MapTileDesignPotential.cs" />
-    <Compile Include="MapEditor\TilesDesign\slLD.cs" />
-    <Compile Include="MapEditor\TilesDesign\slLU.cs" />
-    <Compile Include="MapEditor\TilesDesign\slRD.cs" />
-    <Compile Include="MapEditor\TilesDesign\slRU.cs" />
-    <Compile Include="MapEditor\UndoRedo\UndoRedoType.cs" />
-    <Compile Include="MapEditor\UndoRedo\UndoRedoAction.cs" />
-    <Compile Include="MapEditor\UndoRedo\UndoRedoBatch.cs" />
-    <Compile Include="MapEditor\UserObjectsManager.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\BackgroundItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\MobItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\TooltipItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIAlignment.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIGrid.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIHelper.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIImage.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIInfo.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIMargin.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUISize.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIStackOrientation.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIStackPanel.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\HaUIText.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\Controls\IHaUIRenderable.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\StatusBarChatUI.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\StatusBarUI.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\UIMouseEventHandler.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\UIObject.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectButtonEventHandler.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectState.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\IUIObjectEvents.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\MinimapUI.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\MouseCursorItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\NpcItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\UIObject\UIObjectViewModelBase.cs" />
-    <Compile Include="MapSimulator\MapSimulator.cs" />
-    <Compile Include="MapSimulator\MapSimulatorLoader.cs" />
-    <Compile Include="GUI\TabItemContainer.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\PortalItem.cs" />
-    <Compile Include="MapSimulator\MapObjects\FieldObject\ReactorItem.cs" />
-    <Compile Include="MapSimulator\TexturePool.cs" />
-    <Compile Include="MapSimulator\UIFrameHelper.cs" />
-    <Compile Include="CustomControls\ColorDialog.xaml.cs">
-      <DependentUpon>ColorDialog.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\ColorPicker.xaml.cs">
-      <DependentUpon>ColorPicker.xaml</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\ImageViewer.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="CustomControls\ImageViewer.Designer.cs">
-      <DependentUpon>ImageViewer.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\About.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\About.Designer.cs">
-      <DependentUpon>About.cs</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\AlphaColorPicker.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="CustomControls\BetterCheckedListBox.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\BackgroundInstanceEditor.Designer.cs">
-      <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\PnSelector.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\PnSelector.Designer.cs">
-      <DependentUpon>PnSelector.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\PortalInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\PortalInstanceEditor.Designer.cs">
-      <DependentUpon>PortalInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\FootholdEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\FootholdEditor.Designer.cs">
-      <DependentUpon>FootholdEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\LifeInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\LifeInstanceEditor.Designer.cs">
-      <DependentUpon>LifeInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ObjQuestInput.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ObjQuestInput.Designer.cs">
-      <DependentUpon>ObjQuestInput.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ReactorInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ReactorInstanceEditor.Designer.cs">
-      <DependentUpon>ReactorInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\RopeInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\RopeInstanceEditor.Designer.cs">
-      <DependentUpon>RopeInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\GeneralInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\GeneralInstanceEditor.Designer.cs">
-      <DependentUpon>GeneralInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ObjectInstanceEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InstanceEditor\ObjectInstanceEditor.Designer.cs">
-      <DependentUpon>ObjectInstanceEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="Collections\BoardItemsManager.cs" />
-    <Compile Include="GUI\ExceptionHandler.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\ExceptionHandler.Designer.cs">
-      <DependentUpon>ExceptionHandler.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\InfoEditor.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\InfoEditor.Designer.cs">
-      <DependentUpon>InfoEditor.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\Initialization.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Initialization.designer.cs">
-      <DependentUpon>Initialization.cs</DependentUpon>
-    </Compile>
-    <Compile Include="CustomControls\ThumbnailFlowLayoutPanel.cs">
-      <SubType>Component</SubType>
-    </Compile>
-    <Compile Include="GUI\Load.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\Load.designer.cs">
-      <DependentUpon>Load.cs</DependentUpon>
-    </Compile>
-    <Compile Include="MapEditor\Board.cs" />
-    <Compile Include="CustomControls\DirectXHolder.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="CustomControls\DirectXHolder.Designer.cs">
-      <DependentUpon>DirectXHolder.cs</DependentUpon>
-    </Compile>
-    <Compile Include="MapEditor\Text\FontEngine.cs" />
-    <Compile Include="MapEditor\HaCreatorStateManager.cs" />
-    <Compile Include="MapEditor\Input\InputHandler.cs" />
-    <Compile Include="MapEditor\Instance\ISnappable.cs" />
-    <Compile Include="MapEditor\Layer.cs" />
-    <Compile Include="MapEditor\Input\Mouse.cs" />
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Collections\AnchorEnumerator.cs" />
-    <Compile Include="Wz\PortalGameImageInfo.cs" />
-    <Compile Include="Collections\FootholdEnumerator.cs" />
-    <Compile Include="Wz\MapLoader.cs" />
-    <Compile Include="Wz\MapSaver.cs" />
-    <Compile Include="Wz\WzInformationManager.cs" />
-    <EmbeddedResource Include="CustomControls\AlphaColorPicker.resx">
-      <DependentUpon>AlphaColorPicker.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="CustomControls\DirectXHolder.resx">
-      <DependentUpon>DirectXHolder.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="CustomControls\MapBrowser.resx">
-      <DependentUpon>MapBrowser.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="CustomControls\ScrollablePictureBox.resx">
-      <DependentUpon>ScrollablePictureBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\About.resx">
-      <DependentUpon>About.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\CancelableWaitWindow.resx">
-      <DependentUpon>CancelableWaitWindow.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\BackgroundPanel.resx">
-      <DependentUpon>BackgroundPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\CommonPanel.resx">
-      <DependentUpon>CommonPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\LifePanel.resx">
-      <DependentUpon>LifePanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\ObjPanel.resx">
-      <DependentUpon>ObjPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\PortalPanel.resx">
-      <DependentUpon>PortalPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorPanels\TilePanel.resx">
-      <DependentUpon>TilePanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ExceptionHandler.resx">
-      <DependentUpon>ExceptionHandler.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InfoEditor.resx">
-      <DependentUpon>InfoEditor.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Initialization.resx">
-      <DependentUpon>Initialization.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHS.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Input\IntInputBox.zh-CHT.resx">
-      <DependentUpon>IntInputBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\BackgroundInstanceEditor.resx">
-      <DependentUpon>BackgroundInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\MassZmEditor.resx">
-      <DependentUpon>MassZmEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\MirrorFieldDataEditor.resx">
-      <DependentUpon>MirrorFieldDataEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\TileInstanceEditor.resx">
-      <DependentUpon>TileInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\TooltipInstanceEditor.resx">
-      <DependentUpon>TooltipInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\EditorBase.resx">
-      <DependentUpon>EditorBase.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\PnSelector.resx">
-      <DependentUpon>PnSelector.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\PortalInstanceEditor.resx">
-      <DependentUpon>PortalInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\FootholdEditor.resx">
-      <DependentUpon>FootholdEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\LifeInstanceEditor.resx">
-      <DependentUpon>LifeInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\ObjQuestInput.resx">
-      <DependentUpon>ObjQuestInput.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\ReactorInstanceEditor.resx">
-      <DependentUpon>ReactorInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\RopeInstanceEditor.resx">
-      <DependentUpon>RopeInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\GeneralInstanceEditor.resx">
-      <DependentUpon>GeneralInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\ObjectInstanceEditor.resx">
-      <DependentUpon>ObjectInstanceEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\LayerChange.resx">
-      <DependentUpon>LayerChange.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\InstanceEditor\LoadMapSelector.resx">
-      <DependentUpon>LoadMapSelector.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Load.resx">
-      <DependentUpon>Load.cs</DependentUpon>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\ManageUserObjects.resx">
-      <DependentUpon>ManageUserObjects.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\MapPhysicsEditor.resx">
-      <DependentUpon>MapPhysicsEditor.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\New.resx">
-      <DependentUpon>New.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\NewPlatform.resx">
-      <DependentUpon>NewPlatform.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Repack.resx">
-      <DependentUpon>Repack.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\Save.resx">
-      <DependentUpon>Save.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\UserSettingsForm.resx">
-      <DependentUpon>UserSettingsForm.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\WaitWindow.resx">
-      <DependentUpon>WaitWindow.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.ja.resx" />
-    <EmbeddedResource Include="Properties\Resources.ko.resx" />
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <Generator>ResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-    <EmbeddedResource Include="GUI\TileSetBrowser.resx">
-      <DependentUpon>TileSetBrowser.cs</DependentUpon>
-    </EmbeddedResource>
-    <Compile Include="MapEditor\TilesDesign\Snapping.cs" />
-    <Compile Include="MapEditor\UndoRedo\UndoRedoManager.cs" />
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\UserSettingsForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\UserSettingsForm.Designer.cs">
-      <DependentUpon>UserSettingsForm.cs</DependentUpon>
-    </Compile>
-    <Compile Include="GUI\TileSetBrowser.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="GUI\TileSetBrowser.Designer.cs">
-      <DependentUpon>TileSetBrowser.cs</DependentUpon>
-    </Compile>
-    <Compile Include="WzSettings.cs" />
-    <EmbeddedResource Include="CustomControls\BetterCheckedListBox.resx">
-      <DependentUpon>BetterCheckedListBox.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="CustomControls\ImageViewer.resx">
-      <DependentUpon>ImageViewer.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="CustomControls\ThumbnailFlowLayoutPanel.resx">
-      <DependentUpon>ThumbnailFlowLayoutPanel.cs</DependentUpon>
-    </EmbeddedResource>
-    <EmbeddedResource Include="Properties\Resources.zh-CHS.resx" />
-    <EmbeddedResource Include="Properties\Resources.zh-CHT.resx" />
+    <ProjectReference Include="..\dockpanelsuite\WinFormsUI\WinFormsUI-Core.csproj" />
+    <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj" />
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\HaRepacker\Harepacker-resurrected.csproj">
-      <Project>{0b7155ef-1eb0-4fae-ba56-8064cbaf2bea}</Project>
-      <Name>Harepacker-resurrected</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj">
-      <Project>{5411388b-f3cb-4d52-9f55-abd15cfe966c}</Project>
-      <Name>HaSharedLibrary</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj">
-      <Project>{28aab36d-942e-4476-a000-0e9de380f390}</Project>
-      <Name>MapleLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj">
-      <Project>{94144e22-2431-4a8f-ac04-dec22f7edd8f}</Project>
-      <Name>spine-csharp 2.1.25</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
-    <None Include="app.manifest" />
-    <None Include="GUI\HaCreator.res" />
-    <None Include="Resources\mapEditMenu.png" />
     <Resource Include="Images\About.png" />
     <Resource Include="Images\diagram_parallax.png" />
     <Resource Include="Images\Exit.png" />
@@ -804,54 +140,6 @@
     <Resource Include="Images\ColorSwatchSquare2.png" />
   </ItemGroup>
   <ItemGroup>
-    <BootstrapperPackage Include=".NETFramework,Version=v4.7.2">
-      <Visible>False</Visible>
-      <ProductName>Microsoft .NET Framework 4.7.2 %28x86 and x64%29</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1 Client Profile</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Windows.Installer.3.1">
-      <Visible>False</Visible>
-      <ProductName>Windows Installer 3.1</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-  </ItemGroup>
-  <ItemGroup>
-    <Page Include="CustomControls\HaList.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\HaEditor.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="GUI\HaRibbon.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="MapEditor\MultiBoard.xaml">
-      <SubType>Designer</SubType>
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
-    <Page Include="CustomControls\ColorDialog.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-    <Page Include="CustomControls\ColorPicker.xaml">
-      <Generator>MSBuild:Compile</Generator>
-      <SubType>Designer</SubType>
-    </Page>
-  </ItemGroup>
-  <ItemGroup>
     <Resource Include="Images\HaLogo32.png" />
   </ItemGroup>
   <ItemGroup>
@@ -871,17 +159,13 @@
     <Resource Include="Images\new_icon.png" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="DockPanelSuite">
-      <Version>3.1.0</Version>
-    </PackageReference>
+    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
+    <PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
     <PackageReference Include="MonoGame.Framework.WindowsDX">
-      <Version>3.8.0.1641</Version>
+      <Version>3.8.2.1105</Version>
     </PackageReference>
     <PackageReference Include="NAudio">
       <Version>2.2.1</Version>
-    </PackageReference>
-    <PackageReference Include="Newtonsoft.Json">
-      <Version>13.0.3</Version>
     </PackageReference>
     <PackageReference Include="SharpDX">
       <Version>4.2.0</Version>
@@ -910,9 +194,11 @@
     <PackageReference Include="SharpDX.XInput">
       <Version>4.2.0</Version>
     </PackageReference>
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
     <PackageReference Include="System.Data.SQLite">
-      <Version>1.0.118</Version>
+      <Version>1.0.119</Version>
     </PackageReference>
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="HaLogo.ico" />
@@ -926,16 +212,26 @@
     <Content Include="HaLogo\HaLogo48.png" />
     <Content Include="HaLogo\HaLogo512.png" />
     <Content Include="HaLogo\HaLogo64.png" />
+    <Resource Include="Images\Quest\2022240_buff_icon.png" />
+    <Content Include="Images\Quest\BtMarkNpc.png" />
+    <Resource Include="Images\Quest\shop.meso.png" />
+    <Resource Include="Images\Quest\QuestIcon.0.5.png" />
+    <Resource Include="Images\Quest\QuestIcon.1.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.10.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.11.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.2.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.3.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.4.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.5.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.6.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.7.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.8.0.png" />
+    <Resource Include="Images\Quest\QuestIcon.9.0.png" />
+    <Resource Include="Images\Quest\summary_icon.basic.png" />
+    <Resource Include="Images\Quest\summary_icon.prob.png" />
+    <Resource Include="Images\Quest\summary_icon.select.png" />
+    <Resource Include="Images\Quest\summary_icon.summary.png" />
+    <Resource Include="Images\Quest\questIcon_0.png" />
     <Resource Include="Images\box_edit-big.png" />
-    <None Include="Resources\placeholder.bmp" />
   </ItemGroup>
-  <ItemGroup />
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

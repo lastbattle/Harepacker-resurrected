@@ -7,7 +7,7 @@ namespace HaRepacker.Comparer
 {
     public class TreeViewNodeSorter : IComparer
     {
-        private readonly TreeNode startNode;
+        private readonly TreeNode _startNode;
 
         /// <summary>
         /// Constructor
@@ -15,53 +15,46 @@ namespace HaRepacker.Comparer
         /// <param name="startNode">The starting node to sort from. If this is null, everything will be sorted.</param>
         public TreeViewNodeSorter(TreeNode startNode)
         {
-            this.startNode = startNode;
+            _startNode = startNode;
         }
 
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Compare(object s1_, object s2_)
+        public int Compare(object obj1, object obj2)
         {
-            TreeNode t1 = (s1_ as TreeNode);
-            TreeNode t2 = (s2_ as TreeNode);
+            TreeNode node1 = (TreeNode)obj1;
+            TreeNode node2 = (TreeNode)obj2;
 
-            if (startNode != null) {
-                if (t1.Parent != startNode)
-                {
-                    return -1;
-                }
+            if (_startNode != null && node1?.Parent != _startNode)
+            {
+                return -1;
             }
 
-            string s1Text = t1.Text;
-            string s2Text = t2.Text;
+            string text1 = node1?.Text;
+            string text2 = node2?.Text;
 
-            bool isS1Numeric = IsNumeric(s1Text);
-            bool isS2Numeric = IsNumeric(s2Text);
+            bool isS1Numeric = int.TryParse(text1, out int num1);
+            bool isS2Numeric = int.TryParse(text2, out int num2);
 
             if (isS1Numeric && isS2Numeric)
             {
-                int s1val = Convert.ToInt32(s1Text);
-                int s2val = Convert.ToInt32(s2Text);
-
-                if (s1val > s2val)
+                if (num1 > num2)
                     return 1;
-                else if (s1val < s2val)
+                if (num1 < num2)
                     return -1;
-                else if (s1val == s2val)
+                if (num1 == num2)
                     return 0;
-            } else if (isS1Numeric && !isS2Numeric)
+            }
+            else if (isS1Numeric)
+            {
                 return -1;
-            else if (!isS1Numeric && isS2Numeric)
+            }
+            else if (isS2Numeric)
+            {
                 return 1;
+            }
 
-            return string.Compare(s1Text, s2Text, true);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsNumeric(string value)
-        {
-            int parseInt = 0;
-            return Int32.TryParse(value, out parseInt);
+            return string.Compare(text1, text2, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -36,15 +36,16 @@ A collection of tools for MapleStory, including a .wz file and level/field/map e
 ----
 
 ## BUILD
+### To build, you need 
+ - at least [Microsoft Visual Studio 2019](https://visualstudio.microsoft.com/vs/)
+ - [Git](https://git-scm.com/downloads) or [Github, bundled](https://desktop.github.com/) for cloning, and downloading of related sub-module components in the repository.
 
-### To install and build HaSuite, you need
+### To run, you need (.NET 8.0)
+ - Operating system: Windows 10/11 version 1607+, Windows Server 2016+
+ - Processor Architecture: x64, ARM64, x86
+ - RAM: 8GB and above minimum recommended
+ - Graphics: DirectX 12 with minimum 2GB VRAM
 
-- at least [Microsoft Visual Studio 2022](https://visualstudio.microsoft.com/vs/)
-(With Windows .NET desktop build environment, and Nuget installed)
-- [Git](https://git-scm.com/downloads) or [Github, bundled](https://desktop.github.com/) for cloning, and downloading of related sub-module components in the repository.
-- Microsoft .NET Framework 4.8 (usually already pre-installed in Windows 10, just do a Windows update) otherwise, [install here](https://dotnet.microsoft.com/download/visual-studio-sdks?utm_source=getdotnetsdk)
-- Microsoft XNA Framework Redistributable 4.0 https://www.microsoft.com/en-us/download/details.aspx?id=20914
-  
 
 ### Cloning
 ```
@@ -71,19 +72,10 @@ git submodule update
 
 Please note that this is a community-driven project that I work on in my free time. Don't expect any issues to be fixed or new features to be added quickly.
 
-  
-
-Want to support the development?
-
-  
+Want to support the development?  **BTC**: [3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx](https://blockstream.info/address/3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx)
 
 **BTC**: [3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx](https://blockstream.info/address/3AEEJKaTNuw8KoafKNevpMsP2tVmaip4Fx)
 
-  
-
-Would you like to contribute to this project instead? If so, you can fork the project and create a pull request. It's all free!
-
-  
   
 
 ----
@@ -110,7 +102,7 @@ Would you like to contribute to this project instead? If so, you can fork the pr
 MIT
 
 ```
-Copyright (c) 2018~2023, LastBattle https://github.com/lastbattle
+Copyright (c) 2018~2024, LastBattle https://github.com/lastbattle
 Copyright (c) 2010~2013, haha01haha http://forum.ragezone.com/f701/release-universal-harepacker-version-892005/
  
 Permission is hereby granted, free of charge, to any person obtaining a copy

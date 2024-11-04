@@ -40,6 +40,8 @@
                 <CommandBinding Command="ns:HaRibbon.Export"  CanExecute="AlwaysExecute" Executed="Export_Executed" />
                 <CommandBinding Command="ns:HaRibbon.PhysicsEdit"  CanExecute="AlwaysExecute" Executed="PhysicsEdit_Executed" />
 
+                <CommandBinding Command="ns:HaRibbon.ShowQuestEditorWindow"  CanExecute="AlwaysExecute" Executed="ShowQuestEditorWindow_Executed" />
+
                 <CommandBinding Command="ns:HaRibbon.ShowMapProperties"  CanExecute="AlwaysExecute" Executed="ShowMapProperties_Executed" />
             </Ribbon.CommandBindings>
 
@@ -202,6 +204,12 @@
                                   SelectionChanged="comboBox_Resolution_SelectionChanged">
                         </ComboBox>
                     </StackPanel>
+                </RibbonGroup>
+            </RibbonTab>
+
+            <RibbonTab x:Name="etcTab" Header="Etc" KeyTip="E">
+                <RibbonGroup x:Name="RibbonGroup_Etc" Header="Map">
+                    <RibbonButton Label="Edit quests" Command="ns:HaRibbon.ShowQuestEditorWindow" Focusable="False" LargeImageSource="pack://application:,,,/HaCreator;component/Images/Quest/questIcon_0.png"/>
                 </RibbonGroup>
             </RibbonTab>
 

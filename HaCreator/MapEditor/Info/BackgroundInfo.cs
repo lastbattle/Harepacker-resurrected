@@ -30,7 +30,7 @@ namespace HaCreator.MapEditor.Info
 
         /// <summary>
         /// Constructor
-        /// Only to be initialized in Get
+        /// Only to be initialized in Get, or created by the user adding an image
         /// </summary>
         /// <param name="image"></param>
         /// <param name="origin"></param>
@@ -39,7 +39,7 @@ namespace HaCreator.MapEditor.Info
         /// <param name="no"></param>
         /// <param name="parentObject"></param>
         /// <param name="wzSpineAnimationItem"></param>
-        private BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject,
+        public BackgroundInfo(WzImageProperty imageProperty, Bitmap image, System.Drawing.Point origin, string bS, BackgroundInfoType _type, string no, WzObject parentObject,
             WzSpineAnimationItem wzSpineAnimationItem)
             : base(image, origin, parentObject)
         {
@@ -64,7 +64,7 @@ namespace HaCreator.MapEditor.Info
                 return null;
 
             WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
-            WzImageProperty bgInfoProp = bsImg[type == BackgroundInfoType.Animation ? "ani" : type == BackgroundInfoType.Spine ? "spine" : "back"]?[no];
+            WzImageProperty bgInfoProp = bsImg[type.ToPropertyString()]?[no];
 
             if (bgInfoProp == null)
             {
@@ -145,7 +145,9 @@ namespace HaCreator.MapEditor.Info
                 }
             }
             else
+            {
                 frame0 = (WzCanvasProperty)WzInfoTools.GetRealProperty(parentObject);
+            }
 
             PointF origin = frame0.GetCanvasOriginPosition();
             return new BackgroundInfo(frame0, frame0.GetLinkedWzCanvasBitmap(), WzInfoTools.PointFToSystemPoint(origin), bS, type, no, parentObject, null);

@@ -582,15 +582,30 @@
         </VisualStateManager.VisualStateGroups>
 
         <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
             <RowDefinition Height="30"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="280"/>
         </Grid.ColumnDefinitions>
 
-        <ScrollViewer Grid.Row="0" Grid.Column="0" Margin="0,0,10,0"
+        <Grid x:Name="grid_zoom" 
+              Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="1"
+              VerticalAlignment="Top" >
+            <Slider Name="ZoomSlider"
+                        Margin="10,0,10,0"
+                        Minimum="0.1"
+                        Maximum="20"
+                        Value="3"
+                        TickFrequency="0.05"
+                        SmallChange="0.05"
+                        LargeChange="0.1" 
+                    ValueChanged="ZoomSlider_ValueChanged"
+                    />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" Grid.Column="0" Margin="0,0,10,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Template="{DynamicResource ScrollViewerControlTemplate1}"
                       >
 
@@ -744,21 +759,6 @@
                                SelectedObject="{Binding }"
                                ShowTitle="False" Background="#FFDDDDDD" Foreground="Black" 
                                />
-        </Grid>
-
-        <Grid x:Name="grid_zoom" 
-              Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="1"
-              VerticalAlignment="Bottom" >
-            <Slider Name="ZoomSlider"
-                        Margin="10,0,10,0"
-                        Minimum="0.1"
-                        Maximum="20"
-                        Value="3"
-                        TickFrequency="0.05"
-                        SmallChange="0.05"
-                        LargeChange="0.1" 
-                    ValueChanged="ZoomSlider_ValueChanged"
-                    />
         </Grid>
     </Grid>
 </UserControl>

@@ -92,7 +92,7 @@ namespace HaCreator.GUI
                 statusLabel.Text = "Out of range. Select between "+ MapConstants.MinMap + " and "+ MapConstants.MaxMap + ".";
                 saveButton.Enabled = false;
             }
-            else if (WzInfoTools.GetMapStringProp(id.ToString(), Program.WzManager) != null) {
+            else if (Program.InfoManager.MapsNameCache.ContainsKey(id.ToString())) {
                 if (board.IsNewMapDesign) { // if its a new design, do not allow overriding regardless 
                     statusLabel.Text = "WARNING: It will overwrite existing map, select an empty ID.";
                     saveButton.Enabled = false;

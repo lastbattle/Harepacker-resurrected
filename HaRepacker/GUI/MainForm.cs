@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
@@ -20,11 +21,9 @@ using System.Threading;
 using System.Reflection;
 
 using MapleLib.WzLib;
-using MapleLib.WzLib.Serialization;
 using MapleLib.WzLib.Util;
 using MapleLib.PacketLib;
 using MapleLib.MapleCryptoLib;
-using MapleLib.WzLib.Nx;
 using static MapleLib.Configuration.UserSettings;
 
 using HaRepacker.GUI.Panels;
@@ -37,6 +36,10 @@ using MapleLib.WzLib.WzProperties;
 using HaSharedLibrary.SystemInterop;
 using MapleLib;
 using System.Text.RegularExpressions;
+using MapleLib.Configuration;
+using System.Runtime.CompilerServices;
+using HaSharedLibrary.Util;
+using MapleLib.WzLib.Serializer;
 
 namespace HaRepacker.GUI
 {
@@ -199,10 +202,8 @@ namespace HaRepacker.GUI
         {
             if (Program.ConfigurationManager.UserSettings.Sort || sortFromTheParentNode)
             {
-                parent.TreeView.TreeViewNodeSorter = new TreeViewNodeSorter(sortFromTheParentNode ? parent : null);
-
                 parent.TreeView.BeginUpdate();
-                parent.TreeView.Sort();
+                parent.TreeView.TreeViewNodeSorter = new TreeViewNodeSorter(sortFromTheParentNode ? parent : null);
                 parent.TreeView.EndUpdate();
             }
         }
@@ -390,32 +391,32 @@ namespace HaRepacker.GUI
         /// Shared code between WzMapleVersionInputBox.cs
         /// </summary>
         /// <param name="encryptionBox"></param>
-        public static void AddWzEncryptionTypesToComboBox(object encryptionBox)
-        {
-            string[] resources = {
-                Properties.Resources.EncTypeGMS,
-                Properties.Resources.EncTypeMSEA,
-                Properties.Resources.EncTypeNone,
-                Properties.Resources.EncTypeCustom,
-                Properties.Resources.EncTypeGenerate,
-            };
-            bool isToolStripComboBox = encryptionBox is ToolStripComboBox;
+        public static void AddWzEncryptionTypesToComboBox(object encryptionBox) {
+            string customKeyName = string.Format(Properties.Resources.EncTypeCustom, Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName);
 
-            int i = 0;
-            foreach (string res in resources)
-            {
-                if (isToolStripComboBox)
-                    ((ToolStripComboBox)encryptionBox).Items.Add(res); // in mainform
-                else
-                {
-                    if (i != 4) // dont show bruteforce option in SaveForm
-                    {
-                        ((ComboBox)encryptionBox).Items.Add(res); // in saveForm
-                    }
-                }
-                i++;
+            BindingList<EncryptionKey> keys = new BindingList<EncryptionKey> {
+                new EncryptionKey { Name = Properties.Resources.EncTypeGMS, MapleVersion = WzMapleVersion.GMS },
+                new EncryptionKey { Name = Properties.Resources.EncTypeMSEA, MapleVersion = WzMapleVersion.EMS },
+                new EncryptionKey { Name = Properties.Resources.EncTypeNone, MapleVersion = WzMapleVersion.BMS },
+                new EncryptionKey { Name = customKeyName, MapleVersion = WzMapleVersion.CUSTOM },
+            };
+        
+            ComboBox comboBox; 
+            if (encryptionBox is ToolStripComboBox tsBox) {
+                // MainForm
+                comboBox = tsBox.ComboBox;
+                keys.Add(new EncryptionKey { Name = Properties.Resources.EncTypeGenerate, MapleVersion = WzMapleVersion.GENERATE }); // show bruteforce option
             }
+            else {
+                // SaveForm / NewForm / WZMapleVersionInputBox (import IMG)
+                comboBox = encryptionBox as ComboBox;
+            }
+
+            comboBox.DisplayMember = "Name";
+            comboBox.DataSource = keys;
         }
+
+        private bool _handlingCustomEncryptionChange = false;
 
         /// <summary>
         /// On encryption box selection changed
@@ -428,15 +429,27 @@ namespace HaRepacker.GUI
             {
                 return;
             }
-
-            int selectedIndex = encryptionBox.SelectedIndex;
-            WzMapleVersion wzMapleVer = GetWzMapleVersionByWzEncryptionBoxSelection(selectedIndex);
-            Program.ConfigurationManager.ApplicationSettings.MapleVersion = wzMapleVer;
-
-            if (wzMapleVer == WzMapleVersion.CUSTOM)
+        
+            if (_handlingCustomEncryptionChange) // prevent CustomWZEncryptionInputBox from being shown multiple times
             {
+                return;
+            }
+        
+            EncryptionKey selectedEncryption = (EncryptionKey)encryptionBox.SelectedItem;
+            Program.ConfigurationManager.ApplicationSettings.MapleVersion = selectedEncryption.MapleVersion;
+        
+            if (selectedEncryption.MapleVersion == WzMapleVersion.CUSTOM)
+            {
+                _handlingCustomEncryptionChange = true;
                 CustomWZEncryptionInputBox customWzInputBox = new CustomWZEncryptionInputBox();
                 customWzInputBox.ShowDialog();
+                selectedEncryption.Name = string.Format(Properties.Resources.EncTypeCustom, Program.ConfigurationManager.ApplicationSettings.MapleVersion_CustomEncryptionName);
+                _handlingCustomEncryptionChange = false;
+            } 
+            else if (selectedEncryption.MapleVersion == WzMapleVersion.GENERATE)
+            {
+                WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
+                bfForm.ShowDialog(); // find needles in a haystack
             }
             else
             {
@@ -752,163 +765,12 @@ namespace HaRepacker.GUI
         }
         #endregion
 
-        #region WZ IV Key bruteforcing
-        private ulong wzKeyBruteforceTries = 0;
-        private DateTime wzKeyBruteforceStartTime = DateTime.Now;
-        private bool wzKeyBruteforceCompleted = false;
-
-        private System.Timers.Timer aTimer_wzKeyBruteforce = null;
-
-        /// <summary>
-        /// Find needles in a haystack o_O
-        /// </summary>
-        /// <param name="currentDispatcher"></param>
-        private void StartWzKeyBruteforcing(Dispatcher currentDispatcher)
-        {
-            // Generate WZ keys via a test WZ file
-            using (OpenFileDialog dialog = new OpenFileDialog()
-            {
-                Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|TamingMob.wz", HaRepacker.Properties.Resources.WzFilter), // Use the smallest possible file
-                Multiselect = false
-            })
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
-
-                // Show splash screen
-                MainPanel.OnSetPanelLoading(currentDispatcher);
-                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Visible);
-
-
-                // Reset variables
-                wzKeyBruteforceTries = 0;
-                wzKeyBruteforceStartTime = DateTime.Now;
-                wzKeyBruteforceCompleted = false;
-
-
-                int processorCount = Environment.ProcessorCount * 3; // 8 core = 16 (with ht, smt) , multiply by 3 seems to be the magic number. it falls off after 4
-                List<int> cpuIds = new List<int>();
-                for (int cpuId_ = 0; cpuId_ < processorCount; cpuId_++)
-                {
-                    cpuIds.Add(cpuId_);
-                }
-
-                // UI update thread
-                if (aTimer_wzKeyBruteforce != null)
-                {
-                    aTimer_wzKeyBruteforce.Stop();
-                    aTimer_wzKeyBruteforce = null;
-                }
-                aTimer_wzKeyBruteforce = new System.Timers.Timer();
-                aTimer_wzKeyBruteforce.Elapsed += new ElapsedEventHandler(OnWzIVKeyUIUpdateEvent);
-                aTimer_wzKeyBruteforce.Interval = 5000;
-                aTimer_wzKeyBruteforce.Enabled = true;
-
-
-                // Key finder thread
-                Task.Run(() =>
-                {
-                    Thread.Sleep(3000); // delay 3 seconds before starting
-
-                    var parallelOption = new ParallelOptions
-                    {
-                        MaxDegreeOfParallelism = processorCount,
-                    };
-                    ParallelLoopResult loop = Parallel.ForEach(cpuIds, parallelOption, cpuId =>
-                    {
-                        WzKeyBruteforceComputeTask(cpuId, processorCount, dialog, currentDispatcher);
-                    });
-                });
-            }
-        }
-
-        /// <summary>
-        /// UI Updating thread
-        /// </summary>
-        /// <param name="source"></param>
-        /// <param name="e"></param>
-        private void OnWzIVKeyUIUpdateEvent(object source, ElapsedEventArgs e)
-        {
-            if (aTimer_wzKeyBruteforce == null)
-                return;
-            if (wzKeyBruteforceCompleted)
-            {
-                aTimer_wzKeyBruteforce.Stop();
-                aTimer_wzKeyBruteforce = null;
-
-                MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
-            }
-
-            MainPanel.loadingPanel.WzIvKeyDuration = DateTime.Now.Ticks - wzKeyBruteforceStartTime.Ticks;
-            MainPanel.loadingPanel.WzIvKeyTries = wzKeyBruteforceTries;
-        }
-
-        /// <summary>
-        /// Internal compute task for figuring out the WzKey automaticagically 
-        /// </summary>
-        /// <param name="cpuId_"></param>
-        /// <param name="processorCount"></param>
-        /// <param name="dialog"></param>
-        /// <param name="currentDispatcher"></param>
-        private void WzKeyBruteforceComputeTask(int cpuId_, int processorCount, OpenFileDialog dialog, Dispatcher currentDispatcher)
-        {
-            int cpuId = cpuId_;
-
-            // try bruteforce keys
-            const long startValue = int.MinValue;
-            const long endValue = int.MaxValue;
-
-            long lookupRangePerCPU = (endValue - startValue) / processorCount;
-
-            Debug.WriteLine("CPUID {0}. Looking up from {1} to {2}. [Range = {3}]  TEST: {4} {5}",
-                cpuId,
-                (startValue + (lookupRangePerCPU * cpuId)),
-                (startValue + (lookupRangePerCPU * (cpuId + 1))),
-                lookupRangePerCPU,
-                (lookupRangePerCPU * cpuId), (lookupRangePerCPU * (cpuId + 1)));
-
-            for (long i = (startValue + (lookupRangePerCPU * cpuId)); i < (startValue + (lookupRangePerCPU * (cpuId + 1))); i++)  // 2 bill key pairs? o_O
-            {
-                if (wzKeyBruteforceCompleted)
-                    break;
-
-                byte[] bytes = new byte[4];
-                unsafe
-                {
-                    fixed (byte* pbytes = &bytes[0])
-                    {
-                        *(int*)pbytes = (int)i;
-                    }
-                }
-                bool tryDecrypt = WzTool.TryBruteforcingWzIVKey(dialog.FileName, bytes);
-                //Debug.WriteLine("{0} = {1}", cpuId, HexTool.ToString(new PacketWriter(bytes).ToArray()));
-                if (tryDecrypt)
-                {
-                    wzKeyBruteforceCompleted = true;
-
-                    // Hide panel splash sdcreen
-                    Action action = () =>
-                    {
-                        MainPanel.OnSetPanelLoadingCompleted(currentDispatcher);
-                        MainPanel.loadingPanel.SetWzIvBruteforceStackpanelVisiblity(System.Windows.Visibility.Collapsed);
-                    };
-                    currentDispatcher.BeginInvoke(action);
-
-
-                    PacketWriter writer = new PacketWriter(4);
-                    writer.WriteBytes(bytes);
-                    MessageBox.Show("Found the encryption key to the WZ file:\r\n" + HexTool.ToString(writer.ToArray()), "Success");
-                    Debug.WriteLine("Found key. Key = " + HexTool.ToString(writer.ToArray()));
-
-                    break;
-                }
-                wzKeyBruteforceTries++;
-            }
-        }
-        #endregion
 
         #region Open WZ File
+        /// <summary>
+        /// Open WZ or ZLZ file internal
+        /// </summary>
+        /// <param name="fileNames"></param>
         private async void OpenFileInternal(string[] fileNames) {
             Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
 
@@ -919,42 +781,39 @@ namespace HaRepacker.GUI
             foreach (string filePath in fileNames) {
                 string filePathLowerCase = filePath.ToLower();
 
-                if (filePathLowerCase.EndsWith("zlz.dll")) // ZLZ.dll encryption keys
+                if (filePathLowerCase.EndsWith("zlz.dll") || filePathLowerCase.EndsWith("zlz64.dll"))
                 {
-                    AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-                    //similarly to find process architecture  
-                    var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
+                    var is64BitDll = filePathLowerCase.EndsWith("zlz64.dll");
+                    var (bitness, architecture) = AssemblyBitnessDetector.GetAssemblyInfo();
 
-                    if (assemblyArchitecture == ProcessorArchitecture.X86) {
-                        ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                        bool opened = form.OpenZLZDllFile_32Bit(filePath);
+                    bool isCompatible = (is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
+                                        (!is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit32));
+
+                    if (isCompatible)
+                    {
+                        var form = new ZLZPacketEncryptionKeyForm();
+                        var opened = is64BitDll
+                            ? form.OpenZLZDllFile_64Bit(filePath)
+                            : form.OpenZLZDllFile_32Bit(filePath);
 
                         if (opened)
+                        {
                             form.Show();
+                        }
                     }
-                    else {
-                        MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
+                    else
+                    {
+                        var errorMessage = is64BitDll
+                            ? HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired
+                            : HaRepacker.Properties.Resources.ExecutingAssemblyError;
+
+                        MessageBox.Show(errorMessage, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
                     }
                     return;
+
                 }
-                else if (filePathLowerCase.EndsWith("zlz64.dll")) // ZLZ.dll encryption keys
+                else 
                 {
-                    AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-                    //similarly to find process architecture  
-                    var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
-
-                    if (Environment.Is64BitProcess) {
-                        ZLZPacketEncryptionKeyForm form = new ZLZPacketEncryptionKeyForm();
-                        bool opened = form.OpenZLZDllFile_64Bit(filePath);
-
-                        if (opened)
-                            form.Show();
-                    }
-                    else {
-                        MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError_64BitRequired, HaRepacker.Properties.Resources.Warning, MessageBoxButtons.OK);
-                    }
-                    return;
-                } else {
                     // Load WZFileManager here if its not loaded
                     if (Program.WzFileManager == null) {
                         // Pattern 1: Match paths containing "Data" directory, but capture up to "Data" (for post 64-bit wz files after V-Update)
@@ -979,12 +838,8 @@ namespace HaRepacker.GUI
                         Program.WzFileManager.BuildWzFileList();
                     }
 
-                    // List.wz file (pre-bb maplestory enc)
-                    if (WzTool.IsListFile(filePath)) {
-                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
-                    }
-                    // Other WZs
-                    else if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
+                    // Data.wz hotfix file
+                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
                         WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
                         if (img == null) {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
@@ -993,9 +848,15 @@ namespace HaRepacker.GUI
                         AddLoadedWzObjectToMainPanel(img);
 
                     }
+                    // List.wz file (pre-bb maplestory enc)
+                    else if (WzTool.IsListFile(filePath)) {
+                        new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
+                    }
+                    // Other WZs
                     else {
                         if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
-                            StartWzKeyBruteforcing(currentDispatcher); // find needles in a haystack
+                            WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
+                            bfForm.ShowDialog(); // find needles in a haystack
                             return;
                         }
 

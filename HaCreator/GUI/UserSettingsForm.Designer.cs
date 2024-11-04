@@ -119,12 +119,8 @@
             this.label19 = new System.Windows.Forms.Label();
             this.label10 = new System.Windows.Forms.Label();
             this.label9 = new System.Windows.Forms.Label();
-            this.tabPage4 = new System.Windows.Forms.TabPage();
             this.okayButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
-            this.label45 = new System.Windows.Forms.Label();
-            this.openAI_apiKey_textBox = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.linewBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.dotwBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.mobrx0Box)).BeginInit();
@@ -147,7 +143,6 @@
             this.tabPage3.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.movementBox)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.zShiftBox)).BeginInit();
-            this.tabPage4.SuspendLayout();
             this.SuspendLayout();
             // 
             // label2
@@ -618,7 +613,6 @@
             this.tabControl1.Controls.Add(this.tabPage1);
             this.tabControl1.Controls.Add(this.tabPage2);
             this.tabControl1.Controls.Add(this.tabPage3);
-            this.tabControl1.Controls.Add(this.tabPage4);
             this.tabControl1.Location = new System.Drawing.Point(-2, 1);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
@@ -1258,19 +1252,6 @@
             this.label9.Text = "It is not recommended to change anything here unless you know what are you doing." +
     "";
             // 
-            // tabPage4
-            // 
-            this.tabPage4.BackColor = System.Drawing.SystemColors.Control;
-            this.tabPage4.Controls.Add(this.linkLabel1);
-            this.tabPage4.Controls.Add(this.label45);
-            this.tabPage4.Controls.Add(this.openAI_apiKey_textBox);
-            this.tabPage4.Location = new System.Drawing.Point(4, 22);
-            this.tabPage4.Name = "tabPage4";
-            this.tabPage4.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage4.Size = new System.Drawing.Size(563, 467);
-            this.tabPage4.TabIndex = 3;
-            this.tabPage4.Text = "API";
-            // 
             // okayButton
             // 
             this.okayButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
@@ -1290,34 +1271,6 @@
             this.cancelButton.TabIndex = 79;
             this.cancelButton.Text = "Cancel";
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
-            // 
-            // linkLabel1
-            // 
-            this.linkLabel1.ImeMode = System.Windows.Forms.ImeMode.NoControl;
-            this.linkLabel1.Location = new System.Drawing.Point(98, 35);
-            this.linkLabel1.Name = "linkLabel1";
-            this.linkLabel1.Size = new System.Drawing.Size(243, 18);
-            this.linkLabel1.TabIndex = 22;
-            this.linkLabel1.TabStop = true;
-            this.linkLabel1.Text = "https://platform.openai.com/account/api-keys";
-            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
-            // 
-            // label45
-            // 
-            this.label45.AutoSize = true;
-            this.label45.ImeMode = System.Windows.Forms.ImeMode.NoControl;
-            this.label45.Location = new System.Drawing.Point(10, 13);
-            this.label45.Name = "label45";
-            this.label45.Size = new System.Drawing.Size(85, 13);
-            this.label45.TabIndex = 25;
-            this.label45.Text = "OpenAI API key";
-            // 
-            // openAI_apiKey_textBox
-            // 
-            this.openAI_apiKey_textBox.Location = new System.Drawing.Point(101, 10);
-            this.openAI_apiKey_textBox.Name = "openAI_apiKey_textBox";
-            this.openAI_apiKey_textBox.Size = new System.Drawing.Size(454, 22);
-            this.openAI_apiKey_textBox.TabIndex = 24;
             // 
             // UserSettingsForm
             // 
@@ -1358,8 +1311,6 @@
             this.tabPage3.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.movementBox)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.zShiftBox)).EndInit();
-            this.tabPage4.ResumeLayout(false);
-            this.tabPage4.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -1459,9 +1410,5 @@
         private System.Windows.Forms.Label label44;
         private CustomControls.AlphaColorPicker minimapColorPicker;
         private System.Windows.Forms.CheckBox autoBackupBox;
-        private System.Windows.Forms.TabPage tabPage4;
-        private System.Windows.Forms.LinkLabel linkLabel1;
-        private System.Windows.Forms.Label label45;
-        private System.Windows.Forms.TextBox openAI_apiKey_textBox;
     }
 }

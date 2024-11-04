@@ -47,6 +47,9 @@ namespace HaCreator.CustomControls
 
         public bool IsText;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
         public ImageViewer()
         {
             m_IsThumbnail = false;
@@ -136,8 +139,10 @@ namespace HaCreator.CustomControls
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            if (g == null) return;
-            if (m_Image == null) return;
+            if (g == null) 
+                return;
+            if (m_Image == null)
+                return;
 
             float mp = CalculateMP();
 
@@ -149,7 +154,7 @@ namespace HaCreator.CustomControls
                 g.DrawRectangle(new Pen(Color.Blue, 2), 1, 1, m_Image.Width * mp + 6, m_Image.Height * mp + 6);
             }
             if (IsText)
-                g.DrawString(Name, new System.Drawing.Font("Microsoft Sans Serif", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177))), Brushes.Black, 0, m_Image.Height * mp + 7);
+                g.DrawString(Name, new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, (byte)177), Brushes.Black, 0, m_Image.Height * mp + 7);
             /*g.DrawRectangle(new Pen(Color.Gray), dl, dt, dw, dh);
 
             if (m_IsThumbnail)

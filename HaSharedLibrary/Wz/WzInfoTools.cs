@@ -68,96 +68,6 @@ namespace HaSharedLibrary.Wz
             return source.Substring(firstNonZeroIndex);
         }
 
-        public static string GetMobNameById(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Mob.img");
-            if (stringWzDirs != null)
-            {
-                WzObject mobObj = stringWzDirs[id];
-                WzStringProperty mobName = (WzStringProperty)mobObj["name"];
-                if (mobName == null)
-                    return "";
-
-                return mobName.Value;
-            }
-            return "";
-        }
-
-        public static string GetNpcNameById(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage stringWzDirs = (WzImage)fileManager.FindWzImageByName("string", "Npc.img");
-            if (stringWzDirs != null)
-            {
-                WzObject npcObj = stringWzDirs[id];
-                WzStringProperty npcName = (WzStringProperty)npcObj["name"];
-                if (npcName == null)
-                    return "";
-
-                return npcName.Value;
-            }
-            return "";
-        }
-
-        public static WzSubProperty GetMapStringProp(string id, WzFileManager fileManager)
-        {
-            id = RemoveLeadingZeros(id);
-
-            WzImage mapImg = (WzImage)fileManager.FindWzImageByName("string", "Map.img");
-            if (mapImg != null)
-            {
-                foreach (WzSubProperty mapNameCategory in mapImg.WzProperties)
-                {
-                    WzSubProperty mapNameDirectory = (WzSubProperty)mapNameCategory[id];
-                    if (mapNameDirectory != null)
-                    {
-                        return mapNameDirectory;
-                    }
-                }
-            }
-            return null;
-        }
-
-        public static string GetMapName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            WzStringProperty mapName = (WzStringProperty)mapProp["mapName"];
-            if (mapName == null)
-            {
-                return "";
-            }
-            return mapName.Value;
-        }
-
-        public static string GetMapStreetName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            WzStringProperty streetName = (WzStringProperty)mapProp["streetName"];
-            if (streetName == null)
-            {
-                return "";
-            }
-            return streetName.Value;
-        }
-
-        public static string GetMapCategoryName(WzSubProperty mapProp)
-        {
-            if (mapProp == null)
-            {
-                return "";
-            }
-            return mapProp.Parent.Name;
-        }
-
         public static WzObject GetObjectByRelativePath(WzObject currentObject, string path)
         {
             foreach (string directive in path.Split("/".ToCharArray()))
@@ -275,10 +185,11 @@ namespace HaSharedLibrary.Wz
         /// On post 64-bit client:
         /// Map/Map/Map1/Map1_000.wz/10000000.img (WzFile)
         /// </summary>
-        /// <param name="mapid"></param>
+        /// <param name="mapId"></param>
+        /// <param name="fileManager"></param>
         /// <returns></returns>
-        public static WzDirectory FindMapDirectoryParent(string mapid, WzFileManager fileManager) {
-            string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
+        public static WzDirectory FindMapDirectoryParent(string mapId, WzFileManager fileManager) {
+            string mapIdNamePadded = AddLeadingZeros(mapId, 9) + ".img";
             string mapcat = fileManager.Is64Bit ? mapIdNamePadded.Substring(0, 1) : "Map" + mapIdNamePadded.Substring(0, 1);
             string baseDir = fileManager.Is64Bit ? "map\\map\\map" + mapcat : "map";
 

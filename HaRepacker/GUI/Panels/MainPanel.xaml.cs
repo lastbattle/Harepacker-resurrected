@@ -846,7 +846,7 @@ namespace HaRepacker.GUI.Panels
             const float SCALE_UP_FACTOR = 4; // faactor to scale up to with neural networks
 
             // Reset progress bar
-            mainProgressBar.Value = 0;
+            mainProgressBar.Value = 20; // 20% at the start
             secondaryProgressBar.Value = 0;
 
             // disable inputs in the main UI from the user.
@@ -999,6 +999,7 @@ namespace HaRepacker.GUI.Panels
                     }
 
                     double ms_runtime = (DateTime.Now - t0).TotalSeconds;
+
                     MessageBox.Show("Completed.\r\nElapsed time: " + ms_runtime.ToString("N2") + " sec(s) (avg: " + (ms_runtime / nodeCount).ToString("N2") + ")");
                 }
                 catch (Exception exp) {
@@ -1188,7 +1189,8 @@ namespace HaRepacker.GUI.Panels
                 Title = "Select where to save the image...",
                 Filter = "Portable Network Graphics (*.png)|*.png|CompuServe Graphics Interchange Format (*.gif)|*.gif|Bitmap (*.bmp)|*.bmp|Joint Photographic Experts Group Format (*.jpg)|*.jpg|Tagged Image File Format (*.tif)|*.tif"
             };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) 
+                return;
             switch (dialog.FilterIndex)
             {
                 case 1: //png

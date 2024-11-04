@@ -78,6 +78,7 @@ namespace HaCreator
         public static int MapleVersionIndex = 3;
         public static string MapleFoldersList = ""; // list of maplestory folder seperated by ','
         public static int MapleFolderIndex = 0;
+        public static int MapleStoryClientLocalisation = 1;
 
         public static ItemTypes theoreticalVisibleTypes = ItemTypes.All; // These two are marked theoretical because the visible\edited types in effect (Board.VisibleTypes\EditedTypes)
         public static ItemTypes theoreticalEditedTypes = ItemTypes.All ^ ItemTypes.Backgrounds; // are subject to the current mode of operation
@@ -89,11 +90,5 @@ namespace HaCreator
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";
         public static string LastXmlPath = "";
-
-
-        #region API Key
-        [JsonProperty(PropertyName = "OpenAI_ApiKey")]
-        public static string OpenAI_ApiKey = "";
-        #endregion
     }
 }

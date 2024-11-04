@@ -1,0 +1,2952 @@
+﻿<Window x:Class="HaCreator.GUI.Quest.QuestEditor"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+        xmlns:local="clr-namespace:HaCreator.GUI.Quest"
+        xmlns:converter="clr-namespace:HaCreator.Converter"
+        xmlns:haSharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
+        xmlns:haSharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
+        xmlns:mapleLibCharStruct="clr-namespace:MapleLib.WzLib.WzStructure.Data.CharacterStructure;assembly=MapleLib"
+        xmlns:mapleLibQuestStruct="clr-namespace:MapleLib.WzLib.WzStructure.Data.QuestStructure;assembly=MapleLib"
+        mc:Ignorable="d" 
+        Title="Quest editor"
+        
+        d:DesignHeight="768" d:DesignWidth="1366"
+        Height="768" Width="1366">
+
+    <Window.Resources>
+        <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
+        <converter:PetSkillFlagConverter x:Key="petSkillFlagConverter"/>
+        <converter:QuestIdToQuestNameConverter x:Key="questIdToQuestNameConverter"/>
+        <converter:NpcIdToNpcNameConverter x:Key="npcIdToNpcNameConverter"/>
+        <converter:ItemIdToItemNameConverter x:Key="itemIdToItemNameConverter"/>
+        <converter:MonsterIdToMonsterNameConverter x:Key="monsterIdToMonsterNameConverter"/>
+        <converter:MapIdToMapNameConverter x:Key="mapIdToMapNameConverter"/>
+        <converter:JobIdToJobNameConverter x:Key="jobIdToJobNameConverter"/>
+        <converter:NegativeOneToTrueConverter x:Key="negativeOneToTrueConverter"/>
+        <converter:SkillIdToSkillNameConverter x:Key="skillIdToSkillNameConverter"/>
+        <converter:QuestStateIdToQuestStateConverter x:Key="questStateIdToQuestStateConverter"/>
+        <converter:JobClassBitfieldToClassNamesConverter x:Key="jobClassBitfieldToClassNamesConverter"/>
+        <converter:EnumNameIntValueConverter x:Key="enumNameIntValueConverter"/>
+        <converter:CharacterSubJobTypeConverter x:Key="characterSubJobTypeConverter"/>
+        <converter:BoolToTemplateConverter x:Key="BoolToTemplateConverter"/>
+        <converter:JobBitfieldToJobNamesConverter x:Key="jobBitfieldToJobNamesConverter"/>
+
+        <Style x:Key="FocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="2" StrokeDashArray="1 2" Stroke="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" SnapsToDevicePixels="true" StrokeThickness="1"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <SolidColorBrush x:Key="Button.Static.Background" Color="#FFDDDDDD"/>
+        <SolidColorBrush x:Key="Button.Static.Border" Color="#FF707070"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Background" Color="#FFBEE6FD"/>
+        <SolidColorBrush x:Key="Button.MouseOver.Border" Color="#FF3C7FB1"/>
+        <SolidColorBrush x:Key="Button.Pressed.Background" Color="#FFC4E5F6"/>
+        <SolidColorBrush x:Key="Button.Pressed.Border" Color="#FF2C628B"/>
+        <SolidColorBrush x:Key="Button.Disabled.Background" Color="#FFF4F4F4"/>
+        <SolidColorBrush x:Key="Button.Disabled.Border" Color="#FFADB2B5"/>
+        <SolidColorBrush x:Key="Button.Disabled.Foreground" Color="#FF838383"/>
+
+        <Style x:Key="ButtonStyle_DeleteQuest" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="Background" Value="Gray"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                            <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDefaulted" Value="true">
+                                <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FFA0A0A0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="Gainsboro"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ButtonStyle_Black" TargetType="{x:Type Button}">
+            <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="Background" Value="Black"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="true">
+                            <ContentPresenter x:Name="contentPresenter" Focusable="False" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" Margin="{TemplateBinding Padding}" RecognizesAccessKey="True" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsDefaulted" Value="true">
+                                <Setter Property="BorderBrush" TargetName="border" Value="{DynamicResource {x:Static SystemColors.HighlightBrushKey}}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FF464545"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="true">
+                                <Setter Property="Background" TargetName="border" Value="#FFA29C9C"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
+                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- DataTemplate for NPC conversation type enum -->
+        <ObjectDataProvider x:Key="ConversationTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorConversationType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- DataTemplate for NPC conversation stop type enum -->
+        <ObjectDataProvider x:Key="ConversationStopTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorStopConversationType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- DataTemplate for quest act type enum -->
+        <ObjectDataProvider x:Key="ActTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- DataTemplate for quest check type enum -->
+        <ObjectDataProvider x:Key="CheckTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorCheckType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for potential grade enum-->
+        <ObjectDataProvider x:Key="PotentialTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActInfoPotentialType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for item reward prop enum-->
+        <ObjectDataProvider x:Key="RewardPropTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorActInfoRewardPropTypeModel"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <ObjectDataProvider x:Key="RewardGenderTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:CharacterGenderType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for pet skill enum-->
+        <ObjectDataProvider x:Key="PetSkillTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:PetSkillFlag"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for quest area code enum-->
+        <ObjectDataProvider x:Key="QuestAreaCodeTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibQuestStruct:QuestAreaCodeType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for quest state enum-->
+        <ObjectDataProvider x:Key="QuestStateTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibQuestStruct:QuestStateType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for quest medal type enum-->
+        <ObjectDataProvider x:Key="QuestMedalTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibQuestStruct:QuestMedalType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for skill cond enum-->
+        <ObjectDataProvider x:Key="SkillCondTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorCheckSkillCondType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for dayOfWeek enum-->
+        <ObjectDataProvider x:Key="DayOfWeekTypeEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="local:QuestEditorCheckDayOfWeekType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <!-- Data template for sub job flag enum-->
+        <ObjectDataProvider x:Key="characterSubJobFlagEnum" MethodName="GetValues"
+                        ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="mapleLibCharStruct:CharacterSubJobFlagType"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+
+        <!-- DataTemplate for Yes/No Responses ItemsControl -->
+        <DataTemplate x:Key="ResponseItemTemplate">
+            <TextBlock Text="{Binding Text}" Margin="0,2"/>
+        </DataTemplate>
+
+        <!-- DataTemplate for Editing Yes/No Responses -->
+        <DataTemplate x:Key="EditResponsesTemplate">
+            <ListBox ItemsSource="{Binding}" MinHeight="200">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="25"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                                             AcceptsReturn="True" Grid.Column="0"/>
+                            <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                                            Click="DeleteResponse_Click"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DataTemplate>
+
+        <!-- Define a reusable DataGridTemplate -->
+        <DataTemplate x:Key="ConversationDataGridTemplate">
+            <DataGrid ItemsSource="{Binding}"
+                  AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                <DataGrid.Resources>
+                    <!-- Define common resources here if needed -->
+                </DataGrid.Resources>
+
+                <DataGrid.Columns>
+
+                    <!-- Conversation Type Column -->
+                    <DataGridTemplateColumn Header="Type" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      ItemsSource="{Binding Source={StaticResource ConversationTypeEnum}}"
+                                      MaxHeight="30" VerticalAlignment="Top">
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Conversation Text Column -->
+                    <DataGridTextColumn Header="Text" Binding="{Binding NpcConversation}" Width="4*"/>
+
+                    <!-- Yes Responses Column -->
+                    <DataGridTemplateColumn Header="Yes Responses" Width="3*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                    <ItemsControl ItemsSource="{Binding YesResponses}"
+                                              ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                    <Button x:Name="button_addResponse" Content="Add response"
+                                        Style="{DynamicResource ButtonStyle_Black}" Width="100"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="{Binding IsYesNoConversation}"
+                                        Click="button_addResponse_Click"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}"
+                                            Content="{Binding YesResponses}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- No Responses Column -->
+                    <DataGridTemplateColumn Header="No Responses" Width="3*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Visibility="{Binding IsYesNoConversation, Converter={StaticResource booleanToVisibility2Converter}}">
+                                    <ItemsControl ItemsSource="{Binding NoResponses}"
+                                              ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                    <Button x:Name="button_addNoResponse" Content="Add response"
+                                        Style="{DynamicResource ButtonStyle_Black}" Width="100"
+                                        HorizontalAlignment="Right"
+                                        IsEnabled="{Binding IsYesNoConversation}"
+                                        Click="button_addResponse_Click"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ContentControl ContentTemplate="{StaticResource EditResponsesTemplate}"
+                                            Content="{Binding NoResponses}"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="StopConversationDataGridTemplate">
+            <DataGrid 
+                      ItemsSource="{Binding}"
+                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                <DataGrid.Columns>
+                    <!-- Conversation Type Column -->
+                    <DataGridTemplateColumn Header="Type" Width="80">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox SelectedItem="{Binding ConversationType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      ItemsSource="{Binding Source={StaticResource ConversationStopTypeEnum}}"
+                                                                      MaxHeight="30" VerticalAlignment="Top">
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Responses Column -->
+                    <DataGridTemplateColumn Header="Responses" Width="3*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <ItemsControl ItemsSource="{Binding Responses}"
+                                                                              ItemTemplate="{StaticResource ResponseItemTemplate}"/>
+                                    <Button Content="Add response" 
+                                                                        Style="{DynamicResource ButtonStyle_Black}" Width="100" 
+                                                                        HorizontalAlignment="Right"
+                                                                        Click="button_addResponse_stopQuest_Click"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ListBox ItemsSource="{Binding Responses}" MinHeight="200">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="25"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                                                     AcceptsReturn="True" Grid.Column="0"/>
+                                                <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                                                                    Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                                                    Click="DeleteResponse_stop_Click"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                </DataGrid.Columns>
+            </DataGrid>
+        </DataTemplate>
+
+        <!-- Act rewards template-->
+        <!-- EXP-->
+        <DataTemplate x:Key="ActExpTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20"  Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.8.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text=" reward amount:" />
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Mesos-->
+        <DataTemplate x:Key="ActMesosTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.7.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text=" reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+
+        </DataTemplate>
+
+        <!-- Fame-->
+        <DataTemplate x:Key="ActFameTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.6.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text=" reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Traits-->
+        <DataTemplate x:Key="ActTraitSenseTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(sense) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActTraitWillTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(will) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActTraitInsightTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(insight) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActTraitCharismaTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(charisma) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActTraitCharmTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(charm) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActTraitCraftTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(craft) reward amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Info -->
+        <DataTemplate x:Key="ActInfoExTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="InfoEx string:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- SP -->
+        <DataTemplate x:Key="ActSpTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SP}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="7*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="20"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Skill level-->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="0" Margin="2,0,10,5" Height="25">
+                                    <TextBlock Text="SP amount:" Width="100"/>
+                                    <TextBox Text="{Binding SPValue, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100" />
+                                </StackPanel>
+
+                                <StackPanel Orientation="Vertical" Grid.Row="0" Grid.Column="1">
+                                    <TextBlock Text="Given to jobs:" Margin="0,0,10,5"/>
+
+                                    <ListBox ItemsSource="{Binding Jobs, Mode=TwoWay}" 
+                                                 MinHeight="30" >
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition MinWidth="100" Width="5*"/>
+                                                        <ColumnDefinition MinWidth="200" Width="5*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                                             InputScope="Number" IsReadOnly="True"
+                                                             Margin="0,0,0,0"
+                                                             Grid.Column="0"/>
+
+                                                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                        <TextBlock Text="["/>
+                                                        <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                        <TextBlock Text="]" Margin="2,0,0,0"/>
+                                                    </StackPanel>
+
+                                                    <Button x:Name="button_removeSPJob" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15"
+                                                            VerticalAlignment="Top" 
+                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                            Click="button_removeSPJob_Click"
+                                                            />
+                                                </Grid>
+                                            </DataTemplate>
+
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <Button x:Name="button_addSPJob" Content="Add job"
+                                            Width="100" Height="20" 
+                                            VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                            Click="button_addSPJob_Click"
+                                            />
+                                </StackPanel>
+
+
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
+                                      Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" 
+                                      Margin="0,0,0,0"/>
+
+                                <Button x:Name="button_removeSP" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeSP_Click"
+                            />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddSP" Content="Add SP" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectAddSP_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Skill -->
+        <DataTemplate x:Key="ActSkillTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SkillsAcquire}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition MaxHeight="20"/>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="20"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Skill Id-->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,5" Grid.Row="0" Grid.Column="0">
+                                        <TextBlock Text="Skill Id:" Width="100"/>
+                                        <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,5" Width="100"/>
+                                    </StackPanel>
+
+                                <!-- skill name desc -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0" VerticalAlignment="Top"
+                                            Grid.Row="1" Grid.Column="0">
+                                    <TextBlock Text="["/>
+                                    <TextBlock Text="{Binding Id, Converter={StaticResource skillIdToSkillNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                    <TextBlock Text="]" Margin="2,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Skill level-->
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" Margin="0,0,10,5">
+                                    <TextBlock Text="Skill Level:" Width="100"/>
+                                    <TextBox Text="{Binding SkillLevel, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+
+                                <!-- Master level-->
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="2" Margin="0,0,10,5">
+                                    <TextBlock Text="Master Level:" Width="100"/>
+                                    <TextBox Text="{Binding MasterLevel, UpdateSourceTrigger=PropertyChanged}"  InputScope="Number" Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+
+                                <!-- Only master level-->
+                                <CheckBox Content="Only Master Level" IsChecked="{Binding OnlyMasterLevel, UpdateSourceTrigger=PropertyChanged}" 
+                                          Grid.Row="2" Grid.Column="1" Margin="0,0,0,5"/>
+
+                                <!-- Acquire -->
+                                <CheckBox MinWidth="100" IsChecked="{Binding Acquire, Converter={StaticResource negativeOneToTrueConverter}, UpdateSourceTrigger=PropertyChanged}"
+                                              Content="Acquire (remove skill)"
+                                              Grid.Row="2" Grid.Column="2" Margin="0,0,10,5"/>
+
+                                <TextBlock Text="Given to jobs:" Grid.Row="3" Grid.Column="0" Margin="0,0,10,5"/>
+                                <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Margin="20">
+                                    <ListBox ItemsSource="{Binding JobIds, Mode=TwoWay}" 
+                                          MinHeight="30" >
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition MinWidth="100" Width="5*"/>
+                                                        <ColumnDefinition MinWidth="200" Width="5*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                                         InputScope="Number" IsReadOnly="True"
+                                                         Margin="0,0,0,0"
+                                                         Grid.Column="0"/>
+
+                                                    <StackPanel Orientation="Horizontal" Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                        <TextBlock Text="["/>
+                                                        <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                        <TextBlock Text="]" Margin="2,0,0,0"/>
+                                                    </StackPanel>
+
+                                                    <Button x:Name="button_removeSkillJob" Grid.Column="2" Content="X" FontSize="8" Width="15" Height="15" 
+                                                            VerticalAlignment="Top" 
+                                                                Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                        Click="button_removeSkillJob_Click"
+                                                                />
+                                                </Grid>
+                                            </DataTemplate>
+
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <Button x:Name="button_addJob" Content="Add job"
+                                        Width="100" Height="20" 
+                                            VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_addJob_Click"
+                                    />
+                                </Grid>
+
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
+                                  Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" 
+                                  Margin="0,0,0,0"/>
+
+                                <Button x:Name="button_removeSkill" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeSkill_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddSkill" Content="Add skill" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectAddSkill_Click"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        
+        <!-- Job -->
+        <DataTemplate x:Key="ActJobTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding JobsReqs}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="Job Id:" Width="60"/>
+                                        <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,0" Width="100"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+                                        <TextBlock Text="[" />
+                                        <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}"  FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_removeJob" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeJob_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddJob" Content="Add job" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectAddJob_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- lvMin -->
+        <DataTemplate x:Key="ActLvMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level min:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="ActLvMaxTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level max:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- fieldEnter -->
+        <DataTemplate x:Key="ActFieldEnterTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition MinWidth="150" Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
+                <Grid Grid.Column="1">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}" MinHeight="30">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition MinWidth="100" Width="*"/>
+                                        <ColumnDefinition Width="25"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" MinWidth="80"/>
+                                        <TextBlock Text="[" Margin="4,0,0,0"/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource mapIdToMapNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                                            Click="DeleteMapResponse_Click"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button x:Name="botton_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Click="botton_selectMaps_Click"/>
+                </Grid>
+            </Grid>
+        </DataTemplate>
+
+
+        <!-- Interval -->
+        <DataTemplate x:Key="ActIntervalTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Interval (minutes):" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- Start -->
+        <DataTemplate x:Key="ActStartTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Start date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        <!-- End -->
+        <DataTemplate x:Key="ActEndTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="End date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        <!-- Conversation "0", "1", "2", "3" -->
+        <DataTemplate x:Key="ActSayConversationTemplate">
+            <StackPanel>
+                <TextBlock Text="Start" Margin="4,4,0,4" FontWeight="Bold"/>
+                <ContentControl x:Name="dataGrid_ConversationStart" Grid.Row="1" 
+                                ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
+                                Content="{Binding ActConversationStart, Mode=OneWay}">
+                </ContentControl>
+
+                <TextBlock Text="Stop" Margin="4,4,0,4" FontWeight="Bold"/>
+                <ContentControl x:Name="dataGrid_ConversationStop" Grid.Row="1" 
+                                ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
+                                Content="{Binding ActConversationStop, Mode=OneWay}">
+                </ContentControl>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Pet speed-->
+        <DataTemplate x:Key="ActPetSpeedTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet speed:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- Pet Tameness-->
+        <DataTemplate x:Key="ActPetTamenessTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet tameness:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- Pet Skill -->
+        <DataTemplate x:Key="ActPetSkillTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Select a skill:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <ComboBox x:Name="comboBox_petSkill" 
+                          ItemsSource="{Binding Source={StaticResource PetSkillTypeEnum}}"  
+                           SelectedItem="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource petSkillFlagConverter}}"
+                          SelectionChanged="comboBox_petSkill_SelectionChanged"
+                          SelectedValuePath="." DisplayMemberPath="."
+                          >
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Buff -->
+        <DataTemplate x:Key="ActBuffTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/2022240_buff_icon.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Buff reward:" Margin="4,0,0,0"/>
+                    <TextBlock Text="[" Margin="4,0,0,0"/>
+                    <TextBlock Text="{Binding Amount, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                    <TextBlock Text="]"/>
+                </StackPanel>
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
+
+                    <Button x:Name="botton_selectBuff" Content="Select Buff" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        Click="botton_selectBuff_Click"/>
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Quest -->
+        <DataTemplate x:Key="ActQuestTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding QuestReqs}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Vertical">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="Quest Id:" Width="70"/>
+                                        <TextBox Text="{Binding QuestId, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,0" Width="100"/>
+
+                                        <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
+                                        <ComboBox x:Name="comboBox_questState" 
+                                                  ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
+                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                                  SelectedValuePath="."
+                                                  DisplayMemberPath=".">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+                                        <TextBlock Text="[" />
+                                        <TextBlock Text="{Binding QuestId, Converter={StaticResource questIdToQuestNameConverter}}"  FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_removeQuest" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_removeQuest_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectAddQuest" Content="Add quest" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectAddQuest_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- NextQuest -->
+        <DataTemplate x:Key="ActNextQuestTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.0.5.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Next quest:" Margin="4,0,0,0"/>
+                    <TextBlock Text="["  Margin="10,0,0,0"/>
+                    <TextBlock Text="{Binding Amount, Converter={StaticResource questIdToQuestNameConverter}}"  FontWeight="Bold"/>
+                    <TextBlock Text="]"/>
+                </StackPanel>
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
+
+                    <Button x:Name="botton_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        Click="botton_selectQuest_Click"/>
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Message for horntail message/map -->
+        <DataTemplate x:Key="ActMessageTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="8*"/>
+                    <ColumnDefinition Width="120"/>
+                    <ColumnDefinition MinWidth="150" Width="2*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Message notice:" Grid.Column="0" Margin="4,0,0,0"/>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" MaxLength="500" Grid.Column="1"/>
+
+                <TextBlock Text="Maps to show in:" Grid.Column="2" Margin="4,0,0,0"/>
+                <StackPanel Orientation="Vertical" Grid.Column="3">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}"  MinHeight="30">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition MinWidth="100" Width="*"/>
+                                        <ColumnDefinition Width="25"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True"/>
+                                    <Button Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                                                            Click="DeleteMapResponse_Click"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button x:Name="botton_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Click="botton_selectMaps_Click"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- Npc -->
+        <DataTemplate x:Key="ActNpcTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="NPC ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="["  Margin="10,0,0,0"/>
+                        <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
+                        <TextBlock Text="]"/>
+                    </StackPanel>
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button x:Name="button_selectNPC" Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_selectNPC_Click"/>
+            </Grid>
+        </DataTemplate>
+        <!-- NPC Act -->
+        <DataTemplate x:Key="ActNpcActTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Animation action:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Item -->
+        <DataTemplate x:Key="ActItemTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SelectedRewardItems}" Grid.Column="0" MinHeight="100"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="30"/>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition MinWidth="150" Width="3*"/>
+                                    <ColumnDefinition Width="4*"/>
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ItemId}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding ItemId, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+                                
+                                <!-- Potential, prop, gender -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="1"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Prop type:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="comboBox_itemPropType" 
+                                              ItemsSource="{Binding Source={StaticResource RewardPropTypeEnum}}"  
+                                              SelectedItem="{Binding Prop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectedValuePath="."
+                                              DisplayMemberPath="."
+                                              >
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <TextBlock Text="Gender:" Margin="20,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="comboBox_itemGenderType" 
+                                              ItemsSource="{Binding Source={StaticResource RewardGenderTypeEnum}}"  
+                                              SelectedItem="{Binding Gender, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectedValuePath="."
+                                              DisplayMemberPath="."
+                                              >
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    
+                                    <!-- potential-->
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                                Visibility="{Binding IsEquip, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
+                                               />
+                                        <ComboBox x:Name="comboBox_potentialGrade" 
+                                              ItemsSource="{Binding Source={StaticResource PotentialTypeEnum}}"  
+                                              SelectedItem="{Binding PotentialGrade, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValuePath="."
+                                                  DisplayMemberPath="."
+                                              >
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+                                </StackPanel>
+                                
+                                <!-- Time related category -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="2"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Period (minutes):" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Period, UpdateSourceTrigger=PropertyChanged}" Width="60" 
+                                             InputScope="Number" TextAlignment="Center"
+                                             />
+
+                                    <TextBlock Text="Expiry:" Margin="20,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <DatePicker Name="datePicker_itemExpiry" Text="" 
+                                                DisplayDate="01/01/2020 00:00:00"
+                                                SelectedDate="{Binding ExpireDate, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                                                />
+
+                                    <TextBlock Text="Var: " Margin="20,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Var, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             Margin="5,0,0,0"
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+
+
+                                <!-- Job -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="4"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="JobEx: " VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding JobEx, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             Margin="5,0,0,0"
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+
+                                <!-- class categories -->
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="4"
+                                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <TextBlock Text="Classes: "/>
+                                    <TextBlock Text="{Binding Job, Converter={StaticResource jobClassBitfieldToClassNamesConverter}}" 
+                                               Margin="5,0,5,0"
+                                             TextAlignment="Center"
+                                             />
+                                    <Button x:Name="button_selectClasses" Content="Select class"
+                                            Style="{StaticResource ButtonStyle_Black}" Background="Gray"
+                                            Width="100" Height="20" VerticalAlignment="Bottom"
+                                            Click="button_selectClasses_Click"/>
+                                </StackPanel>
+
+                                <Button x:Name="button_deleteItem" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_deleteItem_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_selectItem_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- null-->
+        <DataTemplate x:Key="ActNullTemplate">
+        </DataTemplate>
+
+        <!-- Template selector for Act-->
+        <DataTemplate x:Key="ActRewardsColumnTemplate">
+            <ContentPresenter x:Name="RewardsContent" Content="{Binding}"/>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Item}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActItemTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Exp}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActExpTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Money}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActMesosTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Npc}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNpcTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.NpcAct}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNpcActTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Pop}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFameTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.BuffItemId}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActBuffTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Message_Map}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActMessageTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.CraftEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitCraftTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.CharmEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitCharmTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.CharismaEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitCharismaTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.InsightEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitInsightTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.WillEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitWillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.SenseEXP}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActTraitSenseTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Info}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActInfoExTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Skill}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSkillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Sp}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSpTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Job}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActJobTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.LvMin}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActLvMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.LvMax}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActLvMaxTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.NextQuest}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNextQuestTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Quest}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActQuestTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetSpeed}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetSpeedTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetTameness}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetTamenessTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.PetSkill}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActPetSkillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.FieldEnter}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActFieldEnterTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Interval}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActIntervalTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Start}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActStartTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.End}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActEndTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Conversation0123}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActSayConversationTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Static local:QuestEditorActType.Null}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActType}" Value="{x:Null}">
+                    <Setter TargetName="RewardsContent" Property="ContentTemplate" Value="{StaticResource ActNullTemplate}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+
+        <!-- START FOR CHECK templates -->
+
+        <!-- null-->
+        <DataTemplate x:Key="CheckNullTemplate">
+        </DataTemplate>
+        
+        <!-- EndMeso -->
+        <!-- Mesos-->
+        <DataTemplate x:Key="CheckEndMesosTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.7.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text=" required meso amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Fame-->
+        <DataTemplate x:Key="CheckFameTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.6.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text=" required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Interval -->
+        <DataTemplate x:Key="CheckIntervalTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Interval (repeatable after x minutes):" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Equip -->
+        <DataTemplate x:Key="CheckEquipAllNeedTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SelectedNumbersItem}" Grid.Column="0" MinHeight="40"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding .}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_check_deleteEquip" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_deleteEquip_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectEquip" Content="Add equip" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectEquip_Click"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckEquipSelectNeedTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SelectedNumbersItem}" Grid.Column="0" MinHeight="40"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding .}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_check_deleteEquip" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_deleteEquip_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectEquip" Content="Add equip" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectEquip_Click"
+                        />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Traits-->
+        <DataTemplate x:Key="CheckTraitSenseTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(sense) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckTraitWillTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(will) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckTraitInsightTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(insight) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckTraitCharismaTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(charisma) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckTraitCharmTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(charm) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckTraitCraftTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="(craft) required amount:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- lvMin -->
+        <DataTemplate x:Key="CheckLvMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level min:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckLvMaxTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Level max:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- worldmin, worldmax -->
+        <!-- TODO: better UX for selecting worlds -->
+        <DataTemplate x:Key="CheckWorldMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="World min:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <!-- TODO: better UX for selecting worlds -->
+        <DataTemplate x:Key="CheckWorldMaxTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="World max:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- CheckSubJobFlagsTemplate -->
+        <DataTemplate x:Key="CheckSubJobFlagsTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Sub job flag:" Margin="2,0,0,0"/>
+                </StackPanel>
+                
+                <ComboBox 
+                    ItemsSource="{Binding Source={StaticResource characterSubJobFlagEnum}}"  
+                    SelectedValue="{Binding Amount, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource characterSubJobTypeConverter}}"
+                    SelectedValuePath="."
+                    DisplayMemberPath=".">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- TamingMobLevelMin -->
+        <DataTemplate x:Key="CheckTamingMobLevelMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Taming mob level min:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- PetTamenessMin, PetTamenessMax-->
+        <DataTemplate x:Key="CheckPetTamenessMinTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet tameness min:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckPetTamenessMaxTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet tameness max:" Margin="2,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- CheckPetRecallLimitTemplate, PetAutoSpeaking-->
+        <DataTemplate x:Key="CheckPetRecallLimitTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet recall limit:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckPetAutoSpeakingLimitTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Pet auto speaking limit:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- fieldEnter -->
+        <DataTemplate x:Key="CheckFieldEnterTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="110"/>
+                    <ColumnDefinition MinWidth="150" Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Maps to enter:" Grid.Column="0" Margin="4,0,0,0"/>
+                <Grid Grid.Column="1">
+                    <ListBox ItemsSource="{Binding SelectedNumbersItem, Mode=TwoWay}" MinHeight="30">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition MinWidth="100" Width="*"/>
+                                        <ColumnDefinition Width="25"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBox Text="{Binding ., Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" MinWidth="80"/>
+                                        <TextBlock Text="[" Margin="4,0,0,0"/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource mapIdToMapNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                    <Button x:Name="button_check_fieldEnter_delete" Grid.Column="1" Content="X" FontSize="8" Width="15" Height="15" 
+                                            Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                            Click="button_check_fieldEnter_delete_Click"
+                                            />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button x:Name="botton_check_selectMaps" Content="Select maps" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                            Click="botton_check_selectMaps_Click"
+                            />
+                </Grid>
+            </Grid>
+        </DataTemplate>
+        
+        <!-- Pet -->
+        <DataTemplate x:Key="CheckPetTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SelectedNumbersItem}" Grid.Column="0" MinHeight="50"
+                 HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Horizontal" 
+                                    Grid.Column="0"  Grid.Row="0"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding .}"/>
+                                    
+                                    <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                                        <TextBlock Text="["/>
+                                        <TextBlock Text="{Binding ., Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_check_deletePetItem" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_deletePetItem_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectPetItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectPetItem_Click"
+                        />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Item -->
+        <DataTemplate x:Key="CheckItemTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding SelectedReqItems}" Grid.Column="0" MinHeight="50"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition MinWidth="150" Width="3*"/>
+                                    <ColumnDefinition Width="4*"/>
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ItemId}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding ItemId, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+
+                                <Button x:Name="button_check_deleteItem" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_deleteItem_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectItem" Content="Add item" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectItem_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Item -->
+        <DataTemplate x:Key="CheckMobTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding MobReqs}" Grid.Column="0" MinHeight="50"
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition MinWidth="150" Width="3*"/>
+                                    <ColumnDefinition Width="4*"/>
+                                    <ColumnDefinition Width="20" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Orientation="Vertical" 
+                                            Grid.Column="0"  Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Id}"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="[" Margin="0,0,0,0"/>
+                                        <TextBlock Text="{Binding Id, Converter={StaticResource monsterIdToMonsterNameConverter}}" FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" 
+                                            Grid.Column="1" Grid.Row="0"
+                                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="Quantity:" Margin="0,0,5,0"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding Count, UpdateSourceTrigger=PropertyChanged}" Width="40" 
+                                             InputScope="Number"
+                                             />
+                                </StackPanel>
+
+                                <Button x:Name="button_check_deleteMob" 
+                                        Grid.Column="2" Grid.Row="0"
+                                        Content="X" FontSize="8" Width="15" Height="15" 
+                                        HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_deleteMob_Click"
+                                        />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_addMob" Content="Add monster" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_addMob_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- job -->
+        <DataTemplate x:Key="CheckJobTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding Jobs}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="Job Id:" Width="60"/>
+                                        <TextBox Text="{Binding JobId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,0" Width="100"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+                                        <TextBlock Text="[" />
+                                        <TextBlock Text="{Binding JobId, Converter={StaticResource jobIdToJobNameConverter}}"  FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_check_removeJob" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_removeJob_Click"
+                                        
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectAddJob" Content="Add job" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectAddJob_Click"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckJobTemplate_PreBB">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Vertical">
+                        <TextBlock Text="Job flags:" Margin="2,0,0,0"/>
+                        <StackPanel Orientation="Horizontal" Margin="5,0,0,0">
+                            <TextBlock Text="[" Margin="0,0,0,0"/>
+                            <!-- Added MaxWidth and proper text wrapping -->
+                            <TextBlock Text="{Binding Amount, Converter={StaticResource jobBitfieldToJobNamesConverter}}" 
+                                       FontWeight="Bold" 
+                                       TextWrapping="Wrap"
+                                       MaxWidth="600"/>
+                            <!-- Adjust MaxWidth as needed -->
+                            <TextBlock Text="]"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" IsEnabled="False" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button x:Name="button_check_jobCLassFlags" Content="Select jobs" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_check_jobCLassFlags_Click"/>
+            </Grid>
+        </DataTemplate>
+        
+        
+        <!-- Quest -->
+        <DataTemplate x:Key="CheckQuestTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding QuestReqs}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Vertical">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="Quest Id:" Width="70"/>
+                                        <TextBox Text="{Binding QuestId, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,0" Width="100"/>
+
+                                        <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
+                                        <ComboBox x:Name="comboBox_questState" 
+                                                  ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
+                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                                  SelectedValuePath="."
+                                                  DisplayMemberPath=".">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Margin="2,0,0,0">
+                                        <TextBlock Text="[" />
+                                        <TextBlock Text="{Binding QuestId, Converter={StaticResource questIdToQuestNameConverter}}"  FontWeight="Bold"/>
+                                        <TextBlock Text="]"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <Button x:Name="button_check_removeQuest" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_removeQuest_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectAddQuest" Content="Add quest" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectAddQuest_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- quest "info" -->
+        <DataTemplate x:Key="CheckQuestInfoTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding QuestInfo}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Vertical">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="info:" Width="70"/>
+                                        <TextBox Text="{Binding Text, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" InputScope="Number"
+                                             Margin="5,0,0,0" Width="100"/>
+                                    </StackPanel>
+
+                                </StackPanel>
+
+                                <Button x:Name="button_check_info_remove" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_info_remove_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_info_addQuest" Content="Add info" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_info_addQuest_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- quest "infoEx" -->
+        <DataTemplate x:Key="CheckQuestInfoExTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding QuestInfoEx}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,10">
+                                <!-- Quest Id-->
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,10,0">
+                                        <TextBlock Text="Value:" Width="70"/>
+                                        <TextBox Text="{Binding Value, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" InputScope="Number"
+                                             Margin="5,0,0,0" Width="100"/>
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Condition:" Width="70" Margin="10,0,0,0"/>
+                                        <TextBox Text="{Binding Condition}" InputScope="Default" Width="70" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                    <!--<ComboBox x:Name="comboBox_questInfoEx_Condition" 
+                                              ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
+                                              SelectedValue="{Binding Condition, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                              SelectedValuePath="."
+                                              DisplayMemberPath=".">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>-->
+                                </StackPanel>
+
+                                <Button x:Name="button_check_infoEx_remove" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_infoEx_remove_Click"
+                                />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_infoEx_addQuest" Content="Add info" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_infoEx_addQuest_Click"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- quest infoNumber -->
+        <DataTemplate x:Key="CheckInfoNumberTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Quest ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="["  Margin="10,0,0,0"/>
+                        <TextBlock Text="{Binding Amount, Converter={StaticResource questIdToQuestNameConverter}}" FontWeight="Bold"/>
+                        <TextBlock Text="]"/>
+                    </StackPanel>
+                    <TextBlock FontSize="11" FontStyle="Italic"> - This may be a <Bold>hidden quest</Bold> id (server-only) that is not in the quest list.</TextBlock>
+                    <TextBlock FontSize="11" FontStyle="Italic"> - You will have to include the 'info' or 'infoEx' type details.</TextBlock>
+                    
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button x:Name="button_check_selectQuest" Content="Select quest" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_check_selectQuest_Click"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- dayOfWeek -->
+        <DataTemplate x:Key="CheckDayOfWeekTemplate">
+            <Grid>
+                <ItemsControl ItemsSource="{Binding DayOfWeek}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Margin="5"
+                                      Content="{Binding DayOfWeek}"
+                                      IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                      VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </DataTemplate>
+
+        <!-- skill -->
+        <DataTemplate x:Key="CheckSkillTemplate">
+            <StackPanel Orientation="Vertical">
+                <ListBox ItemsSource="{Binding Skills}" MinHeight="30" 
+                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="3*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition MaxHeight="25"/>
+                                    <RowDefinition MaxHeight="20"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="20"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Skill Id-->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,10,5" Grid.Row="0" Grid.Column="0">
+                                    <TextBlock Text="Skill Id:" Width="80"/>
+                                    <TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  
+                                             InputScope="Number" IsReadOnly="True"
+                                             Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+
+                                <!-- skill name desc -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0" VerticalAlignment="Top"
+                                            Grid.Row="1" Grid.Column="0">
+                                    <TextBlock Text="["/>
+                                    <TextBlock Text="{Binding Id, Converter={StaticResource skillIdToSkillNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                    <TextBlock Text="]" Margin="2,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Skill level-->
+                                <StackPanel Orientation="Horizontal" Grid.Row="0" Grid.Column="1" Margin="0,0,10,5">
+                                    <TextBlock Text="Skill Level:" Width="80"/>
+                                    <TextBox Text="{Binding SkillLevel, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="5,0,0,5" Width="100"/>
+                                </StackPanel>
+                                
+                                <!-- Condition -->
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Grid.Row="0" Grid.Column="2">
+                                    <TextBlock Text="Condition:" Margin="0,0,5,0" Width="80"
+                                               />
+                                    <ComboBox x:Name="comboBox_skillCond" MinWidth="100"
+                                              ItemsSource="{Binding Source={StaticResource SkillCondTypeEnum}}"  
+                                              SelectedItem="{Binding ConditionType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              SelectedValuePath="." DisplayMemberPath="."
+                                              >
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <!-- Acquire -->
+                                <CheckBox MinWidth="100" IsChecked="{Binding Acquire, UpdateSourceTrigger=PropertyChanged}"
+                                          Content="Acquire (if the player should 'have' the skill regardless of skillLevel.)"
+                                          Grid.Row="1" Grid.Column="1" Margin="0,0,10,5"/>
+
+                                <Grid VerticalAlignment="Top" HorizontalAlignment="Stretch" Background="Gray" Height="1" 
+                                      Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" 
+                                      Margin="0,0,0,0"/>
+
+                                <Button x:Name="button_check_removeSkill" Grid.Column="3" Grid.Row="5" Content="X" FontSize="8" Width="15" Height="15" 
+                                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                                        Margin="3,0,0,0" Style="{DynamicResource ButtonStyle_Black}"
+                                        Click="button_check_removeSkill_Click"
+                            />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="botton_check_selectAddSkill" Content="Add skill" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="100"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right"
+                        Click="botton_check_selectAddSkill_Click"
+                        />
+            </StackPanel>
+        </DataTemplate>
+
+
+        <!-- Npc -->
+        <DataTemplate x:Key="CheckNpcTemplate">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="120"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="NPC ID:" Margin="2,0,0,0"/>
+                        <TextBlock Text="["  Margin="10,0,0,0"/>
+                        <TextBlock Text="{Binding Amount, Converter={StaticResource npcIdToNpcNameConverter}}" FontWeight="Bold"/>
+                        <TextBlock Text="]"/>
+                    </StackPanel>
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+                </StackPanel>
+
+                <Button x:Name="button_checkSelectNPC" Content="Select NPC" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}" Height="20" VerticalAlignment="Bottom"
+                        Click="button_checkSelectNPC_Click"/>
+            </Grid>
+        </DataTemplate>
+        
+        <!-- NPC Act -->
+        <DataTemplate x:Key="CheckNpcStartScriptTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Start script to execute upon starting the quest:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="CheckNpcEndScriptTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="End script to execute upon ending the quest:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- ExceptBuff -->
+        <DataTemplate x:Key="CheckExceptBuffTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/2022240_buff_icon.png" Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock Text="Except Buff:" Margin="4,0,0,0"/>
+                    <TextBlock Text="[" Margin="4,0,0,0"/>
+                    <TextBlock Text="{Binding Amount, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold"/>
+                    <TextBlock Text="]"/>
+                </StackPanel>
+
+                <Grid Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="120"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Grid.Row="0"/>
+
+                    <Button x:Name="botton_Check_selectBuff" Content="Select Buff" Grid.Column="1" Style="{StaticResource ButtonStyle_Black}"  Height="20" Width="120"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                        Click="botton_Check_selectBuff_Click"/>
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Married -->
+        <DataTemplate x:Key="CheckMarriedTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Is married 💘:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Premium -->
+        <DataTemplate x:Key="CheckPremiumTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Is premium:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Weekly repeat -->
+        <DataTemplate x:Key="CheckWeeklyRepeatTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Is weekly repeat quest:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- DayByDay -->
+        <DataTemplate x:Key="CheckDayByDayTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Day by day (Repeatable everyday quest):" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- NormalAutoStart -->
+        <DataTemplate x:Key="CheckNormalAutoStartTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Is normal auto start quest:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <CheckBox IsChecked="{Binding Boolean, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"/>
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Start -->
+        <DataTemplate x:Key="CheckStartTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Start_t date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        <!-- End -->
+        <DataTemplate x:Key="CheckEndTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="End_t date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        
+        <!-- Start_t -->
+        <DataTemplate x:Key="CheckStart_TTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Start_t date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+        <!-- End_t -->
+        <DataTemplate x:Key="CheckEnd_TTemplate">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="End_t date:" Margin="4,0,0,0"/>
+                </StackPanel>
+                <DatePicker Name="datePicker_date" Text="" 
+                            DisplayDate="01/01/2020 00:00:00"
+                            SelectedDate="{Binding Date, Mode=TwoWay, StringFormat=yyyy-MM-dd, UpdateSourceTrigger=PropertyChanged}"
+                            />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- Template selector for Act-->
+        <DataTemplate x:Key="CheckRewardsColumnTemplate">
+            <ContentPresenter x:Name="CheckContent" Content="{Binding}"/>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.EndMeso}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckEndMesosTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Pop}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckFameTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Interval}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckIntervalTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.EquipAllNeed}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckEquipAllNeedTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.EquipSelectNeed}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckEquipSelectNeedTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.SenseMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitSenseTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.WillMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitWillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.InsightMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitInsightTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.CharismaMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitCharismaTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.CharmMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitCharmTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.CraftMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTraitCraftTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.LvMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckLvMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.LvMax}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckLvMaxTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.WorldMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckWorldMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.WorldMax}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckWorldMaxTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.SubJobFlags}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckSubJobFlagsTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.PetTamenessMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetTamenessMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.PetTamenessMax}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetTamenessMaxTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.PetRecallLimit}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetRecallLimitTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.PetAutoSpeakingLimit}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetAutoSpeakingLimitTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.TamingMobLevelMin}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckTamingMobLevelMinTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Npc}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNpcTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.FieldEnter}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckFieldEnterTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Pet}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPetTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Item}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckItemTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Mob}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckMobTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Job}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate">
+                        <Setter.Value>
+                            <Binding Path="IsPreBBDataWzFormat" 
+                                     Converter="{StaticResource BoolToTemplateConverter}">
+                                <Binding.ConverterParameter>
+                                    <x:Array Type="DataTemplate">
+                                        <StaticResource ResourceKey="CheckJobTemplate_PreBB"/>
+                                        <StaticResource ResourceKey="CheckJobTemplate"/>
+                                    </x:Array>
+                                </Binding.ConverterParameter>
+                            </Binding>
+                        </Setter.Value>
+                    </Setter>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Quest}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckQuestTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Info}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckQuestInfoTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.InfoEx}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckQuestInfoExTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.InfoNumber}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckInfoNumberTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.DayOfWeek}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckDayOfWeekTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Skill}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckSkillTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.ExceptBuff}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckExceptBuffTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Startscript}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNpcStartScriptTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Endscript}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNpcEndScriptTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Married}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckMarriedTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Premium}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckPremiumTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.WeeklyRepeat}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckWeeklyRepeatTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.DayByDay}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckDayByDayTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.NormalAutoStart}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNormalAutoStartTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Start}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckStartTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.End}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckEndTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Start_t}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckStart_TTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.End_t}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckEnd_TTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Static local:QuestEditorCheckType.Null}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNullTemplate}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding CheckType}" Value="{x:Null}">
+                    <Setter TargetName="CheckContent" Property="ContentTemplate" Value="{StaticResource CheckNullTemplate}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Quest List -->
+        <GroupBox Header="Quest List" Grid.Column="0" Margin="10" FontWeight="Bold">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+
+                <TextBox x:Name="searchBox" Grid.Row="0" Margin="0,0,0,5" 
+                         TextChanged="SearchBox_TextChanged"/>
+                <ListBox x:Name="listbox_Quest" Grid.Row="1" ItemsSource="{Binding FilteredQuests}" Margin="0,0,0,5"
+                         SelectionChanged="QuestListBox_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="[" FontWeight="Normal"/>
+                                <TextBlock Text="{Binding Id}" FontWeight="Normal"/>
+                                <TextBlock Text="]" FontWeight="Normal"/>
+                                <TextBlock Margin="5,0,0,0" Text="{Binding Name}" FontWeight="Normal"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30" Grid.Row="2" 
+                        Style="{DynamicResource ButtonStyle_Black}"
+                        Click="button_addNewQuest_Click"/>
+            </Grid>
+        </GroupBox>
+
+        <!-- Quest Editor -->
+        <GroupBox Header="Quest Editor" Grid.Column="1" Margin="10" FontWeight="Bold">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="20"/>
+                </Grid.RowDefinitions>
+
+                <TabControl Grid.Row="0">
+                    <!-- Quest Info Tab -->
+                    <TabItem Header="Quest Info (QuestInfo.img)" FontWeight="Normal">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="25"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Foreground="Gray" Margin="0,0,0,10">The quest <Bold>information</Bold>, such as quest name, parent name.</TextBlock>
+
+                            <ScrollViewer Grid.Row="1">
+                                <StackPanel>
+                                    <!-- Quest name -->
+                                    <TextBlock Text="Name:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Name}"/>
+
+                                    <!-- Parent quest-->
+                                    <TextBlock Text="Parent quest:" FontWeight="Bold"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="7*"/>
+                                            <ColumnDefinition Width="10"/>
+                                            <ColumnDefinition Width="120"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Parent}" Grid.Column="0"/>
+                                        <Button x:Name="button_selectParentFromList" Content="Select" 
+                                                Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                Style="{DynamicResource ButtonStyle_Black}"
+                                                Click="button_selectParentFromList_Click"
+                                                />
+                                    </Grid>
+
+                                    <!-- Quest area -->
+                                    <TextBlock Text="Quest area code:" FontWeight="Bold"/>
+                                    <ComboBox x:Name="comboBox_questArea" 
+                                              Width="200" HorizontalAlignment="Left"
+                                              ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"  
+                                              SelectedItem="{Binding SelectedQuest.Area, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              >
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <!-- Quest order -->
+                                    <TextBlock Text="Order:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Order}"/>
+
+                                    <!-- Other boolean properties-->
+                                    <CheckBox x:Name="checkbox_blocked" Content="Blocked" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.Blocked}"/>
+                                    <CheckBox x:Name="checkbox_autoStart" Content="Auto Start" FontWeight="Bold" IsChecked="{Binding SelectedQuest.AutoStart}"/>
+                                    <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
+                                    <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
+                                    <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                                    <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
+                                    <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
+
+                                    <TextBlock Text="Show layer tag:" FontWeight="Bold" Margin="0,5,0,0"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ShowLayerTag}" />
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <!-- For quest descriptions -->
+                                    <TextBlock Text="Summary:" FontWeight="Bold"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.Summary}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="Start quest description: (0)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtStartTab" Content="Disable at start tab" IsChecked="{Binding SelectedQuest.DisableAtStartTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc0}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="Active quest description: (1)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtPerformTab" Content="Disable at perform tab" IsChecked="{Binding SelectedQuest.DisableAtPerformTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc1}" AcceptsReturn="True" />
+
+                                    <TextBlock Text="End quest description: (2)" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_disableAtCompleteTab" Content="Disable at complete tab"  IsChecked="{Binding SelectedQuest.DisableAtCompleteTab}"/>
+                                    <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.QuestInfoDesc2}" AcceptsReturn="True" />
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <TextBlock Text="Demand Summary:" FontWeight="Bold"/>
+                                    <Image Source="/Images/Quest/summary_icon.summary.png" Height="15" Stretch="Uniform"  HorizontalAlignment="Left"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="170"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Margin="0,0,0,5" Grid.Column="0" Text="{Binding SelectedQuest.DemandSummary}" AcceptsReturn="True" />
+                                        <Button x:Name="button_generateDemandSummary" Grid.Column="1" Content="Generate from 'Check'" Margin="5,0,0,0" 
+                                                Height="25" VerticalAlignment="Bottom"
+                                                Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateDemandSummary_Click"
+                                                />
+                                    </Grid>
+
+
+                                    <TextBlock Text="Reward Summary:" FontWeight="Bold"/>
+                                    <Image Source="/Images/Quest/QuestIcon.4.0.png" Height="15" Stretch="Uniform" HorizontalAlignment="Left"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="170"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.RewardSummary}" AcceptsReturn="True" />
+                                        <Button x:Name="button_generateRewardSummary" Grid.Column="1" Content="Generate from 'Act'" Margin="5,0,0,0" 
+                                                Height="25" VerticalAlignment="Bottom"
+                                                Style="{DynamicResource ButtonStyle_DeleteQuest}" Click="button_generateRewardSummary_Click"
+                                                />
+                                    </Grid>
+
+                                    <!-- paddings -->
+                                    <Grid Margin="0,0,0,10"/>
+
+                                    <!-- For medals -->
+                                    <TextBlock Text="Misc properties:" TextDecorations="Underline" FontWeight="Bold"/>
+                                    <CheckBox x:Name="checkbox_isMedal" Content="Medal" FontWeight="Bold" Margin="0,5,0,0" IsChecked="{Binding SelectedQuest.IsMedal}"/>
+                                    <StackPanel Margin="20,0,0,0" 
+                                                Visibility="{Binding SelectedQuest.IsMedal, Mode=TwoWay, Converter={StaticResource booleanToVisibility2Converter}}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Medal category:"/>
+                                            <ComboBox 
+                                                ItemsSource="{Binding Source={StaticResource QuestMedalTypeEnum}}"  
+                                                SelectedValue="{Binding SelectedQuest.MedalCategory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                SelectedValuePath="."
+                                                Margin="20,0,0,0" Width="100">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}"/>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                            <TextBlock Text="View medal Item:"/>
+                                            <StackPanel Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Top">
+                                                <TextBlock Text="["/>
+                                                <TextBlock Text="{Binding SelectedQuest.ViewMedalItem, Converter={StaticResource itemIdToItemNameConverter}}" FontWeight="Bold" Margin="2,0,0,0"/>
+                                                <TextBlock Text="]" Margin="2,0,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="8*"/>
+                                                <ColumnDefinition Width="10"/>
+                                                <ColumnDefinition Width="120"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <TextBox Margin="0,0,0,5" Text="{Binding SelectedQuest.ViewMedalItem}" Grid.Column="0"/>
+                                            <Button x:Name="button_selectmedalItem" Content="Select" 
+                                                Grid.Column="2" Margin="5,0,0,0" VerticalAlignment="Top"
+                                                Style="{DynamicResource ButtonStyle_Black}"
+                                                    Click="button_selectmedalItem_Click"
+                                                />
+                                        </Grid>
+
+                                    </StackPanel>
+
+                                    <!-- bottom padding-->
+                                    <Grid Margin="0,0,0,30"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- Say Info Tab -->
+                    <TabItem Header="Say Info (SayInfo.img)"  FontWeight="Normal">
+                        <ScrollViewer>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <TabControl Grid.Row="1">
+                                    <!-- Start quest-->
+                                    <TabItem Header="Start quest conversation" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
+
+                                            <ContentControl x:Name="dataGrid_ConversationStart" Grid.Row="1" 
+                                                            ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
+                                                            Content="{Binding SelectedQuest.SayInfoStartQuest}">
+                                            </ContentControl>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- End quest-->
+                                    <TabItem Header="End quest conversation" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say in a conversation when starting, or completing the quest. If there is no Yes or No text attached to it, it will be a Next() or NextPrev() NPC conversation." Foreground="Gray"/>
+
+                                            <ContentControl x:Name="DataGrid_conversationEndQuest" Grid.Row="3" 
+                                                            ContentTemplate="{StaticResource ConversationDataGridTemplate}" 
+                                                            Content="{Binding SelectedQuest.SayInfoEndQuest}">
+                                            </ContentControl>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- "stop", start quest info -->
+                                    <TabItem Header="'Stop' start quest conversation" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say when certain conditions to start, or to end the quest is not met." Foreground="Gray"/>
+
+                                            <ContentControl x:Name="DataGrid_conversationStopStartQuest" Grid.Row="3" 
+                                                            ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
+                                                            Content="{Binding SelectedQuest.SayInfoStop_StartQuest}">
+                                            </ContentControl>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- "stop", start quest info -->
+                                    <TabItem Header="'Stop' end quest conversation" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,10" Text="What the NPC would say when certain conditions to start, or to end the quest is not met." Foreground="Gray"/>
+
+                                            <ContentControl x:Name="DataGrid_conversationStopEndQuest" Grid.Row="3" 
+                                                            ContentTemplate="{StaticResource StopConversationDataGridTemplate}" 
+                                                            Content="{Binding SelectedQuest.SayInfoStop_EndQuest}">
+                                            </ContentControl>
+                                        </Grid>
+                                    </TabItem>
+                                </TabControl>
+                            </Grid>
+                        </ScrollViewer>
+                    </TabItem>
+
+                    <!-- Check Conditions Tab -->
+                    <TabItem Header="Check Conditions (Check.img)" FontWeight="Normal" >
+                        <Grid>
+                            <ScrollViewer>
+                                <TabControl Grid.Row="1">
+                                    <!-- Start quest-->
+                                    <TabItem Header="Start quest check (0)" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,5" Foreground="Gray">The actions to be <Bold>checked</Bold> when starting the quest. (i.e: requirements)</TextBlock>
+
+                                            <DataGrid x:Name="DataGrid_checkStartQuest" Grid.Row="1" 
+                                                      ItemsSource="{Binding SelectedQuest.CheckStartInfo}"
+                                                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                                <DataGrid.Columns>
+                                                    <!-- Conversation Type Column -->
+                                                    <DataGridTemplateColumn Header="Type" Width="85">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding Source={StaticResource CheckTypeEnum}}"
+                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                </ComboBox>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+
+                                                    <!-- Rewards Column -->
+                                                    <DataGridTemplateColumn Header="Rewards" Width="*">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <StaticResource ResourceKey="CheckRewardsColumnTemplate"/>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- End quest-->
+                                    <TabItem Header="End quest check (1)" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Margin="0,0,0,5" Foreground="Gray">The actions to be <Bold>checked</Bold> when completing the quest. (i.e: requirements)</TextBlock>
+
+                                            <DataGrid x:Name="DataGrid_checkEndQuest" Grid.Row="1" 
+                                                      ItemsSource="{Binding SelectedQuest.CheckEndInfo}"
+                                                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                                <DataGrid.Columns>
+                                                    <!-- Conversation Type Column -->
+                                                    <DataGridTemplateColumn Header="Type" Width="80">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ComboBox SelectedItem="{Binding CheckType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding Source={StaticResource CheckTypeEnum}}"
+                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                </ComboBox>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+
+                                                    <!-- Rewards Column -->
+                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <StaticResource ResourceKey="CheckRewardsColumnTemplate"/>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
+                                    </TabItem>
+
+                                </TabControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+
+                    <!-- Act Requirements Tab -->
+                    <TabItem Header="Act Requirements (Act.img)" FontWeight="Normal">
+                        <Grid>
+                            <ScrollViewer>
+
+                                <TabControl Grid.Row="1">
+                                    <!-- Start quest-->
+                                    <TabItem Header="Start quest action (0)" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Foreground="Gray" Margin="0,0,0,5">The actions to be <Bold>given</Bold> when starting the quest. (i.e: give quest item, give rewards)</TextBlock>
+
+                                            <DataGrid x:Name="DataGrid_actStartQuest" Grid.Row="1" 
+                                                      ItemsSource="{Binding SelectedQuest.ActStartInfo}"
+                                                      AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                                <DataGrid.Columns>
+                                                    <!-- Conversation Type Column -->
+                                                    <DataGridTemplateColumn Header="Type" Width="85">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          ItemsSource="{Binding Source={StaticResource ActTypeEnum}}"
+                                                                          MaxHeight="30" VerticalAlignment="Top">
+                                                                </ComboBox>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+
+                                                    <!-- Rewards Column -->
+                                                    <DataGridTemplateColumn Header="Rewards" Width="*">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <StaticResource ResourceKey="ActRewardsColumnTemplate"/>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
+                                    </TabItem>
+
+                                    <!-- End quest-->
+                                    <TabItem Header="End quest action (1)" FontWeight="Normal">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="24"/>
+                                                <RowDefinition Height="*"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Grid.Row="0" Foreground="Gray" Margin="0,0,0,5">The actions to be <Bold>given</Bold> when completing the quest. (i.e: give quest item, give rewards)</TextBlock>
+
+                                            <DataGrid x:Name="DataGrid_actEndQuest" Grid.Row="1" 
+                                                          ItemsSource="{Binding SelectedQuest.ActEndInfo}"
+                                                          AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
+                                                <DataGrid.Columns>
+                                                    <!-- Conversation Type Column -->
+                                                    <DataGridTemplateColumn Header="Type" Width="80">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <DataTemplate>
+                                                                <ComboBox SelectedItem="{Binding ActType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                              ItemsSource="{Binding Source={StaticResource ActTypeEnum}}"
+                                                                              MaxHeight="30" VerticalAlignment="Top">
+                                                                </ComboBox>
+                                                            </DataTemplate>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+
+                                                    <!-- Rewards Column -->
+                                                    <DataGridTemplateColumn Header="Rewards" Width="3*">
+                                                        <DataGridTemplateColumn.CellTemplate>
+                                                            <StaticResource ResourceKey="ActRewardsColumnTemplate"/>
+                                                        </DataGridTemplateColumn.CellTemplate>
+                                                    </DataGridTemplateColumn>
+                                                </DataGrid.Columns>
+                                            </DataGrid>
+                                        </Grid>
+                                    </TabItem>
+
+                                </TabControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+
+                <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right">
+                    <Button x:Name="button_deleteQuest" Content="Delete Quest" Margin="5,0,0,0" Width="120"
+                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
+                                    Click="button_deleteQuest_Click"/>
+                    <Button x:Name="button_saveQuest" Content="Save Quest" Margin="5,0,0,0"  Width="120"
+                                    Style="{DynamicResource ButtonStyle_Black}"
+                                    Click="button_saveQuest_Click"/>
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+    </Grid>
+</Window>
