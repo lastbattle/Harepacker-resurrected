@@ -2152,7 +2152,7 @@ namespace HaRepacker.GUI
             threadDone = true;
         }
 
-        private void nXForamtToolStripMenuItem_Click(object sender, EventArgs e)
+        private void nXFormatToolStripMenuItem_Click(object sender, EventArgs e)
         {
             OpenFileDialog dialog = new OpenFileDialog()
             {
