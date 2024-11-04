@@ -7,7 +7,43 @@
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
+
+    <!-- AOT and Trimming Configuration -->
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <PublishAot>false</PublishAot>
+    
+    <!-- Required for WinForms AOT -->
+    <!--<IlcDisableReflection>false</IlcDisableReflection>
+    <IlcTrimMetadata>false</IlcTrimMetadata>
+    <IlcFoldIdenticalMethodBodies>false</IlcFoldIdenticalMethodBodies>
+    <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>-->
+
+    <!-- Trimming Configuration -->
+    <!--<PublishTrimmed>true</PublishTrimmed>
+    <CustomResourceTypesSupport>true</CustomResourceTypesSupport>
+    <TrimMode>partial</TrimMode>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+    <_SuppressWpfTrimError>true</_SuppressWpfTrimError>-->
+    
+    <!-- Enable Native debugging -->
+    <StripSymbols>false</StripSymbols>
+
+    <!-- Required for WinForms -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
+    <!-- x64-specific configuration -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+  <!-- x86-specific configuration -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86'">
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -16,10 +52,12 @@
     <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+
   <PropertyGroup>
     <Win32Resource>
     </Win32Resource>
   </PropertyGroup>
+  
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CodeAnalysisLogFile>bin\x86\Debug\HaCreator.exe.CodeAnalysisLog.xml</CodeAnalysisLogFile>
@@ -159,6 +197,7 @@
     <Resource Include="Images\new_icon.png" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="8.0.0" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
     <PackageReference Include="MonoGame.Framework.WindowsDX">
