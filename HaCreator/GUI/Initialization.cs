@@ -541,7 +541,7 @@ namespace HaCreator.GUI
                     string mobIdStr = mobImage.Name.Replace(".img", "");
                     int mobId = int.Parse(mobIdStr);
 
-                    WzImageProperty standCanvas = (WzCanvasProperty) mobImage["stand"]?["0"].GetLinkedWzImageProperty();
+                    WzImageProperty standCanvas = (WzCanvasProperty) mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
 
                     if (standCanvas == null) continue;
 
@@ -777,7 +777,8 @@ namespace HaCreator.GUI
 
                                             lock (Program.InfoManager.ItemIconCache)
                                             {
-                                                Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                                if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
+                                                    Program.InfoManager.ItemIconCache.Add(intName, icon);
                                             }
                                         }
                                     }
@@ -797,7 +798,8 @@ namespace HaCreator.GUI
 
                                         lock (Program.InfoManager.ItemIconCache)
                                         {
-                                            Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                            if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
+                                                Program.InfoManager.ItemIconCache.Add(intName, icon);
                                         }
                                     }
                                 }
