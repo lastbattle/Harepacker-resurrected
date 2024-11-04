@@ -40,6 +40,7 @@ using MapleLib.Configuration;
 using System.Runtime.CompilerServices;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib.Serializer;
+using static HaSharedLibrary.Util.AssemblyBitnessDetector;
 
 namespace HaRepacker.GUI
 {
@@ -783,11 +784,23 @@ namespace HaRepacker.GUI
 
                 if (filePathLowerCase.EndsWith("zlz.dll") || filePathLowerCase.EndsWith("zlz64.dll"))
                 {
-                    var is64BitDll = filePathLowerCase.EndsWith("zlz64.dll");
-                    var (bitness, architecture) = AssemblyBitnessDetector.GetAssemblyInfo();
+                    var state = ApplicationStateDetector.DetectApplicationState();
 
-                    bool isCompatible = (is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
-                                        (!is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit32));
+                    var is64BitDll = filePathLowerCase.EndsWith("zlz64.dll");
+
+                    bool isCompatible = false;
+                    if (state.IsPublished)
+                    {
+                        bool is64BitProcess = Environment.Is64BitProcess;
+                        isCompatible = (is64BitDll && (is64BitProcess)) ||
+                            (!is64BitDll && (!is64BitProcess));
+                    }
+                    else
+                    {
+                        var (bitness, architecture) = AssemblyBitnessDetector.GetAssemblyInfo();
+                        isCompatible = (is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit64)) ||
+                                            (!is64BitDll && (bitness == AssemblyBitnessDetector.Bitness.Bit32));
+                    }
 
                     if (isCompatible)
                     {
