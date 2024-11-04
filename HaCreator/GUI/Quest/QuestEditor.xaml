@@ -27,7 +27,6 @@
         <converter:JobIdToJobNameConverter x:Key="jobIdToJobNameConverter"/>
         <converter:NegativeOneToTrueConverter x:Key="negativeOneToTrueConverter"/>
         <converter:SkillIdToSkillNameConverter x:Key="skillIdToSkillNameConverter"/>
-        <converter:QuestStateIdToQuestStateConverter x:Key="questStateIdToQuestStateConverter"/>
         <converter:JobClassBitfieldToClassNamesConverter x:Key="jobClassBitfieldToClassNamesConverter"/>
         <converter:EnumNameIntValueConverter x:Key="enumNameIntValueConverter"/>
         <converter:CharacterSubJobTypeConverter x:Key="characterSubJobTypeConverter"/>
@@ -921,7 +920,7 @@
                                         <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
                                         <ComboBox x:Name="comboBox_questState" 
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
-                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   SelectedValuePath="."
                                                   DisplayMemberPath=".">
                                             <ComboBox.ItemTemplate>
@@ -1899,7 +1898,7 @@
                                         <TextBlock Text="State:" Width="70" Margin="10,0,0,0"/>
                                         <ComboBox x:Name="comboBox_questState" 
                                                   ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
-                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                                  SelectedValue="{Binding QuestState, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   SelectedValuePath="."
                                                   DisplayMemberPath=".">
                                             <ComboBox.ItemTemplate>
@@ -1989,7 +1988,7 @@
                                     </StackPanel>
                                     <!--<ComboBox x:Name="comboBox_questInfoEx_Condition" 
                                               ItemsSource="{Binding Source={StaticResource QuestStateTypeEnum}}"  
-                                              SelectedValue="{Binding Condition, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, Converter={StaticResource questStateIdToQuestStateConverter}}"
+                                              SelectedValue="{Binding Condition, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               SelectedValuePath="."
                                               DisplayMemberPath=".">
                                         <ComboBox.ItemTemplate>
