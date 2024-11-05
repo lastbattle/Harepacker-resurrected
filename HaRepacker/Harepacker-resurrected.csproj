@@ -10,8 +10,8 @@
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
     
     <!-- AOT and Trimming Configuration -->
-    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
-    <PublishAot>false</PublishAot>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+    <PublishAot>true</PublishAot>
 
     <!-- Required for WinForms AOT -->
     <!--<IlcDisableReflection>false</IlcDisableReflection>
@@ -24,12 +24,12 @@
     <!--<PublishTrimmed>true</PublishTrimmed>
     <CustomResourceTypesSupport>true</CustomResourceTypesSupport>
     <TrimMode>partial</TrimMode>
-    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>-->
     <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
     <_SuppressWpfTrimError>true</_SuppressWpfTrimError>-->
 
     <!-- Enable Native debugging -->
-    <StripSymbols>false</StripSymbols>
+    <!--<StripSymbols>false</StripSymbols>-->
 
     <!-- Required for WinForms -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
@@ -78,7 +78,15 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
