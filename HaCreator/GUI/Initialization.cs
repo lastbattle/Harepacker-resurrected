@@ -769,16 +769,19 @@ namespace HaCreator.GUI
                                     {
                                         string itemId = itemImg.Name;
                                         WzSubProperty itemProp = itemImg as WzSubProperty;
-                                        WzCanvasProperty icon = itemProp["info"]?["icon"] as WzCanvasProperty;
-                                        if (icon != null)
+                                        if (itemProp != null)
                                         {
-                                            int intName = 0;
-                                            int.TryParse(itemId, out intName);
-
-                                            lock (Program.InfoManager.ItemIconCache)
+                                            WzCanvasProperty icon = itemProp?["info"]?["icon"] as WzCanvasProperty;
+                                            if (icon != null)
                                             {
-                                                if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
-                                                    Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                                int intName = 0;
+                                                int.TryParse(itemId, out intName);
+
+                                                lock (Program.InfoManager.ItemIconCache)
+                                                {
+                                                    if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
+                                                        Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                                }
                                             }
                                         }
                                     }
