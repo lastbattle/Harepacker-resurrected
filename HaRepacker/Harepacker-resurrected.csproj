@@ -78,6 +78,13 @@
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Remove="Resources\OrangeMushroom\**" />
+    <EmbeddedResource Remove="Resources\OrangeMushroom\**" />
+    <None Remove="Resources\OrangeMushroom\**" />
+    <Page Remove="Resources\OrangeMushroom\**" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Update="GUI\Input\DoubleInput.cs">
       <SubType>Component</SubType>
@@ -99,20 +106,13 @@
     <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj" />
   </ItemGroup>
   <ItemGroup>
-  </ItemGroup>
-  <ItemGroup>
     <Content Include="HaLogo.ico" />
     <Content Include="Resources\arrow_left.png" />
     <Content Include="Resources\arrow_right.png" />
-    <Resource Include="Resources\loading.gif" />
-    <Content Include="Resources\OrangeMushroom\orangeMushroom_Jump.gif" />
-    <Content Include="Resources\OrangeMushroom\orangeMushroom_Stand.gif" />
     <Content Include="Resources\Pause.png" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.ComponentModel.Composition" Version="8.0.0" />
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="AvalonEdit" Version="6.3.0.90" />
     <PackageReference Include="Extended.Wpf.Toolkit" Version="4.6.1" />
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.2.1105" />
@@ -125,7 +125,6 @@
     <PackageReference Include="SharpDX.MediaFoundation" Version="4.2.0" />
     <PackageReference Include="SharpDX.XAudio2" Version="4.2.0" />
     <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
-    <PackageReference Include="WpfAnimatedGif" Version="2.0.2" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="GUI\Resources.Designer.cs" />
