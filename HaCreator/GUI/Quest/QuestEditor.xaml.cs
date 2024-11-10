@@ -3017,6 +3017,12 @@ namespace HaCreator.GUI.Quest
                 return;
 
             QuestEditorModel quest = _selectedQuest;
+
+            if (!Program.InfoManager.QuestInfos.ContainsKey(quest.Id.ToString())) // is still being selected after deleting
+            {
+                return; 
+            }
+
             WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
             WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
 
@@ -4006,34 +4012,75 @@ namespace HaCreator.GUI.Quest
             Quests.Remove(_selectedQuest);
             FilteredQuests.Remove(_selectedQuest);
 
-
             //////////////////
             /// Remove from QuestInfo.img
             //////////////////
-            WzSubProperty questWzSubProperty = Program.InfoManager.QuestInfos[quest.Id.ToString()];
+            {
+                WzSubProperty questWzSubProperty = Program.InfoManager.QuestInfos[quest.Id.ToString()];
 
-            // remove it off WzDirectory in the WZ
-            WzImage questInfoParentImg = questWzSubProperty.Parent as WzImage;
-            questWzSubProperty.Remove();
+                Program.InfoManager.QuestInfos.Remove(quest.Id.ToString());
 
-            // flag unsaved changes bool
-            _unsavedChanges = true;
-            Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                // remove it off WzDirectory in the WZ
+                WzImage questInfoParentImg = questWzSubProperty.Parent as WzImage;
+                questWzSubProperty.Remove();
+
+                // flag unsaved changes bool
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+            }
 
             //////////////////
             /// Remove from Say.img
             //////////////////
-            WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
-            if (oldSayWzProp != null)
             {
-                Program.InfoManager.QuestSays.Remove(quest.Id.ToString());
-
-                WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
                 if (oldSayWzProp != null)
-                    oldSayWzProp.Remove();
+                {
+                    Program.InfoManager.QuestSays.Remove(quest.Id.ToString());
 
-                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                    WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldSayWzProp != null)
+                        oldSayWzProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                }
             }
+
+            //////////////////
+            /// Remove from Act.img
+            //////////////////
+            {
+                WzSubProperty oldActImgProp = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null;
+                if (oldActImgProp != null)
+                {
+                    Program.InfoManager.QuestActs.Remove(quest.Id.ToString());
+
+                    WzImage questActParentImg = oldActImgProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldActImgProp != null)
+                        oldActImgProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                }
+            }
+
+            //////////////////
+            /// Remove from Check.img
+            //////////////////
+            {
+                WzSubProperty oldCheckImgProp = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null;
+                if (oldCheckImgProp != null)
+                {
+                    Program.InfoManager.QuestChecks.Remove(quest.Id.ToString());
+
+                    WzImage questCheckParentImg = oldCheckImgProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldCheckImgProp != null)
+                        oldCheckImgProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                }
+            }
+
+            SelectedQuest = null; // update UI
         }
         #endregion
 
