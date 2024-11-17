@@ -23,6 +23,7 @@ SOFTWARE.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -53,8 +54,8 @@ namespace HaCreator.MapSimulator
         public static void DrawUIFrame(System.Drawing.Graphics graphics,
             System.Drawing.Color backgroundColor,
             Bitmap ne, Bitmap nw, Bitmap se, Bitmap sw,
-             Bitmap e, Bitmap w, Bitmap n, Bitmap s,
-             Bitmap c,
+            Bitmap e, Bitmap w, Bitmap n, Bitmap s,
+            Bitmap c, int startBgYPaint,
             int targetImageWidth, int targetImageHeight)
         {
             RectangleF fillRectangleBGRange = new RectangleF(
@@ -69,9 +70,39 @@ namespace HaCreator.MapSimulator
             // Fill background with bitmap
             if (c != null)
             {
-                for (int column = (int)fillRectangleBGRange.Y; column < fillRectangleBGRange.Width; column += c.Width)
-                    for (int row = (int)fillRectangleBGRange.X; row < fillRectangleBGRange.Height; row += c.Height)
-                        graphics.DrawImage(c.ToImage(), new PointF(row, column));
+                // Calculate the actual drawing boundaries
+                int startX = (int)fillRectangleBGRange.X;
+                int startY = (int)fillRectangleBGRange.Y + startBgYPaint;
+                int endX = (int)(fillRectangleBGRange.X + fillRectangleBGRange.Width);
+                int endY = (int)(fillRectangleBGRange.Y + fillRectangleBGRange.Height) + 5;
+
+                // Draw the colored background pattern within the boundaries
+                for (int y = startY; y < endY; y += c.Height)
+                {
+                    for (int x = startX; x < endX; x += c.Width)
+                    {
+                        // Calculate the remaining space for this tile
+                        int remainingWidth = Math.Min(c.Width, endX - x);
+                        int remainingHeight = Math.Min(c.Height, endY - y);
+
+                        if (remainingWidth <= 0 || remainingHeight <= 0)
+                            continue;
+
+                        if (remainingWidth == c.Width && remainingHeight == c.Height)
+                        {
+                            // Draw full tile
+                            graphics.DrawImage(c, new Point(x, y));
+                        }
+                        else
+                        {
+                            // Draw partial tile for edge cases
+                            Rectangle sourceRect = new(0, 0, remainingWidth, remainingHeight);
+                            Rectangle destRect = new(x, y, remainingWidth, remainingHeight);
+
+                            graphics.DrawImage(c, destRect, sourceRect, GraphicsUnit.Pixel);
+                        }
+                    }
+                }
             }
 
             // Frames

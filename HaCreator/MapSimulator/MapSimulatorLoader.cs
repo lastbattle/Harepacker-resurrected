@@ -773,26 +773,34 @@ namespace HaCreator.MapSimulator {
             }
 
             WzSubProperty maxMapProperty = (WzSubProperty)minimapFrameProperty["MaxMap"];
-            WzSubProperty miniMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
+            WzSubProperty minMapProperty = (WzSubProperty)minimapFrameProperty["MinMap"];
             WzSubProperty maxMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MaxMapMirror"]; // for Zero maps
-            WzSubProperty miniMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
+            WzSubProperty minMapMirrorProperty = (WzSubProperty)minimapFrameProperty["MinMapMirror"]; // for Zero maps
 
 
-            WzSubProperty useFrame;
+            WzSubProperty useFrameMaxMap;
+            WzSubProperty useFrameMinMap;
             if (mapBoard.MapInfo.zeroSideOnly || MapConstants.IsZerosTemple(mapBoard.MapInfo.id)) // zero's temple
-                useFrame = maxMapMirrorProperty;
-            else useFrame = maxMapProperty;
+            {
+                useFrameMaxMap = maxMapMirrorProperty;
+                useFrameMinMap = minMapMirrorProperty;
+            }
+            else
+            {
+                useFrameMaxMap = maxMapProperty;
+                useFrameMinMap = minMapProperty;
+            }
 
             // Wz frames
-            System.Drawing.Bitmap c = ((WzCanvasProperty)useFrame?["c"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap e = ((WzCanvasProperty)useFrame?["e"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap n = ((WzCanvasProperty)useFrame?["n"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap s = ((WzCanvasProperty)useFrame?["s"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap w = ((WzCanvasProperty)useFrame?["w"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap ne = ((WzCanvasProperty)useFrame?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
-            System.Drawing.Bitmap nw = ((WzCanvasProperty)useFrame?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
-            System.Drawing.Bitmap se = ((WzCanvasProperty)useFrame?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
-            System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrame?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
+            System.Drawing.Bitmap c = ((WzCanvasProperty)useFrameMaxMap?["c"])?.GetLinkedWzCanvasBitmap(); // the bg color
+            System.Drawing.Bitmap e = ((WzCanvasProperty)useFrameMaxMap?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap n = ((WzCanvasProperty)useFrameMaxMap?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap s = ((WzCanvasProperty)useFrameMaxMap?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap w = ((WzCanvasProperty)useFrameMaxMap?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap ne = ((WzCanvasProperty)useFrameMaxMap?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
+            System.Drawing.Bitmap nw = ((WzCanvasProperty)useFrameMaxMap?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
+            System.Drawing.Bitmap se = ((WzCanvasProperty)useFrameMaxMap?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
+            System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrameMaxMap?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
 
             // Constants
             const float TOOLTIP_FONTSIZE = 10f;
@@ -847,7 +855,8 @@ namespace HaCreator.MapSimulator {
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
-            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
+            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s, 
+                c, mapMark != null ? mapMark.Height : 0);
 
             HaUIGrid minimapUiGrid = new HaUIGrid(1, 1);
             minimapUiGrid.GetInfo().Margins.Top = 10;
@@ -857,7 +866,8 @@ namespace HaCreator.MapSimulator {
             fullMiniMapStackPanel.AddRenderable(minimapUiGrid);
 
             // Render final minimap Bitmap with UI frames
-            System.Drawing.Bitmap finalFullMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s);
+            System.Drawing.Bitmap finalFullMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s,
+                c, mapMark != null ? mapMark.Height : 0);
 
             Texture2D texturer_miniMapMinimised = finalMininisedMinimapBitmap.ToTexture2D(device);
             Texture2D texturer_miniMap = finalFullMinimapBitmap.ToTexture2D(device);
@@ -1008,7 +1018,7 @@ namespace HaCreator.MapSimulator {
                 System.Drawing.Bitmap bmp_tooltip = new System.Drawing.Bitmap(effective_width, effective_height);
                 using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_tooltip)) {
                     // Frames and background
-                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, effective_width, effective_height);
+                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, 0, effective_width, effective_height);
 
                     // Text
                     graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), WIDTH_PADDING / 2, HEIGHT_PADDING / 2);

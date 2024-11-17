@@ -45,10 +45,27 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             }
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="toDrawUI"></param>
+        /// <param name="color_bgFill"></param>
+        /// <param name="ne"></param>
+        /// <param name="nw"></param>
+        /// <param name="se"></param>
+        /// <param name="sw"></param>
+        /// <param name="e"></param>
+        /// <param name="w"></param>
+        /// <param name="n"></param>
+        /// <param name="s"></param>
+        /// <param name="c">The frame background color</param>
+        /// <param name="startBgXPaint">The y coordinates to add before painting the frame bg color</param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static System.Drawing.Bitmap RenderAndMergeMinimapUIFrame(HaUIStackPanel toDrawUI, System.Drawing.Color color_bgFill, 
             Bitmap ne, Bitmap nw, Bitmap se, Bitmap sw,
-             Bitmap e, Bitmap w, Bitmap n, Bitmap s) {
+            Bitmap e, Bitmap w, Bitmap n, Bitmap s,
+            Bitmap c, int startBgYPaint) {
             HaUISize size = toDrawUI.GetSize();
 
             System.Drawing.Bitmap finalBitmap = new System.Drawing.Bitmap(size.Width, size.Height);
@@ -56,7 +73,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject.Controls {
             // draw UI frame first
             using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(finalBitmap)) {
                 // Frames and background
-                UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, null, size.Width, size.Height);
+                UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, startBgYPaint, size.Width, size.Height);
 
                 // then render the full thing on top of it
                 System.Drawing.Bitmap miniMapWithoutFrameBitmap = toDrawUI.Render();
