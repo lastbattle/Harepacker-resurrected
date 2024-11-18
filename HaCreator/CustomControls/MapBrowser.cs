@@ -19,6 +19,7 @@ using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
 using System.Data.SQLite;
 using HaCreator.GUI.InstanceEditor;
+using System.Diagnostics;
 
 namespace HaCreator.CustomControls
 {
@@ -187,9 +188,9 @@ namespace HaCreator.CustomControls
                 int i = 0;
                 while (reader.Read()) {
                     string OpenedMapName = (string)reader["OpenedMapName"];
-                    Console.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");
+                    Debug.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");
 
-                    string mapid_str = OpenedMapName.Substring(0, 9);
+                    string mapid_str = OpenedMapName.Substring(0, Math.Min(OpenedMapName.Length, 9));
 
                     if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
                         Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
