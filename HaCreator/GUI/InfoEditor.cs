@@ -99,6 +99,9 @@ namespace HaCreator.GUI
                 case MapType.MapLogin:
                     IDLabel.Text = "MapLogin";
                     break;
+                case MapType.ITCPreview:
+                    IDLabel.Text = "ITCPreview";
+                    break;
                 case MapType.RegularMap:
                     if (info.id == -1) IDLabel.Text = "";
                     else IDLabel.Text = info.id.ToString();
@@ -424,7 +427,7 @@ namespace HaCreator.GUI
         {
             lock (multiBoard)
             {
-                if (info.mapType != MapType.CashShopPreview)
+                if (info.mapType != MapType.CashShopPreview && info.mapType != MapType.ITCPreview)
                 {
                     info.bgm = (string)bgmBox.SelectedItem;
                     info.mapMark = (string)markBox.SelectedItem;

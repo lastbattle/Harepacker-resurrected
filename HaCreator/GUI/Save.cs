@@ -41,6 +41,7 @@ namespace HaCreator.GUI
             else {
                 switch (board.MapInfo.mapType) {
                     case MapType.CashShopPreview:
+                    case MapType.ITCPreview:
                     case MapType.MapLogin:
                         idBox_mapId.Text = board.MapInfo.strMapName;
                         break;
@@ -60,6 +61,8 @@ namespace HaCreator.GUI
                 return MapType.MapLogin;
             else if (idBox_mapId.Text == "CashShopPreview")
                 return MapType.CashShopPreview;
+            else if (idBox_mapId.Text == "ITCPreview")
+                return MapType.ITCPreview;
             else
                 return MapType.RegularMap;
         }

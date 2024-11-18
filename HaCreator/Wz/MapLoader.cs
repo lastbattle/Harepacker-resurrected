@@ -158,6 +158,8 @@ namespace HaCreator.Wz
                     return MapType.MapLogin;
                 case "CashShopPreview.img":
                     return MapType.CashShopPreview;
+                case "ITCPreview.img":
+                    return MapType.ITCPreview;
                 default:
                     return MapType.RegularMap;
             }

@@ -233,7 +233,8 @@ namespace HaCreator.GUI
                 if (selectedItem.StartsWith("MapLogin")) // MapLogin, MapLogin1, MapLogin2, MapLogin3
                 {
                     List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                    foreach (WzDirectory uiWzDir in uiWzDirs) {
+                    foreach (WzDirectory uiWzDir in uiWzDirs)
+                    {
                         mapImage = (WzImage)uiWzDir?[selectedItem + ".img"];
                         if (mapImage != null)
                             break;
@@ -241,9 +242,11 @@ namespace HaCreator.GUI
                     mapName = streetName = categoryName = selectedItem;
                     info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
-                else if (selectedItem == "CashShopPreview") {
+                else if (selectedItem == "CashShopPreview")
+                {
                     List<WzDirectory> uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                    foreach (WzDirectory uiWzDir in uiWzDirs) {
+                    foreach (WzDirectory uiWzDir in uiWzDirs)
+                    {
                         mapImage = (WzImage)uiWzDir?["CashShopPreview.img"];
                         if (mapImage != null)
                             break;
@@ -251,11 +254,25 @@ namespace HaCreator.GUI
                     mapName = streetName = categoryName = "CashShopPreview";
                     info = new MapInfo(mapImage, mapName, streetName, categoryName);
                 }
-                else {
+                else if (selectedItem == "ITCPreview")
+                {
+                    var uiWzDirs = Program.WzManager.GetWzDirectoriesFromBase("ui");
+                    foreach (var uiWzDir in uiWzDirs)
+                    {
+                        mapImage = (WzImage)uiWzDir?["ITCPreview.img"];
+                        if (mapImage != null)
+                            break;
+                    }
+                    mapName = streetName = categoryName = "ITCPreview";
+                    info = new MapInfo(mapImage, mapName, streetName, categoryName);
+                }
+                else
+                {
                     string mapid_str = selectedItem.Substring(0, 9);
                     int.TryParse(mapid_str, out mapid);
 
-                    if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
+                    if (Program.InfoManager.MapsCache.ContainsKey(mapid_str))
+                    {
                         Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
 
                         mapImage = loadedMap.Item1;
@@ -264,7 +281,8 @@ namespace HaCreator.GUI
                         categoryName = loadedMap.Item4;
                         info = loadedMap.Item5;
                     }
-                    else {
+                    else
+                    {
                         MessageBox.Show("Map is missing.", "Error");
                         return; // map isnt available in Map.wz, despite it being listed on String.wz
                     }
