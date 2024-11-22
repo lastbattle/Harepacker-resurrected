@@ -85,6 +85,17 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        public QuestAreaCodeType _sortQuestAreaCode = QuestAreaCodeType.Unknown;
+        public QuestAreaCodeType SortQuestAreaCode
+        {
+            get { return _sortQuestAreaCode; }
+            set
+            {
+                this._sortQuestAreaCode = value;
+                OnPropertyChanged(nameof(SortQuestAreaCode));
+            }
+        }
+
         private ObservableCollection<QuestEditorModel> _quests = new ObservableCollection<QuestEditorModel>();
         public ObservableCollection<QuestEditorModel> Quests
         {
@@ -1731,15 +1742,38 @@ namespace HaCreator.GUI.Quest
         /// <param name="e"></param>
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            UpdateSortedQuestList();
+        }
+
+        /// <summary>
+        /// On quest area code selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void comboBox_questAreaSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateSortedQuestList();
+        }
+
+        /// <summary>
+        /// Updates the sorted quest list by quest name search term and area code
+        /// </summary>
+        private void UpdateSortedQuestList()
+        {
             // Create a temporary list first
-            ObservableCollection<QuestEditorModel> tempFilteredQuests = new ObservableCollection<QuestEditorModel>();
+            ObservableCollection<QuestEditorModel> tempFilteredQuests = new();
             string searchTerm = searchBox.Text.ToLower();
 
-            foreach (var quest in Quests)
+            foreach (QuestEditorModel quest in Quests)
             {
+                // Check name
                 if (quest.Name.ToLower().Contains(searchTerm) || quest.Id.ToString().Contains(searchTerm))
                 {
-                    tempFilteredQuests.Add(quest);
+                    // Check Area
+                    if (this._sortQuestAreaCode == QuestAreaCodeType.Unknown || quest.Area == this._sortQuestAreaCode)
+                    {
+                        tempFilteredQuests.Add(quest);
+                    }
                 }
             }
             // Replace the main list

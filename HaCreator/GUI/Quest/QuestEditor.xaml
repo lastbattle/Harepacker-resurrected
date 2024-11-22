@@ -2487,13 +2487,40 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="30"/>
                 </Grid.RowDefinitions>
 
-                <TextBox x:Name="searchBox" Grid.Row="0" Margin="0,0,0,5" 
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Area code:" 
+                               Grid.Column="0" Margin="5,0,0,0"
+                               FontWeight="Normal" 
+                               VerticalAlignment="Center"/>
+
+                    <ComboBox x:Name="comboBox_questAreaSort" 
+                              Grid.Column="1"
+                              Margin="20,0,0,0"
+                              ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"  
+                              SelectedItem="{Binding SortQuestAreaCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                              SelectionChanged="comboBox_questAreaSort_SelectionChanged">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource enumNameIntValueConverter}}" FontWeight="Normal" VerticalAlignment="Center"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+                
+
+                <TextBox x:Name="searchBox" Grid.Row="1" Margin="0,0,0,5" 
                          TextChanged="SearchBox_TextChanged"/>
-                <ListBox x:Name="listbox_Quest" Grid.Row="1" ItemsSource="{Binding FilteredQuests}" Margin="0,0,0,5"
+                <ListBox x:Name="listbox_Quest" Grid.Row="2" ItemsSource="{Binding FilteredQuests}" Margin="0,0,0,5"
                          SelectionChanged="QuestListBox_SelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -2507,7 +2534,7 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30" Grid.Row="2" 
+                <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30" Grid.Row="3" 
                         Style="{DynamicResource ButtonStyle_Black}"
                         Click="button_addNewQuest_Click"/>
             </Grid>
