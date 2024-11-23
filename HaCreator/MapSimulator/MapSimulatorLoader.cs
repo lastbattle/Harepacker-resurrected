@@ -534,13 +534,19 @@ namespace HaCreator.MapSimulator {
                     obj_Ui_BtCashShop.Y += backgrnd.Height;
 
                     WzSubProperty subProperty_BtMTS = (WzSubProperty)mainBarProperties?["BtMTS"]; // MTS
-                    UIObject obj_Ui_BtMTS = new UIObject(subProperty_BtMTS, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
-                        false,
-                        new Point(0, 0), device) {
-                    };
-                    obj_Ui_BtMTS.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
-                    obj_Ui_BtMTS.Y += backgrnd.Height;
-
+                    if (subProperty_BtMTS == null)
+                        subProperty_BtMTS = (WzSubProperty)mainBarProperties?["BtNPT"]; // MapleStory Japan uses a different name
+                    UIObject obj_Ui_BtMTS = null;
+                    if (subProperty_BtMTS != null)
+                    {
+                        obj_Ui_BtMTS = new UIObject(subProperty_BtMTS, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                            false,
+                            new Point(0, 0), device)
+                        {
+                        };
+                        obj_Ui_BtMTS.X += obj_Ui_BtCashShop.X - obj_Ui_BtCashShop.CanvasSnapshotWidth;
+                        obj_Ui_BtMTS.Y += backgrnd.Height;
+                    }
                     WzSubProperty subProperty_BtMenu = (WzSubProperty)mainBarProperties?["BtMenu"]; // Menu
                     UIObject obj_Ui_BtMenu = new UIObject(subProperty_BtMenu, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
                         false,

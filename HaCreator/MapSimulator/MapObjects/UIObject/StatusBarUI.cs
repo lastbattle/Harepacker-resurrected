@@ -30,7 +30,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
             : base(frame, false) {
 
             uiButtons.Add(obj_Ui_BtCashShop);
-            uiButtons.Add(obj_Ui_BtMTS);
+            if (obj_Ui_BtMTS != null)
+                uiButtons.Add(obj_Ui_BtMTS);
             uiButtons.Add(obj_Ui_BtMenu);
             uiButtons.Add(obj_Ui_BtSystem);
             uiButtons.Add(obj_Ui_BtChannel);
