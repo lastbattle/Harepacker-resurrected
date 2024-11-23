@@ -27,6 +27,22 @@ namespace HaCreator.GUI.Quest
             {"유니크", QuestEditorActInfoPotentialType.Unique},
             {"레전드리", QuestEditorActInfoPotentialType.Legendary},
 
+            // MapleStory China
+            {"C级", QuestEditorActInfoPotentialType.Normal},
+            {"B级", QuestEditorActInfoPotentialType.Rare},
+            {"A级", QuestEditorActInfoPotentialType.Epic},
+            {"S级", QuestEditorActInfoPotentialType.Unique},
+            {"SS级", QuestEditorActInfoPotentialType.Legendary},
+
+            // MapleStory Taiwan
+            {"一般", QuestEditorActInfoPotentialType.Normal},
+            {"普通", QuestEditorActInfoPotentialType.Normal},
+            {"正常", QuestEditorActInfoPotentialType.Normal},
+            {"特殊", QuestEditorActInfoPotentialType.Rare},
+            {"稀有", QuestEditorActInfoPotentialType.Epic},
+            {"罕見", QuestEditorActInfoPotentialType.Unique},
+            {"傳說", QuestEditorActInfoPotentialType.Legendary},
+
             // MapleStory Global
             {"Normal", QuestEditorActInfoPotentialType.Normal}, // however this is not 100% necessary as the above still works
             {"Rare", QuestEditorActInfoPotentialType.Rare},
