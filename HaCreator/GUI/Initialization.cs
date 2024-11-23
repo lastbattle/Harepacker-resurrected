@@ -1300,13 +1300,23 @@ namespace HaCreator.GUI
                         streetName = mapNames.Item2;
                         categoryName = mapNames.Item3;
                     }
-                    MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
+                    if (mapImage["info"] != null)
+                    {
+                        MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
 
-                    // Ensure thread safety when writing to the shared resource
-                    lock (Program.InfoManager.MapsCache) {
-                        Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
-                            mapImage, mapName, streetName, categoryName, info
-                        );
+                        // Ensure thread safety when writing to the shared resource
+                        lock (Program.InfoManager.MapsCache)
+                        {
+                            Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
+                                mapImage, mapName, streetName, categoryName, info
+                            );
+                        }
+                    } else
+                    {
+                        // Japan Maplestory
+                        // MapID 100020100, 100020101, 120000100, 120000200, 120000201, 120000202, 120000300, 120000301, 120000101
+                        // is missing of "info"
+                        // it is an empty "map".img, likely pre-bb deleted 
                     }
                 }
             //}
