@@ -2505,7 +2505,7 @@
 
                     <ComboBox x:Name="comboBox_questAreaSort" 
                               Grid.Column="1"
-                              Margin="20,0,0,0"
+                              Margin="10,0,0,0" Height="20"
                               ItemsSource="{Binding Source={StaticResource QuestAreaCodeTypeEnum}}"  
                               SelectedItem="{Binding SortQuestAreaCode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                               SelectionChanged="comboBox_questAreaSort_SelectionChanged">

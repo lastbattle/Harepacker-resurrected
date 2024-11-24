@@ -96,17 +96,9 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorModel> _quests = new ObservableCollection<QuestEditorModel>();
-        public ObservableCollection<QuestEditorModel> Quests
-        {
-            get { return _quests; }
-            set
-            {
-                this._quests = value;
-                OnPropertyChanged(nameof(Quests));
-            }
-        }
-        private ObservableCollection<QuestEditorModel> _filteredQuests = new ObservableCollection<QuestEditorModel>();
+        private ObservableCollection<QuestEditorModel> _quests = new();
+
+        private ObservableCollection<QuestEditorModel> _filteredQuests = new();
         public ObservableCollection<QuestEditorModel> FilteredQuests
         {
             get { return _filteredQuests; }
@@ -331,13 +323,13 @@ namespace HaCreator.GUI.Quest
                 }
                 
                 // add
-                Quests.Add(quest);
+                _quests.Add(quest);
             }
-            FilteredQuests = Quests;
+            FilteredQuests = _quests;
 
-            if (Quests.Count > 0)
+            if (_quests.Count > 0)
             {
-                SelectedQuest = Quests[0];
+                SelectedQuest = _quests[0];
             }
         }
 
@@ -1710,7 +1702,9 @@ namespace HaCreator.GUI.Quest
                         };
 
                         // add
-                        Quests.Add(quest);
+                        _quests.Add(quest);
+                        FilteredQuests.Add(quest);
+
                         SelectedQuest = quest;
                         listbox_Quest.SelectedItem = SelectedQuest;
                         listbox_Quest.ScrollIntoView(SelectedQuest); // Add this line
@@ -1764,7 +1758,7 @@ namespace HaCreator.GUI.Quest
             ObservableCollection<QuestEditorModel> tempFilteredQuests = new();
             string searchTerm = searchBox.Text.ToLower();
 
-            foreach (QuestEditorModel quest in Quests)
+            foreach (QuestEditorModel quest in _quests)
             {
                 // Check name
                 if (quest.Name.ToLower().Contains(searchTerm) || quest.Id.ToString().Contains(searchTerm))
@@ -4043,7 +4037,7 @@ namespace HaCreator.GUI.Quest
             QuestEditorModel quest = _selectedQuest;
 
             // remove it off local collections
-            Quests.Remove(_selectedQuest);
+            _quests.Remove(_selectedQuest);
             FilteredQuests.Remove(_selectedQuest);
 
             //////////////////

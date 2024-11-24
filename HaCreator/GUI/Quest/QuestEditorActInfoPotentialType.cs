@@ -13,12 +13,17 @@ namespace HaCreator.GUI.Quest
         Rare,
         Epic,
         Unique,
-        Legendary
+        Legendary,
+
+        NebulitesA,
+        NebulitesB,
+        NebulitesC,
+        NebulitesD,
     }
 
     public static class QuestEditorActInfoPotentialTypeExt
     {
-        private static readonly Dictionary<string, QuestEditorActInfoPotentialType> StringToEnum = new Dictionary<string, QuestEditorActInfoPotentialType>(StringComparer.OrdinalIgnoreCase)
+        private static readonly Dictionary<string, QuestEditorActInfoPotentialType> StringToEnum = new(StringComparer.OrdinalIgnoreCase)
         {
             // MapleStorySEA, MapleStoryKorea
             {"노멀", QuestEditorActInfoPotentialType.Normal},
@@ -49,6 +54,12 @@ namespace HaCreator.GUI.Quest
             {"Epic", QuestEditorActInfoPotentialType.Epic},
             {"Unique", QuestEditorActInfoPotentialType.Unique},
             {"Legendary", QuestEditorActInfoPotentialType.Legendary},
+            // Nebulites for MapleStory Global
+            // given the way this is implemented by GMS, an item cannot have both potentials and nebulites from quests.
+            {"Grade A", QuestEditorActInfoPotentialType.NebulitesA},
+            {"Grade B", QuestEditorActInfoPotentialType.NebulitesB},
+            {"Grade C", QuestEditorActInfoPotentialType.NebulitesC},
+            {"Grade D", QuestEditorActInfoPotentialType.NebulitesD},
         };
 
         /// <summary>
