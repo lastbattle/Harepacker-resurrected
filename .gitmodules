@@ -6,3 +6,5 @@
 	path = dockpanelsuite
 	url = https://github.com/lastbattle/dockpanelsuiteCore
 	branch = main
+[submodule "MapleLib/"]
+	url = git@github.com:sirdanielot/MapleLib.git
