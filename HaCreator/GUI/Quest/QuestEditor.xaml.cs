@@ -150,7 +150,7 @@ namespace HaCreator.GUI.Quest
                 string key = kvp.Key;
                 WzSubProperty questProp = kvp.Value;
 
-                // developer debug
+// developer debug
                 foreach (WzImageProperty questImgProp in questProp.WzProperties)
                 {
                     switch (questImgProp.Name)
@@ -187,7 +187,7 @@ namespace HaCreator.GUI.Quest
                             break;
                     }
                 }
-                // end developer debug
+// end developer debug
 
                 // Quest name
                 string questName = (questProp["name"] as WzStringProperty)?.Value;
@@ -207,7 +207,15 @@ namespace HaCreator.GUI.Quest
                 quest.Parent = (questProp["parent"] as WzStringProperty)?.Value;
 
                 // area, order
-                quest.Area = QuestAreaCodeTypeExt.ToEnum((questProp["area"] as WzIntProperty)?.Value ?? 0);
+                int questAreaCode = (questProp["area"] as WzIntProperty)?.Value ?? 0;
+                quest.Area = QuestAreaCodeTypeExt.ToEnum(questAreaCode);
+                if (quest.Area == QuestAreaCodeType.Unknown && questAreaCode != 0)
+                {
+                    // developer debug
+                    string error = string.Format("[QuestEditor] New quest area code found. Quest Name='{0}', QuestId={1}, AreaCode='{2}'", quest.Name, quest.Id, questAreaCode);
+                    ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                    // end developer debug
+                }
                 quest.Order = (questProp["order"] as WzIntProperty)?.Value ?? 0;
 
                 // parse autoStart, autoPreComplete
@@ -340,6 +348,7 @@ namespace HaCreator.GUI.Quest
                 SelectedQuest = _quests[0];
             }
 
+            // Output errors
             const string OUTPUT_ERROR_FILENAME = "Errors_QuestEditor.txt";
             ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
             if (UserSettings.ShowErrorsMessage)

@@ -1125,7 +1125,9 @@ namespace HaCreator.GUI
                     }
                 } else
                 {
-                    // TOOD: Handle MapleStoryU related items
+                    // TOOD: Handle MapleStoryN related items
+                    // WzUOLProperty? or is it a mistake
+                    // Ins/3019381 Ins/3700770 Ins/3700771
                 }
             }
 
@@ -1273,7 +1275,8 @@ namespace HaCreator.GUI
                 }
             } else
             {
-                // TODO: Handle MapleStoryU related equipments
+                // TODO: Handle MapleStoryN related equipments
+                // WzUOLProperty? or is it a mistake
             }
         }
 
