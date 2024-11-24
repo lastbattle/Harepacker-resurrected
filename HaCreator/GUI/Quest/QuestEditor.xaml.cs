@@ -214,6 +214,7 @@ namespace HaCreator.GUI.Quest
                 quest.AutoPreComplete = (questProp["autoPreComplete"] as WzIntProperty)?.Value > 0;
                 quest.AutoComplete = (questProp["autoComplete"] as WzIntProperty)?.Value > 0;
                 quest.SelectedMob = (questProp["selectedMob"] as WzIntProperty)?.Value > 0;
+                quest.AutoAccept = (questProp["autoAccept"] as WzIntProperty)?.Value > 0;
                 quest.AutoCancel = (questProp["autoCancel"] as WzIntProperty)?.Value > 0;
                 quest.OneShot = (questProp["oneShot"] as WzIntProperty)?.Value > 0;
 
@@ -3113,6 +3114,10 @@ namespace HaCreator.GUI.Quest
                 if (quest.SelectedMob == true)
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("selectedMob", 1));
+                }
+                if (quest.AutoAccept == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("autoAccept", 1));
                 }
                 if (quest.AutoCancel == true)
                 {
