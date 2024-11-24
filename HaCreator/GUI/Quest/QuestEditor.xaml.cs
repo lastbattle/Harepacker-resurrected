@@ -169,6 +169,7 @@ namespace HaCreator.GUI.Quest
                         case "selectedMob":
                         case "autoAccept":
                         case "autoCancel":
+                        case "autoCompleteAction":
                         case "disableAtStartTab":
                         case "disableAtPerformTab":
                         case "disableAtCompleteTab":
@@ -214,6 +215,7 @@ namespace HaCreator.GUI.Quest
                 quest.AutoStart = (questProp["autoStart"] as WzIntProperty)?.Value > 0;
                 quest.AutoPreComplete = (questProp["autoPreComplete"] as WzIntProperty)?.Value > 0;
                 quest.AutoComplete = (questProp["autoComplete"] as WzIntProperty)?.Value > 0;
+                quest.AutoCompleteAction = (questProp["autoCompleteAction"] as WzIntProperty)?.Value > 0;
                 quest.SelectedMob = (questProp["selectedMob"] as WzIntProperty)?.Value > 0;
                 quest.AutoAccept = (questProp["autoAccept"] as WzIntProperty)?.Value > 0;
                 quest.AutoCancel = (questProp["autoCancel"] as WzIntProperty)?.Value > 0;
@@ -3111,6 +3113,10 @@ namespace HaCreator.GUI.Quest
                 if (quest.AutoComplete == true)
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("autoComplete", 1));
+                }
+                if (quest.AutoCompleteAction == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("autoCompleteAction", 1));
                 }
                 if (quest.SelectedMob == true)
                 {
