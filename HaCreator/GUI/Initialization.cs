@@ -1089,7 +1089,7 @@ namespace HaCreator.GUI
                     {
                         // In non-beta, process each item within the category
                         eqpCategorySubProp.WzProperties
-                            .Cast<WzSubProperty>()
+                            //.Cast<WzSubProperty>()
                             .ToList()
                             .ForEach(itemProp => ExtractStringFile_ProcessEquipmentItem(
                                 itemProp,
@@ -1104,22 +1104,28 @@ namespace HaCreator.GUI
             else
                 stringInsImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Ins.img")).WzProperties;
 
-            foreach (WzSubProperty insItemImg in stringInsImg) // String.wz/Ins.img/3010000
+            foreach (WzImageProperty insItemImage in stringInsImg) // String.wz/Ins.img/3010000
             {
-                string itemId = insItemImg.Name;
-                const string itemCategory = "Ins";
-                string itemName = (insItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
-                string itemDesc = (insItemImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-
-                int intName = 0;
-                int.TryParse(itemId, out intName);
-
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
-                else
+                if (insItemImage is WzSubProperty insItemSubProp)
                 {
-                    string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemImg.Name);
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    string itemId = insItemSubProp.Name;
+                    const string itemCategory = "Ins";
+                    string itemName = (insItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                    string itemDesc = (insItemSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+
+                    int intName = 0;
+                    int.TryParse(itemId, out intName);
+
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                        Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
+                    else
+                    {
+                        string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemSubProp.Name);
+                        ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    }
+                } else
+                {
+                    // TOOD: Handle MapleStoryU related items
                 }
             }
 
@@ -1245,23 +1251,29 @@ namespace HaCreator.GUI
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
             }
         }
-        private void ExtractStringFile_ProcessEquipmentItem(WzSubProperty itemProp, string category)
+        private void ExtractStringFile_ProcessEquipmentItem(WzImageProperty itemImageProp, string category)
         {
-            string itemId = itemProp.Name;
-            string itemName = (itemProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
-            string itemDesc = (itemProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-
-            if (int.TryParse(itemId, out int intName))
+            if (itemImageProp is WzSubProperty itemProp)
             {
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                string itemId = itemProp.Name;
+                string itemName = (itemProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (itemProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+
+                if (int.TryParse(itemId, out int intName))
                 {
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(category, itemName, itemDesc);
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    {
+                        Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(category, itemName, itemDesc);
+                    }
+                    else
+                    {
+                        string error = $"[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{itemId}', Category={category}";
+                        ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    }
                 }
-                else
-                {
-                    string error = $"[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{itemId}', Category={category}";
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
-                }
+            } else
+            {
+                // TODO: Handle MapleStoryU related equipments
             }
         }
 
