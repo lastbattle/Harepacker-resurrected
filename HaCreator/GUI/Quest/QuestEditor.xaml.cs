@@ -150,7 +150,7 @@ namespace HaCreator.GUI.Quest
                 string key = kvp.Key;
                 WzSubProperty questProp = kvp.Value;
 
-// developer debug
+                // developer debug
                 foreach (WzImageProperty questImgProp in questProp.WzProperties)
                 {
                     switch (questImgProp.Name)
@@ -176,6 +176,8 @@ namespace HaCreator.GUI.Quest
                         case "showLayerTag":
                         case "oneShot":
                         case "summary":
+                        case "viewMedalItem":
+                        case "medalCategory":
                             break;
                         default:
                             string error = string.Format("[QuestEditor] Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, kvp.Key);
@@ -183,7 +185,7 @@ namespace HaCreator.GUI.Quest
                             break;
                     }
                 }
-// end developer debug
+                // end developer debug
 
                 // Quest name
                 string questName = (questProp["name"] as WzStringProperty)?.Value;
@@ -203,7 +205,7 @@ namespace HaCreator.GUI.Quest
                 quest.Parent = (questProp["parent"] as WzStringProperty)?.Value;
 
                 // area, order
-                quest.Area = QuestAreaCodeTypeExt.ToEnum( (questProp["area"] as WzIntProperty)?.Value ?? 0);
+                quest.Area = QuestAreaCodeTypeExt.ToEnum((questProp["area"] as WzIntProperty)?.Value ?? 0);
                 quest.Order = (questProp["order"] as WzIntProperty)?.Value ?? 0;
 
                 // parse autoStart, autoPreComplete
@@ -263,7 +265,8 @@ namespace HaCreator.GUI.Quest
                             {
                                 quest.SayInfoStop_StartQuest.Add(sayStopModel);
                             }
-                        } finally
+                        }
+                        finally
                         {
                             quest.IsLoadingFromFile = false;
                         }
@@ -283,7 +286,8 @@ namespace HaCreator.GUI.Quest
                             {
                                 quest.SayInfoStop_EndQuest.Add(sayStopModel);
                             }
-                        } finally
+                        }
+                        finally
                         {
                             quest.IsLoadingFromFile = false;
                         }
@@ -321,7 +325,7 @@ namespace HaCreator.GUI.Quest
                     if (questCheckEnd1Prop != null)
                         parseQuestCheck(questCheckEnd1Prop, quest.CheckEndInfo, quest); // end quest
                 }
-                
+
                 // add
                 _quests.Add(quest);
             }
@@ -330,6 +334,12 @@ namespace HaCreator.GUI.Quest
             if (_quests.Count > 0)
             {
                 SelectedQuest = _quests[0];
+            }
+
+            const string OUTPUT_ERROR_FILENAME = "Errors_QuestEditor.txt";
+            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
+            if (UserSettings.ShowErrorsMessage)
+            {
             }
         }
 

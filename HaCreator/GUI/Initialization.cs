@@ -406,7 +406,7 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void debugButton_Click(object sender, EventArgs e)
         {
-            const string OUTPUT_ERROR_FILENAME = "Debug_errors.txt";
+            const string OUTPUT_ERROR_FILENAME = "Errors_MapDebug.txt";
 
             // This function iterates over all maps in the game and verifies that we recognize all their props
             // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
