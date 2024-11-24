@@ -167,6 +167,7 @@ namespace HaCreator.GUI.Quest
                         case "autoPreComplete":
                         case "autoComplete":
                         case "selectedMob":
+                        case "autoAccept":
                         case "autoCancel":
                         case "disableAtStartTab":
                         case "disableAtPerformTab":

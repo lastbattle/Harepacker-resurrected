@@ -2683,6 +2683,7 @@
                                     <CheckBox x:Name="checkbox_autoPreComplete" Content="Auto pre-complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoPreComplete}"/>
                                     <CheckBox x:Name="checkbox_autoComplete" Content="Auto complete" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoComplete}"/>
                                     <CheckBox x:Name="checkbox_selectedMob" Content="Selected Mob" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.SelectedMob}"/>
+                                    <CheckBox x:Name="checkbox_autoAccept" Content="Auto accept" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoAccept}"/>
                                     <CheckBox x:Name="checkbox_autoCancel" Content="Auto cancel" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.AutoCancel}"/>
                                     <CheckBox x:Name="checkbox_oneShot" Content="One shot" FontWeight="Bold"  IsChecked="{Binding SelectedQuest.OneShot}"/>
 
