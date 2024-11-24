@@ -243,6 +243,25 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        #region Misc
+        /// <summary>
+        /// Before big-bang update
+        /// </summary>
+        public bool IsPreBBDataWzFormat
+        {
+            get { return Program.WzManager.IsPreBBDataWzFormat; }
+            private set { }
+        }
+        /// <summary>
+        /// After big-bang update
+        /// </summary>
+        public bool IsPostBBDataWzFormat
+        {
+            get { return !Program.WzManager.IsPreBBDataWzFormat; }
+            private set { }
+        }
+        #endregion
+
         #region Events
         /// <summary>
         /// On act conversation collection changed

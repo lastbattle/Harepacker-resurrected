@@ -18,6 +18,7 @@
 
     <Window.Resources>
         <haSharedLibConverter:BooleanToVisibility2Converter x:Key="booleanToVisibility2Converter"/>
+        <haSharedLibConverter:MultiBooleanToVisibility2Converter x:Key="multiBooleanToVisibility2Converter"/>
         <converter:PetSkillFlagConverter x:Key="petSkillFlagConverter"/>
         <converter:QuestIdToQuestNameConverter x:Key="questIdToQuestNameConverter"/>
         <converter:NpcIdToNpcNameConverter x:Key="npcIdToNpcNameConverter"/>
@@ -417,57 +418,93 @@
 
         <!-- Traits-->
         <DataTemplate x:Key="ActTraitSenseTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(sense) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ActTraitWillTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(will) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ActTraitInsightTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(insight) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ActTraitCharismaTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(charisma) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+                
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ActTraitCharmTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(charm) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="ActTraitCraftTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(craft) reward amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
 
@@ -1126,8 +1163,13 @@
                                     </ComboBox>
                                     
                                     <!-- potential-->
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Visibility="{Binding IsEquip, Converter={StaticResource booleanToVisibility2Converter}}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <StackPanel.Visibility>
+                                            <MultiBinding Converter="{StaticResource multiBooleanToVisibility2Converter}">
+                                                <Binding Path="IsEquip"/>
+                                            </MultiBinding>
+                                        </StackPanel.Visibility>
+                                        
                                         <TextBlock Text="Potential:" Margin="20,0,5,0" MaxWidth="100" VerticalAlignment="Center"
                                                />
                                         <ComboBox x:Name="comboBox_potentialGrade" 
@@ -1451,57 +1493,93 @@
 
         <!-- Traits-->
         <DataTemplate x:Key="CheckTraitSenseTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(sense) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CheckTraitWillTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(will) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CheckTraitInsightTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(insight) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CheckTraitCharismaTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(charisma) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CheckTraitCharmTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(charm) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <DataTemplate x:Key="CheckTraitCraftTemplate">
-            <StackPanel>
+            <StackPanel IsEnabled="{Binding IsPostBBDataWzFormat}">
                 <StackPanel Orientation="Horizontal">
                     <Image Height="20" Source="pack://application:,,,/HaCreator;component/Images/Quest/QuestIcon.11.0.png" Stretch="Uniform" HorizontalAlignment="Left"/>
                     <TextBlock Text="(craft) required amount:" Margin="4,0,0,0"/>
                 </StackPanel>
                 <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}" InputScope="Number" Margin="0,2"/>
+
+                <TextBlock Text="This is not available in the pre-bigbang version of MapleStory."
+                           FontStyle="Italic"
+                           Margin="10,0,0,0"
+                           Visibility="{Binding IsPreBBDataWzFormat, Converter={StaticResource booleanToVisibility2Converter}}"
+                           />
             </StackPanel>
         </DataTemplate>
         <!-- lvMin -->
@@ -2814,6 +2892,7 @@
 
                                             <DataGrid x:Name="DataGrid_checkStartQuest" Grid.Row="1" 
                                                       ItemsSource="{Binding SelectedQuest.CheckStartInfo}"
+                                                      IsReadOnly="False"
                                                       AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True">
                                                 <DataGrid.Columns>
                                                     <!-- Conversation Type Column -->
