@@ -409,20 +409,24 @@ namespace HaCreator.GUI
             actualPlatform = platformBox.SelectedItem == null ? 0 : (int)platformBox.SelectedItem;
         }
 
-        private void UpdateRemoteLayerInfo()
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tileSet">The tileSet name</param>
+        private void UpdateRemoteLayerInfo(string tileSet)
         {
             if (LayerViewChanged != null)
-                LayerViewChanged.Invoke(actualLayerIndex, actualPlatform, layerCheckbox.IsChecked.Value, (layerCheckbox.IsChecked.Value || platformCheckbox.IsChecked.Value));
+                LayerViewChanged.Invoke(actualLayerIndex, actualPlatform, layerCheckbox.IsChecked.Value, (layerCheckbox.IsChecked.Value || platformCheckbox.IsChecked.Value), tileSet);
         }
 
         private void AllLayerView_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            UpdateRemoteLayerInfo();
+            UpdateRemoteLayerInfo(null);
         }
 
         private void AllPlatformView_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            UpdateRemoteLayerInfo();
+            UpdateRemoteLayerInfo(null);
         }
 
         private void LoadPlatformsForLayer(SortedSet<int> zms)
@@ -443,9 +447,13 @@ namespace HaCreator.GUI
         {
             if (!isInternal)
             {
-                LoadPlatformsForLayer(layers[layerBox.SelectedIndex].zMList);
+                Layer layer = layers[layerBox.SelectedIndex];
+                var zmList = layer.zMList;
+                string tileSet = layer.tS;
+
+                LoadPlatformsForLayer(zmList);
                 UpdateLocalLayerInfo();
-                UpdateRemoteLayerInfo();
+                UpdateRemoteLayerInfo(tileSet);
             }
         }
 
@@ -454,7 +462,7 @@ namespace HaCreator.GUI
             if (!isInternal)
             {
                 UpdateLocalLayerInfo();
-                UpdateRemoteLayerInfo();
+                UpdateRemoteLayerInfo(null);
             }
         }
 
@@ -511,7 +519,7 @@ namespace HaCreator.GUI
         public delegate void EmptyEvent();
         public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc, bool? mirrorField);
         public delegate void ToggleEvent(bool pressed);
-        public delegate void LayerViewChangedEvent(int layer, int platform, bool allLayers, bool allPlats);
+        public delegate void LayerViewChangedEvent(int layer, int platform, bool allLayers, bool allPlats, string tileSet);
 
         public event EmptyEvent NewClicked;
         public event EmptyEvent OpenClicked;
