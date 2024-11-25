@@ -28,10 +28,16 @@ using SharpDX.Direct2D1.Effects;
 using System.Drawing.Printing;
 using HaCreator.MapSimulator.MapObjects.UIObject.Controls;
 using System.Windows.Forms;
+using HaCreator.MapSimulator.MapObjects.FieldObject;
 
 namespace HaCreator.MapSimulator {
     public class MapSimulatorLoader {
+
+        // Constants
         private const string GLOBAL_FONT = "Arial";
+        private const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
+
+        private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
 
         /// <summary>
         /// Create map simulator board
@@ -415,7 +421,7 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, GraphicsDevice device, ref List<WzObject> usedProps) {
+        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps) {
             MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
             WzImage source = mobInfo.LinkedWzImage;
 
@@ -436,7 +442,12 @@ namespace HaCreator.MapSimulator {
                     }
                 }
             }
-            return new MobItem(mobInstance, frames);
+
+            NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, 
+                texturePool, UserScreenScaleFactor, device);
+
+            return new MobItem(mobInstance, frames, nameTooltip);
         }
 
         /// <summary>
@@ -444,10 +455,11 @@ namespace HaCreator.MapSimulator {
         /// </summary>
         /// <param name="texturePool"></param>
         /// <param name="npcInstance"></param>
+        /// <param name="UserScreenScaleFactor"></param>
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, GraphicsDevice device, ref List<WzObject> usedProps) {
+        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps) {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
 
@@ -466,7 +478,10 @@ namespace HaCreator.MapSimulator {
                         }
                 }
             }
-            return new NpcItem(npcInstance, frames);
+            NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                npcInstance.NpcInfo.Name, npcInstance.X, npcInstance.Y, 
+                texturePool, UserScreenScaleFactor, device);
+            return new NpcItem(npcInstance, frames, nameTooltip);
         }
         #endregion
 
@@ -809,7 +824,6 @@ namespace HaCreator.MapSimulator {
             System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrameMaxMap?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
 
             // Constants
-            const float TOOLTIP_FONTSIZE = 10f;
             const int MAPMARK_MAPNAME_LEFT_MARGIN = 4;
             const int MAPMARK_MAPNAME_TOP_MARGIN = 17;
             const int MAP_IMAGE_TEXT_PADDING = 2; // the number of pixels from the left to draw the minimap image
@@ -853,7 +867,7 @@ namespace HaCreator.MapSimulator {
             }
             // Minimap name, and street name
             string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
-            HaUIText haUITextMapNameStreetName = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, TOOLTIP_FONTSIZE, UserScreenScaleFactor);
+            HaUIText haUITextMapNameStreetName = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE, UserScreenScaleFactor);
             haUITextMapNameStreetName.GetInfo().Margins.Top = 3;
             haUITextMapNameStreetName.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
             haUITextMapNameStreetName.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
@@ -973,6 +987,48 @@ namespace HaCreator.MapSimulator {
         }
 
         /// <summary>
+        /// Map item
+        /// </summary>
+        /// <param name="texturePool"></param>
+        /// <param name="source"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="device"></param>
+        /// <param name="usedProps"></param>
+        /// <param name="flip"></param>
+        /// <returns></returns>
+        public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+        {
+            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"]; // normal
+            WzSubProperty cursorClickable = (WzSubProperty)source?["1"]; // click-able item
+            WzSubProperty cursorClickableOmok = (WzSubProperty)source?["2"]; // click-able item
+            WzSubProperty cursorClickableHouse = (WzSubProperty)source?["3"]; // click-able item
+            WzSubProperty cursorClickable2 = (WzSubProperty)source?["4"]; // click-able item
+            WzSubProperty cursorPickable = (WzSubProperty)source?["5"]; // pickable inventory
+            WzSubProperty cursorGift = (WzSubProperty)source?["6"]; // 
+            WzSubProperty cursorVerticalScrollable = (WzSubProperty)source?["7"]; // 
+            WzSubProperty cursorHorizontalScrollable = (WzSubProperty)source?["8"]; // 
+            WzSubProperty cursorVerticalScrollable2 = (WzSubProperty)source?["9"]; // 
+            WzSubProperty cursorHorizontalScrollable2 = (WzSubProperty)source?["10"]; // 
+            WzSubProperty cursorPickable2 = (WzSubProperty)source?["11"]; // pickable inventory
+            WzSubProperty cursorHold = (WzSubProperty)source?["12"]; // pickable inventory
+
+            List<IDXObject> frames = LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
+
+            // Mouse hold state
+            BaseDXDrawableItem holdState = CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+
+            // Mouse clicked item state
+            BaseDXDrawableItem clickableButtonState = CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+
+            return new MouseCursorItem(frames, holdState, clickableButtonState);
+        }
+        #endregion
+
+        #region Tooltip
+        /// <summary>
         /// Tooltip
         /// </summary>
         /// <param name="texturePool"></param>
@@ -1005,8 +1061,6 @@ namespace HaCreator.MapSimulator {
 
             string renderText = string.Format("{0}{1}{2}", title, Environment.NewLine, desc);
 
-            // Constants
-            const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
             System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(255, 17, 17, 17); // post V patch (dark black theme used), use color picker on paint via image extracted from WZ if you need to get it
             System.Drawing.Color color_foreGround = System.Drawing.Color.White;
@@ -1037,44 +1091,51 @@ namespace HaCreator.MapSimulator {
             }
         }
 
-
         /// <summary>
-        /// Map item
+        /// Draws the name tooltip for NPC and mobs
         /// </summary>
-        /// <param name="texturePool"></param>
-        /// <param name="source"></param>
+        /// <param name="renderText"></param>
         /// <param name="x"></param>
         /// <param name="y"></param>
-        /// <param name="mapCenterX"></param>
-        /// <param name="mapCenterY"></param>
+        /// <param name="texturePool"></param>
+        /// <param name="UserScreenScaleFactor"></param>
         /// <param name="device"></param>
-        /// <param name="usedProps"></param>
-        /// <param name="flip"></param>
         /// <returns></returns>
-        public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
-            WzSubProperty cursorCanvas = (WzSubProperty)source?["0"]; // normal
-            WzSubProperty cursorClickable = (WzSubProperty)source?["1"]; // click-able item
-            WzSubProperty cursorClickableOmok = (WzSubProperty)source?["2"]; // click-able item
-            WzSubProperty cursorClickableHouse = (WzSubProperty)source?["3"]; // click-able item
-            WzSubProperty cursorClickable2 = (WzSubProperty)source?["4"]; // click-able item
-            WzSubProperty cursorPickable = (WzSubProperty)source?["5"]; // pickable inventory
-            WzSubProperty cursorGift = (WzSubProperty)source?["6"]; // 
-            WzSubProperty cursorVerticalScrollable = (WzSubProperty)source?["7"]; // 
-            WzSubProperty cursorHorizontalScrollable = (WzSubProperty)source?["8"]; // 
-            WzSubProperty cursorVerticalScrollable2 = (WzSubProperty)source?["9"]; // 
-            WzSubProperty cursorHorizontalScrollable2 = (WzSubProperty)source?["10"]; // 
-            WzSubProperty cursorPickable2 = (WzSubProperty)source?["11"]; // pickable inventory
-            WzSubProperty cursorHold = (WzSubProperty)source?["12"]; // pickable inventory
+        public static NameTooltipItem CreateNPCMobNameTooltip(string renderText, int x, int y, TexturePool texturePool, float UserScreenScaleFactor, GraphicsDevice device)
+        {
+            //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
+            System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(200, 17, 17, 17); // post V patch (dark black theme used), use color picker on paint via image extracted from WZ if you need to get it
+            System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold
+            const int WIDTH_PADDING = 6; // use even numbers or it gets odd
+            const int HEIGHT_PADDING = 2;
 
-            List<IDXObject> frames = LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
+            // Create
+            using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE / UserScreenScaleFactor))
+            {
+                System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
+                System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);
 
-            // Mouse hold state
-            BaseDXDrawableItem holdState = CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                int effective_width = (int)tooltipSize.Width + WIDTH_PADDING;
+                int effective_height = (int)tooltipSize.Height + HEIGHT_PADDING;
 
-            // Mouse clicked item state
-            BaseDXDrawableItem clickableButtonState = CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                System.Drawing.Bitmap bmp_tooltip = new System.Drawing.Bitmap(effective_width, effective_height);
+                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_tooltip))
+                {
+                    // Frames and background
+                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, effective_width, effective_height);
 
-            return new MouseCursorItem(frames, holdState, clickableButtonState);
+                    // Text
+                    graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), (WIDTH_PADDING / 2), HEIGHT_PADDING / 2);
+                    graphics.Flush();
+                }
+
+                int tooltipShiftX = (x - (effective_width / 2));
+
+                IDXObject dxObj = new DXObject(tooltipShiftX, y, bmp_tooltip.ToTexture2D(device), 0);
+                NameTooltipItem item = new NameTooltipItem(dxObj);
+
+                return item;
+            }
         }
         #endregion
 

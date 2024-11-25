@@ -88,7 +88,7 @@ namespace HaCreator.MapEditor.Info
 
         private static MobInfo Load(WzImage parentObject)
         {
-            string id = WzInfoTools.RemoveExtension(parentObject.Name);
+            string id = WzInfoTools.RemoveExtension(parentObject.Name).TrimStart('0'); // remove '0' padding from the start of the mobid
             string mobName = Program.InfoManager.MobNameCache.ContainsKey(id) ? Program.InfoManager.MobNameCache[id] : "";
 
             return new MobInfo(null, new System.Drawing.Point(), id, mobName, parentObject);

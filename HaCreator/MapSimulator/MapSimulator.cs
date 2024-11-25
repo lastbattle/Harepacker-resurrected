@@ -3,6 +3,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.MapObjects.FieldObject;
 using HaCreator.MapSimulator.MapObjects.UIObject;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
@@ -280,10 +281,9 @@ namespace HaCreator.MapSimulator
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
-                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true, 0.3f);
                 if (audio != null)
                 {
-                    audio.Volume = 0.3f;
                     audio.Play();
                 }
             }
@@ -361,7 +361,7 @@ namespace HaCreator.MapSimulator
                     if (npc.Hide)
                         continue;
 
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
                     mapObjects_NPCs.Add(npcItem);
                 }
             });
@@ -374,7 +374,9 @@ namespace HaCreator.MapSimulator
                     //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
                     if (mob.Hide)
                         continue;
-                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
+
+                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+
                     mapObjects_Mobs.Add(npcItem);
                 }
             });
@@ -839,7 +841,7 @@ namespace HaCreator.MapSimulator
                         sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
                         sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
                         sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
+                        //sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
 
                         mobItem.DebugText = sb.ToString();
                     }
@@ -882,7 +884,7 @@ namespace HaCreator.MapSimulator
                         sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
                         sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
                         sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
+                        //sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
 
                         npcItem.DebugText = sb.ToString();
                     }

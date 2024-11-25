@@ -35,6 +35,23 @@ namespace HaCreator.MapSimulator
     public class UIFrameHelper
     {
         /// <summary>
+        /// Draws the frame of a UI without image background
+        /// </summary>
+        /// <param name="graphics"></param>
+        /// <param name="backgroundColor"></param>
+        /// <param name="targetImageWidth"></param>
+        /// <param name="targetImageHeight"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void DrawUIFrame(System.Drawing.Graphics graphics,
+            System.Drawing.Color backgroundColor,
+            int targetImageWidth, int targetImageHeight)
+        {
+            DrawUIFrame(graphics, backgroundColor, 
+                null, null, null, null, null, null, null, null, null, 0, 
+                targetImageWidth, targetImageHeight);
+        }
+
+        /// <summary>
         /// Draws the frame of a UI
         /// </summary>
         /// <param name="graphics"></param>
