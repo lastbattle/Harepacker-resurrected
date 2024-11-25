@@ -443,8 +443,9 @@ namespace HaCreator.MapSimulator {
                 }
             }
 
+            System.Drawing.Color color_foreGround = System.Drawing.Color.White; // mob foreground color
             NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, 
+                mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, color_foreGround,
                 texturePool, UserScreenScaleFactor, device);
 
             return new MobItem(mobInstance, frames, nameTooltip);
@@ -478,8 +479,9 @@ namespace HaCreator.MapSimulator {
                         }
                 }
             }
+            System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
             NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                npcInstance.NpcInfo.Name, npcInstance.X, npcInstance.Y, 
+                npcInstance.NpcInfo.Name, npcInstance.X, npcInstance.Y, color_foreGround,
                 texturePool, UserScreenScaleFactor, device);
             return new NpcItem(npcInstance, frames, nameTooltip);
         }
@@ -1097,15 +1099,17 @@ namespace HaCreator.MapSimulator {
         /// <param name="renderText"></param>
         /// <param name="x"></param>
         /// <param name="y"></param>
+        /// <param name="color_foreGround"></param>
         /// <param name="texturePool"></param>
         /// <param name="UserScreenScaleFactor"></param>
         /// <param name="device"></param>
         /// <returns></returns>
-        public static NameTooltipItem CreateNPCMobNameTooltip(string renderText, int x, int y, TexturePool texturePool, float UserScreenScaleFactor, GraphicsDevice device)
+        public static NameTooltipItem CreateNPCMobNameTooltip(string renderText, int x, int y, System.Drawing.Color color_foreGround,
+            TexturePool texturePool, float UserScreenScaleFactor, GraphicsDevice device)
         {
             //System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(230, 17, 54, 82); // pre V patch (dark blue theme used post-bb), leave this here in case someone needs it
             System.Drawing.Color color_bgFill = System.Drawing.Color.FromArgb(200, 17, 17, 17); // post V patch (dark black theme used), use color picker on paint via image extracted from WZ if you need to get it
-            System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold
+
             const int WIDTH_PADDING = 6; // use even numbers or it gets odd
             const int HEIGHT_PADDING = 2;
 
