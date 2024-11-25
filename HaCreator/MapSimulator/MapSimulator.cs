@@ -460,11 +460,29 @@ namespace HaCreator.MapSimulator
             //
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            // default positioning for character
-            SetCameraMoveX(true, true, 0);
-            SetCameraMoveY(true, true, 0);
+            ///////////////////////////////////////////////
+            ////// Default positioning for character //////
+            ///////////////////////////////////////////////
+            // Get a random portal if any exists for spawnpoint
+            var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.PORTALTYPE_STARTPOINT).ToList();
+            if (startPortals.Any())
+            {
+                Random random = new Random();
+                PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
+                this.mapShiftX = randomStartPortal.X;
+                this.mapShiftY = randomStartPortal.Y;
+            }
 
-            ///////////// Border
+            SetCameraMoveX(true, false, 0); // true true to center it, in case its out of the boundary
+            SetCameraMoveX(false, true, 0);
+
+            SetCameraMoveY(true, false, 0);
+            SetCameraMoveY(false, true, 0);
+            ///////////////////////////////////////////////
+
+            ///////////////////////////////////////////////
+            ///////////// Border //////////////////////////
+            ///////////////////////////////////////////////
             int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * RenderObjectScaling);
             if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. 
             {
@@ -475,6 +493,7 @@ namespace HaCreator.MapSimulator
                 this.texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
                 this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
             }
+            ///////////////////////////////////////////////
 
             // mirror bottom boundaries
             //rect_mirrorBottom
