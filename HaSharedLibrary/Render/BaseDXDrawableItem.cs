@@ -1,13 +1,8 @@
-﻿using HaSharedLibrary.Render.DX;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaSharedLibrary.Render.DX
 {
@@ -142,18 +137,18 @@ namespace HaSharedLibrary.Render.DX
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
+        /// <param name="gameTime"></param>
         /// <param name="mapShiftX">The relative x position</param>
         /// <param name="mapShiftY">The relative y position</param>
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
         /// <param name="drawReflectionInfo">The reflection info to draw for this object. Null if none.</param>
-        /// <param name="width"></param>
-        /// <param name="height"></param>
+        /// <param name="renderParameters"></param>
         /// <param name="TickCount">Ticks since system startup</param>
         public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int width, int height, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             int shiftCenteredX = mapShiftX - centerX;
@@ -165,7 +160,7 @@ namespace HaSharedLibrary.Render.DX
             else
                 drawFrame = GetCurrentFrame(TickCount);
 
-            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, width, height))
+            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
             {
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,

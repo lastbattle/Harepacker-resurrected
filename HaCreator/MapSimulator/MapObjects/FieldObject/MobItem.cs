@@ -56,13 +56,13 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
                 drawReflectionInfo,
-                renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                renderParameters,
                 TickCount);
 
             if (nameTooltip != null)
@@ -73,7 +73,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 nameTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, centerX, centerY,
                     null,
-                    renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                    renderParameters,
                     TickCount);
             }
         }

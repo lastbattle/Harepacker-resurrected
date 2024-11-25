@@ -41,14 +41,6 @@ namespace HaCreator.MapEditor.Input
             IsDown = false;
         }
 
-        public static int NextInt32(int max)
-        {
-            byte[] bytes = new byte[sizeof(int)];
-            RNGCryptoServiceProvider Gen = new RNGCryptoServiceProvider();
-            Gen.GetBytes(bytes);
-            return Math.Abs(BitConverter.ToInt32(bytes, 0) % max);
-        }
-
         public void PlaceObject()
         {
             lock (Board.ParentControl)
@@ -77,7 +69,9 @@ namespace HaCreator.MapEditor.Input
                     }
                     else
                     {
-                        BoardItem boardItem = tileRandomList[NextInt32(tileRandomList.Length)].CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                        var randomTile = tileRandomList[RandomNumberGenerator.GetInt32(tileRandomList.Length)];
+
+                        BoardItem boardItem = randomTile.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
                         currAddedObj = boardItem;
                     }
 
@@ -307,7 +301,9 @@ namespace HaCreator.MapEditor.Input
             {
                 Clear();
                 tileRandomList = tileList;
-                SetHeldInfo(tileRandomList[NextInt32(tileRandomList.Length)]);
+
+                var randomTile = tileRandomList[RandomNumberGenerator.GetInt32(tileRandomList.Length)];
+                SetHeldInfo(randomTile);
                 state = MouseState.RandomTiles;
             }
         }

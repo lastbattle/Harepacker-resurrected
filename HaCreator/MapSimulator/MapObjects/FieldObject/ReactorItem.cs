@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         }
 
         /// <summary>
-        /// Draw
+        /// 
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
@@ -53,21 +53,18 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
         /// <param name="drawReflectionInfo"></param>
-        /// <param name="renderWidth"></param>
-        /// <param name="renderHeight"></param>
-        /// <param name="RenderObjectScaling"></param>
-        /// <param name="mapRenderResolution"></param>
+        /// <param name="renderParameters"></param>
         /// <param name="TickCount"></param>
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                 mapShiftX, mapShiftY, centerX, centerY,
                 drawReflectionInfo,
-                renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                renderParameters,
                 TickCount);
         }
     }

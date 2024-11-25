@@ -49,10 +49,23 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
             //objUIBtMax.SetButtonState(UIObjectState.Disabled); // start maximised
         }
 
+        /// <summary>
+        /// Draw
+        /// </summary>
+        /// <param name="sprite"></param>
+        /// <param name="skeletonMeshRenderer"></param>
+        /// <param name="gameTime"></param>
+        /// <param name="mapShiftX"></param>
+        /// <param name="mapShiftY"></param>
+        /// <param name="centerX"></param>
+        /// <param name="centerY"></param>
+        /// <param name="drawReflectionInfo"></param>
+        /// <param name="renderParameters"></param>
+        /// <param name="TickCount"></param>
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int RenderWidth, int RenderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount) {
             // control minimap render UI position via
             //  Position.X, Position.Y
@@ -61,7 +74,7 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
                    this.Position.X, this.Position.Y, centerX, centerY,
                    drawReflectionInfo,
-                   RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                   renderParameters,
                    TickCount);
 
             // draw other buttons
@@ -78,7 +91,8 @@ namespace HaCreator.MapSimulator.MapObjects.UIObject {
                     drawRelativeY,
                     centerX, centerY,
                     null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
+                    renderParameters,
+                    TickCount);
             }
         }
 

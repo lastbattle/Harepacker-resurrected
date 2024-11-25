@@ -87,8 +87,10 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             this.previousMouseState = Mouse.GetState(); // save
         }
 
+
+
         /// <summary>
-        /// Draw 
+        /// Draw
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
@@ -97,15 +99,13 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         /// <param name="mapShiftY"></param>
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
-        /// <param name="renderWidth"></param>
-        /// <param name="renderHeight"></param>
-        /// <param name="RenderObjectScaling"></param>
-        /// <param name="mapRenderResolution"></param>
+        /// <param name="drawReflectionInfo"></param>
+        /// <param name="renderParameters"></param>
         /// <param name="TickCount"></param>
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int renderWidth, int renderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             Point MousePos = Mouse.GetState().Position; // relative to the window already
@@ -117,14 +117,14 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                     cursorClickableButtonState.Draw(sprite, skeletonMeshRenderer, gameTime,
                         -MousePos.X, -MousePos.Y, centerX, centerY,
                         drawReflectionInfo,
-                        renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                        renderParameters,
                         TickCount);
                 }
                 else {
                     base.Draw(sprite, skeletonMeshRenderer, gameTime,
                         -MousePos.X, -MousePos.Y, centerX, centerY,
                         drawReflectionInfo,
-                        renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                        renderParameters,
                         TickCount);
                 }
             }
@@ -133,7 +133,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                 cursorItemPressedState.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -MousePos.X, -MousePos.Y, centerX, centerY,
                     drawReflectionInfo,
-                    renderWidth, renderHeight, RenderObjectScaling, mapRenderResolution,
+                    renderParameters,
                     TickCount);
             }
         }
