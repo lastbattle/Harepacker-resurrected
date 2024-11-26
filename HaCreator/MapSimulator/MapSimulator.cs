@@ -1,9 +1,7 @@
-﻿using HaCreator.GUI;
-using HaCreator.MapEditor;
+﻿using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.MapObjects.FieldObject;
 using HaCreator.MapSimulator.MapObjects.UIObject;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
@@ -728,7 +726,7 @@ namespace HaCreator.MapSimulator
 
             // A Vector2 that calculates the offset between the map's current position (mapShiftX, mapShiftY) and its center point:
             // This shift vector is used in various Draw methods to properly position elements relative to the map's current view position.
-            var shift = new Vector2(mapShiftX - mapCenterX, mapShiftY - mapCenterY);
+            var shiftCenter = new Vector2(mapShiftX - mapCenterX, mapShiftY - mapCenterY);
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
@@ -744,13 +742,13 @@ namespace HaCreator.MapSimulator
                 this.matrixScale);
             //skeletonMeshRenderer.Begin();
 
-            DrawLayer(backgrounds_back, gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
-            DrawMapObjects(gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
-            DrawPortals(gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // portals
-            DrawReactors(gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // reactors
-            DrawLife(gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs)
+            DrawLayer(backgrounds_back, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
+            DrawMapObjects(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
+            DrawPortals(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // portals
+            DrawReactors(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // reactors
+            DrawLife(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs)
 
-            DrawLayer(backgrounds_front, gameTime, shift, _renderParams, mapCenterX, mapCenterY, TickCount); // front background
+            DrawLayer(backgrounds_front, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // front background
 
             // Borders
             // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
@@ -760,11 +758,11 @@ namespace HaCreator.MapSimulator
             DrawVRFieldBorder(spriteBatch);
 
             //////////////////// UI related here ////////////////////
-            DrawTooltip(gameTime, shift, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); 
+            DrawTooltip(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); 
 
             // Status bar [layer below minimap]
             if (!bHideUIMode) {
-                DrawUI(gameTime, shift, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
+                DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 4)
@@ -806,19 +804,19 @@ namespace HaCreator.MapSimulator
         /// </summary>
         /// <param name="items"></param>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawLayer(List<BackgroundItem> items, GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawLayer(List<BackgroundItem> items, GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
              int mapCenterX, int mapCenterY, int TickCount)
         {
             items.ForEach(item =>
             {
                 item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    (int)shift.X, (int)shift.Y, mapCenterX, mapCenterY,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
                     null,
                     _renderParams,
                     TickCount);
@@ -829,13 +827,13 @@ namespace HaCreator.MapSimulator
         /// Draws the map object
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawMapObjects(GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawMapObjects(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
              int mapCenterX, int mapCenterY, int TickCount)
         {
             foreach (List<BaseDXDrawableItem> mapItem in mapObjects)
@@ -855,13 +853,13 @@ namespace HaCreator.MapSimulator
         /// Draws the portals
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawPortals(GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawPortals(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, int TickCount)
         {
             // Portals
@@ -879,8 +877,8 @@ namespace HaCreator.MapSimulator
                 if (bShowDebugMode)
                 {
                     Rectangle rect = new Rectangle(
-                        instance.X - (int)shift.X - (instance.Width - 20),
-                        instance.Y - (int)shift.Y - instance.Height,
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
                         instance.Width + 40,
                         instance.Height);
 
@@ -908,13 +906,13 @@ namespace HaCreator.MapSimulator
         /// Draws the reactors
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawReactors(GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawReactors(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, int TickCount)
         {
             // Reactors
@@ -932,8 +930,8 @@ namespace HaCreator.MapSimulator
                 if (bShowDebugMode)
                 {
                     Rectangle rect = new Rectangle(
-                        instance.X - (int)shift.X - (instance.Width - 20),
-                        instance.Y - (int)shift.Y - instance.Height,
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
                         Math.Max(80, instance.Width + 40),
                         Math.Max(120, instance.Height));
 
@@ -960,14 +958,14 @@ namespace HaCreator.MapSimulator
         /// Draws the life objects (npc, mobs)
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawLife(
-            GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+            GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, int TickCount)
         {
             // mobs
@@ -994,8 +992,8 @@ namespace HaCreator.MapSimulator
                 if (bShowDebugMode)
                 {
                     Rectangle rect = new Rectangle(
-                        instance.X - (int)shift.X - (instance.Width - 20),
-                        instance.Y - (int)shift.Y - instance.Height,
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
                         Math.Max(100, instance.Width + 40),
                         Math.Max(120, instance.Height));
 
@@ -1040,8 +1038,8 @@ namespace HaCreator.MapSimulator
                 if (bShowDebugMode)
                 {
                     Rectangle rect = new Rectangle(
-                        instance.X - (int)shift.X - (instance.Width - 20),
-                        instance.Y - (int)shift.Y - instance.Height,
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
                         Math.Max(100, instance.Width + 40),
                         Math.Max(120, instance.Height));
 
@@ -1067,14 +1065,14 @@ namespace HaCreator.MapSimulator
         /// Draw UI
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="mouseState"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawUI(GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawUI(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount)
         {
             // Status bar [layer below minimap]
@@ -1086,14 +1084,14 @@ namespace HaCreator.MapSimulator
                             _renderParams,
                             TickCount);
 
-                statusBarUi.CheckMouseEvent((int)shift.X, (int)shift.Y, mouseState, mouseCursor);
+                statusBarUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
 
                 statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                             mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                             null,
                             _renderParams,
                             TickCount);
-                statusBarChatUI.CheckMouseEvent((int)shift.X, (int)shift.Y, mouseState, mouseCursor);
+                statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
             }
 
             // Minimap
@@ -1105,7 +1103,7 @@ namespace HaCreator.MapSimulator
                         _renderParams,
                 TickCount);
 
-                miniMapUi.CheckMouseEvent((int)shift.X, (int)shift.Y, mouseState, mouseCursor);
+                miniMapUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
             }
         }
 
@@ -1113,14 +1111,14 @@ namespace HaCreator.MapSimulator
         /// Draw Tooltip
         /// </summary>
         /// <param name="gameTime"></param>
-        /// <param name="shift"></param>
+        /// <param name="shiftCenter"></param>
         /// <param name="renderParams"></param>
         /// <param name="mapCenterX"></param>
         /// <param name="mapCenterY"></param>
         /// <param name="mouseState"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawTooltip(GameTime gameTime, Vector2 shift, RenderParameters renderParams,
+        private void DrawTooltip(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount)
         {
             if (mapObjects_tooltips.Count > 0)
@@ -1133,8 +1131,8 @@ namespace HaCreator.MapSimulator
                         if (tooltipRect != null) // if this is null, show it at all times
                         {
                             Rectangle rect = new Rectangle(
-                                tooltipRect.X - (int)shift.X,
-                                tooltipRect.Y - (int)shift.Y,
+                                tooltipRect.X - (int)shiftCenter.X,
+                                tooltipRect.Y - (int)shiftCenter.Y,
                                 tooltipRect.Width, tooltipRect.Height);
 
                             if (bShowDebugMode)
