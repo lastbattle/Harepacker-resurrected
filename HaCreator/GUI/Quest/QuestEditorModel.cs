@@ -38,8 +38,8 @@ namespace HaCreator.GUI.Quest
         private QuestAreaCodeType _area;
         private bool _blocked;
         private int _order;
-        private bool _autoPreComplete, _autoComplete, _autoStart;
-        private bool _selectedMob, _autoCancel, _oneShot;
+        private bool _autoPreComplete, _autoComplete, _autoCompleteAction, _autoStart;
+        private bool _selectedMob, _autoAccept, _autoCancel, _oneShot;
         private bool _disableAtStartTab, _disableAtPerformTab, _disableAtCompleteTab;
         private string _demandSummary = string.Empty, _rewardSummary = string.Empty;
 
@@ -204,6 +204,16 @@ namespace HaCreator.GUI.Quest
             }
         }
 
+        public bool AutoCompleteAction
+        {
+            get => _autoCompleteAction;
+            set
+            {
+                _autoCompleteAction = value;
+                OnPropertyChanged(nameof(AutoCompleteAction));
+            }
+        }
+
         public bool SelectedMob
         {
             get => _selectedMob;
@@ -211,6 +221,16 @@ namespace HaCreator.GUI.Quest
             {
                 _selectedMob = value;
                 OnPropertyChanged(nameof(SelectedMob));
+            }
+        }
+
+        public bool AutoAccept
+        {
+            get => _autoAccept;
+            set
+            {
+                _autoAccept = value;
+                OnPropertyChanged(nameof(AutoAccept));
             }
         }
 

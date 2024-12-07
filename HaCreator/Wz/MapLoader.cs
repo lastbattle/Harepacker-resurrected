@@ -158,6 +158,8 @@ namespace HaCreator.Wz
                     return MapType.MapLogin;
                 case "CashShopPreview.img":
                     return MapType.CashShopPreview;
+                case "ITCPreview.img":
+                    return MapType.ITCPreview;
                 default:
                     return MapType.RegularMap;
             }
@@ -1023,14 +1025,12 @@ namespace HaCreator.Wz
                 mapBoard.BoardItems.Sort();
                 mapBoard.Loading = false;
             }
-            if (ErrorLogger.ErrorsPresent())
+
+            const string OUTPUT_ERROR_FILENAME = "Errors_MapLoader.txt";
+            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
+            if (UserSettings.ShowErrorsMessage)
             {
-                ErrorLogger.SaveToFile("errors.txt");
-                if (UserSettings.ShowErrorsMessage)
-                {
-                    // MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
-                ErrorLogger.ClearErrors();
+                // MessageBox.Show("Errors were encountered during the loading process. These errors were saved to \"errors.txt\". Please send this file to the author, either via mail (" + ApplicationSettings.AuthorEmail + ") or from the site you got this software from.\n\n(In the case that this program was not updated in so long that this message is now thrown on every map load, you may cancel this message from the settings)", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 

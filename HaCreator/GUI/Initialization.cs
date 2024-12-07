@@ -406,7 +406,7 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void debugButton_Click(object sender, EventArgs e)
         {
-            const string OUTPUT_ERROR_FILENAME = "Debug_errors.txt";
+            const string OUTPUT_ERROR_FILENAME = "Errors_MapDebug.txt";
 
             // This function iterates over all maps in the game and verifies that we recognize all their props
             // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
@@ -769,16 +769,19 @@ namespace HaCreator.GUI
                                     {
                                         string itemId = itemImg.Name;
                                         WzSubProperty itemProp = itemImg as WzSubProperty;
-                                        WzCanvasProperty icon = itemProp["info"]?["icon"] as WzCanvasProperty;
-                                        if (icon != null)
+                                        if (itemProp != null)
                                         {
-                                            int intName = 0;
-                                            int.TryParse(itemId, out intName);
-
-                                            lock (Program.InfoManager.ItemIconCache)
+                                            WzCanvasProperty icon = itemProp?["info"]?["icon"] as WzCanvasProperty;
+                                            if (icon != null)
                                             {
-                                                if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
-                                                    Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                                int intName = 0;
+                                                int.TryParse(itemId, out intName);
+
+                                                lock (Program.InfoManager.ItemIconCache)
+                                                {
+                                                    if (!Program.InfoManager.ItemIconCache.ContainsKey(intName))
+                                                        Program.InfoManager.ItemIconCache.Add(intName, icon);
+                                                }
                                             }
                                         }
                                     }
@@ -1086,7 +1089,7 @@ namespace HaCreator.GUI
                     {
                         // In non-beta, process each item within the category
                         eqpCategorySubProp.WzProperties
-                            .Cast<WzSubProperty>()
+                            //.Cast<WzSubProperty>()
                             .ToList()
                             .ForEach(itemProp => ExtractStringFile_ProcessEquipmentItem(
                                 itemProp,
@@ -1101,22 +1104,30 @@ namespace HaCreator.GUI
             else
                 stringInsImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Ins.img")).WzProperties;
 
-            foreach (WzSubProperty insItemImg in stringInsImg) // String.wz/Ins.img/3010000
+            foreach (WzImageProperty insItemImage in stringInsImg) // String.wz/Ins.img/3010000
             {
-                string itemId = insItemImg.Name;
-                const string itemCategory = "Ins";
-                string itemName = (insItemImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
-                string itemDesc = (insItemImg["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-
-                int intName = 0;
-                int.TryParse(itemId, out intName);
-
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
-                else
+                if (insItemImage is WzSubProperty insItemSubProp)
                 {
-                    string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemImg.Name);
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    string itemId = insItemSubProp.Name;
+                    const string itemCategory = "Ins";
+                    string itemName = (insItemSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                    string itemDesc = (insItemSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+
+                    int intName = 0;
+                    int.TryParse(itemId, out intName);
+
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                        Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
+                    else
+                    {
+                        string error = string.Format("[Initialization] Duplicate [Ins] item name in String.wz. ItemId='{0}', Category={1}", itemId, insItemSubProp.Name);
+                        ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    }
+                } else
+                {
+                    // TOOD: Handle MapleStoryN related items
+                    // WzUOLProperty? or is it a mistake
+                    // Ins/3019381 Ins/3700770 Ins/3700771
                 }
             }
 
@@ -1242,23 +1253,30 @@ namespace HaCreator.GUI
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
             }
         }
-        private void ExtractStringFile_ProcessEquipmentItem(WzSubProperty itemProp, string category)
+        private void ExtractStringFile_ProcessEquipmentItem(WzImageProperty itemImageProp, string category)
         {
-            string itemId = itemProp.Name;
-            string itemName = (itemProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
-            string itemDesc = (itemProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-
-            if (int.TryParse(itemId, out int intName))
+            if (itemImageProp is WzSubProperty itemProp)
             {
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                string itemId = itemProp.Name;
+                string itemName = (itemProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (itemProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+
+                if (int.TryParse(itemId, out int intName))
                 {
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(category, itemName, itemDesc);
+                    if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    {
+                        Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(category, itemName, itemDesc);
+                    }
+                    else
+                    {
+                        string error = $"[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{itemId}', Category={category}";
+                        ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                    }
                 }
-                else
-                {
-                    string error = $"[Initialization] Duplicate [Equip] item name in String.wz. ItemId='{itemId}', Category={category}";
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
-                }
+            } else
+            {
+                // TODO: Handle MapleStoryN related equipments
+                // WzUOLProperty? or is it a mistake
             }
         }
 
@@ -1297,13 +1315,23 @@ namespace HaCreator.GUI
                         streetName = mapNames.Item2;
                         categoryName = mapNames.Item3;
                     }
-                    MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
+                    if (mapImage["info"] != null)
+                    {
+                        MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
 
-                    // Ensure thread safety when writing to the shared resource
-                    lock (Program.InfoManager.MapsCache) {
-                        Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
-                            mapImage, mapName, streetName, categoryName, info
-                        );
+                        // Ensure thread safety when writing to the shared resource
+                        lock (Program.InfoManager.MapsCache)
+                        {
+                            Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
+                                mapImage, mapName, streetName, categoryName, info
+                            );
+                        }
+                    } else
+                    {
+                        // Japan Maplestory
+                        // MapID 100020100, 100020101, 120000100, 120000200, 120000201, 120000202, 120000300, 120000301, 120000101
+                        // is missing of "info"
+                        // it is an empty "map".img, likely pre-bb deleted 
                     }
                 }
             //}

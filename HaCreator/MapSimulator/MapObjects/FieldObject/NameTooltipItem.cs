@@ -1,45 +1,26 @@
-﻿using HaCreator.MapEditor.Instance;
+﻿using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Render;
-using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using Spine;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.Xna.Framework.Graphics;
 
-namespace HaCreator.MapSimulator.Objects.FieldObject
+namespace HaCreator.MapSimulator.MapObjects.FieldObject
 {
-    public class ReactorItem : BaseDXDrawableItem
+    /// <summary>
+    /// Tooltips with a black border for drawing names of NPC or Mobs.
+    /// </summary>
+    public class NameTooltipItem : BaseDXDrawableItem
     {
-        private readonly ReactorInstance reactorInstance;
-        public ReactorInstance ReactorInstance {
-            get { return reactorInstance; }
-            private set { }
+        public NameTooltipItem(List<IDXObject> frames)
+            : base(frames, false)
+        {
         }
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="reactorInstance"></param>
-        /// <param name="frames"></param>
-        public ReactorItem(ReactorInstance reactorInstance, List<IDXObject> frames)
-            : base(frames, reactorInstance.Flip)
-        {
-            this.reactorInstance = reactorInstance;
-        }
 
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="reactorInstance"></param>
-        /// <param name="frame0"></param>
-        public ReactorItem(ReactorInstance reactorInstance, IDXObject frame0)
-            : base(frame0, reactorInstance.Flip)
+        public NameTooltipItem(IDXObject frame0)
+            : base(frame0, false)
         {
-            this.reactorInstance = reactorInstance;
         }
 
         /// <summary>
@@ -62,6 +43,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int TickCount)
         {
             base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                //mapShiftX - centerX, mapShiftY - centerY, 0, 0,
                 mapShiftX, mapShiftY, centerX, centerY,
                 drawReflectionInfo,
                 renderParameters,

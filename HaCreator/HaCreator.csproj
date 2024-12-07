@@ -8,27 +8,10 @@
     <UseWPF>true</UseWPF>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
 
-    <!-- AOT and Trimming Configuration -->
-    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
     <PublishAot>false</PublishAot>
-    
-    <!-- Required for WinForms AOT -->
-    <!--<IlcDisableReflection>false</IlcDisableReflection>
-    <IlcTrimMetadata>false</IlcTrimMetadata>
-    <IlcFoldIdenticalMethodBodies>false</IlcFoldIdenticalMethodBodies>
-    <IlcGenerateStackTraceData>true</IlcGenerateStackTraceData>
-    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>-->
-
-    <!-- Trimming Configuration -->
-    <!--<PublishTrimmed>true</PublishTrimmed>
-    <CustomResourceTypesSupport>true</CustomResourceTypesSupport>
-    <TrimMode>partial</TrimMode>
-    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
-    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
-    <_SuppressWpfTrimError>true</_SuppressWpfTrimError>-->
-    
-    <!-- Enable Native debugging -->
-    <StripSymbols>false</StripSymbols>
+    <_SuppressWinFormsTrimError>false</_SuppressWinFormsTrimError>
+    <_SuppressWpfTrimError>false</_SuppressWpfTrimError>
 
     <!-- Required for WinForms -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>

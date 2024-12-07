@@ -332,12 +332,6 @@ Click "Yes" to download the new version.</value>
   <data name="MainAddTabTitle" xml:space="preserve">
     <value>Add Tab</value>
   </data>
-  <data name="orangeMushroom_Jump" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\OrangeMushroom\orangeMushroom_Jump.gif;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="orangeMushroom_Stand" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\OrangeMushroom\orangeMushroom_Stand.gif;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
   <data name="AnimCompatMessage" xml:space="preserve">
     <value>Your browser or image viewer is too OLD to view this image. Please download a newer browser such as Firefox.</value>
   </data>
@@ -452,9 +446,6 @@ Click "Yes" to download the new version.</value>
   <data name="undo" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\207px-Circle-undo.svg.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
-  <data name="_8800000_attack_10" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\8800000_attack_10.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
   <data name="Subpanel_Loading" xml:space="preserve">
     <value>Loading...</value>
   </data>
@@ -463,9 +454,6 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="expand" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\expand.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
-  </data>
-  <data name="ladyboss_test_attack2_0" type="System.Resources.ResXFileRef, System.Windows.Forms">
-    <value>..\Resources\ladyboss_test_attack2_0.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
   </data>
   <data name="ExecutingAssemblyError" xml:space="preserve">
     <value>This is only available under the x86 version of HaRepacker, please get the alternative version.</value>

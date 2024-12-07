@@ -78,7 +78,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int RenderWidth, int RenderHeight, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             // control minimap render UI position via
@@ -89,23 +89,23 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                 frame_collapsedState.Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
-                   RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                   renderParameters,
                    TickCount);
             } else {
                 base.Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
-                   RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                   renderParameters,
                    TickCount);
 
-                int minimapPosX = (mapShiftX + (RenderWidth / 2)) / 16;
-                int minimapPosY = (mapShiftY + (RenderHeight / 2)) / 16;
+                int minimapPosX = (mapShiftX + (renderParameters.RenderWidth / 2)) / 16;
+                int minimapPosY = (mapShiftY + (renderParameters.RenderHeight / 2)) / 16;
 
                 // Draw the minimap pixel dor
                 item_pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -Position.X, -Position.Y, minimapPosX, minimapPosY,
                     drawReflectionInfo,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
+                    renderParameters,
                     TickCount);
             }
 
@@ -128,7 +128,8 @@ namespace HaCreator.MapSimulator.Objects.UIObject
                     drawRelativeY,
                     centerX, centerY,
                     null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
+                    renderParameters, 
+                    TickCount);
             }
         }
 

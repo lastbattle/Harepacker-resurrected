@@ -1,5 +1,4 @@
-﻿using HaCreator.GUI;
-using HaCreator.MapEditor;
+﻿using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -44,11 +43,9 @@ namespace HaCreator.MapSimulator
 
         private int Width;
         private int Height;
-        private int RenderWidth;
-        private int RenderHeight;
-        private float RenderObjectScaling = 1.0f;
         private float UserScreenScaleFactor = 1.0f;
-        private RenderResolution mapRenderResolution;
+
+        private RenderParameters _renderParams;
         private Matrix matrixScale;
 
         private GraphicsDeviceManager _DxDeviceManager;
@@ -125,7 +122,6 @@ namespace HaCreator.MapSimulator
             this.bIsLoginMap = titleNameParts.All(part => part.Contains("MapLogin"));
             this.bIsCashShopMap = titleNameParts.All(part => part.Contains("CashShopPreview"));
 
-            this.mapRenderResolution = UserSettings.SimulateResolution;
             InitialiseWindowAndMap_WidthHeight();
 
             //RenderHeight += System.Windows.Forms.SystemInformation.CaptionHeight; // window title height
@@ -153,8 +149,8 @@ namespace HaCreator.MapSimulator
                 IsFullScreen = false,
                 PreferMultiSampling = true,
                 SupportedOrientations = DisplayOrientation.Default,
-                PreferredBackBufferWidth = Math.Max(RenderWidth, 1),
-                PreferredBackBufferHeight = Math.Max(RenderHeight, 1),
+                PreferredBackBufferWidth = Math.Max(_renderParams.RenderWidth, 1),
+                PreferredBackBufferHeight = Math.Max(_renderParams.RenderHeight, 1),
                 PreferredBackBufferFormat = SurfaceFormat.Color/* | SurfaceFormat.Bgr32 | SurfaceFormat.Dxt1| SurfaceFormat.Dxt5*/,
                 PreferredDepthStencilFormat = DepthFormat.Depth24Stencil8, 
             };
@@ -170,8 +166,11 @@ namespace HaCreator.MapSimulator
 
         private void InitialiseWindowAndMap_WidthHeight()
         {
-            this.RenderObjectScaling = 1.0f;
-            switch (this.mapRenderResolution)
+            RenderResolution mapRenderResolution = UserSettings.SimulateResolution;
+            float RenderObjectScaling = 1.0f;
+            int RenderHeight, RenderWidth;
+
+            switch (mapRenderResolution)
             {
                 case RenderResolution.Res_1024x768:  // 1024x768
                     Height = 768;
@@ -200,7 +199,7 @@ namespace HaCreator.MapSimulator
                     Height = 1080;
                     Width = 1920;
                     RenderObjectScaling = 1.5f;
-                    this.mapRenderResolution |= RenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
+                    mapRenderResolution |= RenderResolution.Res_1366x768; // 1920x1080 is just 1366x768 with 150% scale.
                     break;
 
 
@@ -228,11 +227,13 @@ namespace HaCreator.MapSimulator
             }
             this.UserScreenScaleFactor = (float) ScreenDPIUtil.GetScreenScaleFactor();
 
-            this.RenderHeight = (int) (Height * UserScreenScaleFactor);
-            this.RenderWidth = (int)(Width * UserScreenScaleFactor);
-            this.RenderObjectScaling = (RenderObjectScaling * UserScreenScaleFactor);
+            RenderHeight = (int) (Height * UserScreenScaleFactor);
+            RenderWidth = (int)(Width * UserScreenScaleFactor);
+            RenderObjectScaling = (RenderObjectScaling * UserScreenScaleFactor);
 
             this.matrixScale = Matrix.CreateScale(RenderObjectScaling);
+
+            this._renderParams = new RenderParameters(RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution);
         }
 
         protected override void Initialize()
@@ -280,10 +281,9 @@ namespace HaCreator.MapSimulator
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
-                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true, 0.3f);
                 if (audio != null)
                 {
-                    audio.Volume = 0.3f;
                     audio.Play();
                 }
             }
@@ -361,7 +361,7 @@ namespace HaCreator.MapSimulator
                     if (npc.Hide)
                         continue;
 
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
                     mapObjects_NPCs.Add(npcItem);
                 }
             });
@@ -374,7 +374,9 @@ namespace HaCreator.MapSimulator
                     //WzImage imageProperty = Program.WzManager.FindMobImage(mobInfo.ID); // Mob.wz Mob2.img Mob001.wz
                     if (mob.Hide)
                         continue;
-                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, _DxDeviceManager.GraphicsDevice, ref usedProps);
+
+                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+
                     mapObjects_Mobs.Add(npcItem);
                 }
             });
@@ -436,7 +438,7 @@ namespace HaCreator.MapSimulator
             // Statusbar
             Task t_statusBar = Task.Run(() => {
                 if (!this.bIsLoginMap && !this.bIsCashShopMap) {
-                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, RenderWidth, RenderHeight, soundUIImage, bBigBangUpdate);
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, bBigBangUpdate);
                     if (statusBar != null) {
                         statusBarUi = statusBar.Item1;
                         statusBarChatUI = statusBar.Item2;
@@ -458,13 +460,31 @@ namespace HaCreator.MapSimulator
             //
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            // default positioning for character
-            SetCameraMoveX(true, true, 0);
-            SetCameraMoveY(true, true, 0);
+            ///////////////////////////////////////////////
+            ////// Default positioning for character //////
+            ///////////////////////////////////////////////
+            // Get a random portal if any exists for spawnpoint
+            var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.PORTALTYPE_STARTPOINT).ToList();
+            if (startPortals.Any())
+            {
+                Random random = new Random();
+                PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
+                this.mapShiftX = randomStartPortal.X;
+                this.mapShiftY = randomStartPortal.Y;
+            }
 
-            ///////////// Border
-            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * RenderObjectScaling);
-            if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. 
+            SetCameraMoveX(true, false, 0); // true true to center it, in case its out of the boundary
+            SetCameraMoveX(false, true, 0);
+
+            SetCameraMoveY(true, false, 0);
+            SetCameraMoveY(false, true, 0);
+            ///////////////////////////////////////////////
+
+            ///////////////////////////////////////////////
+            ///////////// Border //////////////////////////
+            ///////////////////////////////////////////////
+            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * _renderParams.RenderObjectScaling);
+            if (leftRightVRDifference < _renderParams.RenderWidth) // viewing range is smaller than the render width.. 
             {
                 this.bDrawVRBorderLeftRight = true; // flag
 
@@ -473,6 +493,7 @@ namespace HaCreator.MapSimulator
                 this.texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
                 this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
             }
+            ///////////////////////////////////////////////
 
             // mirror bottom boundaries
             //rect_mirrorBottom
@@ -684,6 +705,10 @@ namespace HaCreator.MapSimulator
             base.Update(gameTime);
         }
 
+        /// <summary>
+        /// On frame draw
+        /// </summary>
+        /// <param name="gameTime"></param>
         protected override void Draw(GameTime gameTime)
         {
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
@@ -695,10 +720,13 @@ namespace HaCreator.MapSimulator
             int mouseYRelativeToMap = mouseState.Y - mapShiftY;
             //System.Diagnostics.Debug.WriteLine("Mouse relative to map: X {0}, Y {1}", mouseXRelativeToMap, mouseYRelativeToMap);
 
+            // The coordinates of the map's center point, obtained from mapBoard.CenterPoint
             int mapCenterX = mapBoard.CenterPoint.X;
             int mapCenterY = mapBoard.CenterPoint.Y;
-            int shiftCenteredX = mapShiftX - mapCenterX;
-            int shiftCenteredY = mapShiftY - mapCenterY;
+
+            // A Vector2 that calculates the offset between the map's current position (mapShiftX, mapShiftY) and its center point:
+            // This shift vector is used in various Draw methods to properly position elements relative to the map's current view position.
+            var shiftCenter = new Vector2(mapShiftX - mapCenterX, mapShiftY - mapCenterY);
 
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
@@ -706,200 +734,21 @@ namespace HaCreator.MapSimulator
             spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
                                           //SpriteSortMode.Deferred,
-                BlendState.NonPremultiplied, null, null, null, null, this.matrixScale);
+                BlendState.NonPremultiplied, 
+                SamplerState.LinearClamp, // Add proper sampling
+                DepthStencilState.None, 
+                RasterizerState.CullCounterClockwise, 
+                null, 
+                this.matrixScale);
             //skeletonMeshRenderer.Begin();
 
-            // Back Backgrounds
-            backgrounds_back.ForEach(bg =>
-            {
-                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-            });
+            DrawLayer(backgrounds_back, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
+            DrawMapObjects(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
+            DrawPortals(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // portals
+            DrawReactors(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // reactors
+            DrawLife(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs)
 
-            // Map objects
-            foreach (List<BaseDXDrawableItem> mapItem in mapObjects)
-            {
-                foreach (BaseDXDrawableItem item in mapItem)
-                {
-                    item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                        mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                        null,
-                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
-                }
-            }
-            // Portals
-            foreach (PortalItem portalItem in mapObjects_Portal)
-            {
-                PortalInstance instance = portalItem.PortalInstance;
-
-                portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-
-                // Draw portal debug tooltip
-                if (bShowDebugMode) {
-                    Rectangle rect = new Rectangle(
-                        instance.X - shiftCenteredX - (instance.Width - 20),
-                        instance.Y - shiftCenteredY - instance.Height,
-                        instance.Width + 40,
-                        instance.Height);
-
-                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
-
-                    if (portalItem.CanUpdateDebugText(TickCount, 1000)) {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" script: ").Append(instance.script).Append(Environment.NewLine);
-                        sb.Append(" tm: ").Append(instance.tm).Append(Environment.NewLine);
-                        sb.Append(" pt: ").Append(instance.pt).Append(Environment.NewLine);
-                        sb.Append(" pn: ").Append(instance.pt).Append(Environment.NewLine);
-
-                        portalItem.DebugText = sb.ToString();
-                    }
-                    spriteBatch.DrawString(font_DebugValues, portalItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
-                }
-            }
-
-            // Reactors
-            foreach (ReactorItem reactorItem in mapObjects_Reactors)
-            {
-                ReactorInstance instance = reactorItem.ReactorInstance;
-
-                reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-
-                // Draw reactor debug tooltip
-                if (bShowDebugMode) {
-                    Rectangle rect = new Rectangle(
-                        instance.X - shiftCenteredX - (instance.Width - 20),
-                        instance.Y - shiftCenteredY - instance.Height,
-                        Math.Max(80, instance.Width + 40),
-                        Math.Max(120, instance.Height));
-
-                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
-
-                    if (reactorItem.CanUpdateDebugText(TickCount, 1000)) {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.ReactorInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.Name).Append(Environment.NewLine);
-
-                        reactorItem.DebugText = sb.ToString();
-                    }
-
-                    spriteBatch.DrawString(font_DebugValues, reactorItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
-                }
-            }
-
-            // Life (NPC + Mobs)
-            foreach (MobItem mobItem in mapObjects_Mobs) // Mobs
-            {
-                MobInstance instance = mobItem.MobInstance;
-
-                ReflectionDrawableBoundary mirrorFieldData = null;
-                if (mirrorBottomReflection != null)
-                {
-                    if (rect_mirrorBottom.Contains(new Point(mobItem.MobInstance.X, mobItem.MobInstance.Y)))
-                        mirrorFieldData = mirrorBottomReflection;
-                }
-                if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobItem.MobInstance.X, mobItem.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
-
-                mobItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    mirrorFieldData,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-
-                // Draw mobs debug tooltip
-                if (bShowDebugMode) {
-                    Rectangle rect = new Rectangle(
-                        instance.X - shiftCenteredX - (instance.Width - 20),
-                        instance.Y - shiftCenteredY - instance.Height,
-                        Math.Max(100, instance.Width + 40),
-                        Math.Max(120, instance.Height));
-
-                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
-
-                    if (mobItem.CanUpdateDebugText(TickCount, 1000)) {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
-
-                        mobItem.DebugText = sb.ToString();
-                    }
-
-                    spriteBatch.DrawString(font_DebugValues, mobItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
-                }
-            }
-            foreach (NpcItem npcItem in mapObjects_NPCs) // NPCs (always in front of mobs)
-            {
-                NpcInstance instance = npcItem.NpcInstance;
-
-                ReflectionDrawableBoundary mirrorFieldData = null;
-                if (mirrorBottomReflection != null)
-                {
-                    if (rect_mirrorBottom.Contains(new Point(npcItem.NpcInstance.X, npcItem.NpcInstance.Y)))
-                        mirrorFieldData = mirrorBottomReflection;
-                }
-                if (mirrorFieldData == null)  // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(npcItem.NpcInstance.X, npcItem.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
-
-                npcItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    mirrorFieldData,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-
-                // Draw npc debug tooltip
-                if (bShowDebugMode) {
-                    Rectangle rect = new Rectangle(
-                        instance.X - shiftCenteredX - (instance.Width - 20),
-                        instance.Y - shiftCenteredY - instance.Height,
-                        Math.Max(100, instance.Width + 40),
-                        Math.Max(120, instance.Height));
-
-                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
-
-                    if (npcItem.CanUpdateDebugText(TickCount, 1000)) {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
-
-                        npcItem.DebugText = sb.ToString();
-                    }
-                    spriteBatch.DrawString(font_DebugValues, npcItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
-                }
-            }
-
-            // Front Backgrounds
-            backgrounds_front.ForEach(bg =>
-            {
-                bg.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
-                    null,
-                    RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                    TickCount);
-            });
+            DrawLayer(backgrounds_front, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // front background
 
             // Borders
             // Create any rectangle you want. Here we'll use the TitleSafeArea for fun.
@@ -909,74 +758,11 @@ namespace HaCreator.MapSimulator
             DrawVRFieldBorder(spriteBatch);
 
             //////////////////// UI related here ////////////////////
-            // Tooltips
-            if (mapObjects_tooltips.Count > 0)
-            {
-                foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
-                {
-                    if (tooltip.TooltipInstance.CharacterToolTip != null)
-                    {
-                        Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
-                        if (tooltipRect != null) // if this is null, show it at all times
-                        {
-                            Rectangle rect = new Rectangle(
-                                tooltipRect.X - shiftCenteredX,
-                                tooltipRect.Y - shiftCenteredY,
-                                tooltipRect.Width, tooltipRect.Height);
-
-                            if (bShowDebugMode)
-                            {
-                                DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f)); // test
-
-                                if (tooltip.CanUpdateDebugText(TickCount, 1000)) {
-                                    string text = "X: " + rect.X + ", Y: " + rect.Y;
-
-                                    tooltip.DebugText = text;
-                                }
-
-                                spriteBatch.DrawString(font_DebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                            }
-
-                            if (!rect.Contains(mouseState.X, mouseState.Y))
-                                continue;
-                        }
-                    }
-
-                    tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
-                        null,
-                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
-                }
-            }
+            DrawTooltip(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); 
 
             // Status bar [layer below minimap]
-            if (statusBarUi != null && !bHideUIMode) {
-                statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
-                            null,
-                            RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                            TickCount);
-                statusBarUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor);
-
-                statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
-                            null,
-                            RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                            TickCount);
-                statusBarChatUI.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor);
-            }
-
-            // Minimap
-            if (miniMapUi != null && !bHideUIMode)
-            {
-                miniMapUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
-                        mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
-                        null,
-                        RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution,
-                        TickCount);
-
-                miniMapUi.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor);
+            if (!bHideUIMode) {
+                DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 4)
@@ -1000,7 +786,8 @@ namespace HaCreator.MapSimulator
             mouseCursor.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                 0, 0, 0, 0, // pos determined in the class
                 null,
-                RenderWidth, RenderHeight, RenderObjectScaling, mapRenderResolution, TickCount);
+                _renderParams,
+                TickCount);
 
             spriteBatch.End();
             //skeletonMeshRenderer.End();
@@ -1010,6 +797,367 @@ namespace HaCreator.MapSimulator
 
 
             base.Draw(gameTime);
+        }
+
+        /// <summary>
+        /// Draws the map layer (back background or front-background)
+        /// </summary>
+        /// <param name="items"></param>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawLayer(List<BackgroundItem> items, GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+             int mapCenterX, int mapCenterY, int TickCount)
+        {
+            items.ForEach(item =>
+            {
+                item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
+                    _renderParams,
+                    TickCount);
+            });
+        }
+
+        /// <summary>
+        /// Draws the map object
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawMapObjects(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+             int mapCenterX, int mapCenterY, int TickCount)
+        {
+            foreach (List<BaseDXDrawableItem> mapItem in mapObjects)
+            {
+                foreach (BaseDXDrawableItem item in mapItem)
+                {
+                    item.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                        null,
+                        renderParams,
+                        TickCount);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws the portals
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawPortals(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, int TickCount)
+        {
+            // Portals
+            foreach (PortalItem portalItem in mapObjects_Portal)
+            {
+                PortalInstance instance = portalItem.PortalInstance;
+
+                portalItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
+                    _renderParams,
+                    TickCount);
+
+                // Draw portal debug tooltip
+                if (bShowDebugMode)
+                {
+                    Rectangle rect = new Rectangle(
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
+                        instance.Width + 40,
+                        instance.Height);
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (portalItem.CanUpdateDebugText(TickCount, 1000))
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" script: ").Append(instance.script).Append(Environment.NewLine);
+                        sb.Append(" tm: ").Append(instance.tm).Append(Environment.NewLine);
+                        sb.Append(" pt: ").Append(instance.pt).Append(Environment.NewLine);
+                        sb.Append(" pn: ").Append(instance.pt).Append(Environment.NewLine);
+
+                        portalItem.DebugText = sb.ToString();
+                    }
+                    spriteBatch.DrawString(font_DebugValues, portalItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws the reactors
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawReactors(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, int TickCount)
+        {
+            // Reactors
+            foreach (ReactorItem reactorItem in mapObjects_Reactors)
+            {
+                ReactorInstance instance = reactorItem.ReactorInstance;
+
+                reactorItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    null,
+                    _renderParams,
+                    TickCount);
+
+                // Draw reactor debug tooltip
+                if (bShowDebugMode)
+                {
+                    Rectangle rect = new Rectangle(
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
+                        Math.Max(80, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (reactorItem.CanUpdateDebugText(TickCount, 1000))
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.ReactorInfo.ID).Append(Environment.NewLine);
+                        sb.Append(" name: ").Append(instance.Name).Append(Environment.NewLine);
+
+                        reactorItem.DebugText = sb.ToString();
+                    }
+
+                    spriteBatch.DrawString(font_DebugValues, reactorItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draws the life objects (npc, mobs)
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawLife(
+            GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, int TickCount)
+        {
+            // mobs
+            foreach (MobItem mobItem in mapObjects_Mobs) 
+            {
+                MobInstance instance = mobItem.MobInstance;
+
+                ReflectionDrawableBoundary mirrorFieldData = null;
+                if (mirrorBottomReflection != null)
+                {
+                    if (rect_mirrorBottom.Contains(new Point(mobItem.MobInstance.X, mobItem.MobInstance.Y)))
+                        mirrorFieldData = mirrorBottomReflection;
+                }
+                if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobItem.MobInstance.X, mobItem.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
+
+                mobItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    mirrorFieldData,
+                    _renderParams,
+                    TickCount);
+
+                // Draw mobs debug tooltip
+                if (bShowDebugMode)
+                {
+                    Rectangle rect = new Rectangle(
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (mobItem.CanUpdateDebugText(TickCount, 1000))
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
+                        //sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
+
+                        mobItem.DebugText = sb.ToString();
+                    }
+
+                    spriteBatch.DrawString(font_DebugValues, mobItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
+            }
+            // npcs
+            foreach (NpcItem npcItem in mapObjects_NPCs) // NPCs (always in front of mobs)
+            {
+                NpcInstance instance = npcItem.NpcInstance;
+
+                ReflectionDrawableBoundary mirrorFieldData = null;
+                if (mirrorBottomReflection != null)
+                {
+                    if (rect_mirrorBottom.Contains(new Point(npcItem.NpcInstance.X, npcItem.NpcInstance.Y)))
+                        mirrorFieldData = mirrorBottomReflection;
+                }
+                if (mirrorFieldData == null)  // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(npcItem.NpcInstance.X, npcItem.NpcInstance.Y, MirrorFieldDataType.npc)?.ReflectionInfo;
+
+                npcItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, mapCenterX, mapCenterY,
+                    mirrorFieldData,
+                    _renderParams,
+                    TickCount);
+
+                // Draw npc debug tooltip
+                if (bShowDebugMode)
+                {
+                    Rectangle rect = new Rectangle(
+                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
+                        instance.Y - (int)shiftCenter.Y - instance.Height,
+                        Math.Max(100, instance.Width + 40),
+                        Math.Max(120, instance.Height));
+
+                    DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
+
+                    if (npcItem.CanUpdateDebugText(TickCount, 1000))
+                    {
+                        StringBuilder sb = new StringBuilder();
+                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
+                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
+                        sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
+                        //sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
+
+                        npcItem.DebugText = sb.ToString();
+                    }
+                    spriteBatch.DrawString(font_DebugValues, npcItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                    Debug.WriteLine(rect.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Draw UI
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="mouseState"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawUI(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount)
+        {
+            // Status bar [layer below minimap]
+            if (statusBarUi != null)
+            {
+                statusBarUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                            null,
+                            _renderParams,
+                            TickCount);
+
+                statusBarUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
+
+                statusBarChatUI.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                            null,
+                            _renderParams,
+                            TickCount);
+                statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
+            }
+
+            // Minimap
+            if (miniMapUi != null)
+            {
+                miniMapUi.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                        null,
+                        _renderParams,
+                TickCount);
+
+                miniMapUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor);
+            }
+        }
+
+        /// <summary>
+        /// Draw Tooltip
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="mouseState"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawTooltip(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount)
+        {
+            if (mapObjects_tooltips.Count > 0)
+            {
+                foreach (TooltipItem tooltip in mapObjects_tooltips) // NPCs (always in front of mobs)
+                {
+                    if (tooltip.TooltipInstance.CharacterToolTip != null)
+                    {
+                        Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
+                        if (tooltipRect != null) // if this is null, show it at all times
+                        {
+                            Rectangle rect = new Rectangle(
+                                tooltipRect.X - (int)shiftCenter.X,
+                                tooltipRect.Y - (int)shiftCenter.Y,
+                                tooltipRect.Width, tooltipRect.Height);
+
+                            if (bShowDebugMode)
+                            {
+                                DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f)); // test
+
+                                if (tooltip.CanUpdateDebugText(TickCount, 1000))
+                                {
+                                    string text = "X: " + rect.X + ", Y: " + rect.Y;
+
+                                    tooltip.DebugText = text;
+                                }
+                                spriteBatch.DrawString(font_DebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                            }
+                            if (!rect.Contains(mouseState.X, mouseState.Y))
+                                continue;
+                        }
+                    }
+                    tooltip.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
+                        mapShiftX, mapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y,
+                        null,
+                        _renderParams,
+                        TickCount);
+                }
+            }
         }
 
         /// <summary>
@@ -1190,9 +1338,10 @@ namespace HaCreator.MapSimulator
             return null;
         }
         #endregion
-        
+
         #region Boundaries
         /// <summary>
+        /// Controls horizontal camera movement within the map's viewing boundaries.
         /// Move the camera X viewing range by a specific offset, & centering if needed.
         /// </summary>
         /// <param name="bIsLeftKeyPressed"></param>
@@ -1201,8 +1350,11 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetCameraMoveX(bool bIsLeftKeyPressed, bool bIsRightKeyPressed, int moveOffset)
         {
-            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * RenderObjectScaling);
-            if (leftRightVRDifference < RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
+            // Calculate total viewable width in pixels after scaling
+            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * _renderParams.RenderObjectScaling);
+
+            // If map is narrower than screen width, center it
+            if (leftRightVRDifference < _renderParams.RenderWidth) // viewing range is smaller than the render width.. keep the rendering position at the center instead (starts from left to right)
             {
                 /*
                  * Orbis Tower <20th Floor>
@@ -1214,18 +1366,22 @@ namespace HaCreator.MapSimulator
                  *  |____________|
                  *  |____________|
                  *  |____________|
-                 *  
-                 * vr.Left = 87
-                 * vr.Right = 827
-                 * Difference = 740px
-                 * vr.Center = ((vr.Right - vr.Left) / 2) + vr.Left
-                 * 
-                 * Viewing Width = 1024 
-                 * Relative viewing center = vr.Center - (Viewing Width / 2)
+                 *  87px________827px
                  */
-                this.mapShiftX = ((leftRightVRDifference / 2) + (int)(vr_fieldBoundary.Left * RenderObjectScaling)) - (RenderWidth / 2);
+                /* Center Camera Logic Example:
+                        * For a vertical map like Orbis Tower:
+                        * - VR Map boundaries: Left=87px, Right=827px (Width = 740px)
+                        * - Screen width: 1024px
+                        * - Center point = (827-87)/2 + 87 = 457px
+                        * 
+                        * Since map is narrower than screen:
+                        * 1. Find map center relative to its boundaries
+                        * 2. Offset by half screen width to center map
+                        * 3. Account for any scaling
+                        */
+                this.mapShiftX = ((leftRightVRDifference / 2) + (int)(vr_fieldBoundary.Left * _renderParams.RenderObjectScaling)) - (_renderParams.RenderWidth / 2);
             }
-            else
+            else  // If map is wider than screen width, allow scrolling with boundaries
             {
                 // System.Diagnostics.Debug.WriteLine("[{4}] VR.Right {0}, Width {1}, Relative {2}. [Scaling {3}]", 
                 //      vr.Right, RenderWidth, (int)(vr.Right - RenderWidth), (int)((vr.Right - (RenderWidth * RenderObjectScaling)) * RenderObjectScaling),
@@ -1233,12 +1389,15 @@ namespace HaCreator.MapSimulator
 
                 if (bIsLeftKeyPressed)
                 {
-                    this.mapShiftX = Math.Max((int)(vr_fieldBoundary.Left * RenderObjectScaling), mapShiftX - moveOffset);
+                    // Limit leftward movement to map's left boundary
+                    this.mapShiftX = Math.Max((int)(vr_fieldBoundary.Left * _renderParams.RenderObjectScaling), mapShiftX - moveOffset);
 
                 }
                 else if (bIsRightKeyPressed)
                 {
-                    this.mapShiftX = Math.Min((int)((vr_fieldBoundary.Right - (RenderWidth / RenderObjectScaling))), mapShiftX + moveOffset);
+                    // Limit rightward movement to keep right boundary visible
+                    // Accounts for screen width and scaling to prevent showing empty space
+                    this.mapShiftX = Math.Min((int)((vr_fieldBoundary.Right - (_renderParams.RenderWidth / _renderParams.RenderObjectScaling))), mapShiftX + moveOffset);
                 } 
             }
         }
@@ -1252,10 +1411,10 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void SetCameraMoveY(bool bIsUpKeyPressed, bool bIsDownKeyPressed, int moveOffset)
         {
-            int topDownVRDifference = (int)((vr_fieldBoundary.Bottom - vr_fieldBoundary.Top) * RenderObjectScaling);
-            if (topDownVRDifference < RenderHeight)
+            int topDownVRDifference = (int)((vr_fieldBoundary.Bottom - vr_fieldBoundary.Top) * _renderParams.RenderObjectScaling);
+            if (topDownVRDifference < _renderParams.RenderHeight)
             {
-                this.mapShiftY = ((topDownVRDifference / 2) + (int)(vr_fieldBoundary.Top * RenderObjectScaling)) - (RenderHeight / 2);
+                this.mapShiftY = ((topDownVRDifference / 2) + (int)(vr_fieldBoundary.Top * _renderParams.RenderObjectScaling)) - (_renderParams.RenderHeight / 2);
             }
             else
             {
@@ -1271,7 +1430,7 @@ namespace HaCreator.MapSimulator
                 }
                 else if (bIsDownKeyPressed)
                 {
-                    this.mapShiftY = Math.Min((int)((vr_fieldBoundary.Bottom - (RenderHeight / RenderObjectScaling))), mapShiftY + moveOffset);
+                    this.mapShiftY = Math.Min((int)((vr_fieldBoundary.Bottom - (_renderParams.RenderHeight / _renderParams.RenderObjectScaling))), mapShiftY + moveOffset);
                 }
             }
         }

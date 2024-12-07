@@ -30,8 +30,42 @@ namespace UnitTest_Perf
         [GlobalSetup]
         public void Setup()
         {
-            _dummyValue = 42;
+            _dummyValue = (byte) (new Random().NextDouble() * byte.MaxValue);
         }
+
+        [Benchmark(Description = "Stackalloc 10kb")]
+        public void Stackalloc_10KB()
+        {
+            Span<byte> buffer = stackalloc byte[10*1024];
+            // Simulate some work
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = (byte)(i & _dummyValue & 0xFF);
+        }
+        [Benchmark(Description = "Stackalloc 1kb")]
+        public void Stackalloc_1KB()
+        {
+            Span<byte> buffer = stackalloc byte[1 * 1024];
+            // Simulate some work
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = (byte)(i & _dummyValue & 0xFF);
+        }
+        [Benchmark(Description = "Stackalloc 50kb")]
+        public void Stackalloc_50KB()
+        {
+            Span<byte> buffer = stackalloc byte[50 * 1024];
+            // Simulate some work
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = (byte)(i & _dummyValue & 0xFF);
+        }
+        [Benchmark(Description = "Stackalloc 100kb")]
+        public void Stackalloc_100KB()
+        {
+            Span<byte> buffer = stackalloc byte[100 * 1024];
+            // Simulate some work
+            for (int i = 0; i < buffer.Length; i++)
+                buffer[i] = (byte)(i & _dummyValue & 0xFF);
+        }
+
 
         [Benchmark(Description = "Stackalloc 256B")]
         public byte TinyArray_Stackalloc()

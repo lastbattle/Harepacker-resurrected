@@ -184,6 +184,25 @@ namespace HaCreator.GUI.Quest
             private set { }
         }
 
+        #region Misc
+        /// <summary>
+        /// Before big-bang update
+        /// </summary>
+        public bool IsPreBBDataWzFormat
+        {
+            get { return Program.WzManager.IsPreBBDataWzFormat; }
+            private set { }
+        }
+        /// <summary>
+        /// After big-bang update
+        /// </summary>
+        public bool IsPostBBDataWzFormat
+        {
+            get { return !Program.WzManager.IsPreBBDataWzFormat; }
+            private set { }
+        }
+        #endregion
+
         #region Property Changed Event
         public event PropertyChangedEventHandler PropertyChanged;
 

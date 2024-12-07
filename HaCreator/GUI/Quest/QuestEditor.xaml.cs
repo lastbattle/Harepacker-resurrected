@@ -85,17 +85,20 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorModel> _quests = new ObservableCollection<QuestEditorModel>();
-        public ObservableCollection<QuestEditorModel> Quests
+        public QuestAreaCodeType _sortQuestAreaCode = QuestAreaCodeType.Unknown;
+        public QuestAreaCodeType SortQuestAreaCode
         {
-            get { return _quests; }
+            get { return _sortQuestAreaCode; }
             set
             {
-                this._quests = value;
-                OnPropertyChanged(nameof(Quests));
+                this._sortQuestAreaCode = value;
+                OnPropertyChanged(nameof(SortQuestAreaCode));
             }
         }
-        private ObservableCollection<QuestEditorModel> _filteredQuests = new ObservableCollection<QuestEditorModel>();
+
+        private ObservableCollection<QuestEditorModel> _quests = new();
+
+        private ObservableCollection<QuestEditorModel> _filteredQuests = new();
         public ObservableCollection<QuestEditorModel> FilteredQuests
         {
             get { return _filteredQuests; }
@@ -164,7 +167,9 @@ namespace HaCreator.GUI.Quest
                         case "autoPreComplete":
                         case "autoComplete":
                         case "selectedMob":
+                        case "autoAccept":
                         case "autoCancel":
+                        case "autoCompleteAction":
                         case "disableAtStartTab":
                         case "disableAtPerformTab":
                         case "disableAtCompleteTab":
@@ -173,6 +178,8 @@ namespace HaCreator.GUI.Quest
                         case "showLayerTag":
                         case "oneShot":
                         case "summary":
+                        case "viewMedalItem":
+                        case "medalCategory":
                             break;
                         default:
                             string error = string.Format("[QuestEditor] Unhandled quest image property. Name='{0}', QuestId={1}", questImgProp.Name, kvp.Key);
@@ -200,7 +207,15 @@ namespace HaCreator.GUI.Quest
                 quest.Parent = (questProp["parent"] as WzStringProperty)?.Value;
 
                 // area, order
-                quest.Area = QuestAreaCodeTypeExt.ToEnum( (questProp["area"] as WzIntProperty)?.Value ?? 0);
+                int questAreaCode = (questProp["area"] as WzIntProperty)?.Value ?? 0;
+                quest.Area = QuestAreaCodeTypeExt.ToEnum(questAreaCode);
+                if (quest.Area == QuestAreaCodeType.Unknown && questAreaCode != 0)
+                {
+                    // developer debug
+                    string error = string.Format("[QuestEditor] New quest area code found. Quest Name='{0}', QuestId={1}, AreaCode='{2}'", quest.Name, quest.Id, questAreaCode);
+                    ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                    // end developer debug
+                }
                 quest.Order = (questProp["order"] as WzIntProperty)?.Value ?? 0;
 
                 // parse autoStart, autoPreComplete
@@ -208,7 +223,9 @@ namespace HaCreator.GUI.Quest
                 quest.AutoStart = (questProp["autoStart"] as WzIntProperty)?.Value > 0;
                 quest.AutoPreComplete = (questProp["autoPreComplete"] as WzIntProperty)?.Value > 0;
                 quest.AutoComplete = (questProp["autoComplete"] as WzIntProperty)?.Value > 0;
+                quest.AutoCompleteAction = (questProp["autoCompleteAction"] as WzIntProperty)?.Value > 0;
                 quest.SelectedMob = (questProp["selectedMob"] as WzIntProperty)?.Value > 0;
+                quest.AutoAccept = (questProp["autoAccept"] as WzIntProperty)?.Value > 0;
                 quest.AutoCancel = (questProp["autoCancel"] as WzIntProperty)?.Value > 0;
                 quest.OneShot = (questProp["oneShot"] as WzIntProperty)?.Value > 0;
 
@@ -260,7 +277,8 @@ namespace HaCreator.GUI.Quest
                             {
                                 quest.SayInfoStop_StartQuest.Add(sayStopModel);
                             }
-                        } finally
+                        }
+                        finally
                         {
                             quest.IsLoadingFromFile = false;
                         }
@@ -280,7 +298,8 @@ namespace HaCreator.GUI.Quest
                             {
                                 quest.SayInfoStop_EndQuest.Add(sayStopModel);
                             }
-                        } finally
+                        }
+                        finally
                         {
                             quest.IsLoadingFromFile = false;
                         }
@@ -318,15 +337,22 @@ namespace HaCreator.GUI.Quest
                     if (questCheckEnd1Prop != null)
                         parseQuestCheck(questCheckEnd1Prop, quest.CheckEndInfo, quest); // end quest
                 }
-                
-                // add
-                Quests.Add(quest);
-            }
-            FilteredQuests = Quests;
 
-            if (Quests.Count > 0)
+                // add
+                _quests.Add(quest);
+            }
+            FilteredQuests = _quests;
+
+            if (_quests.Count > 0)
             {
-                SelectedQuest = Quests[0];
+                SelectedQuest = _quests[0];
+            }
+
+            // Output errors
+            const string OUTPUT_ERROR_FILENAME = "Errors_QuestEditor.txt";
+            ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
+            if (UserSettings.ShowErrorsMessage)
+            {
             }
         }
 
@@ -1699,7 +1725,9 @@ namespace HaCreator.GUI.Quest
                         };
 
                         // add
-                        Quests.Add(quest);
+                        _quests.Add(quest);
+                        FilteredQuests.Add(quest);
+
                         SelectedQuest = quest;
                         listbox_Quest.SelectedItem = SelectedQuest;
                         listbox_Quest.ScrollIntoView(SelectedQuest); // Add this line
@@ -1731,15 +1759,38 @@ namespace HaCreator.GUI.Quest
         /// <param name="e"></param>
         private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            UpdateSortedQuestList();
+        }
+
+        /// <summary>
+        /// On quest area code selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void comboBox_questAreaSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateSortedQuestList();
+        }
+
+        /// <summary>
+        /// Updates the sorted quest list by quest name search term and area code
+        /// </summary>
+        private void UpdateSortedQuestList()
+        {
             // Create a temporary list first
-            ObservableCollection<QuestEditorModel> tempFilteredQuests = new ObservableCollection<QuestEditorModel>();
+            ObservableCollection<QuestEditorModel> tempFilteredQuests = new();
             string searchTerm = searchBox.Text.ToLower();
 
-            foreach (var quest in Quests)
+            foreach (QuestEditorModel quest in _quests)
             {
+                // Check name
                 if (quest.Name.ToLower().Contains(searchTerm) || quest.Id.ToString().Contains(searchTerm))
                 {
-                    tempFilteredQuests.Add(quest);
+                    // Check Area
+                    if (this._sortQuestAreaCode == QuestAreaCodeType.Unknown || quest.Area == this._sortQuestAreaCode)
+                    {
+                        tempFilteredQuests.Add(quest);
+                    }
                 }
             }
             // Replace the main list
@@ -3017,6 +3068,12 @@ namespace HaCreator.GUI.Quest
                 return;
 
             QuestEditorModel quest = _selectedQuest;
+
+            if (!Program.InfoManager.QuestInfos.ContainsKey(quest.Id.ToString())) // is still being selected after deleting
+            {
+                return; 
+            }
+
             WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
             WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
 
@@ -3066,9 +3123,17 @@ namespace HaCreator.GUI.Quest
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("autoComplete", 1));
                 }
+                if (quest.AutoCompleteAction == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("autoCompleteAction", 1));
+                }
                 if (quest.SelectedMob == true)
                 {
                     questWzSubProp.AddProperty(new WzIntProperty("selectedMob", 1));
+                }
+                if (quest.AutoAccept == true)
+                {
+                    questWzSubProp.AddProperty(new WzIntProperty("autoAccept", 1));
                 }
                 if (quest.AutoCancel == true)
                 {
@@ -4003,37 +4068,78 @@ namespace HaCreator.GUI.Quest
             QuestEditorModel quest = _selectedQuest;
 
             // remove it off local collections
-            Quests.Remove(_selectedQuest);
+            _quests.Remove(_selectedQuest);
             FilteredQuests.Remove(_selectedQuest);
-
 
             //////////////////
             /// Remove from QuestInfo.img
             //////////////////
-            WzSubProperty questWzSubProperty = Program.InfoManager.QuestInfos[quest.Id.ToString()];
+            {
+                WzSubProperty questWzSubProperty = Program.InfoManager.QuestInfos[quest.Id.ToString()];
 
-            // remove it off WzDirectory in the WZ
-            WzImage questInfoParentImg = questWzSubProperty.Parent as WzImage;
-            questWzSubProperty.Remove();
+                Program.InfoManager.QuestInfos.Remove(quest.Id.ToString());
 
-            // flag unsaved changes bool
-            _unsavedChanges = true;
-            Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                // remove it off WzDirectory in the WZ
+                WzImage questInfoParentImg = questWzSubProperty.Parent as WzImage;
+                questWzSubProperty.Remove();
+
+                // flag unsaved changes bool
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+            }
 
             //////////////////
             /// Remove from Say.img
             //////////////////
-            WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
-            if (oldSayWzProp != null)
             {
-                Program.InfoManager.QuestSays.Remove(quest.Id.ToString());
-
-                WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
                 if (oldSayWzProp != null)
-                    oldSayWzProp.Remove();
+                {
+                    Program.InfoManager.QuestSays.Remove(quest.Id.ToString());
 
-                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                    WzImage questSayParentImg = oldSayWzProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldSayWzProp != null)
+                        oldSayWzProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                }
             }
+
+            //////////////////
+            /// Remove from Act.img
+            //////////////////
+            {
+                WzSubProperty oldActImgProp = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null;
+                if (oldActImgProp != null)
+                {
+                    Program.InfoManager.QuestActs.Remove(quest.Id.ToString());
+
+                    WzImage questActParentImg = oldActImgProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldActImgProp != null)
+                        oldActImgProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                }
+            }
+
+            //////////////////
+            /// Remove from Check.img
+            //////////////////
+            {
+                WzSubProperty oldCheckImgProp = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null;
+                if (oldCheckImgProp != null)
+                {
+                    Program.InfoManager.QuestChecks.Remove(quest.Id.ToString());
+
+                    WzImage questCheckParentImg = oldCheckImgProp.Parent as WzImage; // TODO: this may be null, need to track reference of Say.img parent somewhere
+                    if (oldCheckImgProp != null)
+                        oldCheckImgProp.Remove();
+
+                    Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                }
+            }
+
+            SelectedQuest = null; // update UI
         }
         #endregion
 

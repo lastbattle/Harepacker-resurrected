@@ -64,6 +64,19 @@ namespace HaCreator.GUI.EditorPanels
             }
         }
 
+        /// <summary>
+        /// Sets the currently selected tileSet, and refresh the list of tiles
+        /// </summary>
+        /// <param name="tileSet"></param>
+        public void SetSelectedTileSet(string tileSet)
+        {
+            if (!Program.InfoManager.TileSets.ContainsKey(tileSet))
+                return;
+            tileSetList.SelectedItem = tileSet;
+
+            LoadTileSetList();
+        }
+
         private void tileSetList_SelectedIndexChanged(object sender, EventArgs e)
         {
             LoadTileSetList();
@@ -81,6 +94,7 @@ namespace HaCreator.GUI.EditorPanels
                     return;
                 WzImage tileSetImage = Program.InfoManager.TileSets[selectedSetName];
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
+
                 foreach (WzSubProperty tCat in tileSetImage.WzProperties)
                 {
                     if (tCat.Name == "info") 

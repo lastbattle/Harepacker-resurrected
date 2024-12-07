@@ -1,13 +1,9 @@
-﻿using HaSharedLibrary.Render.DX;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
+
 
 namespace HaSharedLibrary.Render.DX
 {
@@ -17,62 +13,48 @@ namespace HaSharedLibrary.Render.DX
     public class BaseDXDrawableItem : IBaseDXDrawableItem
     {
         // multiple frame
-        private readonly List<IDXObject> frames;
+        private readonly IDXObject[]? frames;
+        private readonly int frameCount;
+
         private int currFrame = 0;
         private int lastFrameSwitchTime = 0;
 
         // 1 frame
         protected bool flip;
         protected readonly bool notAnimated;
-        private readonly IDXObject frame0;
+        private readonly IDXObject? frame0;
 
         // Debug
-        private string _DebugText = null;
-        private int _lastDebugSwitchTime = 0;
+        private string? _debugText;
+        private int _lastDebugSwitchTime;
         /// <summary>
         /// Indexed debug text for developers. 
         /// </summary>
-        public string DebugText {
-            get { return _DebugText; }
-            set { this._DebugText = value; }
+        public string? DebugText
+        {
+            get => _debugText;
+            set => _debugText = value;
         }
+
         /// <summary>
         /// Returns true if the debug text is ready to be updated 
         /// </summary>
-        /// <param name="TickCount"></param>
-        /// <returns></returns>
-        public bool CanUpdateDebugText(int TickCount, int updateTimeMillis) {
-            // Animated
-            if (TickCount - _lastDebugSwitchTime > updateTimeMillis) {
-                this._lastDebugSwitchTime = TickCount;
-                return true;
-            }
-            return false;
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool CanUpdateDebugText(int tickCount, int updateTimeMillis) =>
+            tickCount - _lastDebugSwitchTime > updateTimeMillis &&
+            (_lastDebugSwitchTime = tickCount) >= 0;
 
         /// <summary>
-        /// The last frame drawn
-        /// Returns the default frame if none
+        /// The last frame drawn. Returns the default frame if none
         /// </summary>
-        private IDXObject _LastFrameDrawn = null;
-        public IDXObject LastFrameDrawn
+        private IDXObject? _lastFrameDrawn;
+        public IDXObject? LastFrameDrawn
         {
-            get { 
-                if (_LastFrameDrawn == null) {
-                    if (frame0 != null) 
-                        return frame0;
-                    else if (frames != null && frames.Count > 0)
-                        return frames[0];
-                }
-                return this._LastFrameDrawn; 
-            }
-            private set { }
+            get => _lastFrameDrawn ?? frame0 ?? frames?[0];
+            private set => _lastFrameDrawn = value;
         }
 
-        public IDXObject Frame0 {
-            get { return frame0; }
-            private set { }
-        }
+        public IDXObject? Frame0 => frame0;
 
         private Point _Position;
         /// <summary>
@@ -95,15 +77,15 @@ namespace HaSharedLibrary.Render.DX
             {
                 this.frame0 = frames[0];
                 notAnimated = true;
-                this.flip = flip;
             }
             else
             {
-                this.frames = frames;
-                notAnimated = false;
-                this.flip = flip;
+                this.frames = frames.ToArray(); // Convert to array for better performance
+                this.frameCount = frames.Count;
+                this.notAnimated = false;
             }
-            this._Position = new Point(0, 0);
+            this.flip = flip;
+            this._Position = Point.Zero; // Use static Point.Zero instead of new
         }
 
         /// <summary>
@@ -129,9 +111,7 @@ namespace HaSharedLibrary.Render.DX
             // Animated
             if (TickCount - lastFrameSwitchTime > frames[currFrame].Delay)
             {
-                currFrame++;  //advance frame
-                if (currFrame == frames.Count)
-                    currFrame = 0;
+                currFrame = (currFrame + 1) % frameCount; // Use modulo instead of if check
                 lastFrameSwitchTime = TickCount;
             }
             return frames[currFrame];
@@ -142,18 +122,18 @@ namespace HaSharedLibrary.Render.DX
         /// </summary>
         /// <param name="sprite"></param>
         /// <param name="skeletonMeshRenderer"></param>
+        /// <param name="gameTime"></param>
         /// <param name="mapShiftX">The relative x position</param>
         /// <param name="mapShiftY">The relative y position</param>
         /// <param name="centerX"></param>
         /// <param name="centerY"></param>
         /// <param name="drawReflectionInfo">The reflection info to draw for this object. Null if none.</param>
-        /// <param name="width"></param>
-        /// <param name="height"></param>
+        /// <param name="renderParameters"></param>
         /// <param name="TickCount">Ticks since system startup</param>
         public virtual void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
-            int width, int height, float RenderObjectScaling, RenderResolution mapRenderResolution,
+            RenderParameters renderParameters,
             int TickCount)
         {
             int shiftCenteredX = mapShiftX - centerX;
@@ -165,7 +145,7 @@ namespace HaSharedLibrary.Render.DX
             else
                 drawFrame = GetCurrentFrame(TickCount);
 
-            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, width, height))
+            if (IsFrameWithinView(drawFrame, shiftCenteredX, shiftCenteredY, renderParameters.RenderWidth, renderParameters.RenderHeight))
             {
                 drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
                     shiftCenteredX - _Position.X, shiftCenteredY - _Position.Y,
@@ -173,10 +153,10 @@ namespace HaSharedLibrary.Render.DX
                     drawReflectionInfo // for map objects that are able to cast a reflection on items that are reflectable
                     );
 
-                this._LastFrameDrawn = drawFrame; // set the last frame drawn
+                this._lastFrameDrawn = drawFrame; // set the last frame drawn
             }
             else
-                this._LastFrameDrawn = null;
+                this._lastFrameDrawn = null;
         }
 
         /// <summary>
@@ -191,18 +171,20 @@ namespace HaSharedLibrary.Render.DX
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsFrameWithinView(IDXObject frame, int shiftCenteredX, int shiftCenteredY, int width, int height)
         {
-            return (frame.X - shiftCenteredX + frame.Width >= 0 &&
-                frame.Y - shiftCenteredY + frame.Height >= 0 &&
-                frame.X - shiftCenteredX <= width &&
-                frame.Y - shiftCenteredY <= height);
+            int adjustedX = frame.X - shiftCenteredX;
+            int adjustedY = frame.Y - shiftCenteredY;
+
+            return adjustedX + frame.Width >= 0 &&
+                   adjustedY + frame.Height >= 0 &&
+                   adjustedX <= width &&
+                   adjustedY <= height;
         }
 
         /// <summary>
         /// Copies the X and Y position from copySrc
         /// </summary>
-        /// <param name="copySrc"></param>
-        public void CopyObjectPosition(IBaseDXDrawableItem copySrc) {
-            this.Position = new Point(copySrc.Position.X, copySrc.Position.Y);
-        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CopyObjectPosition(IBaseDXDrawableItem copySrc) =>
+            this.Position = copySrc.Position;
     }
 }

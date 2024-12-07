@@ -28,26 +28,21 @@ namespace HaCreator.GUI.Quest
 {
     public class QuestEditorCheckInfoModel : INotifyPropertyChanged
     {
+
+        /// <summary>
+        /// The default constructor created by XAML
+        /// </summary>
+        public QuestEditorCheckInfoModel()
+        {
+            CheckType = QuestEditorCheckType.Null;
+        }
+
         /// <summary>
         /// Constructor
         /// </summary>
         public QuestEditorCheckInfoModel(QuestEditorCheckType checkType)
         {
             CheckType = checkType;
-
-            if (checkType == QuestEditorCheckType.DayOfWeek)
-            {
-                DayOfWeek =
-                    [
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
-                        new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
-                    ];
-            }
         }
 
         private QuestEditorCheckType _checkType = QuestEditorCheckType.Null;
@@ -79,17 +74,17 @@ namespace HaCreator.GUI.Quest
                     long setAmount = value;
 
                     // input validation
-                    if (_checkType == QuestEditorCheckType.CharismaMin || _checkType == QuestEditorCheckType.CharmMin || _checkType == QuestEditorCheckType.CraftMin || 
+                    if (_checkType == QuestEditorCheckType.CharismaMin || _checkType == QuestEditorCheckType.CharmMin || _checkType == QuestEditorCheckType.CraftMin ||
                         _checkType == QuestEditorCheckType.WillMin || _checkType == QuestEditorCheckType.InsightMin || _checkType == QuestEditorCheckType.SenseMin)
                     {
                         if (setAmount < 0)
                             setAmount = 0;
-                    } 
+                    }
                     else if (_checkType == QuestEditorCheckType.LvMin || _checkType == QuestEditorCheckType.LvMax)
                     {
                         if (setAmount < 0)
                             setAmount = 0;
-                        else if (setAmount > CharacterStats.MAX_LEVEL) 
+                        else if (setAmount > CharacterStats.MAX_LEVEL)
                             setAmount = CharacterStats.MAX_LEVEL;
                     }
                     else if (_checkType == QuestEditorCheckType.WorldMin || _checkType == QuestEditorCheckType.WorldMax)
@@ -106,7 +101,7 @@ namespace HaCreator.GUI.Quest
                         else if (setAmount > 30000)
                             setAmount = 30000;
                     }
-                    else if (_checkType == QuestEditorCheckType.TamingMobLevelMin )
+                    else if (_checkType == QuestEditorCheckType.TamingMobLevelMin)
                     {
                         if (setAmount < 0) // 
                             setAmount = 0;
@@ -235,7 +230,16 @@ namespace HaCreator.GUI.Quest
             }
         }
 
-        private ObservableCollection<QuestEditorCheckDayOfWeekModel> _dayOfWeek = new();
+        private ObservableCollection<QuestEditorCheckDayOfWeekModel> _dayOfWeek =
+            [
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Monday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Tuesday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Wednesday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Thursday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Friday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Saturday),
+                new QuestEditorCheckDayOfWeekModel(QuestEditorCheckDayOfWeekType.Sunday)
+            ];
         public ObservableCollection<QuestEditorCheckDayOfWeekModel> DayOfWeek
         {
             get { return _dayOfWeek; }

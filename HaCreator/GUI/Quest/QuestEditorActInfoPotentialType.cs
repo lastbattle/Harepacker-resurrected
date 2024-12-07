@@ -13,12 +13,17 @@ namespace HaCreator.GUI.Quest
         Rare,
         Epic,
         Unique,
-        Legendary
+        Legendary,
+
+        NebulitesA,
+        NebulitesB,
+        NebulitesC,
+        NebulitesD,
     }
 
     public static class QuestEditorActInfoPotentialTypeExt
     {
-        private static readonly Dictionary<string, QuestEditorActInfoPotentialType> StringToEnum = new Dictionary<string, QuestEditorActInfoPotentialType>(StringComparer.OrdinalIgnoreCase)
+        private static readonly Dictionary<string, QuestEditorActInfoPotentialType> StringToEnum = new(StringComparer.OrdinalIgnoreCase)
         {
             // MapleStorySEA, MapleStoryKorea
             {"노멀", QuestEditorActInfoPotentialType.Normal},
@@ -27,12 +32,34 @@ namespace HaCreator.GUI.Quest
             {"유니크", QuestEditorActInfoPotentialType.Unique},
             {"레전드리", QuestEditorActInfoPotentialType.Legendary},
 
+            // MapleStory China
+            {"C级", QuestEditorActInfoPotentialType.Normal},
+            {"B级", QuestEditorActInfoPotentialType.Rare},
+            {"A级", QuestEditorActInfoPotentialType.Epic},
+            {"S级", QuestEditorActInfoPotentialType.Unique},
+            {"SS级", QuestEditorActInfoPotentialType.Legendary},
+
+            // MapleStory Taiwan
+            {"一般", QuestEditorActInfoPotentialType.Normal},
+            {"普通", QuestEditorActInfoPotentialType.Normal},
+            {"正常", QuestEditorActInfoPotentialType.Normal},
+            {"特殊", QuestEditorActInfoPotentialType.Rare},
+            {"稀有", QuestEditorActInfoPotentialType.Epic},
+            {"罕見", QuestEditorActInfoPotentialType.Unique},
+            {"傳說", QuestEditorActInfoPotentialType.Legendary},
+
             // MapleStory Global
             {"Normal", QuestEditorActInfoPotentialType.Normal}, // however this is not 100% necessary as the above still works
             {"Rare", QuestEditorActInfoPotentialType.Rare},
             {"Epic", QuestEditorActInfoPotentialType.Epic},
             {"Unique", QuestEditorActInfoPotentialType.Unique},
             {"Legendary", QuestEditorActInfoPotentialType.Legendary},
+            // Nebulites for MapleStory Global
+            // given the way this is implemented by GMS, an item cannot have both potentials and nebulites from quests.
+            {"Grade A", QuestEditorActInfoPotentialType.NebulitesA},
+            {"Grade B", QuestEditorActInfoPotentialType.NebulitesB},
+            {"Grade C", QuestEditorActInfoPotentialType.NebulitesC},
+            {"Grade D", QuestEditorActInfoPotentialType.NebulitesD},
         };
 
         /// <summary>

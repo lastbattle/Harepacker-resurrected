@@ -45,6 +45,7 @@ namespace HaCreator.Wz
                     break;
                 case MapType.MapLogin:
                 case MapType.CashShopPreview:
+                case MapType.ITCPreview:
                     name = board.MapInfo.strMapName;
                     break;
                 default:

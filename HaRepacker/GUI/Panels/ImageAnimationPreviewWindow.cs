@@ -13,6 +13,7 @@ using HaSharedLibrary.Util;
 using Spine;
 using System.Runtime.CompilerServices;
 using HaRepacker.Utils;
+using HaSharedLibrary.Render;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -31,8 +32,10 @@ namespace HaRepacker.GUI.Panels
 		// Res
 		private float UserScreenScaleFactor = 1.0f;
 
-		// Rendering objects
-		private readonly List<WzNode> selectedAnimationNodes;
+        private RenderParameters _renderParams;
+
+        // Rendering objects
+        private readonly List<WzNode> selectedAnimationNodes;
 		private BaseDXDrawableItem dxDrawableItem = null;
 
 		// Debug
@@ -69,7 +72,9 @@ namespace HaRepacker.GUI.Panels
 			this.renderAnimationScaling *= this.UserScreenScaleFactor;
 			this.renderTextScaling *= this.UserScreenScaleFactor;
 
-			graphicsDeviceMgr = new GraphicsDeviceManager(this)
+            this._renderParams = new RenderParameters(RENDER_WIDTH, RENDER_HEIGHT, renderAnimationScaling, RenderResolution.Res_All);
+
+            graphicsDeviceMgr = new GraphicsDeviceManager(this)
 			{
 				SynchronizeWithVerticalRetrace = true,
 				HardwareModeSwitch = true,
@@ -260,8 +265,8 @@ namespace HaRepacker.GUI.Panels
 			dxDrawableItem.Draw(spriteBatch, null, gameTime,
 						mapShiftX, mapShiftY, 0, 0,
 						null,
-						RENDER_WIDTH, RENDER_HEIGHT, renderAnimationScaling, RenderResolution.Res_All,
-						TickCount);
+                        _renderParams,
+                        TickCount);
 			if (dxDrawableItem.LastFrameDrawn != null)
 			{
 				IDXObject lastFrameDrawn = dxDrawableItem.LastFrameDrawn;

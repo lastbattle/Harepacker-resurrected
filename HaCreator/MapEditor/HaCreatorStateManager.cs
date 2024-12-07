@@ -924,13 +924,18 @@ namespace HaCreator.MapEditor
             ApplicationSettings.lastAllLayers = allLayers;
         }
 
-        void ribbon_LayerViewChanged(int layer, int platform, bool allLayers, bool allPlats)
+        void ribbon_LayerViewChanged(int layer, int platform, bool allLayers, bool allPlats, string tileSet)
         {
             if (multiBoard.SelectedBoard == null)
                 return;
             SetLayer(layer, platform, allLayers, allPlats);
             InputHandler.ClearSelectedItems(multiBoard.SelectedBoard);
 
+            // Update tilePanel to navigate to that selected tileLayer
+            if (tileSet != null)
+            {
+                tilePanel.SetSelectedTileSet(tileSet);
+            }
         }
         #endregion
 
