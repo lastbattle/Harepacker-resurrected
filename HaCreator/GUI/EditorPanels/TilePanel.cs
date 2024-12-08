@@ -72,6 +72,8 @@ namespace HaCreator.GUI.EditorPanels
         {
             if (!Program.InfoManager.TileSets.ContainsKey(tileSet))
                 return;
+            else if ((string) tileSetList.SelectedItem == tileSet) // its the same.
+                return;
             tileSetList.SelectedItem = tileSet;
 
             LoadTileSetList();
@@ -88,10 +90,14 @@ namespace HaCreator.GUI.EditorPanels
             {
                 if (tileSetList.SelectedItem == null) 
                     return;
-                tileImagesContainer.Controls.Clear();
+
                 string selectedSetName = (string)tileSetList.SelectedItem;
                 if (!Program.InfoManager.TileSets.ContainsKey(selectedSetName))
                     return;
+
+                // Clear existing
+                tileImagesContainer.Controls.Clear();
+
                 WzImage tileSetImage = Program.InfoManager.TileSets[selectedSetName];
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
 

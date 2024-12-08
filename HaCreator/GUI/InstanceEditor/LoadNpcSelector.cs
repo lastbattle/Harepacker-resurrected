@@ -85,12 +85,16 @@ namespace HaCreator.GUI.InstanceEditor
             try
             {
                 // Maps
-                foreach (KeyValuePair<string, string> item in Program.InfoManager.NpcNameCache) // itemid, <item category, item name, item desc>
+                foreach (KeyValuePair<string, Tuple<string, string>> item in Program.InfoManager.NpcNameCache) // itemid, <item category, item name, item desc>
                 {
                     string npcId = item.Key;
-                    string npcName = item.Value;
-                    
-                    string combinedId_ItemName = string.Format("[{0}] - {1}", npcId, npcName);
+                    string npcName = item.Value.Item1;
+                    string npcDesc = item.Value.Item2;
+
+                    string combinedId_ItemName = string.Format("[{0}] - {1} {2}", 
+                        npcId, 
+                        npcName, 
+                        npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc));
                     itemNames.Add(combinedId_ItemName);
                 }
                 itemNames.Sort();
@@ -152,9 +156,13 @@ namespace HaCreator.GUI.InstanceEditor
                 string npcId = match.Groups[1].Value;
 
                 string npcName = "NO NAME";
+                string npcFuncs = string.Empty;
                 if (Program.InfoManager.NpcNameCache.ContainsKey(npcId))
                 {
-                    npcName = Program.InfoManager.NpcNameCache[npcId]; // // itemid, <item category, item name, item desc>
+                    Tuple<string, string> val = Program.InfoManager.NpcNameCache[npcId];
+
+                    npcName = val.Item1; // itemid, <item category, item name, item desc>
+                    npcFuncs = val.Item2;
                 }
 
                 // npc image
@@ -170,7 +178,8 @@ namespace HaCreator.GUI.InstanceEditor
                     pictureBox_IconPreview.Image = null;
 
                 // label desc
-                label_itemDesc.Text = npcName;
+                label_npcName.Text = npcName;
+                label_npcDesc.Text = npcFuncs;
 
                 // set selected itemid
                 this._selectedNpcId = npcId;

@@ -65,7 +65,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 renderParameters,
                 TickCount);
 
-            if (nameTooltip != null)
+            if (nameTooltip != null) // TODO: hide this if boss monster
             {
                 // TODO: compensate for MOB relative position, and adjust mapShiftX, mapShiftY.
                 // in the future when the MOB is interactive and moves.

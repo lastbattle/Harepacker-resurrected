@@ -23,7 +23,7 @@ namespace HaCreator.Converter
             {
                 return string.Empty;
             }
-            string npcName = Program.InfoManager.NpcNameCache[npcId.ToString()];
+            string npcName = Program.InfoManager.NpcNameCache[npcId.ToString()].Item1;
 
             return npcName;
         }

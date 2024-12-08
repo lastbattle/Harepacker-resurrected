@@ -481,10 +481,18 @@ namespace HaCreator.MapSimulator {
                 }
             }
             System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
+
             NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                npcInstance.NpcInfo.Name, npcInstance.X, npcInstance.Y, color_foreGround,
+                npcInstance.NpcInfo.StringName, npcInstance.X, npcInstance.Y, color_foreGround,
                 texturePool, UserScreenScaleFactor, device);
-            return new NpcItem(npcInstance, frames, nameTooltip);
+
+            const int NPC_FUNC_Y_POS = 17;
+
+            NameTooltipItem npcDescTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                npcInstance.NpcInfo.StringFunc, npcInstance.X, npcInstance.Y + NPC_FUNC_Y_POS, color_foreGround,
+                texturePool, UserScreenScaleFactor, device);
+
+            return new NpcItem(npcInstance, frames, nameTooltip, npcDescTooltip);
         }
         #endregion
 
@@ -1098,8 +1106,8 @@ namespace HaCreator.MapSimulator {
         /// Draws the name tooltip for NPC and mobs
         /// </summary>
         /// <param name="renderText"></param>
-        /// <param name="x"></param>
-        /// <param name="y"></param>
+        /// <param name="x">The life object's X position.</param>
+        /// <param name="y">The life object's Y position.</param>
         /// <param name="color_foreGround"></param>
         /// <param name="texturePool"></param>
         /// <param name="UserScreenScaleFactor"></param>

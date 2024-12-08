@@ -998,9 +998,10 @@ namespace HaCreator.GUI
             {
                 string npcId = npcImg.Name;
                 string npcName = (npcImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string npcFunc = (npcImg["func"] as WzStringProperty)?.Value ?? string.Empty;  // dont use "NO FUNC" for desc
 
                 if (!Program.InfoManager.NpcNameCache.ContainsKey(npcId))
-                    Program.InfoManager.NpcNameCache[npcId] = npcName;
+                    Program.InfoManager.NpcNameCache[npcId] = new Tuple<string, string>(npcName, npcFunc);
                 else
                 {
                     string error = string.Format("[Initialization] Duplicate [Npc] name in String.wz. NpcId='{0}'", npcId);

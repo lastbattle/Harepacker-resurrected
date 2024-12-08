@@ -23,7 +23,6 @@ namespace HaCreator.MapEditor.Info
     public class NpcInfo : MapleExtractableInfo
     {
         private readonly string id;
-        private readonly string name;
 
         private WzImage _LinkedWzImage;
 
@@ -35,11 +34,10 @@ namespace HaCreator.MapEditor.Info
         /// <param name="id"></param>
         /// <param name="name"></param>
         /// <param name="parentObject"></param>
-        public NpcInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
+        public NpcInfo(Bitmap image, System.Drawing.Point origin, string id, WzObject parentObject)
             : base(image, origin, parentObject)
         {
             this.id = id;
-            this.name = name;
             if (image != null && image.Width == 1 && image.Height == 1)
                 image = global::HaCreator.Properties.Resources.placeholder;
         }
@@ -90,9 +88,8 @@ namespace HaCreator.MapEditor.Info
         private static NpcInfo Load(WzImage parentObject)
         {
             string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            string npcName = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id] : "NO NAME";
 
-            return new NpcInfo(null, new System.Drawing.Point(), id, npcName, parentObject);
+            return new NpcInfo(null, new System.Drawing.Point(), id, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
@@ -113,9 +110,22 @@ namespace HaCreator.MapEditor.Info
             private set { }
         }
 
-        public string Name
+        public string StringName
         {
-            get { return name; }
+            get {
+                string npcName = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id].Item1 : "NO NAME";
+                return npcName; 
+            }
+            private set { }
+        }
+
+        public string StringFunc
+        {
+            get
+            {
+                string npcDesc = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id].Item2 : string.Empty; // dont use "NO FUNC" for desc
+                return npcDesc;
+            }
             private set { }
         }
 

@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         }
 
         private NameTooltipItem nameTooltip = null;
+        private NameTooltipItem npcDescTooltip = null;
 
         /// <summary>
         /// Constructor
@@ -26,11 +27,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         /// <param name="npcInstance"></param>
         /// <param name="frames"></param>
         /// <param name="nameTooltip"></param>
-        public NpcItem(NpcInstance npcInstance, List<IDXObject> frames, NameTooltipItem nameTooltip)
+        public NpcItem(NpcInstance npcInstance, List<IDXObject> frames, NameTooltipItem nameTooltip, NameTooltipItem npcDescTooltip)
             : base(frames, npcInstance.Flip)
         {
             this.npcInstance = npcInstance;
             this.nameTooltip = nameTooltip;
+            this.npcDescTooltip = npcDescTooltip;
         }
 
         /// <summary>
@@ -39,11 +41,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         /// <param name="npcInstance"></param>
         /// <param name="frame0"></param>
         /// <param name="nameTooltip"></param>
-        public NpcItem(NpcInstance npcInstance, IDXObject frame0, NameTooltipItem nameTooltip)
+        public NpcItem(NpcInstance npcInstance, IDXObject frame0, NameTooltipItem nameTooltip, NameTooltipItem npcDescTooltip)
             : base(frame0, npcInstance.Flip)
         {
             this.npcInstance = npcInstance;
             this.nameTooltip = nameTooltip;
+            this.npcDescTooltip = npcDescTooltip;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -62,8 +65,17 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             {
                 // TODO: compensate for NPC relative position, and adjust mapShiftX, mapShiftY.
                 // in the future when the NPC is interactive and moves.
-
                 nameTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
+                    mapShiftX, mapShiftY, centerX, centerY,
+                    null,
+                    renderParameters,
+                    TickCount);
+            }
+            if (npcDescTooltip != null)
+            {
+                // TODO: compensate for NPC relative position, and adjust mapShiftX, mapShiftY.
+                // in the future when the NPC is interactive and moves.
+                npcDescTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, centerX, centerY,
                     null,
                     renderParameters,
