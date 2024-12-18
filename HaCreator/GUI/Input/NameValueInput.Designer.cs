@@ -65,6 +65,7 @@
             // numericUpDown_input
             // 
             numericUpDown_input.Location = new System.Drawing.Point(101, 47);
+            numericUpDown_input.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
             numericUpDown_input.Name = "numericUpDown_input";
             numericUpDown_input.Size = new System.Drawing.Size(330, 23);
             numericUpDown_input.TabIndex = 4;
@@ -89,7 +90,7 @@
             button_cancel.UseVisualStyleBackColor = true;
             button_cancel.Click += button_cancel_Click;
             // 
-            // NameValueInputForm
+            // NameValueInput
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
@@ -100,7 +101,7 @@
             Controls.Add(label_value);
             Controls.Add(label_name);
             Controls.Add(textBox_input);
-            Name = "NameValueInputForm";
+            Name = "NameValueInput";
             Text = "Input";
             KeyDown += Load_KeyDown;
             ((System.ComponentModel.ISupportInitialize)numericUpDown_input).EndInit();
