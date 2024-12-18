@@ -176,11 +176,19 @@ namespace HaCreator.MapEditor
             // By default, item is nonlayered
             return true;
         }
+
+        /// <summary>
+        /// Gets the active, inactive or selected color of the board.
+        /// </summary>
+        /// <param name="sel"></param>
+        /// <param name="selected"></param>
+        /// <returns></returns>
         public virtual XNA.Color GetColor(SelectionInfo sel, bool selected)
         {
             if ((sel.editedTypes & Type) == Type && CheckIfLayerSelected(sel))
                 return selected ? UserSettings.SelectedColor : XNA.Color.White;
-            else return MultiBoard.InactiveColor;
+            else 
+                return MultiBoard.InactiveColor;
         }
 
         public virtual bool IsPixelTransparent(int x, int y)
