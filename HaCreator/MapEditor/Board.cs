@@ -262,7 +262,10 @@ namespace HaCreator.MapEditor
                         Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor; // Semi-transparent light blue
 
                         HashSet<(string, string)> processedPairs = new();
-                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal => portal.pt == PortalType.PORTALTYPE_HIDDEN).ToList();
+                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal => 
+                                (portal.pt == PortalType.PORTALTYPE_HIDDEN // post-bb maplestory
+                                || portal.pt == PortalType.PORTALTYPE_INVISIBLE) // pre-bb, beta maplestory generally for teleport portal
+                                ).ToList();
                         foreach (PortalInstance portal1 in localTeleportPortal)
                         {
                             PortalInstance portal2 = localTeleportPortal.Where(portal => portal.pn == portal1.tn).FirstOrDefault();
