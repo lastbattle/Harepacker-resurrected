@@ -7,6 +7,7 @@
 using MapleLib.WzLib;
 using MapleLib.WzLib.Serializer;
 using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -17,12 +18,14 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.ListView;
 
 namespace HaCreator.GUI
 {
     public partial class Repack : Form
     {
-        private readonly List<WzFile> toRepack;
+        private readonly List<WzFile> _toRepack;
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
 
         /// <summary>
         /// Constructor
@@ -30,9 +33,9 @@ namespace HaCreator.GUI
         public Repack()
         {
             InitializeComponent();
+            _toRepack = Program.WzManager.GetUpdatedWzFiles();
 
-            toRepack = Program.WzManager.GetUpdatedWzFiles();
-            foreach (WzFile wzf in toRepack)
+            foreach (WzFile wzf in _toRepack)
             {
                 checkedListBox_changedFiles.Items.Add(wzf.Name, CheckState.Checked);
             }
@@ -46,8 +49,13 @@ namespace HaCreator.GUI
         private void Repack_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (!button_repack.Enabled && !Program.Restarting)
-            { //Do not let the user close the form while saving
+            {
+                //Do not let the user close the form while saving
                 e.Cancel = true;
+            }
+            else
+            {
+                _cancellationTokenSource.Dispose();
             }
         }
 
@@ -73,37 +81,31 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_repack_Click(object sender, EventArgs e)
+        private async void button_repack_Click(object sender, EventArgs e)
         {
             button_repack.Enabled = false;
 
-            Thread t = new Thread(new ThreadStart(RepackerThread));
-            t.Start();
+            await Task.Run(RepackerThread, _cancellationTokenSource.Token);
         }
 
-        private void ShowErrorMessage(string data)
-        {
-            MessageBox.Show(data, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-
-        /// <summary>
-        /// Change the repack state label
-        /// </summary>
-        /// <param name="state"></param>
-        private void ChangeRepackState(string state)
-        {
+        private void ShowErrorMessage(string message) =>
+             MessageBox.Show(message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        private void ChangeRepackState(string state) =>
             label_repackState.Text = state;
-        }
+
 
         /// <summary>
         /// On repacking completed
         /// </summary>
-        /// <param name="bSaveFileInHaCreatorDirectory"></param>
-        private void FinishSuccess(bool bSaveFileInHaCreatorDirectory)
+        /// <param name="saveFileInHaCreatorDirectory"></param>
+        private void FinishSuccess(bool saveFileInHaCreatorDirectory)
         {
-            MessageBox.Show("Repacked successfully. " + (!bSaveFileInHaCreatorDirectory ? "" : "Please replace the files in HaCreator\\Output."));
+            var message = "Repacked successfully. " +
+                (!saveFileInHaCreatorDirectory ? string.Empty : "Please replace the files in HaCreator\\Output.");
 
-            if (!bSaveFileInHaCreatorDirectory)
+            MessageBox.Show(message);
+
+            if (!saveFileInHaCreatorDirectory)
             {
                 Program.Restarting = true;
             }
@@ -114,29 +116,109 @@ namespace HaCreator.GUI
             Close();
         }
 
-        private void ShowErrorMessageThreadSafe(Exception e, string saveStage)
+        private void ShowErrorMessageThreadSafe(Exception ex, string saveStage)
         {
-            Invoke((Action)delegate
+            if (!InvokeRequired)
             {
-                ChangeRepackState("ERROR While saving " + saveStage + ", aborted.");
+                HandleError();
+                return;
+            }
+
+            Invoke(HandleError);
+
+            void HandleError()
+            {
+                ChangeRepackState($"ERROR While saving {saveStage}, aborted.");
                 button_repack.Enabled = true;
                 ShowErrorMessage("There has been an error while saving, it is likely because you do not have permissions to the destination folder or the files are in use.\r\n\r\nPress OK to see the error details.");
-                ShowErrorMessage(e.Message + "\r\n" + e.StackTrace);
-            });
+                if (ex != null)
+                    ShowErrorMessage($"{ex.Message}\r\n{ex.StackTrace}");
+            }
         }
 
-        private void RepackerThread()
+        private async Task UpdateUIAsync(string message)
         {
-            Invoke((Action)delegate 
-            { 
-                ChangeRepackState("Deleting old backups..."); 
-            });
+            if (InvokeRequired)
+            {
+                await Task.Run(() => Invoke(() => ChangeRepackState(message)));
+            }
+            else
+            {
+                ChangeRepackState(message);
+            }
+        }
 
-            // Test for write access
-            string rootDir = Path.Combine(Program.WzManager.WzBaseDirectory, Program.APP_NAME);
-            string testDir = Path.Combine(rootDir, "Test");
+        private async Task RepackerThread()
+        {
+            if (InvokeRequired)
+            {
+                await UpdateUIAsync("Deleting old backups...");
+            }
 
-            bool bSaveFileInHaCreatorDirectory = false;
+            // Check file access for all files first
+            /*foreach (var wzFile in _toRepack)
+            {
+                var (inUse, details) = GetFileAccessStatusAsync(wzFile.FilePath);
+                if (inUse)
+                {
+                    ShowErrorMessageThreadSafe(null, details);
+                    return;
+                }
+            }*/
+
+            var (rootDir, saveFileInHaCreatorDirectory) = GetRootDirectoryAsync();
+            var directories = new DirectoryStructure(rootDir);
+
+            try
+            {
+                PrepareDirectoriesAsync(directories);
+                SaveXMLFilesAsync(directories);
+
+                // save selected wz files
+                foreach (var wzFile in _toRepack.Where(wzFile => checkedListBox_changedFiles.CheckedItems.Cast<string>().Contains(wzFile.Name)))
+                {
+                    await UpdateUIAsync($"Saving {wzFile.Name}...");
+
+                    var orgFile = wzFile.FilePath;
+                    var tmpFile = GetTemporaryFilePath(wzFile, directories, saveFileInHaCreatorDirectory);
+
+                    wzFile.SaveToDisk(tmpFile, wzFile.Is64BitWzFile);
+                    wzFile.Dispose();
+
+                    if (!saveFileInHaCreatorDirectory)
+                    {
+                        string backupName = $"{orgFile}_BAK_{DateTime.Now:yyyy_MM_dd_HH_mm_ss}.wz";
+
+                        try
+                        {
+                            File.Move(orgFile, backupName);
+                            File.Move(tmpFile, orgFile);
+                        }
+                        catch (Exception exp)
+                        {
+                            ShowErrorMessageThreadSafe(exp, "");
+
+                            // delete the temporary saved wz file if moving is not successful
+                            File.Delete(tmpFile);
+                            return;
+                        }
+                    }
+                }
+
+                await UpdateUIAsync("Finished");
+                await Task.Run(() => Invoke(() => FinishSuccess(saveFileInHaCreatorDirectory)));
+            }
+            catch (Exception ex)
+            {
+                ShowErrorMessageThreadSafe(ex, "processing files");
+            }
+        }
+
+        private (string rootDir, bool saveInHaCreator) GetRootDirectoryAsync()
+        {
+            var baseDir = Path.Combine(Program.WzManager.WzBaseDirectory, Program.APP_NAME);
+            var testDir = Path.Combine(baseDir, "Test");
+
             try
             {
                 if (!Directory.Exists(testDir))
@@ -144,142 +226,102 @@ namespace HaCreator.GUI
                     Directory.CreateDirectory(testDir);
                     Directory.Delete(testDir);
                 }
+                return (baseDir, false);
             }
-            catch (Exception e)
+            catch (UnauthorizedAccessException)
             {
-                if (e is UnauthorizedAccessException)
-                {
-                    bSaveFileInHaCreatorDirectory = true;
-                }
+                return (Path.Combine(Directory.GetCurrentDirectory(), Program.APP_NAME), true);
             }
-            if (bSaveFileInHaCreatorDirectory)
-                rootDir = Path.Combine(Directory.GetCurrentDirectory(), Program.APP_NAME); 
+        }
 
-            // Prepare directories
-            string backupDir = Path.Combine(rootDir, "Backup");
-            string orgBackupDir = Path.Combine(rootDir, "Original");
-            string XMLDir = Path.Combine(rootDir, "XML");
+        private record DirectoryStructure(string RootDir)
+        {
+            public string BackupDir => Path.Combine(RootDir, "Backup");
+            public string OriginalDir => Path.Combine(RootDir, "Original");
+            public string XMLDir => Path.Combine(RootDir, "XML");
+            public string OutputDir => Path.Combine(RootDir, "Output");
+        }
+
+        private void PrepareDirectoriesAsync(DirectoryStructure dirs)
+        {
+            Directory.CreateDirectory(dirs.BackupDir);
+            Directory.CreateDirectory(dirs.OriginalDir);
+            Directory.CreateDirectory(dirs.XMLDir);
+
+            foreach (var file in new DirectoryInfo(dirs.BackupDir).GetFiles())
+            {
+                file.Delete();
+            }
+        }
+
+        private async void SaveXMLFilesAsync(DirectoryStructure dirs)
+        {
+            await UpdateUIAsync("Saving XMLs...");
+
+            foreach (var img in Program.WzManager.WzUpdatedImageList)
+            {
+                var xmlPath = Path.Combine(dirs.XMLDir, img.FullPath);
+                var xmlPathDir = Path.GetDirectoryName(xmlPath);
+
+                Directory.CreateDirectory(xmlPathDir!);
+                var xmlSerializer = new WzClassicXmlSerializer(0, LineBreak.None, false);
+                xmlSerializer.SerializeImage(img, xmlPath);
+            }
+        }
+
+        private string GetTemporaryFilePath(WzFile wzFile, DirectoryStructure dirs, bool saveInHaCreator)
+        {
+            if (!saveInHaCreator)
+            {
+                return $"{wzFile.FilePath}$tmp";
+            }
+
+            Directory.CreateDirectory(dirs.OutputDir);
+            var tmpFile = Path.Combine(dirs.OutputDir, wzFile.Name);
+
+            if (!File.Exists(tmpFile))
+            {
+                File.Create(tmpFile).Dispose();
+            }
+
+            return tmpFile;
+        }
+
+
+        /// <summary>
+        /// Alternative method that provides more detailed file access information
+        /// </summary>
+        /// <param name="filePath">Full path to the file</param>
+        /// <returns>Tuple containing whether file is in use and access details</returns>
+        public static (bool isInUse, string details) GetFileAccessStatusAsync(string filePath)
+        {
+            if (!File.Exists(filePath))
+                return (false, "File does not exist");
 
             try
             {
-                if (!Directory.Exists(backupDir))
-                    Directory.CreateDirectory(backupDir);
-                
-                if (!Directory.Exists(orgBackupDir))
-                    Directory.CreateDirectory(orgBackupDir);
-                
-                if (!Directory.Exists(XMLDir))
-                    Directory.CreateDirectory(XMLDir);
-
-                foreach (FileInfo fi in new DirectoryInfo(backupDir).GetFiles())
-                {
-                    fi.Delete();
-                }
+                using var stream = File.Open(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                return (false, "File is available for exclusive access");
             }
-            catch (Exception e)
+            catch (IOException ex)
             {
-                ShowErrorMessageThreadSafe(e, "backup files");
-                return;
+                return ex.Message switch
+                {
+                    var msg when msg.Contains("being used by another process")
+                        => (true, "File is being used by another process"),
+                    var msg when msg.Contains("access denied")
+                        => (true, "Access denied - file may be locked or you lack permissions"),
+                    _ => (true, $"File is locked: {ex.Message}")
+                };
             }
-
-            // Save XMLs
-            // We have to save XMLs first, otherwise the WzImages will already be disposed when we reach this code
-            Invoke((Action)delegate 
-            { 
-                ChangeRepackState("Saving XMLs..."); 
-            });
-
-            foreach (WzImage img in Program.WzManager.WzUpdatedImageList)
+            catch (UnauthorizedAccessException)
             {
-                try
-                {
-                    string xmlPath = Path.Combine(XMLDir, img.FullPath);
-                    string xmlPathDir = Path.GetDirectoryName(xmlPath);
-                    if (!Directory.Exists(xmlPathDir))
-                        Directory.CreateDirectory(xmlPathDir);
-                    WzClassicXmlSerializer xmlSer = new WzClassicXmlSerializer(0, LineBreak.None, false);
-                    xmlSer.SerializeImage(img, xmlPath);
-                }
-                catch (Exception e)
-                {
-                    ShowErrorMessageThreadSafe(e, "XMLs");
-                    return;
-                }
+                return (true, "Unauthorized access - check file permissions");
             }
-
-            // Save WZ Files
-            foreach (WzFile wzf in toRepack)
+            catch (Exception ex)
             {
-                // Check if this wz file is selected and can be saved
-                bool bCanSave = false;
-                foreach (string checkedItemName in checkedListBox_changedFiles.CheckedItems) { // no uncheckedItems list :(
-                    if (checkedItemName == wzf.Name) {
-                        bCanSave = true;
-                        break;
-                    }
-                }
-                if (!bCanSave)
-                    continue;
-
-                // end
-
-                Invoke((Action)delegate 
-                { 
-                    ChangeRepackState("Saving " + wzf.Name + "..."); 
-                });
-                string orgFile = wzf.FilePath;
-
-                string tmpFile;
-                if (!bSaveFileInHaCreatorDirectory)
-                    tmpFile = orgFile + "$tmp";
-                else
-                {
-                    string folderPath = Path.Combine(rootDir, "Output");
-                    tmpFile = Path.Combine(folderPath, wzf.Name);
-
-                    try
-                    {
-                        if (!Directory.Exists(folderPath))
-                            Directory.CreateDirectory(folderPath);
-
-                        if (!File.Exists(tmpFile))
-                            File.Create(tmpFile).Close();
-                    }
-                    catch (Exception e)
-                    {
-                        ShowErrorMessageThreadSafe(e, wzf.Name);
-                        return;
-                    }
-                }
-
-                try
-                {
-                    bool bSaveAs64BitWzFile = wzf.Is64BitWzFile; // no version number
-                    wzf.SaveToDisk(tmpFile, bSaveAs64BitWzFile);
-                    wzf.Dispose();
-
-                    if (!bSaveFileInHaCreatorDirectory) // only replace the original file if its saving in the maplestory folder
-                    {
-                        // Move the original Wz file to a backup name
-                        string currentDateTimeString = DateTime.Now.ToString().Replace(":", "_").Replace("/", "_");
-                        File.Move(orgFile, orgFile + string.Format("_BAK_{0}.wz", currentDateTimeString));
-
-                        // Move the newly created WZ file as the new file 
-                        File.Move(tmpFile, orgFile);
-                    }
-                }
-                catch (Exception e)
-                {
-                    ShowErrorMessageThreadSafe(e, wzf.Name);
-                    return;
-                }
+                throw new InvalidOperationException($"Unexpected error checking file access: {ex.Message}", ex);
             }
-
-            Invoke((Action)delegate 
-            { 
-                ChangeRepackState("Finished"); 
-                FinishSuccess(bSaveFileInHaCreatorDirectory);
-            });
         }
     }
 }

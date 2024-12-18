@@ -48,7 +48,7 @@ namespace HaCreator.Wz
         public Dictionary<string, WzImageProperty> SkillWzImageCache = new Dictionary<string, WzImageProperty>();
 
         // Npcs
-        public Dictionary<string, string> NpcNameCache = new Dictionary<string, string>();
+        public Dictionary<string, Tuple<string, string>> NpcNameCache = new Dictionary<string, Tuple<string, string>>();
         public Dictionary<string, WzImage> NpcPropertyCache = new Dictionary<string, WzImage>();
 
         public Dictionary<string, PortalInfo> Portals = new Dictionary<string, PortalInfo>();

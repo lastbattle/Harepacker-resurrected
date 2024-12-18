@@ -43,9 +43,13 @@ namespace HaCreator.GUI.EditorPanels
             {
                 reactors.Add(entry.Value.ID);
             }
-            foreach (KeyValuePair<string, string> entry in Program.InfoManager.NpcNameCache)
+            foreach (KeyValuePair<string, Tuple<string, string>> entry in Program.InfoManager.NpcNameCache)
             {
-                npcs.Add(entry.Key + " - " + entry.Value);
+                string npcName = entry.Value.Item1;
+                string npcDesc = entry.Value.Item2;
+
+                npcs.Add(string.Format("{0} - {1} {2}", entry.Key, npcName, 
+                    npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc)));
             }
             foreach (KeyValuePair<string, string> entry in Program.InfoManager.MobNameCache)
             {

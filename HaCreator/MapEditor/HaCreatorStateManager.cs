@@ -986,7 +986,7 @@ namespace HaCreator.MapEditor
             else if (item is NpcInstance)
             {
                 sb.Append("[Npc]").Append(Environment.NewLine);
-                sb.Append(firstLineSpacer).Append("Name: ").Append(((NpcInfo)item.BaseInfo).Name).Append(Environment.NewLine);
+                sb.Append(firstLineSpacer).Append("Name: ").Append(((NpcInfo)item.BaseInfo).StringName).Append(Environment.NewLine);
                 sb.Append(firstLineSpacer).Append("ID: ").Append(((NpcInfo)item.BaseInfo).ID);
             }
             else if (item is ReactorInstance)
