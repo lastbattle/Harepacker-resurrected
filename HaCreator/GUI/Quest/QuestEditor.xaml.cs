@@ -36,6 +36,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -3074,12 +3075,12 @@ namespace HaCreator.GUI.Quest
                 return; 
             }
 
-            WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
-            WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
-
             // Save QuestInfo.img
-            if (questWzSubProperty_original != null)
             {
+
+                WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
+                WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()]; // may be null, but shouldnt be for QuestInfo.img at the very least
+
                 questWzSubProp.AddProperty(new WzStringProperty("name", quest.Name));
 
                 if (quest.QuestInfoDesc0 != null && quest.QuestInfoDesc0 != string.Empty)
@@ -3185,11 +3186,17 @@ namespace HaCreator.GUI.Quest
                 }
 
                 // remove the original image
-                WzImage questInfoParentImg = questWzSubProperty_original.Parent as WzImage;
+                WzImage questInfoParentImg;
+                if (questWzSubProperty_original != null)
+                {
+                    questInfoParentImg = questWzSubProperty_original.Parent as WzImage;
 
-                // remove previous quest wzImage
-                if (questInfoParentImg[questWzSubProperty_original.ToString()] != null)
+                    // remove previous quest wzImage
                     questWzSubProperty_original.Remove();
+                } else
+                {
+                    questInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value?.Parent as WzImage; // select any random "info" sub item and get its parent instead
+                }
 
                 // replace the old 
                 Program.InfoManager.QuestInfos[quest.Id.ToString()] = questWzSubProp;
@@ -3223,12 +3230,17 @@ namespace HaCreator.GUI.Quest
                 saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
 
                 // select any parent node
-                WzImage questSayParentImg = oldSayWzProp?.Parent as WzImage; // this may be null, since not all quest contains Say.img sub property
-                if (questSayParentImg == null)
-                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
-
+                WzImage questSayParentImg; // this may be null, since not all quest contains Say.img sub property
                 if (oldSayWzProp != null)
+                {
+                    questSayParentImg = oldSayWzProp?.Parent as WzImage;
+
+                    // remove previous quest wzImage
                     oldSayWzProp.Remove();
+                } else
+                {
+                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
+                }
 
                 questSayParentImg.AddProperty(newSayWzProp); // add new to the parent
 
@@ -3236,6 +3248,7 @@ namespace HaCreator.GUI.Quest
                 Program.InfoManager.QuestSays[quest.Id.ToString()] = newSayWzProp;
 
                 // flag wz file unsaved
+                _unsavedChanges = true;
                 Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
             }
 
@@ -3257,7 +3270,12 @@ namespace HaCreator.GUI.Quest
                 // select any parent node
                 WzImage questActParentImg;
                 if (questAct_SubPropOriginal != null)
+                {
                     questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    questAct_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
+                }
                 else
                     questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
 
@@ -3267,6 +3285,7 @@ namespace HaCreator.GUI.Quest
                 Program.InfoManager.QuestActs[quest.Id.ToString()] = questAct_New;
 
                 // flag wz file unsaved
+                _unsavedChanges = true;
                 Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
             }
 
@@ -3288,7 +3307,12 @@ namespace HaCreator.GUI.Quest
                 // select any parent node
                 WzImage questCheckParentImg;
                 if (questCheck_SubPropOriginal != null)
+                {
                     questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    questCheck_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
+                }
                 else
                     questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
 
@@ -3298,6 +3322,7 @@ namespace HaCreator.GUI.Quest
                 Program.InfoManager.QuestChecks[quest.Id.ToString()] = questCheck_New;
 
                 // flag wz file unsaved
+                _unsavedChanges = true;
                 Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
             }
 
