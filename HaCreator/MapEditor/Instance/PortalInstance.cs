@@ -34,6 +34,26 @@ namespace HaCreator.MapEditor.Instance
         private int? _hRange;
         private int? _vRange;
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="baseInfo"></param>
+        /// <param name="board"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="pn">Portal name</param>
+        /// <param name="pt">Portal type</param>
+        /// <param name="tn">Target name</param>
+        /// <param name="tm">To map</param>
+        /// <param name="script"></param>
+        /// <param name="delay"></param>
+        /// <param name="hideTooltip"></param>
+        /// <param name="onlyOnce"></param>
+        /// <param name="horizontalImpact"></param>
+        /// <param name="verticalImpact"></param>
+        /// <param name="image"></param>
+        /// <param name="hRange"></param>
+        /// <param name="vRange"></param>
         public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, string pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
             : base(board, x, y, -1)
         {
@@ -123,6 +143,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// The portal type
+        /// </summary>
         public string pt
         {
             get
@@ -136,6 +159,7 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+
         public string tn
         {
             get
@@ -148,6 +172,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// To map
+        /// </summary>
         public int tm
         {
             get
@@ -160,6 +187,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// Portal script
+        /// </summary>
         public string script
         {
             get

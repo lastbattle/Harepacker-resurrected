@@ -17,6 +17,10 @@ using HaCreator.MapEditor.UndoRedo;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaSharedLibrary.Util;
+using System.Runtime.CompilerServices;
+using HaCreator.MapEditor.Instance;
+using System.Linq;
+using Footholds;
 
 namespace HaCreator.MapEditor
 {
@@ -87,37 +91,6 @@ namespace HaCreator.MapEditor
             undoRedoMan = new UndoRedoManager(this);
             mouse = new Mouse(this);
             serMan = new SerializationManager(this);
-        }
-
-        public void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
-        {
-            if (list.ListType == ItemTypes.None)
-            {
-                foreach (BoardItem item in list)
-                {
-                    if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
-                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                }
-            }
-            else if ((sel.visibleTypes & list.ListType) != 0)
-            {
-                if (list.IsItem)
-                {
-                    foreach (BoardItem item in list)
-                    {
-                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
-                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                    }
-                }
-                else
-                {
-                    foreach (MapleLine line in list)
-                    {
-                        if (parent.IsItemInRange(Math.Min(line.FirstDot.X, line.SecondDot.X), Math.Min(line.FirstDot.Y, line.SecondDot.Y), Math.Abs(line.FirstDot.X - line.SecondDot.X), Math.Abs(line.FirstDot.Y - line.SecondDot.Y), xShift, yShift))
-                            line.Draw(sprite, line.GetColor(sel), xShift, yShift);
-                    }
-                }
-            }
         }
 
         public static System.Drawing.Bitmap ResizeImage(System.Drawing.Bitmap FullsizeImage, float coeff)
@@ -208,8 +181,12 @@ namespace HaCreator.MapEditor
             if (mouse.MultiSelectOngoing)
             {
                 Rectangle selectionRect = InputHandler.CreateRectangle(
-                    new Point(MultiBoard.VirtualToPhysical(mouse.MultiSelectStart.X, centerPoint.X, hScroll, 0), MultiBoard.VirtualToPhysical(mouse.MultiSelectStart.Y, centerPoint.Y, vScroll, 0)),
-                    new Point(MultiBoard.VirtualToPhysical(mouse.X, centerPoint.X, hScroll, 0), MultiBoard.VirtualToPhysical(mouse.Y, centerPoint.Y, vScroll, 0)));
+                    new Point(
+                        MultiBoard.VirtualToPhysical(mouse.MultiSelectStart.X, centerPoint.X, hScroll, 0), 
+                        MultiBoard.VirtualToPhysical(mouse.MultiSelectStart.Y, centerPoint.Y, vScroll, 0)),
+                    new Point(
+                        MultiBoard.VirtualToPhysical(mouse.X, centerPoint.X, hScroll, 0), 
+                        MultiBoard.VirtualToPhysical(mouse.Y, centerPoint.Y, vScroll, 0)));
                 parent.DrawRectangle(sprite, selectionRect, UserSettings.SelectSquare);
                 selectionRect.X++;
                 selectionRect.Y++;
@@ -253,6 +230,79 @@ namespace HaCreator.MapEditor
             if (ApplicationSettings.InfoMode)
             {
                 parent.FillRectangle(sprite, new Rectangle(MultiBoard.VirtualToPhysical(-5, centerPoint.X, hScroll, 0), MultiBoard.VirtualToPhysical(-5 , centerPoint.Y, vScroll, 0), 10, 10), Color.DarkRed);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
+        {
+            if (list.ListType == ItemTypes.None)
+            {
+                foreach (BoardItem item in list)
+                {
+                    if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
+                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                }
+            }
+            else if ((sel.visibleTypes & list.ListType) != 0)
+            {
+                if (list.IsItem)
+                {
+                    foreach (BoardItem item in list)
+                    {
+                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
+                        {
+                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                        }
+                    }
+
+                    // Render lines between local teleport portal
+                    if (list.ListType == ItemTypes.Portals)
+                    {
+                        Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor; // Semi-transparent light blue
+
+                        HashSet<(string, string)> processedPairs = new();
+                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal => 
+                                (portal.pt == PortalType.PORTALTYPE_HIDDEN // post-bb maplestory
+                                || portal.pt == PortalType.PORTALTYPE_INVISIBLE) // pre-bb, beta maplestory generally for teleport portal
+                                ).ToList();
+                        foreach (PortalInstance portal1 in localTeleportPortal)
+                        {
+                            PortalInstance portal2 = localTeleportPortal.Where(portal => portal.pn == portal1.tn).FirstOrDefault();
+                            if (portal2 != null && portal1 != portal2)
+                            {
+                                // Create a unique pair identifier (sort the portal names to ensure consistent ordering)
+                                var pair = portal1.pn.CompareTo(portal2.pn) < 0
+                                    ? (portal1.pn, portal2.pn)
+                                    : (portal2.pn, portal1.pn);
+                                if (processedPairs.Contains(pair))
+                                    return;
+                                // Add the pair to processed pairs
+                                processedPairs.Add(pair);
+
+                                // Calculate screen positions
+                                int x1 = MultiBoard.VirtualToPhysical(portal1.X, centerPoint.X, hScroll, 0);
+                                int y1 = MultiBoard.VirtualToPhysical(portal1.Y, centerPoint.Y, vScroll, 0);
+                                int x2 = MultiBoard.VirtualToPhysical(portal2.X, centerPoint.X, hScroll, 0);
+                                int y2 = MultiBoard.VirtualToPhysical(portal2.Y, centerPoint.Y, vScroll, 0);
+
+                                // Draw the line
+                                parent.DrawLine(sprite,
+                                    new Vector2(x1, y1),
+                                    new Vector2(x2, y2),
+                                    portalLineColor);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (MapleLine line in list)
+                    {
+                        if (parent.IsItemInRange(Math.Min(line.FirstDot.X, line.SecondDot.X), Math.Min(line.FirstDot.Y, line.SecondDot.Y), Math.Abs(line.FirstDot.X - line.SecondDot.X), Math.Abs(line.FirstDot.Y - line.SecondDot.Y), xShift, yShift))
+                            line.Draw(sprite, line.GetColor(sel), xShift, yShift);
+                    }
+                }
             }
         }
 
