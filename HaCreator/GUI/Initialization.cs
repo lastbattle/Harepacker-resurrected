@@ -23,6 +23,7 @@ using HaSharedLibrary.Wz;
 using MapleLib;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.GUI
 {
@@ -1369,16 +1370,18 @@ namespace HaCreator.GUI
             for (int i = 0; i < editorParent.WzProperties.Count; i++)
             {
                 WzCanvasProperty portal = (WzCanvasProperty)editorParent.WzProperties[i];
-                Program.InfoManager.PortalTypeById.Add(portal.Name);
+                Program.InfoManager.PortalTypeById.Add(PortalTypeExtensions.FromCode( portal.Name));
                 PortalInfo.Load(portal);
             }
 
             WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
             foreach (WzImageProperty portal in gameParent.WzProperties)
             {
+                PortalType portalType = Program.InfoManager.PortalTypeById[int.Parse(portal.Name)];
+
                 if (portal.WzProperties[0] is WzSubProperty)
                 {
-                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
+                    Dictionary<string, Bitmap> images = new();
                     Bitmap defaultImage = null;
                     foreach (WzSubProperty image in portal.WzProperties)
                     {
@@ -1390,7 +1393,7 @@ namespace HaCreator.GUI
                         else
                             images.Add(image.Name, portalImage);
                     }
-                    Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                    Program.InfoManager.GamePortals.Add(portalType, new PortalGameImageInfo(defaultImage, images));
                 }
                 else if (portal.WzProperties[0] is WzCanvasProperty)
                 {
@@ -1406,7 +1409,7 @@ namespace HaCreator.GUI
                             defaultImage = portalImage;
                             images.Add(image.Name, portalImage);
                         }
-                        Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                        Program.InfoManager.GamePortals.Add(portalType, new PortalGameImageInfo(defaultImage, images));
                     }
                     catch (InvalidCastException)
                     {

@@ -35,7 +35,7 @@ namespace HaCreator.GUI.InstanceEditor
             {
                 try
                 {
-                    portals.Add(Tables.PortalTypeNames[Program.InfoManager.PortalTypeById[i]]);
+                    portals.Add(PortalTypeExtensions.GetFriendlyName(Program.InfoManager.PortalTypeById[i]));
                 }
                 catch(KeyNotFoundException) 
                 { 
@@ -116,7 +116,7 @@ namespace HaCreator.GUI.InstanceEditor
                 item.pt = Program.InfoManager.PortalTypeById[ptComboBox.SelectedIndex];
                 switch (item.pt)
                 {
-                    case PortalType.PORTALTYPE_STARTPOINT:
+                    case PortalType.StartPoint:
                         item.pn = "sp";
                         item.tm = 999999999;
                         item.tn = "";
@@ -129,7 +129,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = null;
                         item.hideTooltip = null;
                         break;
-                    case PortalType.PORTALTYPE_INVISIBLE:
+                    case PortalType.Invisible:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -142,7 +142,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_VISIBLE:
+                    case PortalType.Visible:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -155,7 +155,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_COLLISION:
+                    case PortalType.Collision:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -168,7 +168,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_CHANGABLE:
+                    case PortalType.Changeable:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -181,7 +181,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_CHANGABLE_INVISIBLE:
+                    case PortalType.ChangeableInvisible:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -194,7 +194,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_TOWNPORTAL_POINT:
+                    case PortalType.TownPortalPoint:
                         item.pn = "tp";
                         item.tm = 999999999;
                         item.tn = "";
@@ -207,7 +207,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = null;
                         item.hideTooltip = null;
                         break;
-                    case PortalType.PORTALTYPE_SCRIPT:
+                    case PortalType.Script:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = "";
@@ -220,7 +220,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_SCRIPT_INVISIBLE:
+                    case PortalType.ScriptInvisible:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = "";
@@ -233,7 +233,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_COLLISION_SCRIPT:
+                    case PortalType.CollisionScript:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = "";
@@ -246,7 +246,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_HIDDEN:
+                    case PortalType.Hidden:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -259,7 +259,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_SCRIPT_HIDDEN:
+                    case PortalType.ScriptHidden:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = "";
@@ -272,7 +272,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
+                    case PortalType.CollisionVerticalJump:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = tnBox.Text;
@@ -285,7 +285,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
+                    case PortalType.CollisionCustomImpact:
                         item.pn = pnBox.Text;
                         item.tm = 999999999;
                         item.tn = "";
@@ -298,7 +298,7 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
-                    case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
+                    case PortalType.CollisionUnknownPcig:
                         item.pn = pnBox.Text;
                         item.tm = thisMap.Checked ? item.Board.MapInfo.id : (int)tmBox.Value;
                         item.tn = tnBox.Text;
@@ -311,6 +311,8 @@ namespace HaCreator.GUI.InstanceEditor
                         item.onlyOnce = onlyOnce.Checked;
                         item.hideTooltip = hideTooltip.Checked;
                         break;
+                    default:
+                        break; // error is thrown at PortalTypeExtensions
                 }
 
                 if (portalImageList.SelectedItem != null && Program.InfoManager.GamePortals.ContainsKey(Program.InfoManager.PortalTypeById[ptComboBox.SelectedIndex]))
@@ -336,9 +338,11 @@ namespace HaCreator.GUI.InstanceEditor
         private void ptComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             btnBrowseTn.Enabled = thisMap.Checked;
-            switch (Program.InfoManager.PortalTypeById[ptComboBox.SelectedIndex])
+
+            PortalType portalType = Program.InfoManager.PortalTypeById[ptComboBox.SelectedIndex];
+            switch (portalType)
             {
-                case PortalType.PORTALTYPE_STARTPOINT:
+                case PortalType.StartPoint:
                     rowMan.SetInvisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -348,7 +352,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetInvisible("bool");
                     break;
-                case PortalType.PORTALTYPE_INVISIBLE:
+                case PortalType.Invisible:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -358,7 +362,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_VISIBLE:
+                case PortalType.Visible:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -368,7 +372,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_COLLISION:
+                case PortalType.Collision:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -378,7 +382,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_CHANGABLE:
+                case PortalType.Changeable:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -388,7 +392,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_CHANGABLE_INVISIBLE:
+                case PortalType.ChangeableInvisible:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -398,7 +402,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_TOWNPORTAL_POINT:
+                case PortalType.TownPortalPoint:
                     rowMan.SetInvisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -408,7 +412,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetInvisible("bool");
                     break;
-                case PortalType.PORTALTYPE_SCRIPT:
+                case PortalType.Script:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -418,7 +422,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_SCRIPT_INVISIBLE:
+                case PortalType.ScriptInvisible:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -428,7 +432,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_COLLISION_SCRIPT:
+                case PortalType.CollisionScript:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -438,7 +442,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_HIDDEN:
+                case PortalType.Hidden:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -448,7 +452,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_SCRIPT_HIDDEN:
+                case PortalType.ScriptHidden:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetInvisible("tn");
@@ -458,7 +462,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
+                case PortalType.CollisionVerticalJump:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetVisible("tn");
@@ -468,7 +472,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetInvisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
+                case PortalType.CollisionCustomImpact:
                     rowMan.SetVisible("pn");
                     rowMan.SetInvisible("tm");
                     rowMan.SetVisible("tn");
@@ -478,7 +482,7 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetVisible("impact");
                     rowMan.SetVisible("bool");
                     break;
-                case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
+                case PortalType.CollisionUnknownPcig:
                     rowMan.SetVisible("pn");
                     rowMan.SetVisible("tm");
                     rowMan.SetVisible("tn");
@@ -489,19 +493,23 @@ namespace HaCreator.GUI.InstanceEditor
                     rowMan.SetVisible("bool");
                     break;
             }
-            string pt = Program.InfoManager.PortalTypeById[ptComboBox.SelectedIndex];
-            leftBlankLabel.Visible = pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP;
-            if (pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP)
+            leftBlankLabel.Visible = portalType == PortalType.CollisionVerticalJump;
+
+            if (portalType == PortalType.CollisionVerticalJump)
+            {
                 btnBrowseTn.Enabled = true;
-            if (!Program.InfoManager.GamePortals.ContainsKey(pt)) 
+            }
+            if (!Program.InfoManager.GamePortals.ContainsKey(portalType))
+            {
                 rowMan.SetInvisible("image");
+            }
             else
             {
                 portalImageList.Items.Clear();
                 portalImageList.Items.Add("default");
                 portalImageBox.Image = null;
                 rowMan.SetVisible("image");
-                foreach (DictionaryEntry image in Program.InfoManager.GamePortals[pt])
+                foreach (DictionaryEntry image in Program.InfoManager.GamePortals[portalType])
                     portalImageList.Items.Add(image.Key);
                 portalImageList.SelectedIndex = 0;
             }

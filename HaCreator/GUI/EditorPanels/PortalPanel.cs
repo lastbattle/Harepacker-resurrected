@@ -34,12 +34,12 @@ namespace HaCreator.GUI.EditorPanels
         {
             this.hcsm = hcsm;
 
-            foreach (string pt in Program.InfoManager.PortalTypeById)
+            foreach (PortalType pt in Program.InfoManager.PortalTypeById)
             {
                 PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
                 try
                 {
-                    ImageViewer item = portalImageContainer.Add(pInfo.Image, Tables.PortalTypeNames[pt], true);
+                    ImageViewer item = portalImageContainer.Add(pInfo.Image, PortalTypeExtensions.GetFriendlyName(pt), true);
                     item.Tag = pInfo;
                     item.MouseDown += new MouseEventHandler(portal_MouseDown);
                     item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);

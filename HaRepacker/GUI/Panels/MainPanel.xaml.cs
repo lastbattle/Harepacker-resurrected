@@ -39,6 +39,7 @@ using Newtonsoft.Json.Linq;
 using Xceed.Wpf.Toolkit.Core;
 using System.Diagnostics;
 using Microsoft.Xna.Framework.Graphics;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -1811,13 +1812,10 @@ namespace HaRepacker.GUI.Panels
 
                             if (stringObj.Name == PORTAL_NAME_OBJ_NAME) // Portal type name display - "pn" = portal name 
                             {
-                                if (MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames.ContainsKey(obj.GetString())) {
-                                    toolStripStatusLabel_additionalInfo.Text =
-                                        string.Format(Properties.Resources.MainAdditionalInfo_PortalType, MapleLib.WzLib.WzStructure.Data.Tables.PortalTypeNames[obj.GetString()]);
-                                }
-                                else {
-                                    toolStripStatusLabel_additionalInfo.Text = string.Format(Properties.Resources.MainAdditionalInfo_PortalType, obj.GetString());
-                                }
+                                PortalType portalType = PortalTypeExtensions.FromCode(obj.ToString());
+                                
+                                toolStripStatusLabel_additionalInfo.Text =
+                                    string.Format(Properties.Resources.MainAdditionalInfo_PortalType, portalType.GetFriendlyName());
                             }
                             else {
                                 //textPropBox.AcceptsReturn = true;

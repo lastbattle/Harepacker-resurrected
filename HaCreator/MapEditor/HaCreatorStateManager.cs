@@ -973,9 +973,10 @@ namespace HaCreator.MapEditor
             }
             else if (item is PortalInstance)
             {
+                PortalInstance portal = (PortalInstance)item;
                 sb.Append("[Portal]").Append(Environment.NewLine);
                 sb.Append(firstLineSpacer).Append("Name: ").Append(((PortalInstance)item).pn).Append(Environment.NewLine);
-                sb.Append(firstLineSpacer).Append("Type: ").Append(Tables.PortalTypeNames[((PortalInstance)item).pt]);
+                sb.Append(firstLineSpacer).Append("Type: ").Append(PortalTypeExtensions.GetFriendlyName(portal.pt));
             }
             else if (item is MobInstance)
             {
