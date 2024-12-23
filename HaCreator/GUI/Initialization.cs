@@ -1213,27 +1213,13 @@ namespace HaCreator.GUI
             else
                 stringPetImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Pet.img")).WzProperties;
 
-            foreach (WzSubProperty petSubProp in stringPetImg)
-            {
-                const string itemCategory = "Pet";
-
-                string itemId = petSubProp.Name;
-                string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
-                string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
-
-                int intName = 0;
-                int.TryParse(itemId, out intName);
-
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
-                else
-                {
-                    string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, petSubProp.Name);
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
-                }
-            }
-
+            // In non-beta, process each item within the category
+            stringPetImg
+                //.Cast<WzSubProperty>()
+                .ToList()
+                .ForEach(itemProp => ExtractStringFile_ProcessPetItem(
+                    itemProp
+                    ));
         }
 
         private void ExtractStringFile_ProcessEtcItem(WzSubProperty itemProp, string parentName)
@@ -1252,6 +1238,32 @@ namespace HaCreator.GUI
             {
                 string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, parentName);
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
+        }
+        private void ExtractStringFile_ProcessPetItem(WzImageProperty petProp)
+        {
+            if (petProp is WzSubProperty petSubProp)
+            {
+                const string itemCategory = "Pet";
+
+                string itemId = petSubProp.Name;
+                string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
+
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, petSubProp.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            } else
+            {
+                // 5002129, 5002128, 5002127, 5002223, 5002224, 
             }
         }
         private void ExtractStringFile_ProcessEquipmentItem(WzImageProperty itemImageProp, string category)
