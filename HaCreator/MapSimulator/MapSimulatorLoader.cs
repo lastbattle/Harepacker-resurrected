@@ -480,6 +480,9 @@ namespace HaCreator.MapSimulator {
                         }
                 }
             }
+            if (frames.Count == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
+                return null;
+
             System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
 
             NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(

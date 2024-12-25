@@ -80,6 +80,9 @@ namespace HaSharedLibrary.Render.DX
             }
             else
             {
+                if (frames.Count == 0)
+                    throw new System.Exception("frame count is zero.");
+
                 this.frames = frames.ToArray(); // Convert to array for better performance
                 this.frameCount = frames.Count;
                 this.notAnimated = false;

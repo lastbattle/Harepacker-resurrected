@@ -362,7 +362,8 @@ namespace HaCreator.MapSimulator
                         continue;
 
                     NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                    mapObjects_NPCs.Add(npcItem);
+                    if (npcItem != null)
+                        mapObjects_NPCs.Add(npcItem);
                 }
             });
 
