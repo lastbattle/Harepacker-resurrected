@@ -1293,6 +1293,7 @@ namespace HaRepacker.GUI
 
             List<WzDirectory> dirsToDump = (List<WzDirectory>)((object[])param)[0];
             List<WzImage> imgsToDump = (List<WzImage>)((object[])param)[1];
+
             string baseDir = (string)((object[])param)[2];
             IWzImageSerializer serializer = (IWzImageSerializer)((object[])param)[3];
 
@@ -1305,6 +1306,7 @@ namespace HaRepacker.GUI
                 Directory.CreateDirectory(baseDir);
             }
 
+            // Selected Wz Images
             foreach (WzImage img in imgsToDump)
             {
                 string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(img.Name));
@@ -1312,6 +1314,7 @@ namespace HaRepacker.GUI
                 serializer.SerializeImage(img, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
+            // Selected Wz Dirs
             foreach (WzDirectory dir in dirsToDump)
             {
                 string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(dir.Name));
@@ -1319,6 +1322,8 @@ namespace HaRepacker.GUI
                 serializer.SerializeDirectory(dir, escapedPath);
                 UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
             }
+
+            // Loggers
             MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
 
             // Reset progress bar to 0
@@ -1535,6 +1540,7 @@ namespace HaRepacker.GUI
 
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
+
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
                 if (node.Tag is WzDirectory)
@@ -1544,6 +1550,10 @@ namespace HaRepacker.GUI
                 else if (node.Tag is WzImage)
                 {
                     imgs.Add((WzImage)node.Tag);
+                }
+                else if (node.Tag is WzFile file)
+                {
+                    dirs.Add(file.WzDirectory);
                 }
             }
             WzImgSerializer serializer = new WzImgSerializer();
@@ -1625,6 +1635,7 @@ namespace HaRepacker.GUI
 
             List<WzDirectory> dirs = new List<WzDirectory>();
             List<WzImage> imgs = new List<WzImage>();
+  
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
                 if (node.Tag is WzDirectory directory)
