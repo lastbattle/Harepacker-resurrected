@@ -1358,7 +1358,7 @@ namespace HaCreator.GUI
         /// <exception cref="Exception"></exception>
         public void ExtractMapPortals()
         {
-            if (Program.InfoManager.GamePortals.Count != 0)
+            if (Program.InfoManager.PortalGame.Count != 0)
                 return;
 
             WzImage mapImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
@@ -1366,61 +1366,69 @@ namespace HaCreator.GUI
                 throw new Exception("Couldn't extract portals. MapHelper.img not found.");
 
             WzSubProperty portalParent = (WzSubProperty)mapImg["portal"];
+
+            // Editor portals
             WzSubProperty editorParent = (WzSubProperty)portalParent["editor"];
-            for (int i = 0; i < editorParent.WzProperties.Count; i++)
+            foreach (WzCanvasProperty portalProp in editorParent.WzProperties) // sp, pi, pv, pc, pg, tp, ps, ph, pcj, pci, pci2, pcig, pshg, pcir
             {
-                WzCanvasProperty portal = (WzCanvasProperty)editorParent.WzProperties[i];
-                Program.InfoManager.PortalTypeById.Add(PortalTypeExtensions.FromCode( portal.Name));
-                PortalInfo.Load(portal);
+                Program.InfoManager.PortalEditor_TypeById.Add(PortalTypeExtensions.FromCode(portalProp.Name));
+                PortalInfo.Load(portalProp);
             }
 
-            WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
-            foreach (WzImageProperty portal in gameParent.WzProperties)
+            // Game portals
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+            foreach (WzImageProperty portalProp in gameParent.WzProperties) // "pv", "ph", "psh"
             {
-                PortalType portalType = Program.InfoManager.PortalTypeById[int.Parse(portal.Name)];
+                PortalType portalType = PortalTypeExtensions.FromCode(portalProp.Name);
 
-                if (portal.WzProperties[0] is WzSubProperty)
+                // These are portal types with multiple image template.
+                if (portalProp["default"]?["portalStart"] != null) // psh, ph. 
                 {
-                    Dictionary<string, Bitmap> images = new();
-                    Bitmap defaultImage = null;
-                    foreach (WzSubProperty image in portal.WzProperties)
+                    Dictionary<string, List<Bitmap>> portalTemplateImage = new(); 
+
+                    foreach (WzSubProperty portalImageProp in portalProp.WzProperties)  // "1", "2", "default"
                     {
-                        //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                        //if (portalContinue == null) continue;
-                        Bitmap portalImage = image["0"].GetBitmap();
-                        if (image.Name == "default")
-                            defaultImage = portalImage;
-                        else
-                            images.Add(image.Name, portalImage);
-                    }
-                    Program.InfoManager.GamePortals.Add(portalType, new PortalGameImageInfo(defaultImage, images));
-                }
-                else if (portal.WzProperties[0] is WzCanvasProperty)
-                {
-                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
-                    Bitmap defaultImage = null;
-                    try
-                    {
-                        foreach (WzCanvasProperty image in portal.WzProperties)
+                        WzSubProperty portalStartProp = portalImageProp["portalStart"] as WzSubProperty; // "portalStart", "portalContinue", "portalExit"
+                        List<Bitmap> images = new();
+
+                        foreach (WzCanvasProperty portalImageCanvas in portalStartProp.WzProperties)
                         {
-                            //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                            //if (portalContinue == null) continue;
-                            Bitmap portalImage = image.GetLinkedWzCanvasBitmap();
-                            defaultImage = portalImage;
-                            images.Add(image.Name, portalImage);
+                            Bitmap portalImage = portalImageCanvas.GetLinkedWzCanvasBitmap();
+
+                            images.Add(portalImage);
                         }
-                        Program.InfoManager.GamePortals.Add(portalType, new PortalGameImageInfo(defaultImage, images));
+                        portalTemplateImage.Add(portalImageProp.Name, images);
                     }
-                    catch (InvalidCastException)
+
+                    Program.InfoManager.PortalGame.Add(portalType, new PortalGameImageInfo(portalTemplateImage.FirstOrDefault().Value[0], portalTemplateImage));
+                }
+                else // pv. 
+                {
+                    // These are portal types with only a single image template.
+
+                    Dictionary<string, List<Bitmap>> portalTemplateImage = new();
+                    Bitmap defaultImage = null;
+
+                    List<Bitmap> images = new();
+                    foreach (WzImageProperty image in portalProp.WzProperties)  // 1,2,3,4,5,6,7,8,9,10,11
                     {
-                        continue;
-                    } //nexon likes to toss ints in here zType etc
+                        if (image is WzCanvasProperty portalImg)
+                        {
+                            Bitmap portalImage = portalImg.GetLinkedWzCanvasBitmap();
+                            defaultImage = portalImage;
+
+                            images.Add(portalImage);
+                        }
+                    }
+                    portalTemplateImage.Add("default", images);
+
+                    Program.InfoManager.PortalGame.Add(portalType, new PortalGameImageInfo(defaultImage, portalTemplateImage));
                 }
             }
 
-            for (int i = 0; i < Program.InfoManager.PortalTypeById.Count; i++)
+            for (int i = 0; i < Program.InfoManager.PortalEditor_TypeById.Count; i++)
             {
-                Program.InfoManager.PortalIdByType[Program.InfoManager.PortalTypeById[i]] = i;
+                Program.InfoManager.PortalIdByType[Program.InfoManager.PortalEditor_TypeById[i]] = i;
             }
         }
         #endregion

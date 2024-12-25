@@ -552,7 +552,7 @@ namespace HaCreator.Wz
             {
                 int x = InfoTool.GetInt(portal["x"]);
                 int y = InfoTool.GetInt(portal["y"]);
-                PortalType pt = Program.InfoManager.PortalTypeById[InfoTool.GetInt(portal["pt"])];
+                PortalType pt = Program.InfoManager.PortalEditor_TypeById[InfoTool.GetInt(portal["pt"])];
                 int tm = InfoTool.GetInt(portal["tm"]);
                 string tn = InfoTool.GetString(portal["tn"]);
                 string pn = InfoTool.GetString(portal["pn"]);

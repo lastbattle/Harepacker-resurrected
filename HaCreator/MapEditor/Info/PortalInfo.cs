@@ -32,10 +32,11 @@ namespace HaCreator.MapEditor.Info
 
         public static PortalInfo Load(WzCanvasProperty parentObject)
         {
-            PortalInfo portal = new PortalInfo(
+            PortalInfo portal = new(
                 PortalTypeExtensions.FromCode(parentObject.Name), 
                 parentObject.GetLinkedWzCanvasBitmap(), 
                 WzInfoTools.PointFToSystemPoint(parentObject.GetCanvasOriginPosition()), parentObject);
+
             Program.InfoManager.Portals.Add(portal.type, portal);
             return portal;
         }

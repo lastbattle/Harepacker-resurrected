@@ -19,9 +19,9 @@ namespace HaCreator.Wz
     {
         private readonly Bitmap defaultImage;
 
-        private readonly Dictionary<string, Bitmap> imageList;
+        private readonly Dictionary<string, List<Bitmap>> imageList;
 
-        public PortalGameImageInfo(Bitmap defaultImage, Dictionary<string, Bitmap> imageList)
+        public PortalGameImageInfo(Bitmap defaultImage, Dictionary<string, List<Bitmap>> imageList)
         {
             this.defaultImage = defaultImage;
             this.imageList = imageList;
@@ -32,10 +32,12 @@ namespace HaCreator.Wz
             get { return defaultImage; }
         }
 
-        public Bitmap this[string name]
+        public List<Bitmap> this[string name]
         {
             get
             {
+                if (!imageList.ContainsKey(name))
+                    return imageList["default"];
                 return imageList[name];
             }
         }

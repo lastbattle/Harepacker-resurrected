@@ -34,7 +34,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             this.hcsm = hcsm;
 
-            foreach (PortalType pt in Program.InfoManager.PortalTypeById)
+            foreach (PortalType pt in Program.InfoManager.PortalEditor_TypeById)
             {
                 PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
                 try

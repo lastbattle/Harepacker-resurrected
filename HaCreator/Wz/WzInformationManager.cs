@@ -52,9 +52,9 @@ namespace HaCreator.Wz
         public Dictionary<string, WzImage> NpcPropertyCache = new Dictionary<string, WzImage>();
 
         public Dictionary<PortalType, PortalInfo> Portals = new Dictionary<PortalType, PortalInfo>();
-        public List<PortalType> PortalTypeById = new List<PortalType>();
+        public List<PortalType> PortalEditor_TypeById = new List<PortalType>();
         public Dictionary<PortalType, int> PortalIdByType = new Dictionary<PortalType, int>();
-        public Dictionary<PortalType, PortalGameImageInfo> GamePortals = new Dictionary<PortalType, PortalGameImageInfo>();
+        public Dictionary<PortalType, PortalGameImageInfo> PortalGame = new Dictionary<PortalType, PortalGameImageInfo>();
 
         // Quests
         public Dictionary<string, WzSubProperty> QuestActs = new Dictionary<string, WzSubProperty>();
@@ -109,9 +109,9 @@ namespace HaCreator.Wz
             MapsNameCache.Clear();
             MapsCache.Clear();
             Portals.Clear();
-            PortalTypeById.Clear();
+            PortalEditor_TypeById.Clear();
             PortalIdByType.Clear();
-            GamePortals.Clear();
+            PortalGame.Clear();
         }
     }
 }
