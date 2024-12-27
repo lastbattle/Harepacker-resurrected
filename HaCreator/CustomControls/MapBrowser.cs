@@ -128,19 +128,19 @@ namespace HaCreator.CustomControls
             }
 
             // Maps
-            foreach (KeyValuePair<string, Tuple<string, string, string>> map in Program.InfoManager.MapsNameCache) // street name, map name, category name
+            // Loop through the list of loaded 'maps' against 'mapNames', so maps would appear even if there isnt a name for it yet.
+            // this allows map naming later.
+            foreach (KeyValuePair<string, Tuple<WzImage, string, string, string, MapInfo>> map in Program.InfoManager.MapsCache) // list of loaded maps
             {
-                string mapid_str = map.Key.Substring(0, 9);
+                string streetName = map.Value.Item2;
+                string mapName = map.Value.Item3;
 
-                if (Program.InfoManager.MapsCache.ContainsKey(mapid_str)) {
-                    Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapid_str];
+                string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, streetName, mapName);
 
-                    string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, map.Value.Item1, map.Value.Item2);
-
-                    maps.Add(displayMapNameString);
-                    mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(loadedMap.Item1, loadedMap.Item5));
-                }
+                maps.Add(displayMapNameString);
+                mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(map.Value.Item1, map.Value.Item5));
             }
+
             maps.Sort();
 
             if (special)
@@ -188,7 +188,7 @@ namespace HaCreator.CustomControls
                 int i = 0;
                 while (reader.Read()) {
                     string OpenedMapName = (string)reader["OpenedMapName"];
-                    Debug.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");
+                    //Debug.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");
 
                     string mapid_str = OpenedMapName.Substring(0, Math.Min(OpenedMapName.Length, 9));
 
