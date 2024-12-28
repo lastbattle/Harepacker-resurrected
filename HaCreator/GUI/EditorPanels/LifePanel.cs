@@ -16,6 +16,7 @@ using System.Data;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using WeifenLuo.WinFormsUI.Docking;
@@ -24,9 +25,9 @@ namespace HaCreator.GUI.EditorPanels
 {
     public partial class LifePanel : UserControl
     {
-        private readonly List<string> reactors = new List<string>();
-        private readonly List<string> npcs = new List<string>();
-        private readonly List<string> mobs = new List<string>();
+        private readonly List<string> reactors = new();
+        private readonly List<string> npcs = new();
+        private readonly List<string> mobs = new();
 
         private HaCreatorStateManager hcsm;
 
@@ -41,15 +42,26 @@ namespace HaCreator.GUI.EditorPanels
 
             foreach (KeyValuePair<string, ReactorInfo> entry in Program.InfoManager.Reactors)
             {
-                reactors.Add(entry.Value.ID);
+                string reactorId = entry.Value.ID;
+                string reactorName = entry.Value.Name;
+
+                string combinedName = string.Format("{0} {1}", 
+                    reactorId,
+                    reactorName == string.Empty ? string.Empty : string.Format("({0})", reactorName));
+
+                reactors.Add(combinedName);
             }
             foreach (KeyValuePair<string, Tuple<string, string>> entry in Program.InfoManager.NpcNameCache)
             {
                 string npcName = entry.Value.Item1;
                 string npcDesc = entry.Value.Item2;
 
-                npcs.Add(string.Format("{0} - {1} {2}", entry.Key, npcName, 
-                    npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc)));
+                string combinedName = string.Format("{0} - {1} {2}", 
+                    entry.Key, 
+                    npcName,
+                    npcDesc == string.Empty ? string.Empty : string.Format("({0})", npcDesc));
+
+                npcs.Add(combinedName);
             }
             foreach (KeyValuePair<string, string> entry in Program.InfoManager.MobNameCache)
             {
@@ -74,7 +86,7 @@ namespace HaCreator.GUI.EditorPanels
             string searchText = lifeSearchBox.Text;
             bool getAll = searchText == "";
             lifeListBox.Items.Clear();
-            List<string> items = new List<string>();
+            List<string> items = [];
             if (reactorRButton.Checked)
             {
                 items.AddRange(getAll ? reactors : reactors.Where(x => ContainsIgnoreCase(x, searchText)));
@@ -101,7 +113,12 @@ namespace HaCreator.GUI.EditorPanels
 
                 if (reactorRButton.Checked) // is reactor
                 {
-                    ReactorInfo info = Program.InfoManager.Reactors[(string)lifeListBox.SelectedItem];
+                    string reactorIdName = (string)lifeListBox.SelectedItem;
+
+                    const string regexPattern = @"^\d+"; // "1002009 (메이플아일랜드 범용리엑터)"
+                    string number = Regex.Match(reactorIdName, regexPattern).Value;
+
+                    ReactorInfo info = Program.InfoManager.Reactors[number];
                     lifePictureBox.Image = new Bitmap(info.Image);
                     hcsm.EnterEditMode(ItemTypes.Reactors);
                     hcsm.MultiBoard.SelectedBoard.Mouse.SetHeldInfo(info);

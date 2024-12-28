@@ -607,7 +607,19 @@ namespace HaCreator.GUI
             {
                 foreach (WzImage reactorImage in reactorWzDir.WzImages)
                 {
-                    ReactorInfo reactor = ReactorInfo.Load(reactorImage);
+                    WzSubProperty infoProp =  (WzSubProperty)reactorImage["info"];
+
+                    string reactorId = WzInfoTools.RemoveExtension(reactorImage.Name); // without ".img"
+                    string name = "NO NAME";
+                    if (infoProp != null)
+                    {
+                        name = ((WzStringProperty)infoProp?["info"])?.Value ?? null;
+                        if (name == null)
+                            name = ((WzStringProperty)infoProp?["viewName"])?.Value ?? string.Empty;
+                    }
+
+                    ReactorInfo reactor = new ReactorInfo(null, new System.Drawing.Point(), reactorId, name, reactorImage);
+
                     Program.InfoManager.Reactors[reactor.ID] = reactor;
                 }
             }
