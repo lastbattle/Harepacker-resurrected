@@ -125,7 +125,7 @@ namespace HaCreator.GUI
 
             _wzMapleVersion = fileVersion; // set version to static vars
 
-            Program.WzManager = new WzFileManager(wzPath);
+            Program.WzManager = new WzFileManager(wzPath, false);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz

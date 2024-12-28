@@ -834,7 +834,8 @@ namespace HaRepacker.GUI
                         // Pattern 2: Match paths ending with .wz file without "Data" directory (for beta maplestory, pre-bb and post-bb MapleStory)
                         string PATTERN_REGEX_NORMAL_WZ = @"^(.*\\)[\w]+\.wz$";
 
-                        string maplestoryBaseDirectory = string.Empty;
+                        string maplestoryBaseDirectory;
+                        bool bIsStandAloneWzFile = false;
 
                         Match match = Regex.Match(filePath, PATTERN_REGEX_DATADIR);
                         if (match.Success) {
@@ -844,10 +845,14 @@ namespace HaRepacker.GUI
                             Match match2 = Regex.Match(filePath, PATTERN_REGEX_NORMAL_WZ);
                             if (match2.Success) {
                                 maplestoryBaseDirectory = match2.Groups[1].Value.TrimEnd('\\');
+                            } else
+                            {
+                                bIsStandAloneWzFile = true; // load .wz file stand-alone
+                                maplestoryBaseDirectory = Path.GetDirectoryName(filePath);
                             }
                         }
 
-                        Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory);
+                        Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory, bIsStandAloneWzFile);
                         Program.WzFileManager.BuildWzFileList();
                     }
 
