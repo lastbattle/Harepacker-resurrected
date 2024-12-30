@@ -117,15 +117,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="AnimCompatMessage" xml:space="preserve">
-    <value>お使いのブラウザまたは画像ビューアがこの画像を表示するには古すぎます。Firefox のような新しいブラウザをダウンロードしてください。</value>
-  </data>
-  <data name="AnimError" xml:space="preserve">
-    <value>アニメーションビルダーでエラーが発生しました、フレーム {0}</value>
-  </data>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>アニメーション付きポータブルネットワークグラフィックス (*.png)</value>
-  </data>
   <data name="EditFoothold" xml:space="preserve">
     <value>足場</value>
   </data>
@@ -134,6 +125,15 @@
   </data>
   <data name="EditSP" xml:space="preserve">
     <value>モンスター出現ポイント</value>
+  </data>
+  <data name="FHMapperInvalidInput" xml:space="preserve">
+    <value>入力が無効でした。</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="ApngFilter" xml:space="preserve">
+    <value>アニメーション付きポータブルネットワークグラフィックス (*.png)</value>
   </data>
   <data name="EncTypeGMS" xml:space="preserve">
     <value>グローバルメイプルストーリー (旧)</value>
@@ -149,9 +149,6 @@
   </data>
   <data name="Error" xml:space="preserve">
     <value>エラー</value>
-  </data>
-  <data name="FHMapperInvalidInput" xml:space="preserve">
-    <value>入力が無効でした。</value>
   </data>
   <data name="FHSettingsForceValue" xml:space="preserve">
     <value>力の値</value>
@@ -174,14 +171,107 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y値</value>
   </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>画像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  <data name="MainConfirmAbort" xml:space="preserve">
+    <value>現在の操作を中止してもよろしいですか？</value>
+  </data>
+  <data name="MainConfirmExit" xml:space="preserve">
+    <value>終了してもよろしいですか？</value>
+  </data>
+  <data name="MainConfirmRemoveNode" xml:space="preserve">
+    <value>このノードを削除してもよろしいですか？</value>
+  </data>
+  <data name="MainCouldntOpenWZ" xml:space="preserve">
+    <value>WZファイル「{0}」を開くことができませんでした</value>
+  </data>
+  <data name="MainHelpOpenFail" xml:space="preserve">
+    <value>ヘルプファイル（{0}）が見つからなかったため、ヘルプを表示できませんでした</value>
+  </data>
+  <data name="MainInvalidFileError" xml:space="preserve">
+    <value>ファイル「{0}」は無効であるためスキップされます。エラー：{1}</value>
+  </data>
+  <data name="MainListWzDetected" xml:space="preserve">
+    <value>{0}にあるファイルはList.wzファイルであるため、スキップされます。</value>
+  </data>
+  <data name="MainReloadAll" xml:space="preserve">
+    <value>すべてのファイルを再読み込みしてもよろしいですか？</value>
+  </data>
+  <data name="MainSelectWzFolder" xml:space="preserve">
+    <value>保存するWZファイルを選択してください</value>
+  </data>
+  <data name="MainUnloadAll" xml:space="preserve">
+    <value>すべてのファイルをアンロードしてもよろしいですか？</value>
+  </data>
+  <data name="MainUpdateAvailable" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="MainUpdateTitle" xml:space="preserve">
+    <value>新しいバージョン</value>
+  </data>
+  <data name="OptionsIndentError" xml:space="preserve">
+    <value>インデントは0より大きくなければなりません</value>
+  </data>
+  <data name="SaveVersionError" xml:space="preserve">
+    <value>バージョンは0より大きくなければなりません</value>
+  </data>
+  <data name="SelectDefaultXmlFolder" xml:space="preserve">
+    <value>デフォルトのXMLフォルダを選択</value>
+  </data>
+  <data name="SelectOutApng" xml:space="preserve">
+    <value>アニメーションの保存先を選択</value>
+  </data>
+  <data name="SelectOutDir" xml:space="preserve">
+    <value>出力ディレクトリを選択</value>
+  </data>
+  <data name="SelectOutWz" xml:space="preserve">
+    <value>ファイルの保存先を選択</value>
+  </data>
+  <data name="SelectOutXml" xml:space="preserve">
+    <value>XMLの保存先を選択</value>
+  </data>
+  <data name="SelectWz" xml:space="preserve">
+    <value>WZ/ZLZ ファイルを選択</value>
+  </data>
+  <data name="SelectWzImg" xml:space="preserve">
+    <value>IMGファイルを選択</value>
+  </data>
+  <data name="SelectXml" xml:space="preserve">
+    <value>XMLファイルを選択</value>
+  </data>
+  <data name="WzFilter" xml:space="preserve">
+    <value>WZファイル (*.wz)</value>
+  </data>
+  <data name="WzImgFilter" xml:space="preserve">
+    <value>WZ画像ファイル (*.img)</value>
+  </data>
+  <data name="XmlFilter" xml:space="preserve">
+    <value>拡張マークアップ言語 (*.xml)</value>
   </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>使用するWZ暗号化を選択してください：</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ暗号化</value>
+  </data>
+  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
+    <value>{0}.imgファイルのインポート中にエラーが発生しました。正しいWZ暗号化を選択していますか？</value>
+  </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>エクスポートディレクトリが見つかりません。ツール -&gt; オプションで指定してください</value>
+  </data>
+  <data name="MainFileOpenFail" xml:space="preserve">
+    <value>指定されたファイルパスを開く/保存できません。代わりに管理者として実行してください。</value>
+  </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>タブを追加</value>
+  </data>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>お使いのブラウザまたは画像ビューアがこの画像を表示するには古すぎます。Firefox のような新しいブラウザをダウンロードしてください。</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>アニメーションビルダーでエラーが発生しました、フレーム {0}</value>
+  </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>画像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
   <data name="MainAddCanvas" xml:space="preserve">
     <value>キャンバスを追加</value>
@@ -225,32 +315,20 @@
   <data name="MainAddSub" xml:space="preserve">
     <value>サブを追加</value>
   </data>
-  <data name="MainAddTabTitle" xml:space="preserve">
-    <value>タブを追加</value>
-  </data>
   <data name="MainAddVec" xml:space="preserve">
     <value>ベクトルを追加</value>
   </data>
   <data name="MainCannotInsertToNode" xml:space="preserve">
     <value>選択されたオブジェクトをこのタイプのWZノードに挿入できません。</value>
   </data>
-  <data name="MainConfirmAbort" xml:space="preserve">
-    <value>現在の操作を中止してもよろしいですか？</value>
-  </data>
   <data name="MainConfirmCopy" xml:space="preserve">
     <value>WZノードをクリップボードにコピーしますか？（警告 - 多くのノードが選択されている場合、時間がかかる可能性があります）</value>
-  </data>
-  <data name="MainConfirmExit" xml:space="preserve">
-    <value>終了してもよろしいですか？</value>
   </data>
   <data name="MainConfirmPaste" xml:space="preserve">
     <value>クリップボードからWZノードを貼り付けますか？（警告 - 多くのノードが貼り付けられる場合、時間がかかる可能性があります）</value>
   </data>
   <data name="MainConfirmRemove" xml:space="preserve">
     <value>これを削除してもよろしいですか？</value>
-  </data>
-  <data name="MainConfirmRemoveNode" xml:space="preserve">
-    <value>このノードを削除してもよろしいですか？</value>
   </data>
   <data name="MainConfirmRename" xml:space="preserve">
     <value>名前を変更する</value>
@@ -261,35 +339,11 @@
   <data name="MainCopyDirError" xml:space="preserve">
     <value>ディレクトリは多くのメモリを必要とするためコピーできません</value>
   </data>
-  <data name="MainCouldntOpenWZ" xml:space="preserve">
-    <value>WZファイル「{0}」を開くことができませんでした</value>
-  </data>
-  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>{0}.imgファイルのインポート中にエラーが発生しました。正しいWZ暗号化を選択していますか？</value>
-  </data>
-  <data name="MainFileOpenFail" xml:space="preserve">
-    <value>指定されたファイルパスを開く/保存できません。代わりに管理者として実行してください。</value>
-  </data>
-  <data name="MainHelpOpenFail" xml:space="preserve">
-    <value>ヘルプファイル（{0}）が見つからなかったため、ヘルプを表示できませんでした</value>
-  </data>
   <data name="MainImageLoadError" xml:space="preserve">
     <value>画像を読み込めませんでした</value>
   </data>
-  <data name="MainInvalidFileError" xml:space="preserve">
-    <value>ファイル「{0}」は無効であるためスキップされます。エラー：{1}</value>
-  </data>
-  <data name="MainListWzDetected" xml:space="preserve">
-    <value>{0}にあるファイルはList.wzファイルであるため、スキップされます。</value>
-  </data>
   <data name="MainNodeExists" xml:space="preserve">
     <value>その名前のノードはすでに存在します。別の名前を選んでください</value>
-  </data>
-  <data name="MainReloadAll" xml:space="preserve">
-    <value>すべてのファイルを再読み込みしてもよろしいですか？</value>
-  </data>
-  <data name="MainSelectWzFolder" xml:space="preserve">
-    <value>保存するWZファイルを選択してください</value>
   </data>
   <data name="MainTreeAddDirError" xml:space="preserve">
     <value>このWzDirectoryPropertyを追加する親WzFileが見つかりませんでした。</value>
@@ -297,71 +351,17 @@
   <data name="MainTreeEnd" xml:space="preserve">
     <value>ツリーの終端に達しました</value>
   </data>
-  <data name="MainUnloadAll" xml:space="preserve">
-    <value>すべてのファイルをアンロードしてもよろしいですか？</value>
-  </data>
-  <data name="MainUpdateAvailable" xml:space="preserve">
-    <value>{0}</value>
-  </data>
-  <data name="MainUpdateTitle" xml:space="preserve">
-    <value>新しいバージョン</value>
-  </data>
-  <data name="MainWzExportError" xml:space="preserve">
-    <value>エクスポートディレクトリが見つかりません。ツール -&gt; オプションで指定してください</value>
-  </data>
   <data name="Mp3Filter" xml:space="preserve">
     <value>MPEG-1 Audio Layer 3 (*.mp3)</value>
   </data>
-  <data name="OptionsIndentError" xml:space="preserve">
-    <value>インデントは0より大きくなければなりません</value>
-  </data>
   <data name="ReplaceConfirm" xml:space="preserve">
     <value>ノード「{0}」はすでに存在します。置き換えますか？</value>
-  </data>
-  <data name="SaveVersionError" xml:space="preserve">
-    <value>バージョンは0より大きくなければなりません</value>
-  </data>
-  <data name="SelectDefaultXmlFolder" xml:space="preserve">
-    <value>デフォルトのXMLフォルダを選択</value>
   </data>
   <data name="SelectImage" xml:space="preserve">
     <value>画像を選択</value>
   </data>
   <data name="SelectMp3" xml:space="preserve">
     <value>MP3ファイルを選択</value>
-  </data>
-  <data name="SelectOutApng" xml:space="preserve">
-    <value>アニメーションの保存先を選択</value>
-  </data>
-  <data name="SelectOutDir" xml:space="preserve">
-    <value>出力ディレクトリを選択</value>
-  </data>
-  <data name="SelectOutWz" xml:space="preserve">
-    <value>ファイルの保存先を選択</value>
-  </data>
-  <data name="SelectOutXml" xml:space="preserve">
-    <value>XMLの保存先を選択</value>
-  </data>
-  <data name="SelectWz" xml:space="preserve">
-    <value>WZ/ZLZ ファイルを選択</value>
-  </data>
-  <data name="SelectWzImg" xml:space="preserve">
-    <value>IMGファイルを選択</value>
-  </data>
-  <data name="SelectXml" xml:space="preserve">
-    <value>XMLファイルを選択</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>警告</value>
-  </data>
-  <data name="WzFilter" xml:space="preserve">
-    <value>WZファイル (*.wz)</value>
-  </data>
-  <data name="WzImgFilter" xml:space="preserve">
-    <value>WZ画像ファイル (*.img)</value>
-  </data>
-  <data name="XmlFilter" xml:space="preserve">
-    <value>拡張マークアップ言語 (*.xml)</value>
   </data>
   <data name="Subpanel_Loading" xml:space="preserve">
     <value>読み込み中</value>
@@ -413,5 +413,18 @@
   </data>
   <data name="ExecutingAssemblyError_64BitRequired" xml:space="preserve">
     <value>This is only available inder the x64 version of HaRepacker, please get the alternative version.</value>
+  </data>
+  <data name="MainPanel_Animate" xml:space="preserve">
+    <value>画像をアニメーション化</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="animate" type="System.Resources.ResXNullRef, System.Windows.Forms">
+    <value />
+  </data>
+  <data name="MainPanel_SaveAnimate" xml:space="preserve">
+    <value>画像アニメーションを保存</value>
+  </data>
+  <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
+    <value />
   </data>
 </root>

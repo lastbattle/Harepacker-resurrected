@@ -448,8 +448,6 @@
                     </Button.RenderTransform>
                     <Button.ContextMenu>
                         <ContextMenu Name="cm" StaysOpen="true">
-                            <MenuItem Header="Animate (F5)" x:Name="menuItem_Animate" Click="MenuItem_Animate_Click"/>
-                            <MenuItem Header="Save image animation" x:Name="menuItem_saveImageAnimation" Click="MenuItem_saveImageAnimation_Click"/>
                             <MenuItem Header="Change Image" x:Name="menuItem_changeImage" Click="MenuItem_changeImage_Click"/>
                             <MenuItem Header="Change Sound" x:Name="menuItem_changeSound" Click="MenuItem_changeSound_Click"/>
                             <MenuItem Header="Save Sound" x:Name="menuItem_saveSound" Click="MenuItem_saveSound_Click"/>

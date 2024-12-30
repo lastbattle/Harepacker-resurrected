@@ -1,15 +1,8 @@
-﻿using HaRepacker.Comparer;
-using HaRepacker.Converter;
-using HaRepacker.GUI.Input;
-using HaSharedLibrary.Render.DX;
+﻿using HaRepacker.GUI.Input;
 using HaSharedLibrary.GUI;
-using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
-using MapleLib.Converters;
-using Microsoft.Xna.Framework;
-using Spine;
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -20,26 +13,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Windows.Threading;
 using static MapleLib.Configuration.UserSettings;
-using System.Reflection;
-using System.Text.RegularExpressions;
 using System.IO;
-using System.Net;
 using HaRepacker.GUI.Panels.SubPanels;
 using HaRepacker.GUI.Controls;
-using Newtonsoft.Json.Linq;
-using Xceed.Wpf.Toolkit.Core;
-using System.Diagnostics;
-using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure.Data;
+using System.ComponentModel.DataAnnotations;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -111,7 +92,6 @@ namespace HaRepacker.GUI.Panels
 
 
             // buttons
-            menuItem_Animate.Visibility = Visibility.Collapsed;
             menuItem_changeImage.Visibility = Visibility.Collapsed;
             menuItem_changeSound.Visibility = Visibility.Collapsed;
             menuItem_saveSound.Visibility = Visibility.Collapsed;
@@ -241,7 +221,7 @@ namespace HaRepacker.GUI.Panels
         }
         #endregion
 
-        #region Image directory add
+        #region Wz Directory Context Menu
         /// <summary>
         /// WzDirectory
         /// </summary>
@@ -643,6 +623,29 @@ namespace HaRepacker.GUI.Panels
                 currentDispatcher.BeginInvoke(action);
             else
                 grid_LoadingPanel.Dispatcher.BeginInvoke(action);
+        }
+
+        /// <summary>
+        /// Save the image animation into a JPG file
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        public void SaveImageAnimation_Click()
+        {
+            WzObject seletedWzObject = (WzObject)DataTree.SelectedNode.Tag;
+
+            if (!AnimationBuilder.IsValidAnimationWzObject(seletedWzObject))
+                return;
+
+            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog()
+            {
+                Title = HaRepacker.Properties.Resources.SelectOutApng,
+                Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter)
+            };
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+                return;
+
+            AnimationBuilder.ExtractAnimation((WzSubProperty)seletedWzObject, dialog.FileName, Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame);
         }
         #endregion
 
@@ -1251,45 +1254,6 @@ namespace HaRepacker.GUI.Panels
         }
 
         /// <summary>
-        /// Menu item for animation. Appears when clicking on the "..." button
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void MenuItem_Animate_Click(object sender, RoutedEventArgs e) {
-            StartAnimateSelectedCanvas();
-        }
-
-        /// <summary>
-        /// Save the image animation into a JPG file
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void MenuItem_saveImageAnimation_Click(object sender, RoutedEventArgs e) {
-            WzObject seletedWzObject = (WzObject)DataTree.SelectedNode.Tag;
-
-            if (!AnimationBuilder.IsValidAnimationWzObject(seletedWzObject))
-                return;
-
-            // Check executing process architecture
-            /*AssemblyName executingAssemblyName = Assembly.GetExecutingAssembly().GetName();
-            var assemblyArchitecture = executingAssemblyName.ProcessorArchitecture;
-            if (assemblyArchitecture == ProcessorArchitecture.None)
-            {
-                System.Windows.Forms.MessageBox.Show(HaRepacker.Properties.Resources.ExecutingAssemblyError, HaRepacker.Properties.Resources.Warning, System.Windows.Forms.MessageBoxButtons.OK);
-                return;
-            }*/
-
-            System.Windows.Forms.SaveFileDialog dialog = new System.Windows.Forms.SaveFileDialog() {
-                Title = HaRepacker.Properties.Resources.SelectOutApng,
-                Filter = string.Format("{0}|*.png", HaRepacker.Properties.Resources.ApngFilter)
-            };
-            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
-                return;
-
-            AnimationBuilder.ExtractAnimation((WzSubProperty)seletedWzObject, dialog.FileName, Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame);
-        }
-
-        /// <summary>
         /// 
         /// </summary>
         /// <param name="sender"></param>
@@ -1615,18 +1579,21 @@ namespace HaRepacker.GUI.Panels
 
                 // Canvas animation
                 if (DataTree.SelectedNodes.Count <= 1)
-                    menuItem_Animate.Visibility = Visibility.Collapsed; // set invisible regardless if none of the nodes are selected.
-                else {
+                {
+                }
+                else
+                {
                     bool bIsAllCanvas = true;
                     // check if everything selected is WzUOLProperty and WzCanvasProperty
-                    foreach (WzNode tree in DataTree.SelectedNodes) {
+                    foreach (WzNode tree in DataTree.SelectedNodes)
+                    {
                         WzObject wzobj = (WzObject)tree.Tag;
-                        if (!(wzobj is WzUOLProperty) && !(wzobj is WzCanvasProperty)) {
+                        if (!(wzobj is WzUOLProperty) && !(wzobj is WzCanvasProperty))
+                        {
                             bIsAllCanvas = false;
                             break;
                         }
                     }
-                    menuItem_Animate.Visibility = bIsAllCanvas ? Visibility.Visible : Visibility.Collapsed;
                 }
 
                 // Set default layout collapsed state
@@ -1891,13 +1858,9 @@ namespace HaRepacker.GUI.Panels
                 // Animation button
                 if (AnimationBuilder.IsValidAnimationWzObject(obj)) {
                     bAnimateMoreButton = true; // flag
-
-                    menuItem_saveImageAnimation.Visibility = Visibility.Visible;
                 }
                 else {
-                    menuItem_saveImageAnimation.Visibility = Visibility.Collapsed;
                 }
-
 
                 // Storyboard hint
                 button_MoreOption.Visibility = bAnimateMoreButton ? Visibility.Visible : Visibility.Collapsed;
