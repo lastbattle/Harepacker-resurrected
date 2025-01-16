@@ -21,7 +21,7 @@ namespace HaCreator.MapEditor.Instance
     {
         private PortalInfo baseInfo;
         private string _pn;
-        private string _pt;
+        private PortalType _pt;
         private string _tn;
         private int _tm;
         private string _script;
@@ -54,7 +54,7 @@ namespace HaCreator.MapEditor.Instance
         /// <param name="image"></param>
         /// <param name="hRange"></param>
         /// <param name="vRange"></param>
-        public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, string pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
+        public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, PortalType pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
             : base(board, x, y, -1)
         {
             this.baseInfo = baseInfo;
@@ -146,7 +146,7 @@ namespace HaCreator.MapEditor.Instance
         /// <summary>
         /// The portal type
         /// </summary>
-        public string pt
+        public PortalType pt
         {
             get
             {
@@ -297,7 +297,7 @@ namespace HaCreator.MapEditor.Instance
         {
             base.UpdateSerializedForm(result);
             result.pn = _pn;
-            result.pt = _pt;
+            result.pt = _pt.ToCode();
             result.tn = _tn;
             result.tm = _tm;
             result.script = _script;
@@ -315,7 +315,7 @@ namespace HaCreator.MapEditor.Instance
             : base(board, json)
         {
             _pn = json.pn;
-            _pt = json.pt;
+            _pt = PortalTypeExtensions.FromCode(json.pt);
             _tn = json.tn;
             _tm = json.tm;
             _script = json.script;

@@ -364,15 +364,15 @@ namespace HaCreator.MapSimulator {
         public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, GraphicsDevice device, ref List<WzObject> usedProps) {
             PortalInfo portalInfo = (PortalInfo)portalInstance.BaseInfo;
 
-            if (portalInstance.pt == PortalType.PORTALTYPE_STARTPOINT ||
-                portalInstance.pt == PortalType.PORTALTYPE_INVISIBLE ||
+            if (portalInstance.pt == PortalType.StartPoint ||
+                portalInstance.pt == PortalType.Invisible ||
                 //portalInstance.pt == PortalType.PORTALTYPE_CHANGABLE_INVISIBLE ||
-                portalInstance.pt == PortalType.PORTALTYPE_SCRIPT_INVISIBLE ||
-                portalInstance.pt == PortalType.PORTALTYPE_SCRIPT ||
-                portalInstance.pt == PortalType.PORTALTYPE_COLLISION ||
-                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_SCRIPT ||
-                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT || // springs in Mechanical grave 350040240
-                portalInstance.pt == PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP) // vertical spring actually
+                portalInstance.pt == PortalType.ScriptInvisible ||
+                portalInstance.pt == PortalType.Script ||
+                portalInstance.pt == PortalType.Collision ||
+                portalInstance.pt == PortalType.CollisionScript ||
+                portalInstance.pt == PortalType.CollisionCustomImpact || // springs in Mechanical grave 350040240
+                portalInstance.pt == PortalType.CollisionVerticalJump) // vertical spring actually
                 return null;
 
             List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
@@ -380,7 +380,7 @@ namespace HaCreator.MapSimulator {
             //string portalType = portalInstance.pt;
             //int portalId = Program.InfoManager.PortalIdByType[portalInstance.pt];
 
-            WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt];
+            WzSubProperty portalTypeProperty = (WzSubProperty)gameParent[portalInstance.pt.ToCode()];
             if (portalTypeProperty == null) {
                 portalTypeProperty = (WzSubProperty)gameParent["pv"];
             }
@@ -480,6 +480,9 @@ namespace HaCreator.MapSimulator {
                         }
                 }
             }
+            if (frames.Count == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
+                return null;
+
             System.Drawing.Color color_foreGround = System.Drawing.Color.FromArgb(255, 255, 255, 0); // gold npc foreground color
 
             NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(

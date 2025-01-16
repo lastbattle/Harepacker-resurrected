@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
+using System.Diagnostics;
 using System.Windows.Forms;
 
 namespace HaRepacker.GUI
@@ -50,7 +51,7 @@ namespace HaRepacker.GUI
         /// <param name="e"></param>
         private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e) {
             try {
-                System.Diagnostics.Process.Start(linkLabel1.Text);
+                Process.Start("explorer", linkLabel1.Text);
             }
             catch (Exception ex) {
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);

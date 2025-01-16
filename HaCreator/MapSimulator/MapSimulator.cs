@@ -281,7 +281,7 @@ namespace HaCreator.MapSimulator
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
-                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true, 0.3f);
+                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
                 if (audio != null)
                 {
                     audio.Play();
@@ -362,7 +362,8 @@ namespace HaCreator.MapSimulator
                         continue;
 
                     NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
-                    mapObjects_NPCs.Add(npcItem);
+                    if (npcItem != null)
+                        mapObjects_NPCs.Add(npcItem);
                 }
             });
 
@@ -464,7 +465,7 @@ namespace HaCreator.MapSimulator
             ////// Default positioning for character //////
             ///////////////////////////////////////////////
             // Get a random portal if any exists for spawnpoint
-            var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.PORTALTYPE_STARTPOINT).ToList();
+            var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
             if (startPortals.Any())
             {
                 Random random = new Random();

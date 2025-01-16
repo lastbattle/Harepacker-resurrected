@@ -20,7 +20,7 @@ namespace HaRepacker
     {
         #region Extras
         /// <summary>
-        /// Is an animation object
+        /// Is an animation object (it could either be WzSubProperty, or a whole bunch of WzCanvasProperty)
         /// </summary>
         /// <param name="prop"></param>
         /// <returns></returns>

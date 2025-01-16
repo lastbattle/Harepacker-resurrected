@@ -4,20 +4,15 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Windows.Forms;
-using System.Drawing;
+using HaRepacker.GUI;
+using HaRepacker.GUI.Input;
+using HaRepacker.GUI.Panels;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using System.Collections;
-using HaRepacker.GUI.Interaction;
-using HaRepacker.GUI;
-using HaRepacker.GUI.Panels;
-using HaRepacker.GUI.Input;
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Windows.Forms;
 
 namespace HaRepacker
 {
@@ -55,6 +50,8 @@ namespace HaRepacker
         private ToolStripMenuItem AddUOL;
         private ToolStripMenuItem AddVector;
         private ToolStripMenuItem Rename;
+        private ToolStripMenuItem Animate;
+        private ToolStripMenuItem SaveAnimation;
         private ToolStripMenuItem FixInlink, AiUpscaleImage, AiUpscaleImageSubMenu_QualityOnly, AiUpscaleImageSubMenu_1_5x, AiUpscaleImageSubMenu_2x, AiUpscaleImageSubMenu_4x;
 
         /*private ToolStripMenuItem ExportPropertySubMenu;
@@ -338,6 +335,16 @@ namespace HaRepacker
                     }
                     haRepackerMainPanel.AddWzVectorPropertyToSelectedIndex(nodes[0]);
                 }));
+            Animate = new ToolStripMenuItem(Properties.Resources.MainPanel_Animate, Properties.Resources.animate, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    haRepackerMainPanel.StartAnimateSelectedCanvas(); 
+                }));
+            SaveAnimation = new ToolStripMenuItem(Properties.Resources.MainPanel_SaveAnimate, Properties.Resources.animate_save, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    haRepackerMainPanel.SaveImageAnimation_Click();
+                }));
 
             FixInlink = new ToolStripMenuItem(Properties.Resources.MainContextMenu_Batch_EditInlink, null, new EventHandler(
                 delegate (object sender, EventArgs e)
@@ -425,9 +432,16 @@ namespace HaRepacker
 
             toolStripmenuItems.Add(ExpandAllChildNode);
             toolStripmenuItems.Add(CollapseAllChildNode);
+
             toolStripmenuItems.Add(AddBatchMenu);
 
+            if (Tag is WzCanvasProperty)
+            {
+                toolStripmenuItems.Add(Animate);
+            }
+
             if (Tag.GetType() == typeof(WzSubProperty)) {
+                toolStripmenuItems.Add(SaveAnimation);
                 toolStripmenuItems.Add(AddSortMenu);
             } else {
                 toolStripmenuItems.Add(AddSortMenu_WithoutPropSort);

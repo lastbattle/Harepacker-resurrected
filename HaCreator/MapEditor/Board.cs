@@ -263,8 +263,8 @@ namespace HaCreator.MapEditor
 
                         HashSet<(string, string)> processedPairs = new();
                         List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal => 
-                                (portal.pt == PortalType.PORTALTYPE_HIDDEN // post-bb maplestory
-                                || portal.pt == PortalType.PORTALTYPE_INVISIBLE) // pre-bb, beta maplestory generally for teleport portal
+                                (portal.pt == PortalType.Hidden // post-bb maplestory
+                                || portal.pt == PortalType.Invisible) // pre-bb, beta maplestory generally for teleport portal
                                 ).ToList();
                         foreach (PortalInstance portal1 in localTeleportPortal)
                         {

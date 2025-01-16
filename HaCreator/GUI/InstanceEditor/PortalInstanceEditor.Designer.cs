@@ -28,560 +28,463 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.xInput = new System.Windows.Forms.NumericUpDown();
-            this.label1 = new System.Windows.Forms.Label();
-            this.label2 = new System.Windows.Forms.Label();
-            this.yInput = new System.Windows.Forms.NumericUpDown();
-            this.okButton = new System.Windows.Forms.Button();
-            this.cancelButton = new System.Windows.Forms.Button();
-            this.ptComboBox = new System.Windows.Forms.ComboBox();
-            this.ptLabel = new System.Windows.Forms.Label();
-            this.pnLabel = new System.Windows.Forms.Label();
-            this.pnBox = new System.Windows.Forms.TextBox();
-            this.tmBox = new System.Windows.Forms.NumericUpDown();
-            this.tmLabel = new System.Windows.Forms.Label();
-            this.btnBrowseMap = new System.Windows.Forms.Button();
-            this.thisMap = new System.Windows.Forms.CheckBox();
-            this.tnBox = new System.Windows.Forms.TextBox();
-            this.tnLabel = new System.Windows.Forms.Label();
-            this.btnBrowseTn = new System.Windows.Forms.Button();
-            this.scriptBox = new System.Windows.Forms.TextBox();
-            this.delayBox = new System.Windows.Forms.NumericUpDown();
-            this.delayEnable = new System.Windows.Forms.CheckBox();
-            this.hRangeBox = new System.Windows.Forms.NumericUpDown();
-            this.vRangeBox = new System.Windows.Forms.NumericUpDown();
-            this.vImpactEnable = new System.Windows.Forms.CheckBox();
-            this.vImpactBox = new System.Windows.Forms.NumericUpDown();
-            this.impactLabel = new System.Windows.Forms.Label();
-            this.hImpactEnable = new System.Windows.Forms.CheckBox();
-            this.hImpactBox = new System.Windows.Forms.NumericUpDown();
-            this.hideTooltip = new System.Windows.Forms.CheckBox();
-            this.onlyOnce = new System.Windows.Forms.CheckBox();
-            this.imageLabel = new System.Windows.Forms.Label();
-            this.portalImageList = new System.Windows.Forms.ListBox();
-            this.scriptLabel = new System.Windows.Forms.Label();
-            this.rangeEnable = new System.Windows.Forms.CheckBox();
-            this.xRangeLabel = new System.Windows.Forms.Label();
-            this.yRangeLabel = new System.Windows.Forms.Label();
-            this.leftBlankLabel = new System.Windows.Forms.Label();
-            this.portalImageBox = new HaCreator.CustomControls.ScrollablePictureBox();
-            ((System.ComponentModel.ISupportInitialize)(this.xInput)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.yInput)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.tmBox)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.delayBox)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.hRangeBox)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.vRangeBox)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.vImpactBox)).BeginInit();
-            ((System.ComponentModel.ISupportInitialize)(this.hImpactBox)).BeginInit();
-            this.SuspendLayout();
+            xInput = new System.Windows.Forms.NumericUpDown();
+            label1 = new System.Windows.Forms.Label();
+            label2 = new System.Windows.Forms.Label();
+            yInput = new System.Windows.Forms.NumericUpDown();
+            okButton = new System.Windows.Forms.Button();
+            cancelButton = new System.Windows.Forms.Button();
+            ptComboBox = new System.Windows.Forms.ComboBox();
+            ptLabel = new System.Windows.Forms.Label();
+            pnLabel = new System.Windows.Forms.Label();
+            pnBox = new System.Windows.Forms.TextBox();
+            tmBox = new System.Windows.Forms.NumericUpDown();
+            tmLabel = new System.Windows.Forms.Label();
+            btnBrowseMap = new System.Windows.Forms.Button();
+            thisMap = new System.Windows.Forms.CheckBox();
+            tnBox = new System.Windows.Forms.TextBox();
+            tnLabel = new System.Windows.Forms.Label();
+            btnBrowseTn = new System.Windows.Forms.Button();
+            scriptBox = new System.Windows.Forms.TextBox();
+            delayBox = new System.Windows.Forms.NumericUpDown();
+            delayEnable = new System.Windows.Forms.CheckBox();
+            hRangeBox = new System.Windows.Forms.NumericUpDown();
+            vRangeBox = new System.Windows.Forms.NumericUpDown();
+            vImpactEnable = new System.Windows.Forms.CheckBox();
+            vImpactBox = new System.Windows.Forms.NumericUpDown();
+            impactLabel = new System.Windows.Forms.Label();
+            hImpactEnable = new System.Windows.Forms.CheckBox();
+            hImpactBox = new System.Windows.Forms.NumericUpDown();
+            hideTooltip = new System.Windows.Forms.CheckBox();
+            onlyOnce = new System.Windows.Forms.CheckBox();
+            imageLabel = new System.Windows.Forms.Label();
+            portalImageList = new System.Windows.Forms.ListBox();
+            scriptLabel = new System.Windows.Forms.Label();
+            rangeEnable = new System.Windows.Forms.CheckBox();
+            xRangeLabel = new System.Windows.Forms.Label();
+            yRangeLabel = new System.Windows.Forms.Label();
+            leftBlankLabel = new System.Windows.Forms.Label();
+            portalImageBox = new HaCreator.CustomControls.ScrollablePictureBox();
+            ((System.ComponentModel.ISupportInitialize)xInput).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)yInput).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)tmBox).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)delayBox).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)hRangeBox).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)vRangeBox).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)vImpactBox).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)hImpactBox).BeginInit();
+            SuspendLayout();
             // 
             // xInput
             // 
-            this.xInput.Location = new System.Drawing.Point(146, 18);
-            this.xInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.xInput.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.xInput.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.xInput.Name = "xInput";
-            this.xInput.Size = new System.Drawing.Size(75, 29);
-            this.xInput.TabIndex = 0;
+            xInput.Location = new System.Drawing.Point(42, 32);
+            xInput.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            xInput.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            xInput.Name = "xInput";
+            xInput.Size = new System.Drawing.Size(50, 22);
+            xInput.TabIndex = 0;
             // 
             // label1
             // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(122, 21);
-            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(20, 23);
-            this.label1.TabIndex = 2;
-            this.label1.Text = "X";
+            label1.AutoSize = true;
+            label1.Location = new System.Drawing.Point(3, 34);
+            label1.Name = "label1";
+            label1.Size = new System.Drawing.Size(13, 13);
+            label1.TabIndex = 2;
+            label1.Text = "X";
             // 
             // label2
             // 
-            this.label2.AutoSize = true;
-            this.label2.Location = new System.Drawing.Point(255, 22);
-            this.label2.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(19, 23);
-            this.label2.TabIndex = 4;
-            this.label2.Text = "Y";
+            label2.AutoSize = true;
+            label2.Location = new System.Drawing.Point(125, 34);
+            label2.Name = "label2";
+            label2.Size = new System.Drawing.Size(12, 13);
+            label2.TabIndex = 4;
+            label2.Text = "Y";
             // 
             // yInput
             // 
-            this.yInput.Location = new System.Drawing.Point(279, 18);
-            this.yInput.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.yInput.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.yInput.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.yInput.Name = "yInput";
-            this.yInput.Size = new System.Drawing.Size(75, 29);
-            this.yInput.TabIndex = 1;
+            yInput.Location = new System.Drawing.Point(141, 31);
+            yInput.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            yInput.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            yInput.Name = "yInput";
+            yInput.Size = new System.Drawing.Size(50, 22);
+            yInput.TabIndex = 1;
             // 
             // okButton
             // 
-            this.okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.okButton.Location = new System.Drawing.Point(3, 721);
-            this.okButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.okButton.Name = "okButton";
-            this.okButton.Size = new System.Drawing.Size(300, 69);
-            this.okButton.TabIndex = 22;
-            this.okButton.Text = "OK";
-            this.okButton.Click += new System.EventHandler(this.okButton_Click);
+            okButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            okButton.Location = new System.Drawing.Point(3, 519);
+            okButton.Name = "okButton";
+            okButton.Size = new System.Drawing.Size(200, 46);
+            okButton.TabIndex = 22;
+            okButton.Text = "OK";
+            okButton.Click += okButton_Click;
             // 
             // cancelButton
             // 
-            this.cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.cancelButton.Location = new System.Drawing.Point(311, 721);
-            this.cancelButton.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.cancelButton.Name = "cancelButton";
-            this.cancelButton.Size = new System.Drawing.Size(300, 69);
-            this.cancelButton.TabIndex = 23;
-            this.cancelButton.Text = "Cancel";
-            this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
+            cancelButton.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            cancelButton.Location = new System.Drawing.Point(208, 519);
+            cancelButton.Name = "cancelButton";
+            cancelButton.Size = new System.Drawing.Size(200, 46);
+            cancelButton.TabIndex = 23;
+            cancelButton.Text = "Cancel";
+            cancelButton.Click += cancelButton_Click;
             // 
             // ptComboBox
             // 
-            this.ptComboBox.DisplayMember = "Text";
-            this.ptComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.ptComboBox.FormattingEnabled = true;
-            this.ptComboBox.ItemHeight = 23;
-            this.ptComboBox.Location = new System.Drawing.Point(146, 56);
-            this.ptComboBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.ptComboBox.Name = "ptComboBox";
-            this.ptComboBox.Size = new System.Drawing.Size(206, 31);
-            this.ptComboBox.TabIndex = 2;
-            this.ptComboBox.SelectedIndexChanged += new System.EventHandler(this.ptComboBox_SelectedIndexChanged);
+            ptComboBox.DisplayMember = "Text";
+            ptComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            ptComboBox.FormattingEnabled = true;
+            ptComboBox.ItemHeight = 13;
+            ptComboBox.Location = new System.Drawing.Point(43, 6);
+            ptComboBox.Name = "ptComboBox";
+            ptComboBox.Size = new System.Drawing.Size(365, 21);
+            ptComboBox.TabIndex = 2;
+            ptComboBox.SelectedIndexChanged += ptComboBox_SelectedIndexChanged;
             // 
             // ptLabel
             // 
-            this.ptLabel.AutoSize = true;
-            this.ptLabel.Location = new System.Drawing.Point(30, 58);
-            this.ptLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.ptLabel.Name = "ptLabel";
-            this.ptLabel.Size = new System.Drawing.Size(49, 23);
-            this.ptLabel.TabIndex = 10;
-            this.ptLabel.Text = "Type:";
+            ptLabel.AutoSize = true;
+            ptLabel.Location = new System.Drawing.Point(3, 9);
+            ptLabel.Name = "ptLabel";
+            ptLabel.Size = new System.Drawing.Size(32, 13);
+            ptLabel.TabIndex = 10;
+            ptLabel.Text = "Type:";
             // 
             // pnLabel
             // 
-            this.pnLabel.AutoSize = true;
-            this.pnLabel.Location = new System.Drawing.Point(30, 129);
-            this.pnLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.pnLabel.Name = "pnLabel";
-            this.pnLabel.Size = new System.Drawing.Size(109, 23);
-            this.pnLabel.TabIndex = 11;
-            this.pnLabel.Text = "Portal Name:";
+            pnLabel.AutoSize = true;
+            pnLabel.Location = new System.Drawing.Point(3, 66);
+            pnLabel.Name = "pnLabel";
+            pnLabel.Size = new System.Drawing.Size(72, 13);
+            pnLabel.TabIndex = 11;
+            pnLabel.Text = "Portal Name:";
             // 
             // pnBox
             // 
-            this.pnBox.Location = new System.Drawing.Point(146, 124);
-            this.pnBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.pnBox.Name = "pnBox";
-            this.pnBox.Size = new System.Drawing.Size(206, 29);
-            this.pnBox.TabIndex = 3;
+            pnBox.Location = new System.Drawing.Point(80, 63);
+            pnBox.Name = "pnBox";
+            pnBox.Size = new System.Drawing.Size(328, 22);
+            pnBox.TabIndex = 3;
             // 
             // tmBox
             // 
-            this.tmBox.Location = new System.Drawing.Point(146, 164);
-            this.tmBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.tmBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.tmBox.Name = "tmBox";
-            this.tmBox.Size = new System.Drawing.Size(208, 29);
-            this.tmBox.TabIndex = 4;
+            tmBox.Location = new System.Drawing.Point(80, 89);
+            tmBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            tmBox.Name = "tmBox";
+            tmBox.Size = new System.Drawing.Size(139, 22);
+            tmBox.TabIndex = 4;
             // 
             // tmLabel
             // 
-            this.tmLabel.AutoSize = true;
-            this.tmLabel.Location = new System.Drawing.Point(30, 166);
-            this.tmLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.tmLabel.Name = "tmLabel";
-            this.tmLabel.Size = new System.Drawing.Size(70, 23);
-            this.tmLabel.TabIndex = 14;
-            this.tmLabel.Text = "Map ID:";
+            tmLabel.AutoSize = true;
+            tmLabel.Location = new System.Drawing.Point(3, 91);
+            tmLabel.Name = "tmLabel";
+            tmLabel.Size = new System.Drawing.Size(47, 13);
+            tmLabel.TabIndex = 14;
+            tmLabel.Text = "Map ID:";
             // 
             // btnBrowseMap
             // 
-            this.btnBrowseMap.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.btnBrowseMap.Location = new System.Drawing.Point(363, 164);
-            this.btnBrowseMap.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.btnBrowseMap.Name = "btnBrowseMap";
-            this.btnBrowseMap.Size = new System.Drawing.Size(84, 30);
-            this.btnBrowseMap.TabIndex = 5;
-            this.btnBrowseMap.Text = "Browse";
-            this.btnBrowseMap.Click += new System.EventHandler(this.btnBrowseMap_Click);
+            btnBrowseMap.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            btnBrowseMap.Location = new System.Drawing.Point(225, 89);
+            btnBrowseMap.Name = "btnBrowseMap";
+            btnBrowseMap.Size = new System.Drawing.Size(73, 20);
+            btnBrowseMap.TabIndex = 5;
+            btnBrowseMap.Text = "Browse";
+            btnBrowseMap.Click += btnBrowseMap_Click;
             // 
             // thisMap
             // 
-            this.thisMap.AutoSize = true;
-            this.thisMap.Location = new System.Drawing.Point(456, 166);
-            this.thisMap.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.thisMap.Name = "thisMap";
-            this.thisMap.Size = new System.Drawing.Size(105, 27);
-            this.thisMap.TabIndex = 6;
-            this.thisMap.Text = "This Map";
-            this.thisMap.CheckedChanged += new System.EventHandler(this.thisMap_CheckedChanged);
+            thisMap.AutoSize = true;
+            thisMap.Location = new System.Drawing.Point(304, 92);
+            thisMap.Name = "thisMap";
+            thisMap.Size = new System.Drawing.Size(72, 17);
+            thisMap.TabIndex = 6;
+            thisMap.Text = "This Map";
+            thisMap.CheckedChanged += thisMap_CheckedChanged;
             // 
             // tnBox
             // 
-            this.tnBox.Location = new System.Drawing.Point(146, 202);
-            this.tnBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.tnBox.Name = "tnBox";
-            this.tnBox.Size = new System.Drawing.Size(206, 29);
-            this.tnBox.TabIndex = 7;
+            tnBox.Location = new System.Drawing.Point(80, 115);
+            tnBox.Name = "tnBox";
+            tnBox.Size = new System.Drawing.Size(139, 22);
+            tnBox.TabIndex = 7;
             // 
             // tnLabel
             // 
-            this.tnLabel.AutoSize = true;
-            this.tnLabel.Location = new System.Drawing.Point(30, 207);
-            this.tnLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.tnLabel.Name = "tnLabel";
-            this.tnLabel.Size = new System.Drawing.Size(112, 23);
-            this.tnLabel.TabIndex = 17;
-            this.tnLabel.Text = "Target Name:";
+            tnLabel.AutoSize = true;
+            tnLabel.Location = new System.Drawing.Point(3, 118);
+            tnLabel.Name = "tnLabel";
+            tnLabel.Size = new System.Drawing.Size(73, 13);
+            tnLabel.TabIndex = 17;
+            tnLabel.Text = "Target Name:";
             // 
             // btnBrowseTn
             // 
-            this.btnBrowseTn.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            this.btnBrowseTn.Enabled = false;
-            this.btnBrowseTn.Location = new System.Drawing.Point(363, 202);
-            this.btnBrowseTn.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.btnBrowseTn.Name = "btnBrowseTn";
-            this.btnBrowseTn.Size = new System.Drawing.Size(84, 30);
-            this.btnBrowseTn.TabIndex = 8;
-            this.btnBrowseTn.Text = "Browse";
-            this.btnBrowseTn.Click += new System.EventHandler(this.btnBrowseTn_Click);
+            btnBrowseTn.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            btnBrowseTn.Enabled = false;
+            btnBrowseTn.Location = new System.Drawing.Point(225, 115);
+            btnBrowseTn.Name = "btnBrowseTn";
+            btnBrowseTn.Size = new System.Drawing.Size(73, 20);
+            btnBrowseTn.TabIndex = 8;
+            btnBrowseTn.Text = "Browse";
+            btnBrowseTn.Click += btnBrowseTn_Click;
             // 
             // scriptBox
             // 
-            this.scriptBox.Location = new System.Drawing.Point(146, 242);
-            this.scriptBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.scriptBox.Name = "scriptBox";
-            this.scriptBox.Size = new System.Drawing.Size(206, 29);
-            this.scriptBox.TabIndex = 9;
+            scriptBox.Location = new System.Drawing.Point(80, 141);
+            scriptBox.Name = "scriptBox";
+            scriptBox.Size = new System.Drawing.Size(328, 22);
+            scriptBox.TabIndex = 9;
             // 
             // delayBox
             // 
-            this.delayBox.Enabled = false;
-            this.delayBox.Location = new System.Drawing.Point(146, 282);
-            this.delayBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.delayBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.delayBox.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.delayBox.Name = "delayBox";
-            this.delayBox.Size = new System.Drawing.Size(208, 29);
-            this.delayBox.TabIndex = 11;
+            delayBox.Enabled = false;
+            delayBox.Location = new System.Drawing.Point(80, 168);
+            delayBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            delayBox.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            delayBox.Name = "delayBox";
+            delayBox.Size = new System.Drawing.Size(328, 22);
+            delayBox.TabIndex = 11;
             // 
             // delayEnable
             // 
-            this.delayEnable.AutoSize = true;
-            this.delayEnable.Location = new System.Drawing.Point(30, 284);
-            this.delayEnable.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.delayEnable.Name = "delayEnable";
-            this.delayEnable.Size = new System.Drawing.Size(82, 27);
-            this.delayEnable.TabIndex = 10;
-            this.delayEnable.Text = "Delay:";
-            this.delayEnable.CheckedChanged += new System.EventHandler(this.EnablingCheckBoxCheckChanged);
+            delayEnable.AutoSize = true;
+            delayEnable.Location = new System.Drawing.Point(3, 168);
+            delayEnable.Name = "delayEnable";
+            delayEnable.Size = new System.Drawing.Size(57, 17);
+            delayEnable.TabIndex = 10;
+            delayEnable.Text = "Delay:";
+            delayEnable.CheckedChanged += EnablingCheckBoxCheckChanged;
             // 
             // hRangeBox
             // 
-            this.hRangeBox.Enabled = false;
-            this.hRangeBox.Location = new System.Drawing.Point(165, 320);
-            this.hRangeBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.hRangeBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.hRangeBox.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.hRangeBox.Name = "hRangeBox";
-            this.hRangeBox.Size = new System.Drawing.Size(93, 29);
-            this.hRangeBox.TabIndex = 13;
+            hRangeBox.Enabled = false;
+            hRangeBox.Location = new System.Drawing.Point(93, 193);
+            hRangeBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            hRangeBox.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            hRangeBox.Name = "hRangeBox";
+            hRangeBox.Size = new System.Drawing.Size(62, 22);
+            hRangeBox.TabIndex = 13;
             // 
             // vRangeBox
             // 
-            this.vRangeBox.Enabled = false;
-            this.vRangeBox.Location = new System.Drawing.Point(342, 320);
-            this.vRangeBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.vRangeBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.vRangeBox.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.vRangeBox.Name = "vRangeBox";
-            this.vRangeBox.Size = new System.Drawing.Size(93, 29);
-            this.vRangeBox.TabIndex = 14;
+            vRangeBox.Enabled = false;
+            vRangeBox.Location = new System.Drawing.Point(211, 193);
+            vRangeBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            vRangeBox.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            vRangeBox.Name = "vRangeBox";
+            vRangeBox.Size = new System.Drawing.Size(62, 22);
+            vRangeBox.TabIndex = 14;
             // 
             // vImpactEnable
             // 
-            this.vImpactEnable.AutoSize = true;
-            this.vImpactEnable.Checked = true;
-            this.vImpactEnable.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.vImpactEnable.Enabled = false;
-            this.vImpactEnable.Location = new System.Drawing.Point(288, 362);
-            this.vImpactEnable.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.vImpactEnable.Name = "vImpactEnable";
-            this.vImpactEnable.Size = new System.Drawing.Size(45, 27);
-            this.vImpactEnable.TabIndex = 33;
-            this.vImpactEnable.Text = "Y";
+            vImpactEnable.AutoSize = true;
+            vImpactEnable.Checked = true;
+            vImpactEnable.CheckState = System.Windows.Forms.CheckState.Checked;
+            vImpactEnable.Enabled = false;
+            vImpactEnable.Location = new System.Drawing.Point(175, 221);
+            vImpactEnable.Name = "vImpactEnable";
+            vImpactEnable.Size = new System.Drawing.Size(31, 17);
+            vImpactEnable.TabIndex = 33;
+            vImpactEnable.Text = "Y";
             // 
             // vImpactBox
             // 
-            this.vImpactBox.Enabled = false;
-            this.vImpactBox.Location = new System.Drawing.Point(342, 358);
-            this.vImpactBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.vImpactBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.vImpactBox.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.vImpactBox.Name = "vImpactBox";
-            this.vImpactBox.Size = new System.Drawing.Size(93, 29);
-            this.vImpactBox.TabIndex = 17;
+            vImpactBox.Enabled = false;
+            vImpactBox.Location = new System.Drawing.Point(211, 219);
+            vImpactBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            vImpactBox.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            vImpactBox.Name = "vImpactBox";
+            vImpactBox.Size = new System.Drawing.Size(62, 22);
+            vImpactBox.TabIndex = 17;
             // 
             // impactLabel
             // 
-            this.impactLabel.AutoSize = true;
-            this.impactLabel.Location = new System.Drawing.Point(30, 362);
-            this.impactLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.impactLabel.Name = "impactLabel";
-            this.impactLabel.Size = new System.Drawing.Size(67, 23);
-            this.impactLabel.TabIndex = 15;
-            this.impactLabel.Text = "Impact:";
+            impactLabel.AutoSize = true;
+            impactLabel.Location = new System.Drawing.Point(3, 222);
+            impactLabel.Name = "impactLabel";
+            impactLabel.Size = new System.Drawing.Size(44, 13);
+            impactLabel.TabIndex = 15;
+            impactLabel.Text = "Impact:";
             // 
             // hImpactEnable
             // 
-            this.hImpactEnable.AutoSize = true;
-            this.hImpactEnable.Location = new System.Drawing.Point(111, 362);
-            this.hImpactEnable.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.hImpactEnable.Name = "hImpactEnable";
-            this.hImpactEnable.Size = new System.Drawing.Size(46, 27);
-            this.hImpactEnable.TabIndex = 30;
-            this.hImpactEnable.Text = "X";
-            this.hImpactEnable.CheckedChanged += new System.EventHandler(this.EnablingCheckBoxCheckChanged);
+            hImpactEnable.AutoSize = true;
+            hImpactEnable.Location = new System.Drawing.Point(57, 221);
+            hImpactEnable.Name = "hImpactEnable";
+            hImpactEnable.Size = new System.Drawing.Size(32, 17);
+            hImpactEnable.TabIndex = 30;
+            hImpactEnable.Text = "X";
+            hImpactEnable.CheckedChanged += EnablingCheckBoxCheckChanged;
             // 
             // hImpactBox
             // 
-            this.hImpactBox.Enabled = false;
-            this.hImpactBox.Location = new System.Drawing.Point(165, 358);
-            this.hImpactBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.hImpactBox.Maximum = new decimal(new int[] {
-            2147483647,
-            0,
-            0,
-            0});
-            this.hImpactBox.Minimum = new decimal(new int[] {
-            -2147483648,
-            0,
-            0,
-            -2147483648});
-            this.hImpactBox.Name = "hImpactBox";
-            this.hImpactBox.Size = new System.Drawing.Size(93, 29);
-            this.hImpactBox.TabIndex = 16;
+            hImpactBox.Enabled = false;
+            hImpactBox.Location = new System.Drawing.Point(93, 219);
+            hImpactBox.Maximum = new decimal(new int[] { int.MaxValue, 0, 0, 0 });
+            hImpactBox.Minimum = new decimal(new int[] { int.MinValue, 0, 0, int.MinValue });
+            hImpactBox.Name = "hImpactBox";
+            hImpactBox.Size = new System.Drawing.Size(62, 22);
+            hImpactBox.TabIndex = 16;
             // 
             // hideTooltip
             // 
-            this.hideTooltip.AutoSize = true;
-            this.hideTooltip.Location = new System.Drawing.Point(116, 398);
-            this.hideTooltip.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.hideTooltip.Name = "hideTooltip";
-            this.hideTooltip.Size = new System.Drawing.Size(127, 27);
-            this.hideTooltip.TabIndex = 18;
-            this.hideTooltip.Text = "Hide Tooltip";
+            hideTooltip.AutoSize = true;
+            hideTooltip.Location = new System.Drawing.Point(57, 244);
+            hideTooltip.Name = "hideTooltip";
+            hideTooltip.Size = new System.Drawing.Size(88, 17);
+            hideTooltip.TabIndex = 18;
+            hideTooltip.Text = "Hide Tooltip";
             // 
             // onlyOnce
             // 
-            this.onlyOnce.AutoSize = true;
-            this.onlyOnce.Location = new System.Drawing.Point(274, 398);
-            this.onlyOnce.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.onlyOnce.Name = "onlyOnce";
-            this.onlyOnce.Size = new System.Drawing.Size(116, 27);
-            this.onlyOnce.TabIndex = 19;
-            this.onlyOnce.Text = "Only Once";
+            onlyOnce.AutoSize = true;
+            onlyOnce.Location = new System.Drawing.Point(193, 244);
+            onlyOnce.Name = "onlyOnce";
+            onlyOnce.Size = new System.Drawing.Size(80, 17);
+            onlyOnce.TabIndex = 19;
+            onlyOnce.Text = "Only Once";
             // 
             // imageLabel
             // 
-            this.imageLabel.AutoSize = true;
-            this.imageLabel.Location = new System.Drawing.Point(30, 429);
-            this.imageLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.imageLabel.Name = "imageLabel";
-            this.imageLabel.Size = new System.Drawing.Size(62, 23);
-            this.imageLabel.TabIndex = 36;
-            this.imageLabel.Text = "Image:";
+            imageLabel.AutoSize = true;
+            imageLabel.Location = new System.Drawing.Point(3, 286);
+            imageLabel.Name = "imageLabel";
+            imageLabel.Size = new System.Drawing.Size(74, 13);
+            imageLabel.TabIndex = 36;
+            imageLabel.Text = "Portal Image:";
             // 
             // portalImageList
             // 
-            this.portalImageList.FormattingEnabled = true;
-            this.portalImageList.ItemHeight = 23;
-            this.portalImageList.Location = new System.Drawing.Point(116, 429);
-            this.portalImageList.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.portalImageList.Name = "portalImageList";
-            this.portalImageList.Size = new System.Drawing.Size(495, 96);
-            this.portalImageList.TabIndex = 20;
-            this.portalImageList.SelectedIndexChanged += new System.EventHandler(this.portalImageList_SelectedIndexChanged);
+            portalImageList.FormattingEnabled = true;
+            portalImageList.ItemHeight = 13;
+            portalImageList.Location = new System.Drawing.Point(83, 286);
+            portalImageList.Name = "portalImageList";
+            portalImageList.Size = new System.Drawing.Size(325, 56);
+            portalImageList.TabIndex = 20;
+            portalImageList.SelectedIndexChanged += portalImageList_SelectedIndexChanged;
             // 
             // scriptLabel
             // 
-            this.scriptLabel.AutoSize = true;
-            this.scriptLabel.Location = new System.Drawing.Point(30, 244);
-            this.scriptLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.scriptLabel.Name = "scriptLabel";
-            this.scriptLabel.Size = new System.Drawing.Size(57, 23);
-            this.scriptLabel.TabIndex = 40;
-            this.scriptLabel.Text = "Script:";
+            scriptLabel.AutoSize = true;
+            scriptLabel.Location = new System.Drawing.Point(3, 144);
+            scriptLabel.Name = "scriptLabel";
+            scriptLabel.Size = new System.Drawing.Size(39, 13);
+            scriptLabel.TabIndex = 40;
+            scriptLabel.Text = "Script:";
             // 
             // rangeEnable
             // 
-            this.rangeEnable.AutoSize = true;
-            this.rangeEnable.Location = new System.Drawing.Point(30, 321);
-            this.rangeEnable.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.rangeEnable.Name = "rangeEnable";
-            this.rangeEnable.Size = new System.Drawing.Size(88, 27);
-            this.rangeEnable.TabIndex = 12;
-            this.rangeEnable.Text = "Range:";
-            this.rangeEnable.CheckedChanged += new System.EventHandler(this.rangeEnable_CheckedChanged);
+            rangeEnable.AutoSize = true;
+            rangeEnable.Location = new System.Drawing.Point(3, 193);
+            rangeEnable.Name = "rangeEnable";
+            rangeEnable.Size = new System.Drawing.Size(62, 17);
+            rangeEnable.TabIndex = 12;
+            rangeEnable.Text = "Range:";
+            rangeEnable.CheckedChanged += rangeEnable_CheckedChanged;
             // 
             // xRangeLabel
             // 
-            this.xRangeLabel.AutoSize = true;
-            this.xRangeLabel.Location = new System.Drawing.Point(141, 322);
-            this.xRangeLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.xRangeLabel.Name = "xRangeLabel";
-            this.xRangeLabel.Size = new System.Drawing.Size(20, 23);
-            this.xRangeLabel.TabIndex = 42;
-            this.xRangeLabel.Text = "X";
+            xRangeLabel.AutoSize = true;
+            xRangeLabel.Location = new System.Drawing.Point(77, 195);
+            xRangeLabel.Name = "xRangeLabel";
+            xRangeLabel.Size = new System.Drawing.Size(13, 13);
+            xRangeLabel.TabIndex = 42;
+            xRangeLabel.Text = "X";
             // 
             // yRangeLabel
             // 
-            this.yRangeLabel.AutoSize = true;
-            this.yRangeLabel.Location = new System.Drawing.Point(318, 322);
-            this.yRangeLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.yRangeLabel.Name = "yRangeLabel";
-            this.yRangeLabel.Size = new System.Drawing.Size(19, 23);
-            this.yRangeLabel.TabIndex = 43;
-            this.yRangeLabel.Text = "Y";
+            yRangeLabel.AutoSize = true;
+            yRangeLabel.Location = new System.Drawing.Point(195, 195);
+            yRangeLabel.Name = "yRangeLabel";
+            yRangeLabel.Size = new System.Drawing.Size(12, 13);
+            yRangeLabel.TabIndex = 43;
+            yRangeLabel.Text = "Y";
             // 
             // leftBlankLabel
             // 
-            this.leftBlankLabel.AutoSize = true;
-            this.leftBlankLabel.Location = new System.Drawing.Point(456, 207);
-            this.leftBlankLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
-            this.leftBlankLabel.Name = "leftBlankLabel";
-            this.leftBlankLabel.Size = new System.Drawing.Size(139, 23);
-            this.leftBlankLabel.TabIndex = 9;
-            this.leftBlankLabel.Text = "Can be left blank";
+            leftBlankLabel.AutoSize = true;
+            leftBlankLabel.Location = new System.Drawing.Point(304, 119);
+            leftBlankLabel.Name = "leftBlankLabel";
+            leftBlankLabel.Size = new System.Drawing.Size(95, 13);
+            leftBlankLabel.TabIndex = 9;
+            leftBlankLabel.Text = "Can be left blank";
             // 
             // portalImageBox
             // 
-            this.portalImageBox.AutoScroll = true;
-            this.portalImageBox.Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            this.portalImageBox.Image = null;
-            this.portalImageBox.Location = new System.Drawing.Point(116, 542);
-            this.portalImageBox.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
-            this.portalImageBox.Name = "portalImageBox";
-            this.portalImageBox.Size = new System.Drawing.Size(495, 147);
-            this.portalImageBox.TabIndex = 21;
+            portalImageBox.AutoScroll = true;
+            portalImageBox.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            portalImageBox.Image = null;
+            portalImageBox.Location = new System.Drawing.Point(77, 348);
+            portalImageBox.Name = "portalImageBox";
+            portalImageBox.Size = new System.Drawing.Size(330, 165);
+            portalImageBox.TabIndex = 21;
             // 
             // PortalInstanceEditor
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(144F, 144F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.ClientSize = new System.Drawing.Size(618, 792);
-            this.Controls.Add(this.leftBlankLabel);
-            this.Controls.Add(this.yRangeLabel);
-            this.Controls.Add(this.xRangeLabel);
-            this.Controls.Add(this.rangeEnable);
-            this.Controls.Add(this.scriptLabel);
-            this.Controls.Add(this.portalImageBox);
-            this.Controls.Add(this.portalImageList);
-            this.Controls.Add(this.imageLabel);
-            this.Controls.Add(this.onlyOnce);
-            this.Controls.Add(this.hideTooltip);
-            this.Controls.Add(this.vImpactEnable);
-            this.Controls.Add(this.vImpactBox);
-            this.Controls.Add(this.impactLabel);
-            this.Controls.Add(this.hImpactEnable);
-            this.Controls.Add(this.hImpactBox);
-            this.Controls.Add(this.vRangeBox);
-            this.Controls.Add(this.hRangeBox);
-            this.Controls.Add(this.delayEnable);
-            this.Controls.Add(this.delayBox);
-            this.Controls.Add(this.scriptBox);
-            this.Controls.Add(this.btnBrowseTn);
-            this.Controls.Add(this.tnBox);
-            this.Controls.Add(this.tnLabel);
-            this.Controls.Add(this.thisMap);
-            this.Controls.Add(this.btnBrowseMap);
-            this.Controls.Add(this.tmLabel);
-            this.Controls.Add(this.tmBox);
-            this.Controls.Add(this.pnBox);
-            this.Controls.Add(this.pnLabel);
-            this.Controls.Add(this.ptLabel);
-            this.Controls.Add(this.ptComboBox);
-            this.Controls.Add(this.cancelButton);
-            this.Controls.Add(this.okButton);
-            this.Controls.Add(this.label2);
-            this.Controls.Add(this.yInput);
-            this.Controls.Add(this.label1);
-            this.Controls.Add(this.xInput);
-            this.DoubleBuffered = true;
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
-            this.Margin = new System.Windows.Forms.Padding(6, 6, 6, 6);
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.Name = "PortalInstanceEditor";
-            this.ShowIcon = false;
-            this.ShowInTaskbar = false;
-            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Portal";
-            ((System.ComponentModel.ISupportInitialize)(this.xInput)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.yInput)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.tmBox)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.delayBox)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.hRangeBox)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.vRangeBox)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.vImpactBox)).EndInit();
-            ((System.ComponentModel.ISupportInitialize)(this.hImpactBox)).EndInit();
-            this.ResumeLayout(false);
-            this.PerformLayout();
+            AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            ClientSize = new System.Drawing.Size(412, 568);
+            Controls.Add(leftBlankLabel);
+            Controls.Add(yRangeLabel);
+            Controls.Add(xRangeLabel);
+            Controls.Add(rangeEnable);
+            Controls.Add(scriptLabel);
+            Controls.Add(portalImageBox);
+            Controls.Add(portalImageList);
+            Controls.Add(imageLabel);
+            Controls.Add(onlyOnce);
+            Controls.Add(hideTooltip);
+            Controls.Add(vImpactEnable);
+            Controls.Add(vImpactBox);
+            Controls.Add(impactLabel);
+            Controls.Add(hImpactEnable);
+            Controls.Add(hImpactBox);
+            Controls.Add(vRangeBox);
+            Controls.Add(hRangeBox);
+            Controls.Add(delayEnable);
+            Controls.Add(delayBox);
+            Controls.Add(scriptBox);
+            Controls.Add(btnBrowseTn);
+            Controls.Add(tnBox);
+            Controls.Add(tnLabel);
+            Controls.Add(thisMap);
+            Controls.Add(btnBrowseMap);
+            Controls.Add(tmLabel);
+            Controls.Add(tmBox);
+            Controls.Add(pnBox);
+            Controls.Add(pnLabel);
+            Controls.Add(ptLabel);
+            Controls.Add(ptComboBox);
+            Controls.Add(cancelButton);
+            Controls.Add(okButton);
+            Controls.Add(label2);
+            Controls.Add(yInput);
+            Controls.Add(label1);
+            Controls.Add(xInput);
+            DoubleBuffered = true;
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
+            Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
+            MaximizeBox = false;
+            MinimizeBox = false;
+            Name = "PortalInstanceEditor";
+            ShowIcon = false;
+            ShowInTaskbar = false;
+            StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+            Text = "Portal";
+            ((System.ComponentModel.ISupportInitialize)xInput).EndInit();
+            ((System.ComponentModel.ISupportInitialize)yInput).EndInit();
+            ((System.ComponentModel.ISupportInitialize)tmBox).EndInit();
+            ((System.ComponentModel.ISupportInitialize)delayBox).EndInit();
+            ((System.ComponentModel.ISupportInitialize)hRangeBox).EndInit();
+            ((System.ComponentModel.ISupportInitialize)vRangeBox).EndInit();
+            ((System.ComponentModel.ISupportInitialize)vImpactBox).EndInit();
+            ((System.ComponentModel.ISupportInitialize)hImpactBox).EndInit();
+            ResumeLayout(false);
+            PerformLayout();
 
         }
 

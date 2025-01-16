@@ -23,6 +23,7 @@ using HaSharedLibrary.Wz;
 using MapleLib;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.GUI
 {
@@ -124,7 +125,7 @@ namespace HaCreator.GUI
 
             _wzMapleVersion = fileVersion; // set version to static vars
 
-            Program.WzManager = new WzFileManager(wzPath);
+            Program.WzManager = new WzFileManager(wzPath, false);
             Program.WzManager.BuildWzFileList(); // builds the list of WZ files in the directories (for HaCreator)
 
             // for old maplestory with only Data.wz
@@ -606,7 +607,19 @@ namespace HaCreator.GUI
             {
                 foreach (WzImage reactorImage in reactorWzDir.WzImages)
                 {
-                    ReactorInfo reactor = ReactorInfo.Load(reactorImage);
+                    WzSubProperty infoProp =  (WzSubProperty)reactorImage["info"];
+
+                    string reactorId = WzInfoTools.RemoveExtension(reactorImage.Name); // without ".img"
+                    string name = "NO NAME";
+                    if (infoProp != null)
+                    {
+                        name = ((WzStringProperty)infoProp?["info"])?.Value ?? null;
+                        if (name == null)
+                            name = ((WzStringProperty)infoProp?["viewName"])?.Value ?? string.Empty;
+                    }
+
+                    ReactorInfo reactor = new ReactorInfo(null, new System.Drawing.Point(), reactorId, name, reactorImage);
+
                     Program.InfoManager.Reactors[reactor.ID] = reactor;
                 }
             }
@@ -1213,27 +1226,13 @@ namespace HaCreator.GUI
             else
                 stringPetImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Pet.img")).WzProperties;
 
-            foreach (WzSubProperty petSubProp in stringPetImg)
-            {
-                const string itemCategory = "Pet";
-
-                string itemId = petSubProp.Name;
-                string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
-                string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
-
-                int intName = 0;
-                int.TryParse(itemId, out intName);
-
-                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
-                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
-                else
-                {
-                    string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, petSubProp.Name);
-                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
-                }
-            }
-
+            // In non-beta, process each item within the category
+            stringPetImg
+                //.Cast<WzSubProperty>()
+                .ToList()
+                .ForEach(itemProp => ExtractStringFile_ProcessPetItem(
+                    itemProp
+                    ));
         }
 
         private void ExtractStringFile_ProcessEtcItem(WzSubProperty itemProp, string parentName)
@@ -1252,6 +1251,32 @@ namespace HaCreator.GUI
             {
                 string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, parentName);
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
+        }
+        private void ExtractStringFile_ProcessPetItem(WzImageProperty petProp)
+        {
+            if (petProp is WzSubProperty petSubProp)
+            {
+                const string itemCategory = "Pet";
+
+                string itemId = petSubProp.Name;
+                string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
+                string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
+                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
+
+                int intName = 0;
+                int.TryParse(itemId, out intName);
+
+                if (!Program.InfoManager.ItemNameCache.ContainsKey(intName))
+                    Program.InfoManager.ItemNameCache[intName] = new Tuple<string, string, string>(itemCategory, itemName, itemDesc);
+                else
+                {
+                    string error = string.Format("[Initialization] Duplicate [{0}] item name in String.wz. ItemId='{1}', Category={2}", itemCategory, itemId, petSubProp.Name);
+                    ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+                }
+            } else
+            {
+                // 5002129, 5002128, 5002127, 5002223, 5002224, 
             }
         }
         private void ExtractStringFile_ProcessEquipmentItem(WzImageProperty itemImageProp, string category)
@@ -1345,7 +1370,7 @@ namespace HaCreator.GUI
         /// <exception cref="Exception"></exception>
         public void ExtractMapPortals()
         {
-            if (Program.InfoManager.GamePortals.Count != 0)
+            if (Program.InfoManager.PortalGame.Count != 0)
                 return;
 
             WzImage mapImg = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
@@ -1353,59 +1378,69 @@ namespace HaCreator.GUI
                 throw new Exception("Couldn't extract portals. MapHelper.img not found.");
 
             WzSubProperty portalParent = (WzSubProperty)mapImg["portal"];
+
+            // Editor portals
             WzSubProperty editorParent = (WzSubProperty)portalParent["editor"];
-            for (int i = 0; i < editorParent.WzProperties.Count; i++)
+            foreach (WzCanvasProperty portalProp in editorParent.WzProperties) // sp, pi, pv, pc, pg, tp, ps, ph, pcj, pci, pci2, pcig, pshg, pcir
             {
-                WzCanvasProperty portal = (WzCanvasProperty)editorParent.WzProperties[i];
-                Program.InfoManager.PortalTypeById.Add(portal.Name);
-                PortalInfo.Load(portal);
+                Program.InfoManager.PortalEditor_TypeById.Add(PortalTypeExtensions.FromCode(portalProp.Name));
+                PortalInfo.Load(portalProp);
             }
 
-            WzSubProperty gameParent = (WzSubProperty)portalParent["game"]["pv"];
-            foreach (WzImageProperty portal in gameParent.WzProperties)
+            // Game portals
+            WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+            foreach (WzImageProperty portalProp in gameParent.WzProperties) // "pv", "ph", "psh"
             {
-                if (portal.WzProperties[0] is WzSubProperty)
+                PortalType portalType = PortalTypeExtensions.FromCode(portalProp.Name);
+
+                // These are portal types with multiple image template.
+                if (portalProp["default"]?["portalStart"] != null) // psh, ph. 
                 {
-                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
-                    Bitmap defaultImage = null;
-                    foreach (WzSubProperty image in portal.WzProperties)
+                    Dictionary<string, List<Bitmap>> portalTemplateImage = new(); 
+
+                    foreach (WzSubProperty portalImageProp in portalProp.WzProperties)  // "1", "2", "default"
                     {
-                        //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                        //if (portalContinue == null) continue;
-                        Bitmap portalImage = image["0"].GetBitmap();
-                        if (image.Name == "default")
-                            defaultImage = portalImage;
-                        else
-                            images.Add(image.Name, portalImage);
-                    }
-                    Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
-                }
-                else if (portal.WzProperties[0] is WzCanvasProperty)
-                {
-                    Dictionary<string, Bitmap> images = new Dictionary<string, Bitmap>();
-                    Bitmap defaultImage = null;
-                    try
-                    {
-                        foreach (WzCanvasProperty image in portal.WzProperties)
+                        WzSubProperty portalStartProp = portalImageProp["portalStart"] as WzSubProperty; // "portalStart", "portalContinue", "portalExit"
+                        List<Bitmap> images = new();
+
+                        foreach (WzCanvasProperty portalImageCanvas in portalStartProp.WzProperties)
                         {
-                            //WzSubProperty portalContinue = (WzSubProperty)image["portalContinue"];
-                            //if (portalContinue == null) continue;
-                            Bitmap portalImage = image.GetLinkedWzCanvasBitmap();
-                            defaultImage = portalImage;
-                            images.Add(image.Name, portalImage);
+                            Bitmap portalImage = portalImageCanvas.GetLinkedWzCanvasBitmap();
+
+                            images.Add(portalImage);
                         }
-                        Program.InfoManager.GamePortals.Add(portal.Name, new PortalGameImageInfo(defaultImage, images));
+                        portalTemplateImage.Add(portalImageProp.Name, images);
                     }
-                    catch (InvalidCastException)
+
+                    Program.InfoManager.PortalGame.Add(portalType, new PortalGameImageInfo(portalTemplateImage.FirstOrDefault().Value[0], portalTemplateImage));
+                }
+                else // pv. 
+                {
+                    // These are portal types with only a single image template.
+
+                    Dictionary<string, List<Bitmap>> portalTemplateImage = new();
+                    Bitmap defaultImage = null;
+
+                    List<Bitmap> images = new();
+                    foreach (WzImageProperty image in portalProp.WzProperties)  // 1,2,3,4,5,6,7,8,9,10,11
                     {
-                        continue;
-                    } //nexon likes to toss ints in here zType etc
+                        if (image is WzCanvasProperty portalImg)
+                        {
+                            Bitmap portalImage = portalImg.GetLinkedWzCanvasBitmap();
+                            defaultImage = portalImage;
+
+                            images.Add(portalImage);
+                        }
+                    }
+                    portalTemplateImage.Add("default", images);
+
+                    Program.InfoManager.PortalGame.Add(portalType, new PortalGameImageInfo(defaultImage, portalTemplateImage));
                 }
             }
 
-            for (int i = 0; i < Program.InfoManager.PortalTypeById.Count; i++)
+            for (int i = 0; i < Program.InfoManager.PortalEditor_TypeById.Count; i++)
             {
-                Program.InfoManager.PortalIdByType[Program.InfoManager.PortalTypeById[i]] = i;
+                Program.InfoManager.PortalIdByType[Program.InfoManager.PortalEditor_TypeById[i]] = i;
             }
         }
         #endregion

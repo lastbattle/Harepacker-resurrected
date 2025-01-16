@@ -389,15 +389,18 @@ namespace HaCreator.GUI.Quest
 
                             if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
-                                foreach (WzImageProperty jobProps in checkTypeProp.WzProperties) // job Ids "0", "1", "2"
+                                if (checkTypeProp.WzProperties != null) // taiwanms v135 (devs left an empty WzSubProperty with nothing)
                                 {
-                                    int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
-
-                                    QuestEditorSkillModelJobIdWrapper jobModel = new()
+                                    foreach (WzImageProperty jobProps in checkTypeProp.WzProperties) // job Ids "0", "1", "2"
                                     {
-                                        JobId = jobId
-                                    };
-                                    firstCheck.Jobs.Add(jobModel);
+                                        int jobId = (jobProps as WzIntProperty)?.GetInt() ?? 0;
+
+                                        QuestEditorSkillModelJobIdWrapper jobModel = new()
+                                        {
+                                            JobId = jobId
+                                        };
+                                        firstCheck.Jobs.Add(jobModel);
+                                    }
                                 }
                             } else // beta ms
                             {

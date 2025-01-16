@@ -117,15 +117,6 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
-  <data name="AnimCompatMessage" xml:space="preserve">
-    <value>您的瀏覽器或圖像檢視器太舊，無法檢視此圖像。請下載較新的瀏覽器，如Firefox。</value>
-  </data>
-  <data name="AnimError" xml:space="preserve">
-    <value>動畫生成器出錯，幀 {0}</value>
-  </data>
-  <data name="ApngFilter" xml:space="preserve">
-    <value>動畫可攜式網路圖形 (*.png)</value>
-  </data>
   <data name="EditFoothold" xml:space="preserve">
     <value>立足點</value>
   </data>
@@ -134,6 +125,15 @@
   </data>
   <data name="EditSP" xml:space="preserve">
     <value>怪物生成點</value>
+  </data>
+  <data name="FHMapperInvalidInput" xml:space="preserve">
+    <value>輸入無效。</value>
+  </data>
+  <data name="Warning" xml:space="preserve">
+    <value>警告</value>
+  </data>
+  <data name="ApngFilter" xml:space="preserve">
+    <value>動畫可攜式網路圖形 (*.png)</value>
   </data>
   <data name="EncTypeGMS" xml:space="preserve">
     <value>全球楓之谷 (舊)</value>
@@ -149,9 +149,6 @@
   </data>
   <data name="Error" xml:space="preserve">
     <value>錯誤</value>
-  </data>
-  <data name="FHMapperInvalidInput" xml:space="preserve">
-    <value>輸入無效。</value>
   </data>
   <data name="FHSettingsForceValue" xml:space="preserve">
     <value>力值</value>
@@ -174,14 +171,107 @@
   <data name="FHSettingsYValue" xml:space="preserve">
     <value>Y值</value>
   </data>
-  <data name="ImagesFilter" xml:space="preserve">
-    <value>圖像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
+  <data name="MainConfirmAbort" xml:space="preserve">
+    <value>您確定要中止當前操作嗎？</value>
+  </data>
+  <data name="MainConfirmExit" xml:space="preserve">
+    <value>您確定要退出嗎？</value>
+  </data>
+  <data name="MainConfirmRemoveNode" xml:space="preserve">
+    <value>您確定要刪除這個節點嗎？</value>
+  </data>
+  <data name="MainCouldntOpenWZ" xml:space="preserve">
+    <value>無法開啟WZ檔案"{0}"</value>
+  </data>
+  <data name="MainHelpOpenFail" xml:space="preserve">
+    <value>無法顯示說明，因為找不到說明檔案（{0}）</value>
+  </data>
+  <data name="MainInvalidFileError" xml:space="preserve">
+    <value>檔案"{0}"無效，將被跳過。錯誤：{1}</value>
+  </data>
+  <data name="MainListWzDetected" xml:space="preserve">
+    <value>在{0}的檔案是List.wz檔案，將被跳過。</value>
+  </data>
+  <data name="MainReloadAll" xml:space="preserve">
+    <value>您確定要重新載入所有檔案嗎？</value>
+  </data>
+  <data name="MainSelectWzFolder" xml:space="preserve">
+    <value>請選擇要儲存的WZ檔案</value>
+  </data>
+  <data name="MainUnloadAll" xml:space="preserve">
+    <value>您確定要卸載所有檔案嗎？</value>
+  </data>
+  <data name="MainUpdateAvailable" xml:space="preserve">
+    <value>{0}</value>
+  </data>
+  <data name="MainUpdateTitle" xml:space="preserve">
+    <value>新版本</value>
+  </data>
+  <data name="OptionsIndentError" xml:space="preserve">
+    <value>縮排必須大於0</value>
+  </data>
+  <data name="SaveVersionError" xml:space="preserve">
+    <value>版本必須大於0</value>
+  </data>
+  <data name="SelectDefaultXmlFolder" xml:space="preserve">
+    <value>選擇預設XML資料夾</value>
+  </data>
+  <data name="SelectOutApng" xml:space="preserve">
+    <value>選擇儲存動畫的位置</value>
+  </data>
+  <data name="SelectOutDir" xml:space="preserve">
+    <value>選擇輸出目錄</value>
+  </data>
+  <data name="SelectOutWz" xml:space="preserve">
+    <value>選擇儲存檔案的位置</value>
+  </data>
+  <data name="SelectOutXml" xml:space="preserve">
+    <value>選擇儲存XML的位置</value>
+  </data>
+  <data name="SelectWz" xml:space="preserve">
+    <value>選擇WZ/ZLZ檔案</value>
+  </data>
+  <data name="SelectWzImg" xml:space="preserve">
+    <value>選擇IMG檔案</value>
+  </data>
+  <data name="SelectXml" xml:space="preserve">
+    <value>選擇XML檔案</value>
+  </data>
+  <data name="WzFilter" xml:space="preserve">
+    <value>WZ檔案 (*.wz)</value>
+  </data>
+  <data name="WzImgFilter" xml:space="preserve">
+    <value>WZ圖像檔案 (*.img)</value>
+  </data>
+  <data name="XmlFilter" xml:space="preserve">
+    <value>可延伸標記語言 (*.xml)</value>
   </data>
   <data name="InteractionWzMapleVersionInfo" xml:space="preserve">
     <value>選擇要使用的WZ加密：</value>
   </data>
   <data name="InteractionWzMapleVersionTitle" xml:space="preserve">
     <value>WZ加密</value>
+  </data>
+  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
+    <value>匯入{0}.img檔案時出錯。您確定選擇了正確的WZ加密嗎？</value>
+  </data>
+  <data name="MainWzExportError" xml:space="preserve">
+    <value>找不到匯出目錄。請在工具 -&gt; 選項中指定它</value>
+  </data>
+  <data name="MainFileOpenFail" xml:space="preserve">
+    <value>無法開啟/儲存到指定的檔案路徑。請以管理員身份執行。</value>
+  </data>
+  <data name="MainAddTabTitle" xml:space="preserve">
+    <value>新增標籤</value>
+  </data>
+  <data name="AnimCompatMessage" xml:space="preserve">
+    <value>您的瀏覽器或圖像檢視器太舊，無法檢視此圖像。請下載較新的瀏覽器，如Firefox。</value>
+  </data>
+  <data name="AnimError" xml:space="preserve">
+    <value>動畫生成器出錯，幀 {0}</value>
+  </data>
+  <data name="ImagesFilter" xml:space="preserve">
+    <value>圖像 (*.jpg;*.bmp;*.png;*.gif;*.tiff)</value>
   </data>
   <data name="MainAddCanvas" xml:space="preserve">
     <value>新增畫布</value>
@@ -225,32 +315,20 @@
   <data name="MainAddSub" xml:space="preserve">
     <value>新增子項</value>
   </data>
-  <data name="MainAddTabTitle" xml:space="preserve">
-    <value>新增標籤</value>
-  </data>
   <data name="MainAddVec" xml:space="preserve">
     <value>新增向量</value>
   </data>
   <data name="MainCannotInsertToNode" xml:space="preserve">
     <value>無法將選定的物件插入到這種類型的wz節點中。</value>
   </data>
-  <data name="MainConfirmAbort" xml:space="preserve">
-    <value>您確定要中止當前操作嗎？</value>
-  </data>
   <data name="MainConfirmCopy" xml:space="preserve">
     <value>將WZ節點複製到剪貼簿？（警告 - 如果選擇了許多節點，可能需要很長時間）</value>
-  </data>
-  <data name="MainConfirmExit" xml:space="preserve">
-    <value>您確定要退出嗎？</value>
   </data>
   <data name="MainConfirmPaste" xml:space="preserve">
     <value>從剪貼簿貼上WZ節點？（警告 - 如果貼上了許多節點，可能需要很長時間）</value>
   </data>
   <data name="MainConfirmRemove" xml:space="preserve">
     <value>您確定要刪除這個嗎？</value>
-  </data>
-  <data name="MainConfirmRemoveNode" xml:space="preserve">
-    <value>您確定要刪除這個節點嗎？</value>
   </data>
   <data name="MainConfirmRename" xml:space="preserve">
     <value>重新命名</value>
@@ -261,35 +339,11 @@
   <data name="MainCopyDirError" xml:space="preserve">
     <value>您不能複製目錄，因為它們需要太多記憶體</value>
   </data>
-  <data name="MainCouldntOpenWZ" xml:space="preserve">
-    <value>無法開啟WZ檔案"{0}"</value>
-  </data>
-  <data name="MainErrorImportingWzImageFile" xml:space="preserve">
-    <value>匯入{0}.img檔案時出錯。您確定選擇了正確的WZ加密嗎？</value>
-  </data>
-  <data name="MainFileOpenFail" xml:space="preserve">
-    <value>無法開啟/儲存到指定的檔案路徑。請以管理員身份執行。</value>
-  </data>
-  <data name="MainHelpOpenFail" xml:space="preserve">
-    <value>無法顯示說明，因為找不到說明檔案（{0}）</value>
-  </data>
   <data name="MainImageLoadError" xml:space="preserve">
     <value>無法載入圖像</value>
   </data>
-  <data name="MainInvalidFileError" xml:space="preserve">
-    <value>檔案"{0}"無效，將被跳過。錯誤：{1}</value>
-  </data>
-  <data name="MainListWzDetected" xml:space="preserve">
-    <value>在{0}的檔案是List.wz檔案，將被跳過。</value>
-  </data>
   <data name="MainNodeExists" xml:space="preserve">
     <value>已存在具有該名稱的節點。請選擇一個不同的名稱</value>
-  </data>
-  <data name="MainReloadAll" xml:space="preserve">
-    <value>您確定要重新載入所有檔案嗎？</value>
-  </data>
-  <data name="MainSelectWzFolder" xml:space="preserve">
-    <value>請選擇要儲存的WZ檔案</value>
   </data>
   <data name="MainTreeAddDirError" xml:space="preserve">
     <value>找不到父WzFile來新增這個WzDirectoryProperty。</value>
@@ -297,71 +351,17 @@
   <data name="MainTreeEnd" xml:space="preserve">
     <value>已到達樹的末端</value>
   </data>
-  <data name="MainUnloadAll" xml:space="preserve">
-    <value>您確定要卸載所有檔案嗎？</value>
-  </data>
-  <data name="MainUpdateAvailable" xml:space="preserve">
-    <value>{0}</value>
-  </data>
-  <data name="MainUpdateTitle" xml:space="preserve">
-    <value>新版本</value>
-  </data>
-  <data name="MainWzExportError" xml:space="preserve">
-    <value>找不到匯出目錄。請在工具 -&gt; 選項中指定它</value>
-  </data>
   <data name="Mp3Filter" xml:space="preserve">
     <value>MPEG-1音訊層3 (*.mp3)</value>
   </data>
-  <data name="OptionsIndentError" xml:space="preserve">
-    <value>縮排必須大於0</value>
-  </data>
   <data name="ReplaceConfirm" xml:space="preserve">
     <value>節點"{0}"已存在。您想替換它嗎？</value>
-  </data>
-  <data name="SaveVersionError" xml:space="preserve">
-    <value>版本必須大於0</value>
-  </data>
-  <data name="SelectDefaultXmlFolder" xml:space="preserve">
-    <value>選擇預設XML資料夾</value>
   </data>
   <data name="SelectImage" xml:space="preserve">
     <value>選擇圖像</value>
   </data>
   <data name="SelectMp3" xml:space="preserve">
     <value>選擇MP3檔案</value>
-  </data>
-  <data name="SelectOutApng" xml:space="preserve">
-    <value>選擇儲存動畫的位置</value>
-  </data>
-  <data name="SelectOutDir" xml:space="preserve">
-    <value>選擇輸出目錄</value>
-  </data>
-  <data name="SelectOutWz" xml:space="preserve">
-    <value>選擇儲存檔案的位置</value>
-  </data>
-  <data name="SelectOutXml" xml:space="preserve">
-    <value>選擇儲存XML的位置</value>
-  </data>
-  <data name="SelectWz" xml:space="preserve">
-    <value>選擇WZ/ZLZ檔案</value>
-  </data>
-  <data name="SelectWzImg" xml:space="preserve">
-    <value>選擇IMG檔案</value>
-  </data>
-  <data name="SelectXml" xml:space="preserve">
-    <value>選擇XML檔案</value>
-  </data>
-  <data name="Warning" xml:space="preserve">
-    <value>警告</value>
-  </data>
-  <data name="WzFilter" xml:space="preserve">
-    <value>WZ檔案 (*.wz)</value>
-  </data>
-  <data name="WzImgFilter" xml:space="preserve">
-    <value>WZ圖像檔案 (*.img)</value>
-  </data>
-  <data name="XmlFilter" xml:space="preserve">
-    <value>可延伸標記語言 (*.xml)</value>
   </data>
   <data name="Subpanel_Loading" xml:space="preserve">
     <value>載入中</value>
@@ -413,5 +413,18 @@
   </data>
   <data name="ExecutingAssemblyError_64BitRequired" xml:space="preserve">
     <value>This is only available inder the x64 version of HaRepacker, please get the alternative version.</value>
+  </data>
+  <data name="MainPanel_Animate" xml:space="preserve">
+    <value>动画图片</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="animate" type="System.Resources.ResXNullRef, System.Windows.Forms">
+    <value />
+  </data>
+  <data name="MainPanel_SaveAnimate" xml:space="preserve">
+    <value>保存图片动画</value>
+  </data>
+  <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
+    <value />
   </data>
 </root>

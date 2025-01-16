@@ -18,13 +18,23 @@ namespace HaCreator.MapEditor.Info
     public class ReactorInfo : MapleExtractableInfo
     {
         private readonly string id;
+        private readonly string _name;
 
         private WzImage _LinkedWzImage;
 
-        public ReactorInfo(Bitmap image, System.Drawing.Point origin, string id, WzObject parentObject)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="id"></param>
+        /// <param name="name"></param>
+        /// <param name="parentObject"></param>
+        public ReactorInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
         {
             this.id = id;
+            this._name = name;
         }
 
         private void ExtractPNGFromImage(WzImage image)
@@ -57,26 +67,29 @@ namespace HaCreator.MapEditor.Info
             return result;
         }
 
-        public static ReactorInfo Load(WzImage parentObject)
-        {
-            return new ReactorInfo(null, new System.Drawing.Point(), WzInfoTools.RemoveExtension(parentObject.Name), parentObject);
-        }
-
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
             return new ReactorInstance(this, board, x, y, UserSettings.defaultReactorTime, "", flip);
         }
 
         public BoardItem CreateInstance(Board board, int x, int y, int reactorTime, string name, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
             return new ReactorInstance(this, board, x, y, reactorTime, name, flip);
         }
 
         public string ID
         {
             get { return id; }
+            private set { }
+        }
+
+        public string Name
+        {
+            get { return _name; }
             private set { }
         }
 

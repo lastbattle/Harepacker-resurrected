@@ -60,15 +60,6 @@ namespace HaRepacker.Properties {
             }
         }
         
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        public static System.Drawing.Bitmap _8800000_attack_10 {
-            get {
-                object obj = ResourceManager.GetObject("_8800000_attack_10", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
         
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
@@ -498,23 +489,37 @@ namespace HaRepacker.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
-        public static System.Drawing.Bitmap ladyboss_test_attack2_0 {
-            get {
-                object obj = ResourceManager.GetObject("ladyboss_test_attack2_0", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
         public static System.Drawing.Bitmap lightning {
             get {
                 object obj = ResourceManager.GetObject("lightning", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap animate
+        {
+            get
+            {
+                object obj = ResourceManager.GetObject("animate", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
+        public static System.Drawing.Bitmap animate_save
+        {
+            get
+            {
+                object obj = ResourceManager.GetObject("animate_save", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Add canvas.
         /// </summary>
@@ -523,7 +528,28 @@ namespace HaRepacker.Properties {
                 return ResourceManager.GetString("MainAddCanvas", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to MainPanel_Animate
+        /// </summary>
+        public static string MainPanel_Animate
+        {
+            get
+            {
+                return ResourceManager.GetString("MainPanel_Animate", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to MainPanel_SaveAnimate
+        /// </summary>
+        public static string MainPanel_SaveAnimate
+        {
+            get
+            {
+                return ResourceManager.GetString("MainPanel_SaveAnimate", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Add convex.
         /// </summary>

@@ -48,6 +48,8 @@ namespace HaRepacker
         [STAThread]
         static void Main(string[] args)
         {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
             // Localisation
