@@ -12,7 +12,7 @@ namespace UnitTest_WzFile
     [TestClass]
     public class UnitTest1
     {
-        private static WzFileManager _fileManager = new WzFileManager("", false, false);
+        private static WzFileManager _fileManager = new WzFileManager("", true);
 
         private static readonly List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
 

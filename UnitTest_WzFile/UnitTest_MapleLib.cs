@@ -12,6 +12,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.Versioning;
 
 namespace UnitTest_WzFile {
     [TestClass]
@@ -25,6 +26,7 @@ namespace UnitTest_WzFile {
         /// Test CCrc32::GetCrc32 calculation
         /// </summary>
         [TestMethod]
+        [SupportedOSPlatform("windows")]
         public void TestCrcCalculation() {
             int useVersion = 200;
 
@@ -44,6 +46,7 @@ namespace UnitTest_WzFile {
         /// Bgra32 (Large Texture): 128x128 pixels, no alpha, gradients, many colors. Used for larger textures that need full color preservation without alpha.
         /// </summary>
         [TestMethod]
+        [SupportedOSPlatform("windows")]
         public void TestImageSurfaceFormatDetection() {
             string[] imageFiles = Directory.GetFiles("Assets/Images", "*.*", SearchOption.TopDirectoryOnly)
             .Where(file => new[] { ".png", ".jpg", ".bmp" }.Contains(Path.GetExtension(file).ToLower()))
@@ -93,6 +96,7 @@ namespace UnitTest_WzFile {
             }
         }
 
+        [SupportedOSPlatform("windows")]
         private SurfaceFormat GetExpectedFormat(string imagePath) {
             // This is a placeholder. You should replace this with actual logic to determine
             // the expected format based on the image file name or properties.
