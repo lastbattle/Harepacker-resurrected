@@ -2612,9 +2612,15 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30" Grid.Row="3" 
+                <Grid  Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30"
                         Style="{DynamicResource ButtonStyle_Black}"
                         Click="button_addNewQuest_Click"/>
+                </Grid>
             </Grid>
         </GroupBox>
 
@@ -3046,10 +3052,13 @@
                 </TabControl>
 
                 <StackPanel Orientation="Horizontal" Grid.Row="1" HorizontalAlignment="Right">
-                    <Button x:Name="button_deleteQuest" Content="Delete Quest" Margin="5,0,0,0" Width="120"
+                    <Button x:Name="button_exportQuest" Content="Export quest" Margin="5,0,0,0" Width="120"
+                                    Style="{DynamicResource ButtonStyle_DeleteQuest}"
+                                    Click="button_exportQuest_Click"/>
+                    <Button x:Name="button_deleteQuest" Content="Delete quest" Margin="5,0,0,0" Width="120"
                                     Style="{DynamicResource ButtonStyle_DeleteQuest}"
                                     Click="button_deleteQuest_Click"/>
-                    <Button x:Name="button_saveQuest" Content="Save Quest" Margin="5,0,0,0"  Width="120"
+                    <Button x:Name="button_saveQuest" Content="Save quest" Margin="5,0,0,0"  Width="120"
                                     Style="{DynamicResource ButtonStyle_Black}"
                                     Click="button_saveQuest_Click"/>
                 </StackPanel>

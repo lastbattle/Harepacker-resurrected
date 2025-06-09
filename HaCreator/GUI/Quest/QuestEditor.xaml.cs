@@ -1675,6 +1675,7 @@ namespace HaCreator.GUI.Quest
         #endregion
 
         #region Quest Tabs
+
         /// <summary>
         /// Adds a new quest
         /// </summary>
@@ -3075,15 +3076,138 @@ namespace HaCreator.GUI.Quest
 
             if (!Program.InfoManager.QuestInfos.ContainsKey(quest.Id.ToString())) // is still being selected after deleting
             {
-                return; 
+                return;
             }
+
+            Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> questExportedProperties = saveQuestAsWzImage(quest);
+
+            // QuestInfo.img
+            {
+                WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()]; // may be null, but shouldnt be for QuestInfo.img at the very least
+                                                                                                                 // remove the original image
+                WzImage questInfoParentImg;
+                if (questWzSubProperty_original != null)
+                {
+                    questInfoParentImg = questWzSubProperty_original.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    questWzSubProperty_original.Remove();
+                }
+                else
+                {
+                    questInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value?.Parent as WzImage; // select any random "info" sub item and get its parent instead
+                }
+
+                // replace the old 
+                Program.InfoManager.QuestInfos[quest.Id.ToString()] = questExportedProperties.Item1;
+
+                // add back the newly created image
+                questInfoParentImg.AddProperty(questExportedProperties.Item1);
+
+                // flag unsaved changes bool
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+            }
+
+            // Say.img
+            {
+                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
+
+                // select any parent node
+                WzImage questSayParentImg; // this may be null, since not all quest contains Say.img sub property
+                if (oldSayWzProp != null)
+                {
+                    questSayParentImg = oldSayWzProp?.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    oldSayWzProp.Remove();
+                }
+                else
+                {
+                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
+                }
+
+                questSayParentImg.AddProperty(questExportedProperties.Item2); // add new to the parent
+
+                // replace the old 
+                Program.InfoManager.QuestSays[quest.Id.ToString()] = questExportedProperties.Item2;
+
+                // flag wz file unsaved
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+            }
+
+            // Act.img
+            {
+                WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
+
+                // select any parent node
+                WzImage questActParentImg;
+                if (questAct_SubPropOriginal != null)
+                {
+                    questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    questAct_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
+                }
+                else
+                    questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+
+                questActParentImg.AddProperty(questExportedProperties.Item3); // add new to the parent
+
+                // replace the old 
+                Program.InfoManager.QuestActs[quest.Id.ToString()] = questExportedProperties.Item3;
+
+                // flag wz file unsaved
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+            }
+
+            // Check.img
+            {
+                WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null; // old quest "Check" to reference
+
+                // select any parent node
+                WzImage questCheckParentImg;
+                if (questCheck_SubPropOriginal != null)
+                {
+                    questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
+
+                    // remove previous quest wzImage
+                    questCheck_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
+                }
+                else
+                    questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+
+                questCheckParentImg.AddProperty(questExportedProperties.Item4); // add new to the parent
+
+                // replace the old 
+                Program.InfoManager.QuestChecks[quest.Id.ToString()] = questExportedProperties.Item4;
+
+                // flag wz file unsaved
+                _unsavedChanges = true;
+                Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+            }
+
+            // flag unsaved changes bool
+            _unsavedChanges = true;
+        }
+
+        /// <summary>
+        /// Saves the quest to WzSubProperties
+        /// </summary>
+        /// <param name="quest"></param>
+        /// <returns>QuestInfo WzSubProperty, Say WzSubProperty, Act WzSubProperty, Check WzSubProperty</returns>
+        private Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> saveQuestAsWzImage(QuestEditorModel quest)
+        {
+            WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
+            WzSubProperty newSayWzProp = new WzSubProperty(quest.Id.ToString());
+            WzSubProperty questAct_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
+            WzSubProperty questCheck_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
+
 
             // Save QuestInfo.img
             {
-
-                WzSubProperty questWzSubProp = new WzSubProperty(quest.Id.ToString());
-                WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()]; // may be null, but shouldnt be for QuestInfo.img at the very least
-
                 questWzSubProp.AddProperty(new WzStringProperty("name", quest.Name));
 
                 if (quest.QuestInfoDesc0 != null && quest.QuestInfoDesc0 != string.Empty)
@@ -3187,38 +3311,12 @@ namespace HaCreator.GUI.Quest
                     questWzSubProp.AddProperty(new WzIntProperty("viewMedalItem", quest.ViewMedalItem));
                     questWzSubProp.AddProperty(new WzIntProperty("medalCategory", (int) quest.MedalCategory));
                 }
-
-                // remove the original image
-                WzImage questInfoParentImg;
-                if (questWzSubProperty_original != null)
-                {
-                    questInfoParentImg = questWzSubProperty_original.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questWzSubProperty_original.Remove();
-                } else
-                {
-                    questInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value?.Parent as WzImage; // select any random "info" sub item and get its parent instead
-                }
-
-                // replace the old 
-                Program.InfoManager.QuestInfos[quest.Id.ToString()] = questWzSubProp;
-
-                // add back the newly created image
-                questInfoParentImg.AddProperty(questWzSubProp);
-
-                // flag unsaved changes bool
-                _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
             }
 
             ///////////////////
             ////// Save Say.img
             ///////////////////
             {
-                WzSubProperty newSayWzProp = new WzSubProperty(quest.Id.ToString());
-                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
-
                 // start quest
                 WzSubProperty startQuestSubProperty = new("0");
                 WzSubProperty endQuestSubProperty = new("1");
@@ -3231,37 +3329,12 @@ namespace HaCreator.GUI.Quest
 
                 saveQuestStopSayConversation(quest.SayInfoStop_StartQuest, startQuestSubProperty);
                 saveQuestStopSayConversation(quest.SayInfoStop_EndQuest, endQuestSubProperty);
-
-                // select any parent node
-                WzImage questSayParentImg; // this may be null, since not all quest contains Say.img sub property
-                if (oldSayWzProp != null)
-                {
-                    questSayParentImg = oldSayWzProp?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    oldSayWzProp.Remove();
-                } else
-                {
-                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
-                }
-
-                questSayParentImg.AddProperty(newSayWzProp); // add new to the parent
-
-                // replace the old 
-                Program.InfoManager.QuestSays[quest.Id.ToString()] = newSayWzProp;
-
-                // flag wz file unsaved
-                _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
             }
 
             ///////////////////
             ////// Save Act.img
             ///////////////////
             {
-                WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
-                WzSubProperty questAct_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
-
                 WzSubProperty act_startSubProperty = new("0");
                 WzSubProperty act_endSubProperty = new("1");
                 questAct_New.AddProperty(act_startSubProperty);
@@ -3269,36 +3342,12 @@ namespace HaCreator.GUI.Quest
 
                 SaveActInfo(quest.ActStartInfo, act_startSubProperty, quest);
                 SaveActInfo(quest.ActEndInfo, act_endSubProperty, quest);
-
-                // select any parent node
-                WzImage questActParentImg;
-                if (questAct_SubPropOriginal != null)
-                {
-                    questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questAct_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
-                }
-                else
-                    questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
-
-                questActParentImg.AddProperty(questAct_New); // add new to the parent
-
-                // replace the old 
-                Program.InfoManager.QuestActs[quest.Id.ToString()] = questAct_New;
-
-                // flag wz file unsaved
-                _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
             }
 
             ///////////////////
             ////// Save Check.img
             ///////////////////
             {
-                WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null; // old quest "Check" to reference
-                WzSubProperty questCheck_New = new(quest.Id.ToString()); // Create a new one based on the models  <imgdir name="28483">
-
                 WzSubProperty check_startSubProperty = new("0");
                 WzSubProperty check_endSubProperty = new("1");
                 questCheck_New.AddProperty(check_startSubProperty);
@@ -3306,31 +3355,11 @@ namespace HaCreator.GUI.Quest
 
                 SaveCheck(quest.CheckStartInfo, check_startSubProperty, quest);
                 SaveCheck(quest.CheckEndInfo, check_endSubProperty, quest);
-
-                // select any parent node
-                WzImage questCheckParentImg;
-                if (questCheck_SubPropOriginal != null)
-                {
-                    questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questCheck_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
-                }
-                else
-                    questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
-
-                questCheckParentImg.AddProperty(questCheck_New); // add new to the parent
-
-                // replace the old 
-                Program.InfoManager.QuestChecks[quest.Id.ToString()] = questCheck_New;
-
-                // flag wz file unsaved
-                _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
             }
 
-            // flag unsaved changes bool
-            _unsavedChanges = true;
+            return new Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty>(
+                questWzSubProp, newSayWzProp, questAct_New, questCheck_New
+            );
 
         }
 
@@ -4168,6 +4197,73 @@ namespace HaCreator.GUI.Quest
             }
 
             SelectedQuest = null; // update UI
+        }
+
+
+        /// <summary>
+        /// Export quest as a .img file.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_exportQuest_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedQuest == null)
+                return;
+
+            QuestEditorModel quest = _selectedQuest;
+
+            Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> questExportedProperties = saveQuestAsWzImage(quest);
+
+            // Create dialog to select save location
+            Microsoft.Win32.SaveFileDialog saveFileDialog = new()
+            {
+                Filter = "WZ files (*.wz)|*.wz",
+                FileName = $"Quest_{quest.Id}.wz",
+                DefaultExt = ".wz"
+            };
+
+            if (saveFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    // Create a new WZ file
+                    using WzFile wzFile = new(0, WzMapleVersion.BMS); // ALWAYS use ver 0, BMS for custom quest exports
+                    wzFile.Name = System.IO.Path.GetFileName(saveFileDialog.FileName);
+
+                    // Create the main images
+                    WzImage questInfoImage = new("QuestInfo.img");
+                    WzImage questSayImage = new("Say.img");
+                    WzImage questActImage = new("Act.img");
+                    WzImage questCheckImage = new("Check.img");
+
+                    // Add the quest data to each image
+                    questInfoImage.AddProperty(questExportedProperties.Item1);
+                    questSayImage.AddProperty(questExportedProperties.Item2);
+                    questActImage.AddProperty(questExportedProperties.Item3);
+                    questCheckImage.AddProperty(questExportedProperties.Item4);
+
+                    // Add images to WZ file
+                    wzFile.WzDirectory.AddImage(questInfoImage);
+                    wzFile.WzDirectory.AddImage(questSayImage);
+                    wzFile.WzDirectory.AddImage(questActImage);
+                    wzFile.WzDirectory.AddImage(questCheckImage);
+
+                    // Save WZ file
+                    wzFile.SaveToDisk(saveFileDialog.FileName);
+
+                    MessageBox.Show($"Quest {quest.Id} successfully exported to {saveFileDialog.FileName}",
+                        "Export Successful",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error exporting quest: {ex.Message}",
+                        "Export Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+            }
         }
         #endregion
 
