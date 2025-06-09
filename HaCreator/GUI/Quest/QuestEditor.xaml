@@ -2614,12 +2614,16 @@
 
                 <Grid  Grid.Row="3">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="5*"/>
                     </Grid.ColumnDefinitions>
-
+                    
                     <Button x:Name="button_addNewQuest" Content="Add new Quest" Height="30"
                         Style="{DynamicResource ButtonStyle_Black}"
                         Click="button_addNewQuest_Click"/>
+                    <Button x:Name="button_importNewQuest" Content="Import Quest" Height="30" Grid.Column="1"
+                        Style="{DynamicResource ButtonStyle_Black}"
+                            Click="button_importNewQuest_Click"/>
                 </Grid>
             </Grid>
         </GroupBox>
