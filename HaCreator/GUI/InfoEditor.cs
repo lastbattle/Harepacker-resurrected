@@ -4,6 +4,17 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI.Input;
+using HaCreator.GUI.InstanceEditor;
+using HaCreator.MapEditor;
+using HaCreator.Wz;
+using HaRepacker;
+using MapleLib.Helpers;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.MapStructure;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,16 +24,6 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure;
-using MapleLib.WzLib.WzStructure.Data;
-using HaCreator.GUI.InstanceEditor;
-using MapleLib.WzLib.WzStructure.Data.MapStructure;
-using HaCreator.Wz;
-using HaRepacker;
-using HaCreator.GUI.Input;
 
 namespace HaCreator.GUI
 {
@@ -389,7 +390,14 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            if (Program.InfoManager.BGMs.ContainsKey((string)bgmBox.SelectedItem))
+            {
+                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            } else
+            {
+                string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", (string)bgmBox.SelectedItem, this.info.id);
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
         }
 
         /// <summary>
