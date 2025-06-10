@@ -56,6 +56,7 @@ namespace HaCreator.GUI
             label22 = new System.Windows.Forms.Label();
             label21 = new System.Windows.Forms.Label();
             elementHost1 = new System.Windows.Forms.Integration.ElementHost();
+            soundPlayer1 = new HaSharedLibrary.GUI.SoundPlayer();
             button_selectForcedReturnMap = new System.Windows.Forms.Button();
             button_selectReturnMap = new System.Windows.Forms.Button();
             yBox = new System.Windows.Forms.NumericUpDown();
@@ -432,6 +433,7 @@ namespace HaCreator.GUI
             elementHost1.Size = new System.Drawing.Size(473, 139);
             elementHost1.TabIndex = 160;
             elementHost1.Text = "elementHost1";
+            elementHost1.Child = this.soundPlayer1;
             // 
             // button_selectForcedReturnMap
             // 

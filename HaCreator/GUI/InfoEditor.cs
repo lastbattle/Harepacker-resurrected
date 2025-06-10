@@ -390,12 +390,13 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (Program.InfoManager.BGMs.ContainsKey((string)bgmBox.SelectedItem))
+            string bgm = (string)bgmBox.SelectedItem;
+            if (Program.InfoManager.BGMs.ContainsKey(bgm))
             {
-                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[bgm];
             } else
             {
-                string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", (string)bgmBox.SelectedItem, this.info.id);
+                string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", bgm, this.info.id);
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
             }
         }
