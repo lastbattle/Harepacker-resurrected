@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Windows.Forms.Design.AxImporter;
 using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.UndoRedo
@@ -87,6 +88,10 @@ namespace HaCreator.MapEditor.UndoRedo
                 case UndoRedoType.ToolTipUnlinked:
                     ((ToolTipChar)ParamA).BoundTooltip = (ToolTipInstance)item;
                     break;
+                case UndoRedoType.BackgroundMoved:
+                    ((BackgroundInstance)item).BaseX = ((XNA.Point)ParamA).X;
+                    ((BackgroundInstance)item).BaseY = ((XNA.Point)ParamA).Y;
+                    break;
                 case UndoRedoType.ItemsLinked:
                     item.ReleaseItem((BoardItem)ParamA);
                     break;
@@ -114,6 +119,10 @@ namespace HaCreator.MapEditor.UndoRedo
                     break;
                 case UndoRedoType.RopeRemoved:
                     ((Rope)ParamA).Create();
+                    break;
+                case UndoRedoType.ItemZChanged:
+                    item.Z = (int)ParamA;
+                    item.Board.BoardItems.Sort();
                     break;
                 case UndoRedoType.VRChanged:
                     //TODO
