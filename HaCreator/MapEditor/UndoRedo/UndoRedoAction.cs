@@ -4,6 +4,7 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -86,10 +87,6 @@ namespace HaCreator.MapEditor.UndoRedo
                 case UndoRedoType.ToolTipUnlinked:
                     ((ToolTipChar)ParamA).BoundTooltip = (ToolTipInstance)item;
                     break;
-                case UndoRedoType.BackgroundMoved:
-                    ((BackgroundInstance)item).BaseX = ((XNA.Point)ParamA).X;
-                    ((BackgroundInstance)item).BaseY = ((XNA.Point)ParamA).Y;
-                    break;
                 case UndoRedoType.ItemsLinked:
                     item.ReleaseItem((BoardItem)ParamA);
                     break;
@@ -118,10 +115,6 @@ namespace HaCreator.MapEditor.UndoRedo
                 case UndoRedoType.RopeRemoved:
                     ((Rope)ParamA).Create();
                     break;
-                case UndoRedoType.ItemZChanged:
-                    item.Z = (int)ParamA;
-                    item.Board.BoardItems.Sort();
-                    break;
                 case UndoRedoType.VRChanged:
                     //TODO
                     break;
@@ -139,6 +132,29 @@ namespace HaCreator.MapEditor.UndoRedo
                     int zm_new = (int)ParamB;
                     IContainsLayerInfo target = (IContainsLayerInfo)ParamC;
                     target.PlatformNumber = zm_old;
+                    break;
+                case UndoRedoType.BackgroundPropertiesChanged:
+                    BackgroundInstance bgItem = (BackgroundInstance)item;
+                    BackgroundStateBackup state = (BackgroundStateBackup)ParamA;
+                    bgItem.BaseX = state.BaseX;
+                    bgItem.BaseY = state.BaseY;
+                    bgItem.Z = state.Z;
+                    if (bgItem.front != state.Front)
+                    {
+                        (bgItem.front ? bgItem.Board.BoardItems.FrontBackgrounds : bgItem.Board.BoardItems.BackBackgrounds).Remove(bgItem);
+                        (state.Front ? bgItem.Board.BoardItems.FrontBackgrounds : bgItem.Board.BoardItems.BackBackgrounds).Add(bgItem);
+                        bgItem.front = state.Front;
+                        bgItem.Board.BoardItems.Sort();
+                    }
+                    bgItem.type = state.Type;
+                    bgItem.a = state.A;
+                    bgItem.rx = state.Rx;
+                    bgItem.ry = state.Ry;
+                    bgItem.cx = state.Cx;
+                    bgItem.cy = state.Cy;
+                    bgItem.screenMode = state.ScreenMode;
+                    bgItem.SpineAni = state.SpineAni;
+                    bgItem.SpineRandomStart = state.SpineRandomStart;
                     break;
             }
         }
@@ -179,13 +195,12 @@ namespace HaCreator.MapEditor.UndoRedo
                     break;
                 case UndoRedoType.ItemsLayerChanged:
                 case UndoRedoType.ItemLayerPlatChanged:
-                case UndoRedoType.BackgroundMoved:
                 case UndoRedoType.ItemMoved:
                 case UndoRedoType.MapCenterChanged:
-                case UndoRedoType.ItemZChanged:
                 case UndoRedoType.VRChanged:
                 case UndoRedoType.LayerTSChanged:
                 case UndoRedoType.zMChanged:
+                case UndoRedoType.BackgroundPropertiesChanged: // Add new type
                     object ParamBTemp = ParamB;
                     object ParamATemp = ParamA;
                     ParamA = ParamBTemp;

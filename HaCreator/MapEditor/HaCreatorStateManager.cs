@@ -305,7 +305,9 @@ namespace HaCreator.MapEditor
                 }
                 else if (item is BackgroundInstance backgroundItem)
                 {
-                    new BackgroundInstanceEditor(backgroundItem).ShowDialog();
+                    var editor = new BackgroundInstanceEditor(backgroundItem);
+                    editor.ShowInTaskbar = true;
+                    editor.Show();
                 }
                 else if (item is PortalInstance portal)
                 {
