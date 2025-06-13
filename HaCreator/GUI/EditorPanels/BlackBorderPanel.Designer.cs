@@ -133,7 +133,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_side.Name = "numericUpDown_side";
             numericUpDown_side.Size = new System.Drawing.Size(143, 22);
             numericUpDown_side.TabIndex = 5;
-            numericUpDown_side.ValueChanged += numericUpDown_side_ValueChanged;
+            numericUpDown_side.KeyUp += numericUpDown_side_KeyUp;
             // 
             // numericUpDown_bottom
             // 
@@ -143,7 +143,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_bottom.Name = "numericUpDown_bottom";
             numericUpDown_bottom.Size = new System.Drawing.Size(143, 22);
             numericUpDown_bottom.TabIndex = 4;
-            numericUpDown_bottom.ValueChanged += numericUpDown_bottom_ValueChanged;
+            numericUpDown_bottom.KeyUp += numericUpDown_bottom_KeyUp;
             // 
             // numericUpDown_top
             // 
@@ -153,7 +153,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_top.Name = "numericUpDown_top";
             numericUpDown_top.Size = new System.Drawing.Size(143, 22);
             numericUpDown_top.TabIndex = 3;
-            numericUpDown_top.ValueChanged += numericUpDown_top_ValueChanged;
+            numericUpDown_top.KeyUp += numericUpDown_top_KeyUp;
             // 
             // BlackBorderPanel
             // 

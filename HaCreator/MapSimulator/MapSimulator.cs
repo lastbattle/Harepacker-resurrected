@@ -1279,13 +1279,13 @@ namespace HaCreator.MapSimulator
             if (texture_lbLeft != null)
             {
                 // Define rectangle for left border:
-                // - X: Position at leftmost edge (-LB_BORDER_WIDTHHEIGHT) and adjust for map shifting
+                // - X: Position at left boundary (-LB_BORDER_WIDTHHEIGHT) and adjust for map shifting
                 // - Y: Position at the very top (0) and adjust for map shifting
                 // - Width: Use configured side border width (LBSide) plus border width
                 // - Height: Use full texture height from border asset
                 sprite.Draw(texture_lbLeft,
                     new Rectangle(
-                                x: -(LB_BORDER_WIDTHHEIGHT + LBSide), // Position fully offscreen to the left
+                                x: (0 - LB_BORDER_WIDTHHEIGHT), // Position fully offscreen to the left
                                 y: -0, // Align to top of viewport
                                 width: texture_lbRight.Width,
                                 height: texture_lbRight.Height
@@ -1299,13 +1299,13 @@ namespace HaCreator.MapSimulator
             if (texture_lbRight != null)
             {
                 // Define rectangle for right border:
-                // - X: Position at right boundary (vr_fieldBoundary.Right) minus border width and adjust for map shifting
+                // - X: Position at right boundary minus border width and adjust for map shifting
                 // - Y: Position at the very top (0) and adjust for map shifting  
                 // - Width: Use configured side border width (LBSide) plus border width
                 // - Height: Use full texture height from border asset
                 sprite.Draw(texture_lbRight,
                     new Rectangle(
-                        x: vr_fieldBoundary.Right, // Start at VR right edge
+                        x: (this.Width - LBSide), // Position fully offscreen to the left
                         y: -0, // Align to top of viewport  
                         width: texture_lbRight.Width,
                         height: texture_lbRight.Height

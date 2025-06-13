@@ -114,45 +114,54 @@ namespace HaCreator.GUI.EditorPanels
         }
 
         /// <summary>
-        /// On numericUpDown_bottom value changed, update the selected board's bottom black border value.
+        /// On numericUpDown_bottom key up, update the selected board's bottom black border value.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void numericUpDown_bottom_ValueChanged(object sender, EventArgs e)
+        private void numericUpDown_bottom_KeyUp(object sender, KeyEventArgs e)
         {
             var selectedBoard = hcsm.MultiBoard.SelectedBoard;
             if (selectedBoard == null)
                 return; // No board selected 
 
-            selectedBoard.MapInfo.LBBottom = checkBox_bottom.Checked ? (int?)numericUpDown_bottom.Value : null;
+            if (int.TryParse(numericUpDown_bottom.Text, out int newValue))
+            {
+                selectedBoard.MapInfo.LBBottom = checkBox_bottom.Checked ? newValue : null;
+            }
         }
 
         /// <summary>
-        /// On numericUpDown_top value changed, update the selected board's top black border value.
+        /// On numericUpDown_top key up, update the selected board's top black border value.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void numericUpDown_side_ValueChanged(object sender, EventArgs e)
+        private void numericUpDown_top_KeyUp(object sender, KeyEventArgs e)
         {
             var selectedBoard = hcsm.MultiBoard.SelectedBoard;
             if (selectedBoard == null)
                 return; // No board selected 
 
-            selectedBoard.MapInfo.LBSide = checkBox_side.Checked ? (int?)numericUpDown_side.Value : null;
+            if (int.TryParse(numericUpDown_top.Text, out int newValue))
+            {
+                selectedBoard.MapInfo.LBTop = checkBox_top.Checked ? newValue : null;
+            }
         }
 
         /// <summary>
-        /// On numericUpDown_side value changed, update the selected board's side black border value.
+        /// On numericUpDown_side key up, update the selected board's side black border value.
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void numericUpDown_top_ValueChanged(object sender, EventArgs e)
+        private void numericUpDown_side_KeyUp(object sender, KeyEventArgs e)
         {
             var selectedBoard = hcsm.MultiBoard.SelectedBoard;
             if (selectedBoard == null)
                 return; // No board selected 
 
-            selectedBoard.MapInfo.LBTop = checkBox_top.Checked ? (int?)numericUpDown_top.Value : null;
+            if (int.TryParse(numericUpDown_side.Text, out int newValue))
+            {
+                selectedBoard.MapInfo.LBSide = checkBox_side.Checked ? newValue : null;
+            }
         }
     }
 }
