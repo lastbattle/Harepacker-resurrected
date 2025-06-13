@@ -100,7 +100,9 @@ namespace HaCreator.Wz
 
         private void SaveMapInfo()
         {
-            board.MapInfo.Save(image, board.VRRectangle == null ? (System.Drawing.Rectangle?)null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+            board.MapInfo.Save(image, 
+                board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+            
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
                 WzImage strMapImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");

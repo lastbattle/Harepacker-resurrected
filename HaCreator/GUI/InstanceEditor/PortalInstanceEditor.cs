@@ -202,7 +202,7 @@ namespace HaCreator.GUI.InstanceEditor
                             item.horizontalImpact = null;
                             item.verticalImpact = null;
                             item.delay = GetOptionalInt(delayEnable, delayBox);
-                            item.script = null;
+                            item.script = scriptBox.Text;
                             item.onlyOnce = onlyOnce.Checked;
                             item.hideTooltip = hideTooltip.Checked;
                             break;
@@ -438,7 +438,8 @@ namespace HaCreator.GUI.InstanceEditor
                         rowMan.SetVisible("pn");
                         rowMan.SetVisible("tm");
                         rowMan.SetVisible("tn");
-                        rowMan.SetInvisible("script");
+                        //rowMan.SetInvisible("script");
+                        rowMan.SetVisible("script"); // this could also be a script in early pre-bb MapleStory. i.e 1930000000, 1940000000, 1950000000, 1960000000 Internet Cafe maps
                         rowMan.SetVisible("delay");
                         rowMan.SetInvisible("range");
                         rowMan.SetInvisible("impact");

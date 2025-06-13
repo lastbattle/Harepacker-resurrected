@@ -4,6 +4,17 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+using HaCreator.GUI.Input;
+using HaCreator.GUI.InstanceEditor;
+using HaCreator.MapEditor;
+using HaCreator.Wz;
+using HaRepacker;
+using MapleLib.Helpers;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.MapStructure;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,16 +24,6 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure;
-using MapleLib.WzLib.WzStructure.Data;
-using HaCreator.GUI.InstanceEditor;
-using MapleLib.WzLib.WzStructure.Data.MapStructure;
-using HaCreator.Wz;
-using HaRepacker;
-using HaCreator.GUI.Input;
 
 namespace HaCreator.GUI
 {
@@ -71,7 +72,7 @@ namespace HaCreator.GUI
             //mirror_Bottom_Enabled.Tag = mirror
 
             this.fieldType.SelectedIndex = 0;
-            
+
             xBox.Value = board.MapSize.X;
             yBox.Value = board.MapSize.Y;
 
@@ -111,10 +112,10 @@ namespace HaCreator.GUI
             streetBox.Text = info.strStreetName;
             categoryBox.Text = info.strCategoryName;
             markBox.SelectedItem = info.mapMark;
-            if (info.returnMap == info.id) 
+            if (info.returnMap == info.id)
                 cannotReturnCBX.Checked = true;
             else returnBox.Text = info.returnMap.ToString();
-            if (info.forcedReturn == 999999999) 
+            if (info.forcedReturn == 999999999)
                 returnHereCBX.Checked = true;
             else forcedRet.Text = info.forcedReturn.ToString();
             mobRate.Value = (decimal)info.mobRate;
@@ -204,7 +205,7 @@ namespace HaCreator.GUI
             // Populate field limit items
             // automatically populated via fieldLimitPanel1.Loaed
             fieldLimitPanel1.PopulateDefaultListView();
-            fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong) info.fieldLimit);
+            fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong)info.fieldLimit);
 
             if (info.fieldType != null)/* fieldType.SelectedIndex = -1;
             else*/
@@ -281,10 +282,13 @@ namespace HaCreator.GUI
         /// <param name="source"></param>
         /// <param name="target"></param>
         /// <param name="checkBox"></param>
-        private void LoadOptionalIntArray(List<int> source, ComboBox target, CheckBox checkBox) {
+        private void LoadOptionalIntArray(List<int> source, ComboBox target, CheckBox checkBox)
+        {
             checkBox.Checked = source != null && source.Count > 0;
-            if (checkBox.Checked == true) {
-                foreach (int val in source) {
+            if (checkBox.Checked == true)
+            {
+                foreach (int val in source)
+                {
                     target.Items.Add(val.ToString());
                 }
             }
@@ -296,10 +300,13 @@ namespace HaCreator.GUI
         /// <param name="source"></param>
         /// <param name="target"></param>
         /// <param name="checkBox"></param>
-        private void LoadOptionalIntArray(List<int> source, ListBox target, CheckBox checkBox) {
+        private void LoadOptionalIntArray(List<int> source, ListBox target, CheckBox checkBox)
+        {
             checkBox.Checked = source != null && source.Count > 0;
-            if (checkBox.Checked == true) {
-                foreach (int val in source) {
+            if (checkBox.Checked == true)
+            {
+                foreach (int val in source)
+                {
                     target.Items.Add(val.ToString());
                 }
             }
@@ -322,11 +329,15 @@ namespace HaCreator.GUI
         /// <param name="comboBox"></param>
         /// <param name="checkBox"></param>
         /// <returns>null if none is selected</returns>
-        private List<int> GetOptionalIntArrayFromList(ComboBox comboBox, CheckBox checkBox) {
+        private List<int> GetOptionalIntArrayFromList(ComboBox comboBox, CheckBox checkBox)
+        {
             List<int> ret = new List<int>();
-            if (checkBox.Checked) {
-                if (comboBox.SelectedText != null) {
-                    foreach (string itemId in comboBox.Items) {
+            if (checkBox.Checked)
+            {
+                if (comboBox.SelectedText != null)
+                {
+                    foreach (string itemId in comboBox.Items)
+                    {
                         ret.Add(int.Parse(itemId));
                     }
                     return ret;
@@ -341,10 +352,13 @@ namespace HaCreator.GUI
         /// <param name="comboBox"></param>
         /// <param name="checkBox"></param>
         /// <returns>null if none is selected</returns>
-        private List<int> GetOptionalIntArrayFromList(ListBox listBox, CheckBox checkBox) {
+        private List<int> GetOptionalIntArrayFromList(ListBox listBox, CheckBox checkBox)
+        {
             List<int> ret = new List<int>();
-            if (checkBox.Checked) {
-                foreach (string itemId in listBox.Items) {
+            if (checkBox.Checked)
+            {
+                foreach (string itemId in listBox.Items)
+                {
                     ret.Add(int.Parse(itemId));
                 }
                 return ret;
@@ -376,7 +390,15 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            soundPlayer1.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            string bgm = (string)bgmBox.SelectedItem;
+            if (Program.InfoManager.BGMs.ContainsKey(bgm))
+            {
+                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[bgm];
+            } else
+            {
+                string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", bgm, this.info.id);
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
         }
 
         /// <summary>
@@ -384,14 +406,17 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_addProtectItem_Click(object sender, EventArgs e) {
+        private void button_addProtectItem_Click(object sender, EventArgs e)
+        {
             string name;
             int? value;
 
-            if (!IntInputBox.Show("Enter item ID", "0", 0, out name, out value, true)) {
+            if (!IntInputBox.Show("Enter item ID", "0", 0, out name, out value, true))
+            {
                 return;
             }
-            if (value == 0) {
+            if (value == 0)
+            {
                 MessageBox.Show("Value must not be 0.");
                 return;
             }
@@ -403,7 +428,8 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void button_removeProtectItem_Click(object sender, EventArgs e) {
+        private void button_removeProtectItem_Click(object sender, EventArgs e)
+        {
             if (listBox_protectItem.SelectedIndex != -1)
                 listBox_protectItem.Items.RemoveAt(listBox_protectItem.SelectedIndex);
         }
@@ -512,7 +538,7 @@ namespace HaCreator.GUI
                 info.VRLimit = optionsList.Checked(21);
                 info.mirror_Bottom = optionsList.Checked(22);
 
-                info.fieldLimit = (long) fieldLimitPanel1.FieldLimit;
+                info.fieldLimit = (long)fieldLimitPanel1.FieldLimit;
 
                 if (fieldType.SelectedIndex <= 0x22)
                     info.fieldType = (FieldType)fieldType.SelectedIndex;
@@ -562,13 +588,13 @@ namespace HaCreator.GUI
         {
             CheckBox cbx = (CheckBox)sender;
             bool featureActivated = cbx.Checked && cbx.Enabled;
-            if (cbx.Tag is Control) 
+            if (cbx.Tag is Control)
                 ((Control)cbx.Tag).Enabled = featureActivated;
             else
             {
-                foreach (Control control in (Control[])cbx.Tag) 
+                foreach (Control control in (Control[])cbx.Tag)
                     control.Enabled = featureActivated;
-                foreach (Control control in (Control[])cbx.Tag) if (control is CheckBox) 
+                foreach (Control control in (Control[])cbx.Tag) if (control is CheckBox)
                         enablingCheckBox_CheckChanged(control, e);
             }
         }

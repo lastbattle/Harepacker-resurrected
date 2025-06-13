@@ -87,6 +87,14 @@
                     </WindowsFormsHost>
                 </Expander>
 
+                <Expander x:Name="expander_bgBlackBorderPanel"
+                           Header="Background Border"
+                          Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
+                    <WindowsFormsHost x:Name="bgBlackBorderPanelHost" Visibility="Collapsed">
+                        <editorItems:BlackBorderPanel x:Name="bgBlackBorderPanel"/>
+                    </WindowsFormsHost>
+                </Expander>
+
                 <Expander Header="Common"
                           Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
                     <WindowsFormsHost x:Name="commonPanelHost" Visibility="Collapsed">

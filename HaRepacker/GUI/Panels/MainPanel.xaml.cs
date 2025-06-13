@@ -296,7 +296,7 @@ namespace HaRepacker.GUI.Panels
         public void AddWzCanvasToSelectedNode(System.Windows.Forms.TreeNode target)
         {
             string name;
-            List<System.Drawing.Bitmap> bitmaps = new List<System.Drawing.Bitmap>();
+            List<System.Drawing.Bitmap> bitmaps = new List<Bitmap>();
             if (!(target.Tag is IPropertyContainer))
             {
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
@@ -310,10 +310,20 @@ namespace HaRepacker.GUI.Panels
             int i = 0;
             foreach (System.Drawing.Bitmap bmp in bitmaps)
             {
-                WzCanvasProperty canvas = new WzCanvasProperty(bitmaps.Count == 1 ? name : (name + i));
+                string proposedName = bitmaps.Count == 1 ? name : (name + i);
+
+                // Check if name already exists in parent
+                if (WzNode.GetChildNode(wzNode, proposedName) != null)
+                {
+                    Warning.Error(Properties.Resources.MainNodeExists);
+                    continue;
+                }
+
+                WzCanvasProperty canvas = new WzCanvasProperty(proposedName);
                 WzPngProperty pngProperty = new WzPngProperty();
                 pngProperty.PNG = bmp;
                 canvas.PngProperty = pngProperty;
+
 
                 WzNode newInsertedNode = wzNode.AddObject(canvas, UndoRedoMan);
                 // Add an additional WzVectorProperty with X Y of 0,0
@@ -765,7 +775,7 @@ namespace HaRepacker.GUI.Panels
                 WzCanvasProperty canvas = (WzCanvasProperty)selectedTreeNode;
                 System.Drawing.Image img = canvas?.GetLinkedWzCanvasBitmap();
                 if (img != null && canvas != null) {
-                    canvasPropBox.BindingPropertyItem.SurfaceFormat = canvas.PngProperty.GetXNASurfaceFormat();
+                    canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(canvas.PngProperty.Format);
                     canvasPropBox.BindingPropertyItem.Bitmap = (Bitmap)img;
                     canvasPropBox.BindingPropertyItem.BitmapBackup = (Bitmap)img;
                 }
@@ -1331,7 +1341,7 @@ namespace HaRepacker.GUI.Panels
 
                 canvasPropBox.SetIsLoading(true);
                 try {
-                    canvasPropBox.BindingPropertyItem.SurfaceFormat = selectedWzCanvas.PngProperty.GetXNASurfaceFormat();
+                    canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(selectedWzCanvas.PngProperty.Format);
                     canvasPropBox.BindingPropertyItem.Bitmap = bmp;
                     canvasPropBox.BindingPropertyItem.BitmapBackup = bmp;
                 }
@@ -1670,7 +1680,7 @@ namespace HaRepacker.GUI.Panels
                     if (canvasProp.ContainsInlinkProperty() || canvasProp.ContainsOutlinkProperty()) {
                         System.Drawing.Image img = canvasProp.GetLinkedWzCanvasBitmap();
                         if (img != null) {
-                            canvasPropBox.BindingPropertyItem.SurfaceFormat = canvasProp.PngProperty.GetXNASurfaceFormat();
+                            canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(canvasProp.PngProperty.Format);
                             canvasPropBox.BindingPropertyItem.Bitmap = (System.Drawing.Bitmap)img;
                             canvasPropBox.BindingPropertyItem.BitmapBackup = (System.Drawing.Bitmap)img;
                         }
@@ -1678,7 +1688,7 @@ namespace HaRepacker.GUI.Panels
                     else {
                         Bitmap bmp = canvasProp.GetLinkedWzCanvasBitmap();
 
-                        canvasPropBox.BindingPropertyItem.SurfaceFormat = canvasProp.PngProperty.GetXNASurfaceFormat();
+                        canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(canvasProp.PngProperty.Format);
                         canvasPropBox.BindingPropertyItem.Bitmap = bmp;
                         canvasPropBox.BindingPropertyItem.BitmapBackup = bmp;
                     }
@@ -1694,7 +1704,7 @@ namespace HaRepacker.GUI.Panels
 
                         Bitmap bmp = canvasUOL.GetLinkedWzCanvasBitmap();
 
-                        canvasPropBox.BindingPropertyItem.SurfaceFormat = canvasUOL.PngProperty.GetXNASurfaceFormat();
+                        canvasPropBox.BindingPropertyItem.SurfaceFormat = WzPngFormatExtensions.GetXNASurfaceFormat(canvasUOL.PngProperty.Format);
                         canvasPropBox.BindingPropertyItem.Bitmap = bmp; // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
                         canvasPropBox.BindingPropertyItem.BitmapBackup = bmp; // in any event that the WzCanvasProperty is an '_inlink' or '_outlink'
 
