@@ -51,9 +51,9 @@ namespace HaCreator.GUI.EditorPanels
             checkBox_side.AutoSize = true;
             checkBox_side.Location = new System.Drawing.Point(6, 94);
             checkBox_side.Name = "checkBox_side";
-            checkBox_side.Size = new System.Drawing.Size(48, 17);
+            checkBox_side.Size = new System.Drawing.Size(91, 17);
             checkBox_side.TabIndex = 2;
-            checkBox_side.Text = "Side";
+            checkBox_side.Text = "Side (LBSide)";
             checkBox_side.UseVisualStyleBackColor = true;
             checkBox_side.CheckedChanged += checkBox_side_CheckedChanged;
             // 
@@ -62,9 +62,9 @@ namespace HaCreator.GUI.EditorPanels
             checkBox_bottom.AutoSize = true;
             checkBox_bottom.Location = new System.Drawing.Point(6, 71);
             checkBox_bottom.Name = "checkBox_bottom";
-            checkBox_bottom.Size = new System.Drawing.Size(64, 17);
+            checkBox_bottom.Size = new System.Drawing.Size(123, 17);
             checkBox_bottom.TabIndex = 1;
-            checkBox_bottom.Text = "Bottom";
+            checkBox_bottom.Text = "Bottom (LBBottom)";
             checkBox_bottom.UseVisualStyleBackColor = true;
             checkBox_bottom.CheckedChanged += checkBox_bottom_CheckedChanged;
             // 
@@ -73,9 +73,9 @@ namespace HaCreator.GUI.EditorPanels
             checkBox_top.AutoSize = true;
             checkBox_top.Location = new System.Drawing.Point(6, 48);
             checkBox_top.Name = "checkBox_top";
-            checkBox_top.Size = new System.Drawing.Size(44, 17);
+            checkBox_top.Size = new System.Drawing.Size(83, 17);
             checkBox_top.TabIndex = 0;
-            checkBox_top.Text = "Top";
+            checkBox_top.Text = "Top (LBTop)";
             checkBox_top.UseVisualStyleBackColor = true;
             checkBox_top.CheckedChanged += checkBox_top_CheckedChanged;
             // 
@@ -111,9 +111,9 @@ namespace HaCreator.GUI.EditorPanels
             // label2
             // 
             label2.Font = new System.Drawing.Font("Segoe UI", 6.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
-            label2.Location = new System.Drawing.Point(117, 118);
+            label2.Location = new System.Drawing.Point(135, 118);
             label2.Name = "label2";
-            label2.Size = new System.Drawing.Size(161, 15);
+            label2.Size = new System.Drawing.Size(143, 15);
             label2.TabIndex = 7;
             label2.Text = "Height or width in px";
             // 
@@ -128,30 +128,30 @@ namespace HaCreator.GUI.EditorPanels
             // numericUpDown_side
             // 
             numericUpDown_side.Enabled = false;
-            numericUpDown_side.Location = new System.Drawing.Point(117, 93);
+            numericUpDown_side.Location = new System.Drawing.Point(135, 93);
             numericUpDown_side.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
             numericUpDown_side.Name = "numericUpDown_side";
-            numericUpDown_side.Size = new System.Drawing.Size(161, 22);
+            numericUpDown_side.Size = new System.Drawing.Size(143, 22);
             numericUpDown_side.TabIndex = 5;
             numericUpDown_side.ValueChanged += numericUpDown_side_ValueChanged;
             // 
             // numericUpDown_bottom
             // 
             numericUpDown_bottom.Enabled = false;
-            numericUpDown_bottom.Location = new System.Drawing.Point(117, 70);
+            numericUpDown_bottom.Location = new System.Drawing.Point(135, 70);
             numericUpDown_bottom.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
             numericUpDown_bottom.Name = "numericUpDown_bottom";
-            numericUpDown_bottom.Size = new System.Drawing.Size(161, 22);
+            numericUpDown_bottom.Size = new System.Drawing.Size(143, 22);
             numericUpDown_bottom.TabIndex = 4;
             numericUpDown_bottom.ValueChanged += numericUpDown_bottom_ValueChanged;
             // 
             // numericUpDown_top
             // 
             numericUpDown_top.Enabled = false;
-            numericUpDown_top.Location = new System.Drawing.Point(117, 47);
+            numericUpDown_top.Location = new System.Drawing.Point(135, 47);
             numericUpDown_top.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
             numericUpDown_top.Name = "numericUpDown_top";
-            numericUpDown_top.Size = new System.Drawing.Size(161, 22);
+            numericUpDown_top.Size = new System.Drawing.Size(143, 22);
             numericUpDown_top.TabIndex = 3;
             numericUpDown_top.ValueChanged += numericUpDown_top_ValueChanged;
             // 

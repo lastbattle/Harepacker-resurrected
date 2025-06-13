@@ -38,6 +38,7 @@
             </Grid.RowDefinitions>
             
             <TabControl x:Name="tabControl1" Grid.Row="0"
+                       SelectionChanged="tabControl1_SelectionChanged"
                         >
 
             </TabControl>

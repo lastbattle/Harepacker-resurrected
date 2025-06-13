@@ -1025,6 +1025,9 @@ namespace HaCreator.Wz
 
                 mapBoard.BoardItems.Sort();
                 mapBoard.Loading = false;
+
+                // LBTop LBBottom LBSide
+                multiBoard.HaCreatorStateManager.UpdateEditorPanelVisibility();
             }
 
             const string OUTPUT_ERROR_FILENAME = "Errors_MapLoader.txt";

@@ -521,12 +521,12 @@ namespace HaCreator.MapSimulator
             if (mapBoard.MapInfo.LBTop != null)
             {
                 LBTop = (int)mapBoard.MapInfo.LBTop;
-                this.texture_lbTop = CreateLBBorder((int) (this.Width * 1.35), LB_BORDER_WIDTHHEIGHT + LBTop, _DxDeviceManager.GraphicsDevice); // add a little more width to the top LB border for very small maps
+                this.texture_lbTop = CreateLBBorder((int) (vr_fieldBoundary.Width * 1.45), LB_BORDER_WIDTHHEIGHT + LBTop, _DxDeviceManager.GraphicsDevice); // add a little more width to the top LB border for very small maps
             }
             if (mapBoard.MapInfo.LBBottom != null) 
             {
                 LBBottom = (int)mapBoard.MapInfo.LBBottom;
-                this.texture_lbBottom = CreateLBBorder((int) (this.Width * 1.35), LB_BORDER_WIDTHHEIGHT + LBBottom, _DxDeviceManager.GraphicsDevice);
+                this.texture_lbBottom = CreateLBBorder((int) (vr_fieldBoundary.Width * 1.45), LB_BORDER_WIDTHHEIGHT + LBBottom, _DxDeviceManager.GraphicsDevice);
             }
 
             ///////////////////////////////////////////////
@@ -1274,34 +1274,48 @@ namespace HaCreator.MapSimulator
             Color borderColor = Color.Black;
 
             // Draw left line
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the left edge of the screen and extends leftward beyond the screen's left limit.
+            // LBSide: This variable represents the width(in pixels) of the text
             if (texture_lbLeft != null)
             {
+                // Define rectangle for left border:
+                // - X: Position at leftmost edge (-LB_BORDER_WIDTHHEIGHT) and adjust for map shifting
+                // - Y: Position at the very top (0) and adjust for map shifting
+                // - Width: Use configured side border width (LBSide) plus border width
+                // - Height: Use full texture height from border asset
                 sprite.Draw(texture_lbLeft,
                     new Rectangle(
-                        x: -LB_BORDER_WIDTHHEIGHT - (mapShiftX),
-                        y: 0 - (mapShiftY), // Always start at left edge
-                        width: LB_BORDER_WIDTHHEIGHT + LBSide,
-                        height: texture_lbRight.Height
-                        ),
+                                x: -(LB_BORDER_WIDTHHEIGHT + LBSide), // Position fully offscreen to the left
+                                y: -0, // Align to top of viewport
+                                width: texture_lbRight.Width,
+                                height: texture_lbRight.Height
+                            ),
                     borderColor);
             }
 
             // Draw right line
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the right edge of the screen and extends rightward beyond the screen's right limit.
+            // LBSide: This variable represents the width(in pixels) of the tex
             if (texture_lbRight != null)
             {
+                // Define rectangle for right border:
+                // - X: Position at right boundary (vr_fieldBoundary.Right) minus border width and adjust for map shifting
+                // - Y: Position at the very top (0) and adjust for map shifting  
+                // - Width: Use configured side border width (LBSide) plus border width
+                // - Height: Use full texture height from border asset
                 sprite.Draw(texture_lbRight,
                     new Rectangle(
-                        x: vr_fieldBoundary.Right - LBSide - (mapShiftX),
-                        y: 0 - (mapShiftY), // Always start at left edge
-                        width: LB_BORDER_WIDTHHEIGHT + LBSide,
+                        x: vr_fieldBoundary.Right, // Start at VR right edge
+                        y: -0, // Align to top of viewport  
+                        width: texture_lbRight.Width,
                         height: texture_lbRight.Height
-                        ),
+                    ),
                     borderColor);
             }
 
             // Draw top line
-            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the top edge of this VR field boundary and extends upward beyond the boundary's upper limit.
-            // LBTop: This variable represents the height(in pixels) of the texture that is contained within the VR field boundary. In other words, LBTop defines how much of the texture's height fits inside the boundary, from the top of the boundary to downward.
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the top edge of the screen and extends upward beyond the screen's upper limit.
+            // LBTop: This variable represents the height(in pixels) of the texture that is contained within the screen. In other words, LBTop defines how much of the texture's height fits inside the boundary, from the top of the screen to downward.
             if (texture_lbTop != null)
             {
                 // Define rectangle for top border:
@@ -1311,30 +1325,31 @@ namespace HaCreator.MapSimulator
                 // - Height: Use configured top border height (LBTop)
                 sprite.Draw(texture_lbTop,
                     new Rectangle(
-                        x: -LB_BORDER_OFFSET_X - mapShiftX,         // Start 150px left of map edge
-                        y: (0 - LB_BORDER_WIDTHHEIGHT) - mapShiftY,            // Align to top of viewport
-                        width: texture_lbTop.Width,   // Use full texture width
-                        height: LB_BORDER_WIDTHHEIGHT + LBTop                 // Height specified in map properties
+                        x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
+                        y: (0 - LB_BORDER_WIDTHHEIGHT), // Extend above viewport
+                        width: texture_lbTop.Width,
+                        height: texture_lbTop.Height
                     ),
                     borderColor);
             }
 
             // Draw bottom line
-            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the bottom edge of this VR field boundary and extends downward beyond the boundary's lower limit.
-            // LBBottom: This variable represents the height(in pixels) of the texture that is contained within the VR field boundary. In other words, LBBottom defines how much of the texture's height fits inside the boundary, from the bottom of the boundary to upward.
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the bottom edge of the screen and extends downward beyond the screen's lower limit.
+            // LBBottom: This variable represents the height(in pixels) of the texture that is contained within the screen. In other words, LBBottom defines how much of the texture's height fits inside the boundary, from the bottom of the screen to upward.
             if (texture_lbBottom != null)
             {
                 // Define rectangle for bottom border:
                 // - X: Offset 150px (LB_BORDER_OFFSET_X) left of map edge to cover small maps fully
-                // - Y: Position at bottom of VR boundary minus border height
+                // - Y: Position at bottom of screen, accounting for scaled height and UI elements
                 // - Width: Use texture width from bottom border asset
                 // - Height: Use configured bottom border height
                 sprite.Draw(texture_lbBottom,
                     new Rectangle(
-                        x: -LB_BORDER_OFFSET_X - mapShiftX,
-                        y: (this.Height - (LB_BORDER_UI_MENUHEIGHT) - (LBBottom)) - mapShiftY,
+                        x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
+                        y: (Height - LB_BORDER_UI_MENUHEIGHT - LBBottom), // Align to bottom minus UI height
                         width: texture_lbBottom.Width,
-                        height: LB_BORDER_WIDTHHEIGHT + LBBottom),
+                        height: texture_lbBottom.Height
+                    ),
                     borderColor);
             }
         }
