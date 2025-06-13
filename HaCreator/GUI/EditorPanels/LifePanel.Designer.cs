@@ -28,153 +28,154 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.splitContainer8 = new System.Windows.Forms.SplitContainer();
-            this.splitContainer9 = new System.Windows.Forms.SplitContainer();
-            this.label1 = new System.Windows.Forms.Label();
-            this.lifeSearchBox = new System.Windows.Forms.TextBox();
-            this.mobRButton = new System.Windows.Forms.RadioButton();
-            this.npcRButton = new System.Windows.Forms.RadioButton();
-            this.reactorRButton = new System.Windows.Forms.RadioButton();
-            this.lifeListBox = new System.Windows.Forms.ListBox();
-            this.lifePictureBox = new System.Windows.Forms.PictureBox();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer8)).BeginInit();
-            this.splitContainer8.Panel1.SuspendLayout();
-            this.splitContainer8.Panel2.SuspendLayout();
-            this.splitContainer8.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer9)).BeginInit();
-            this.splitContainer9.Panel1.SuspendLayout();
-            this.splitContainer9.Panel2.SuspendLayout();
-            this.splitContainer9.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.lifePictureBox)).BeginInit();
-            this.SuspendLayout();
+            splitContainer8 = new System.Windows.Forms.SplitContainer();
+            splitContainer9 = new System.Windows.Forms.SplitContainer();
+            label1 = new System.Windows.Forms.Label();
+            lifeSearchBox = new System.Windows.Forms.TextBox();
+            mobRButton = new System.Windows.Forms.RadioButton();
+            npcRButton = new System.Windows.Forms.RadioButton();
+            reactorRButton = new System.Windows.Forms.RadioButton();
+            lifeListBox = new System.Windows.Forms.ListBox();
+            lifePictureBox = new System.Windows.Forms.PictureBox();
+            ((System.ComponentModel.ISupportInitialize)splitContainer8).BeginInit();
+            splitContainer8.Panel1.SuspendLayout();
+            splitContainer8.Panel2.SuspendLayout();
+            splitContainer8.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer9).BeginInit();
+            splitContainer9.Panel1.SuspendLayout();
+            splitContainer9.Panel2.SuspendLayout();
+            splitContainer9.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)lifePictureBox).BeginInit();
+            SuspendLayout();
             // 
             // splitContainer8
             // 
-            this.splitContainer8.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer8.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer8.Name = "splitContainer8";
-            this.splitContainer8.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer8.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer8.Location = new System.Drawing.Point(0, 0);
+            splitContainer8.Name = "splitContainer8";
+            splitContainer8.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
             // splitContainer8.Panel1
             // 
-            this.splitContainer8.Panel1.Controls.Add(this.splitContainer9);
+            splitContainer8.Panel1.Controls.Add(splitContainer9);
             // 
             // splitContainer8.Panel2
             // 
-            this.splitContainer8.Panel2.AutoScroll = true;
-            this.splitContainer8.Panel2.Controls.Add(this.lifePictureBox);
-            this.splitContainer8.Size = new System.Drawing.Size(269, 658);
-            this.splitContainer8.SplitterDistance = 223;
-            this.splitContainer8.TabIndex = 2;
+            splitContainer8.Panel2.AutoScroll = true;
+            splitContainer8.Panel2.Controls.Add(lifePictureBox);
+            splitContainer8.Size = new System.Drawing.Size(269, 658);
+            splitContainer8.SplitterDistance = 429;
+            splitContainer8.TabIndex = 2;
             // 
             // splitContainer9
             // 
-            this.splitContainer9.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer9.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer9.Name = "splitContainer9";
-            this.splitContainer9.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer9.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer9.Location = new System.Drawing.Point(0, 0);
+            splitContainer9.Name = "splitContainer9";
+            splitContainer9.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
             // splitContainer9.Panel1
             // 
-            this.splitContainer9.Panel1.Controls.Add(this.label1);
-            this.splitContainer9.Panel1.Controls.Add(this.lifeSearchBox);
-            this.splitContainer9.Panel1.Controls.Add(this.mobRButton);
-            this.splitContainer9.Panel1.Controls.Add(this.npcRButton);
-            this.splitContainer9.Panel1.Controls.Add(this.reactorRButton);
+            splitContainer9.Panel1.Controls.Add(label1);
+            splitContainer9.Panel1.Controls.Add(lifeSearchBox);
+            splitContainer9.Panel1.Controls.Add(mobRButton);
+            splitContainer9.Panel1.Controls.Add(npcRButton);
+            splitContainer9.Panel1.Controls.Add(reactorRButton);
             // 
             // splitContainer9.Panel2
             // 
-            this.splitContainer9.Panel2.Controls.Add(this.lifeListBox);
-            this.splitContainer9.Size = new System.Drawing.Size(269, 223);
-            this.splitContainer9.SplitterDistance = 79;
-            this.splitContainer9.TabIndex = 3;
+            splitContainer9.Panel2.Controls.Add(lifeListBox);
+            splitContainer9.Size = new System.Drawing.Size(269, 429);
+            splitContainer9.SplitterDistance = 60;
+            splitContainer9.TabIndex = 3;
             // 
             // label1
             // 
-            this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(3, 30);
-            this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(41, 13);
-            this.label1.TabIndex = 4;
-            this.label1.Text = "Search";
+            label1.AutoSize = true;
+            label1.Location = new System.Drawing.Point(3, 30);
+            label1.Name = "label1";
+            label1.Size = new System.Drawing.Size(41, 13);
+            label1.TabIndex = 4;
+            label1.Text = "Search";
             // 
             // lifeSearchBox
             // 
-            this.lifeSearchBox.Location = new System.Drawing.Point(44, 28);
-            this.lifeSearchBox.Name = "lifeSearchBox";
-            this.lifeSearchBox.Size = new System.Drawing.Size(222, 22);
-            this.lifeSearchBox.TabIndex = 3;
-            this.lifeSearchBox.TextChanged += new System.EventHandler(this.lifeModeChanged);
+            lifeSearchBox.Location = new System.Drawing.Point(44, 28);
+            lifeSearchBox.Name = "lifeSearchBox";
+            lifeSearchBox.Size = new System.Drawing.Size(222, 22);
+            lifeSearchBox.TabIndex = 3;
+            lifeSearchBox.TextChanged += lifeModeChanged;
             // 
             // mobRButton
             // 
-            this.mobRButton.Checked = true;
-            this.mobRButton.Location = new System.Drawing.Point(3, 3);
-            this.mobRButton.Name = "mobRButton";
-            this.mobRButton.Size = new System.Drawing.Size(52, 19);
-            this.mobRButton.TabIndex = 1;
-            this.mobRButton.TabStop = true;
-            this.mobRButton.Text = "Mob";
-            this.mobRButton.CheckedChanged += new System.EventHandler(this.lifeModeChanged);
+            mobRButton.Checked = true;
+            mobRButton.Location = new System.Drawing.Point(3, 3);
+            mobRButton.Name = "mobRButton";
+            mobRButton.Size = new System.Drawing.Size(52, 19);
+            mobRButton.TabIndex = 1;
+            mobRButton.TabStop = true;
+            mobRButton.Text = "Mob";
+            mobRButton.CheckedChanged += lifeModeChanged;
             // 
             // npcRButton
             // 
-            this.npcRButton.Location = new System.Drawing.Point(61, 3);
-            this.npcRButton.Name = "npcRButton";
-            this.npcRButton.Size = new System.Drawing.Size(56, 19);
-            this.npcRButton.TabIndex = 2;
-            this.npcRButton.Text = "NPC";
-            this.npcRButton.CheckedChanged += new System.EventHandler(this.lifeModeChanged);
+            npcRButton.Location = new System.Drawing.Point(61, 3);
+            npcRButton.Name = "npcRButton";
+            npcRButton.Size = new System.Drawing.Size(56, 19);
+            npcRButton.TabIndex = 2;
+            npcRButton.Text = "NPC";
+            npcRButton.CheckedChanged += lifeModeChanged;
             // 
             // reactorRButton
             // 
-            this.reactorRButton.Location = new System.Drawing.Point(123, 3);
-            this.reactorRButton.Name = "reactorRButton";
-            this.reactorRButton.Size = new System.Drawing.Size(67, 19);
-            this.reactorRButton.TabIndex = 0;
-            this.reactorRButton.Text = "Reactor";
-            this.reactorRButton.CheckedChanged += new System.EventHandler(this.lifeModeChanged);
+            reactorRButton.Location = new System.Drawing.Point(123, 3);
+            reactorRButton.Name = "reactorRButton";
+            reactorRButton.Size = new System.Drawing.Size(67, 19);
+            reactorRButton.TabIndex = 0;
+            reactorRButton.Text = "Reactor";
+            reactorRButton.CheckedChanged += lifeModeChanged;
             // 
             // lifeListBox
             // 
-            this.lifeListBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.lifeListBox.FormattingEnabled = true;
-            this.lifeListBox.Location = new System.Drawing.Point(0, 0);
-            this.lifeListBox.Name = "lifeListBox";
-            this.lifeListBox.Size = new System.Drawing.Size(269, 140);
-            this.lifeListBox.TabIndex = 0;
-            this.lifeListBox.SelectedIndexChanged += new System.EventHandler(this.lifeListBox_SelectedValueChanged);
+            lifeListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            lifeListBox.FormattingEnabled = true;
+            lifeListBox.ItemHeight = 13;
+            lifeListBox.Location = new System.Drawing.Point(0, 0);
+            lifeListBox.Name = "lifeListBox";
+            lifeListBox.Size = new System.Drawing.Size(269, 365);
+            lifeListBox.TabIndex = 0;
+            lifeListBox.SelectedIndexChanged += lifeListBox_SelectedValueChanged;
             // 
             // lifePictureBox
             // 
-            this.lifePictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.lifePictureBox.Location = new System.Drawing.Point(0, 0);
-            this.lifePictureBox.Name = "lifePictureBox";
-            this.lifePictureBox.Size = new System.Drawing.Size(269, 431);
-            this.lifePictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
-            this.lifePictureBox.TabIndex = 0;
-            this.lifePictureBox.TabStop = false;
+            lifePictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            lifePictureBox.Location = new System.Drawing.Point(0, 0);
+            lifePictureBox.Name = "lifePictureBox";
+            lifePictureBox.Size = new System.Drawing.Size(269, 225);
+            lifePictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.AutoSize;
+            lifePictureBox.TabIndex = 0;
+            lifePictureBox.TabStop = false;
             // 
             // LifePanel
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
-            this.Controls.Add(this.splitContainer8);
-            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            this.Name = "LifePanel";
-            this.Size = new System.Drawing.Size(269, 658);
-            this.splitContainer8.Panel1.ResumeLayout(false);
-            this.splitContainer8.Panel2.ResumeLayout(false);
-            this.splitContainer8.Panel2.PerformLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer8)).EndInit();
-            this.splitContainer8.ResumeLayout(false);
-            this.splitContainer9.Panel1.ResumeLayout(false);
-            this.splitContainer9.Panel1.PerformLayout();
-            this.splitContainer9.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer9)).EndInit();
-            this.splitContainer9.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.lifePictureBox)).EndInit();
-            this.ResumeLayout(false);
+            AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            Controls.Add(splitContainer8);
+            Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            Name = "LifePanel";
+            Size = new System.Drawing.Size(269, 658);
+            splitContainer8.Panel1.ResumeLayout(false);
+            splitContainer8.Panel2.ResumeLayout(false);
+            splitContainer8.Panel2.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer8).EndInit();
+            splitContainer8.ResumeLayout(false);
+            splitContainer9.Panel1.ResumeLayout(false);
+            splitContainer9.Panel1.PerformLayout();
+            splitContainer9.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer9).EndInit();
+            splitContainer9.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)lifePictureBox).EndInit();
+            ResumeLayout(false);
 
         }
 

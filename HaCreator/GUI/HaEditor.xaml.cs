@@ -66,6 +66,7 @@ namespace HaCreator.GUI
             lifePanelHost.Height = newHeight;
             portalPanelHost.Height = newHeight;
             bgPanelHost.Height = newHeight;
+            bgBlackBorderPanelHost.Height = Math.Min(250, newHeight);
             commonPanelHost.Height = newHeight;
         }
 
@@ -84,6 +85,7 @@ namespace HaCreator.GUI
             lifePanel.Initialize(hcsm);
             portalPanel.Initialize(hcsm);
             bgPanel.Initialize(hcsm);
+            bgBlackBorderPanel.Initialize(hcsm);
             commonPanel.Initialize(hcsm);
 
             if (!hcsm.backupMan.AttemptRestore())
@@ -152,6 +154,11 @@ namespace HaCreator.GUI
             UIElement childContent = expanderSrc.Content as UIElement;
 
             childContent.Visibility = Visibility.Visible;
+
+            if (expanderSrc == expander_bgBlackBorderPanel)
+            {
+                bgBlackBorderPanel.Initialize(hcsm); // re-initialize the panel to ensure it has the correct data
+            }
         }
 
         private void Expander_Collapsed(object sender, RoutedEventArgs e)

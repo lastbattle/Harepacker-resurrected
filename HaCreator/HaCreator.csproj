@@ -82,6 +82,8 @@
   </PropertyGroup>
   <PropertyGroup>
     <GenerateManifests>true</GenerateManifests>
+    <FileVersion>7.1.1</FileVersion>
+    <PackAsTool>False</PackAsTool>
   </PropertyGroup>
   <ItemGroup>
     <Compile Update="CustomControls\WatermarkTextBox.cs">
@@ -91,6 +93,9 @@
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Update="CustomControls\ScrollablePictureBox.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Update="GUI\EditorPanels\BlackBorderPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
     <Compile Update="GUI\EditorPanels\BackgroundPanel.cs">

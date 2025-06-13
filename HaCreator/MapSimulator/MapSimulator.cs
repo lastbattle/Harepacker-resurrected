@@ -17,10 +17,13 @@ using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using SharpDX.Direct3D9;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Data.Entity.Core.Common.CommandTrees.ExpressionBuilder;
 using System.Diagnostics;
+
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
@@ -69,9 +72,16 @@ namespace HaCreator.MapSimulator
 
         // Boundary, borders
         private Rectangle vr_fieldBoundary;
+        private Rectangle vr_rectangle; // the rectangle of the VR field, used for drawing the VR border
         private const int VR_BORDER_WIDTHHEIGHT = 600; // the height or width of the VR border
         private bool bDrawVRBorderLeftRight = false;
         private Texture2D texture_vrBoundaryRectLeft, texture_vrBoundaryRectRight, texture_vrBoundaryRectTop, texture_vrBoundaryRectBottom;
+
+        private int LBSide = 0, LBTop = 0, LBBottom = 0;
+        private Texture2D texture_lbLeft, texture_lbRight, texture_lbTop, texture_lbBottom; // Left, Right, Top, Bottom LB borders
+        private const int LB_BORDER_WIDTHHEIGHT = 300; // additional width or height of LB Border outside VR
+        private const int LB_BORDER_UI_MENUHEIGHT = 62; // The hardcoded values of the height of the UI menu bar at the bottom of the screen (Name, Level, HP, MP, etc.)
+        private const int LB_BORDER_OFFSET_X = 150; // Offset from map edge
 
         // Mirror bottom boundaries (Reflections in Arcane river maps)
         private Rectangle rect_mirrorBottom;
@@ -92,7 +102,8 @@ namespace HaCreator.MapSimulator
 
         // Etc
         private readonly Board mapBoard;
-        private bool bBigBangUpdate = true, bBigBang2Update = true;
+        private bool bBigBangUpdate = true; // Big-Bang update
+        private bool bBigBang2Update = true; // Chaos update
         private bool bIsLoginMap = false; // if the simulated map is the Login map.
         private bool bIsCashShopMap = false; 
 
@@ -290,10 +301,16 @@ namespace HaCreator.MapSimulator
             if (mapBoard.VRRectangle == null)
             {
                 vr_fieldBoundary = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+                vr_rectangle = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
             }
             else
             {
-                vr_fieldBoundary = new Rectangle(mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
+                vr_fieldBoundary = new Rectangle(
+                    mapBoard.VRRectangle.X + mapBoard.CenterPoint.X, 
+                    mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y, 
+                    mapBoard.VRRectangle.Width, 
+                    mapBoard.VRRectangle.Height);
+                vr_rectangle = new Rectangle(mapBoard.VRRectangle.X, mapBoard.VRRectangle.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
             }
             //SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.Opaque, true);
 
@@ -494,6 +511,24 @@ namespace HaCreator.MapSimulator
                 this.texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
                 this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
             }
+            // LB Border
+            if (mapBoard.MapInfo.LBSide != null)
+            {
+                LBSide = (int)mapBoard.MapInfo.LBSide;
+                this.texture_lbLeft = CreateLBBorder(LB_BORDER_WIDTHHEIGHT + LBSide, this.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_lbRight = CreateLBBorder(LB_BORDER_WIDTHHEIGHT + LBSide, this.Height, _DxDeviceManager.GraphicsDevice);
+            }
+            if (mapBoard.MapInfo.LBTop != null)
+            {
+                LBTop = (int)mapBoard.MapInfo.LBTop;
+                this.texture_lbTop = CreateLBBorder((int) (this.Width * 1.35), LB_BORDER_WIDTHHEIGHT + LBTop, _DxDeviceManager.GraphicsDevice); // add a little more width to the top LB border for very small maps
+            }
+            if (mapBoard.MapInfo.LBBottom != null) 
+            {
+                LBBottom = (int)mapBoard.MapInfo.LBBottom;
+                this.texture_lbBottom = CreateLBBorder((int) (this.Width * 1.35), LB_BORDER_WIDTHHEIGHT + LBBottom, _DxDeviceManager.GraphicsDevice);
+            }
+
             ///////////////////////////////////////////////
 
             // mirror bottom boundaries
@@ -565,15 +600,30 @@ namespace HaCreator.MapSimulator
         /// <returns></returns>
         private static Texture2D CreateVRBorder(int width, int height, GraphicsDevice graphicsDevice)
         {
-            System.Drawing.Color brBorderColor = System.Drawing.Color.Black;
-            System.Drawing.Bitmap bitmap_vrBorder = new System.Drawing.Bitmap(width, height);
+            // Create array of black pixels
+            Color[] colors = new Color[width * height];
+            Array.Fill(colors, Color.Black);
 
-            for (int x = 0; x < bitmap_vrBorder.Width; x++)
-                 for (int y = 0; y < bitmap_vrBorder.Height; y++)
-                      bitmap_vrBorder.SetPixel(x, y, brBorderColor); // is there a better way of doing this than looping?
-
-            Texture2D texture_vrBoundaryRect = bitmap_vrBorder.ToTexture2D(graphicsDevice);
+            Texture2D texture_vrBoundaryRect = new Texture2D(graphicsDevice, width, height);
+            texture_vrBoundaryRect.SetData(colors);
             return texture_vrBoundaryRect;
+        }
+        /// <summary>
+        /// Creates the black LB Border Texture2D object used to mask maps that are too small for larger resolutions
+        /// </summary>
+        /// <param name="width"></param>
+        /// <param name="height"></param>
+        /// <param name="graphicsDevice"></param>
+        /// <returns></returns>
+        private static Texture2D CreateLBBorder(int width, int height, GraphicsDevice graphicsDevice)
+        {
+            // Create array of black pixels
+            Color[] colors = new Color[width * height];
+            Array.Fill(colors, Color.Black);
+
+            Texture2D texture_lb = new Texture2D(graphicsDevice, width, height);
+            texture_lb.SetData(colors);
+            return texture_lb;
         }
 
         protected override void UnloadContent()
@@ -736,7 +786,7 @@ namespace HaCreator.MapSimulator
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
                                           //SpriteSortMode.Deferred,
                 BlendState.NonPremultiplied, 
-                SamplerState.LinearClamp, // Add proper sampling
+                Microsoft.Xna.Framework.Graphics.SamplerState.LinearClamp, // Add proper sampling
                 DepthStencilState.None, 
                 RasterizerState.CullCounterClockwise, 
                 null, 
@@ -757,6 +807,7 @@ namespace HaCreator.MapSimulator
             //DrawBorder(spriteBatch, titleSafeRectangle, 1, Color.Black);
 
             DrawVRFieldBorder(spriteBatch);
+            DrawLBFieldBorder(spriteBatch);
 
             //////////////////// UI related here ////////////////////
             DrawTooltip(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); 
@@ -1208,7 +1259,84 @@ namespace HaCreator.MapSimulator
                     VR_BORDER_WIDTHHEIGHT, 
                     vr_fieldBoundary.Height), 
                 borderColor);
+        }
 
+        /// <summary>
+        /// Draws the LB border
+        /// </summary>
+        /// <param name="sprite"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawLBFieldBorder(SpriteBatch sprite)
+        {
+            if (!bBigBang2Update || (vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0))
+                return;
+
+            Color borderColor = Color.Black;
+
+            // Draw left line
+            if (texture_lbLeft != null)
+            {
+                sprite.Draw(texture_lbLeft,
+                    new Rectangle(
+                        x: -LB_BORDER_WIDTHHEIGHT - (mapShiftX),
+                        y: 0 - (mapShiftY), // Always start at left edge
+                        width: LB_BORDER_WIDTHHEIGHT + LBSide,
+                        height: texture_lbRight.Height
+                        ),
+                    borderColor);
+            }
+
+            // Draw right line
+            if (texture_lbRight != null)
+            {
+                sprite.Draw(texture_lbRight,
+                    new Rectangle(
+                        x: vr_fieldBoundary.Right - LBSide - (mapShiftX),
+                        y: 0 - (mapShiftY), // Always start at left edge
+                        width: LB_BORDER_WIDTHHEIGHT + LBSide,
+                        height: texture_lbRight.Height
+                        ),
+                    borderColor);
+            }
+
+            // Draw top line
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the top edge of this VR field boundary and extends upward beyond the boundary's upper limit.
+            // LBTop: This variable represents the height(in pixels) of the texture that is contained within the VR field boundary. In other words, LBTop defines how much of the texture's height fits inside the boundary, from the top of the boundary to downward.
+            if (texture_lbTop != null)
+            {
+                // Define rectangle for top border:
+                // - X: Offset 150px (LB_BORDER_OFFSET_X) left of map edge to ensure coverage of small maps
+                // - Y: Position at the very top (0) and adjust for map shifting
+                // - Width: Use texture width from top border asset 
+                // - Height: Use configured top border height (LBTop)
+                sprite.Draw(texture_lbTop,
+                    new Rectangle(
+                        x: -LB_BORDER_OFFSET_X - mapShiftX,         // Start 150px left of map edge
+                        y: (0 - LB_BORDER_WIDTHHEIGHT) - mapShiftY,            // Align to top of viewport
+                        width: texture_lbTop.Width,   // Use full texture width
+                        height: LB_BORDER_WIDTHHEIGHT + LBTop                 // Height specified in map properties
+                    ),
+                    borderColor);
+            }
+
+            // Draw bottom line
+            // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the bottom edge of this VR field boundary and extends downward beyond the boundary's lower limit.
+            // LBBottom: This variable represents the height(in pixels) of the texture that is contained within the VR field boundary. In other words, LBBottom defines how much of the texture's height fits inside the boundary, from the bottom of the boundary to upward.
+            if (texture_lbBottom != null)
+            {
+                // Define rectangle for bottom border:
+                // - X: Offset 150px (LB_BORDER_OFFSET_X) left of map edge to cover small maps fully
+                // - Y: Position at bottom of VR boundary minus border height
+                // - Width: Use texture width from bottom border asset
+                // - Height: Use configured bottom border height
+                sprite.Draw(texture_lbBottom,
+                    new Rectangle(
+                        x: -LB_BORDER_OFFSET_X - mapShiftX,
+                        y: (this.Height - (LB_BORDER_UI_MENUHEIGHT) - (LBBottom)) - mapShiftY,
+                        width: texture_lbBottom.Width,
+                        height: LB_BORDER_WIDTHHEIGHT + LBBottom),
+                    borderColor);
+            }
         }
 
         /// <summary>
