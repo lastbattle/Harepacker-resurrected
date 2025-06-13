@@ -96,6 +96,17 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
+        /// On tab selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void tabControl1_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (multiBoard.SelectedBoard == null)
+                return;
+        }
+
+        /// <summary>
         /// Mouse wheel
         /// </summary>
         /// <param name="sender"></param>

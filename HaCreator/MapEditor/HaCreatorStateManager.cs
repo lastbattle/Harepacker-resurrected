@@ -54,6 +54,7 @@ namespace HaCreator.MapEditor
         private readonly InputHandler input;
         private TilePanel tilePanel;
         private ObjPanel objPanel;
+        private BlackBorderPanel blackBorderPanel;
         private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
 
@@ -304,7 +305,9 @@ namespace HaCreator.MapEditor
                 }
                 else if (item is BackgroundInstance backgroundItem)
                 {
-                    new BackgroundInstanceEditor(backgroundItem).ShowDialog();
+                    var editor = new BackgroundInstanceEditor(backgroundItem);
+                    editor.ShowInTaskbar = true;
+                    editor.Show();
                 }
                 else if (item is PortalInstance portal)
                 {
@@ -486,7 +489,8 @@ namespace HaCreator.MapEditor
         /// </summary>
         public void UpdateEditorPanelVisibility()
         {
-            editorPanel.IsEnabled = tabs.Items.Count > 0; // at least 1 tabs for now
+            editorPanel.IsEnabled = tabs.Items.Count > 0; // at least 1 tabs for now.
+            blackBorderPanel.UpdateBoardData();
         }
 
         private void Tabs_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -509,6 +513,9 @@ namespace HaCreator.MapEditor
                     ribbon.SetLayers(multiBoard.SelectedBoard.Layers);
                     ribbon.SetSelectedLayer(multiBoard.SelectedBoard.SelectedLayerIndex, multiBoard.SelectedBoard.SelectedPlatform, multiBoard.SelectedBoard.SelectedAllLayers, multiBoard.SelectedBoard.SelectedAllPlatforms);
                     ribbon.SetHasMinimap(multiBoard.SelectedBoard.MinimapRectangle != null);
+
+                    // LBTop LBBottom LBSide
+                    blackBorderPanel.UpdateBoardData();
 
                     ParseVisibleEditedTypes();
                 } else
@@ -1028,14 +1035,29 @@ namespace HaCreator.MapEditor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Sets the tile panel while initialising the TilePanel UserControl
+        /// </summary>
+        /// <param name="tp"></param>
         public void SetTilePanel(TilePanel tp)
         {
             this.tilePanel = tp;
         }
-
+        /// <summary>
+        /// Sets the object panel while initialising the ObjPanel UserControl
+        /// </summary>
+        /// <param name="op"></param>
         public void SetObjPanel(ObjPanel op)
         {
             this.objPanel = op;
+        }
+        /// <summary>
+        /// Sets the black border panel while initialising the BlackBorderPanel UserControl
+        /// </summary>
+        /// <param name="op"></param>
+        public void SetBlackBorderPanel(BlackBorderPanel op)
+        {
+            this.blackBorderPanel = op;
         }
 
         public void EnterEditMode(ItemTypes type)

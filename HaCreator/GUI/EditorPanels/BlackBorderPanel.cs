@@ -1,4 +1,4 @@
-﻿/*Copyright(c) 2024, LastBattle https://github.com/lastbattle/Harepacker-resurrected
+﻿/*Copyright(c) 2025, LastBattle https://github.com/lastbattle/Harepacker-resurrected
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,11 @@ namespace HaCreator.GUI.EditorPanels
         public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
+            this.hcsm.SetBlackBorderPanel(this);
+        }
 
+        public void UpdateBoardData()
+        {
             var selectedBoard = hcsm.MultiBoard.SelectedBoard;
             if (selectedBoard == null)
                 return; // No board selected 
@@ -82,16 +86,31 @@ namespace HaCreator.GUI.EditorPanels
         private void checkBox_top_CheckedChanged(object sender, EventArgs e)
         {
             numericUpDown_top.Enabled = checkBox_top.Checked;
+
+            if (!checkBox_top.Checked)
+            {
+                numericUpDown_top.Value = 0;
+            }
         }
 
         private void checkBox_bottom_CheckedChanged(object sender, EventArgs e)
         {
             numericUpDown_bottom.Enabled = checkBox_bottom.Checked;
+
+            if (!checkBox_bottom.Checked)
+            {
+                numericUpDown_bottom.Value = 0;
+            }
         }
 
         private void checkBox_side_CheckedChanged(object sender, EventArgs e)
         {
             numericUpDown_side.Enabled = checkBox_side.Checked;
+
+            if (!checkBox_side.Checked)
+            {
+                numericUpDown_side.Value = 0;
+            }
         }
 
         /// <summary>

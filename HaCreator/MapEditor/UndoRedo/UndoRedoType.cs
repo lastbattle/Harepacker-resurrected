@@ -33,6 +33,7 @@ namespace HaCreator.MapEditor.UndoRedo
         VRChanged,
         MapCenterChanged,
         LayerTSChanged,
-        zMChanged
+        zMChanged,
+        BackgroundPropertiesChanged // New type for full background property changes via BackgroundInstnanceEditor exclusively
     }
 }
