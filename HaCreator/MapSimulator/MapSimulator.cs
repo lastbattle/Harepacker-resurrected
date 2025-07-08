@@ -1053,7 +1053,7 @@ namespace HaCreator.MapSimulator
 
                     if (mobItem.CanUpdateDebugText(TickCount, 1000))
                     {
-                        StringBuilder sb = new StringBuilder();
+                        StringBuilder sb = new();
                         sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
                         sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
                         sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
