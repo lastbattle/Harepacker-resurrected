@@ -41,6 +41,7 @@
             label1 = new System.Windows.Forms.Label();
             comboBox_localisation = new System.Windows.Forms.ComboBox();
             label4 = new System.Windows.Forms.Label();
+            button1 = new System.Windows.Forms.Button();
             SuspendLayout();
             // 
             // button_initialise
@@ -58,7 +59,7 @@
             versionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             versionBox.FormattingEnabled = true;
             versionBox.Items.AddRange(new object[] { "GMS", "EMS , MSEA , KMS", "BMS , JMS", "Auto-Detect" });
-            versionBox.Location = new System.Drawing.Point(142, 38);
+            versionBox.Location = new System.Drawing.Point(141, 27);
             versionBox.Name = "versionBox";
             versionBox.Size = new System.Drawing.Size(227, 21);
             versionBox.TabIndex = 3;
@@ -71,7 +72,7 @@
             // label2
             // 
             label2.AutoSize = true;
-            label2.Location = new System.Drawing.Point(6, 40);
+            label2.Location = new System.Drawing.Point(5, 29);
             label2.Name = "label2";
             label2.Size = new System.Drawing.Size(85, 13);
             label2.TabIndex = 8;
@@ -80,7 +81,7 @@
             // label3
             // 
             label3.AutoSize = true;
-            label3.Location = new System.Drawing.Point(6, 15);
+            label3.Location = new System.Drawing.Point(5, 4);
             label3.Name = "label3";
             label3.Size = new System.Drawing.Size(33, 13);
             label3.TabIndex = 9;
@@ -97,7 +98,7 @@
             // pathBox
             // 
             pathBox.FormattingEnabled = true;
-            pathBox.Location = new System.Drawing.Point(74, 12);
+            pathBox.Location = new System.Drawing.Point(73, 1);
             pathBox.Name = "pathBox";
             pathBox.Size = new System.Drawing.Size(237, 21);
             pathBox.TabIndex = 13;
@@ -105,7 +106,7 @@
             // button2
             // 
             button2.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
-            button2.Location = new System.Drawing.Point(315, 11);
+            button2.Location = new System.Drawing.Point(314, 0);
             button2.Name = "button2";
             button2.Size = new System.Drawing.Size(54, 21);
             button2.TabIndex = 14;
@@ -126,7 +127,7 @@
             // 
             label1.AutoSize = true;
             label1.Enabled = false;
-            label1.Location = new System.Drawing.Point(5, 69);
+            label1.Location = new System.Drawing.Point(4, 58);
             label1.Name = "label1";
             label1.Size = new System.Drawing.Size(102, 13);
             label1.TabIndex = 17;
@@ -138,7 +139,7 @@
             comboBox_localisation.Enabled = false;
             comboBox_localisation.FormattingEnabled = true;
             comboBox_localisation.Items.AddRange(new object[] { "GMS", "EMS , MSEA , KMS", "BMS , JMS", "Auto-Detect" });
-            comboBox_localisation.Location = new System.Drawing.Point(141, 67);
+            comboBox_localisation.Location = new System.Drawing.Point(140, 56);
             comboBox_localisation.Name = "comboBox_localisation";
             comboBox_localisation.Size = new System.Drawing.Size(228, 21);
             comboBox_localisation.TabIndex = 16;
@@ -147,11 +148,21 @@
             // 
             label4.Enabled = false;
             label4.Font = new System.Drawing.Font("Segoe UI", 6.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
-            label4.Location = new System.Drawing.Point(4, 91);
+            label4.Location = new System.Drawing.Point(3, 80);
             label4.Name = "label4";
             label4.Size = new System.Drawing.Size(365, 33);
             label4.TabIndex = 18;
             label4.Text = "Please select the right localisation, as the saved .wz data parameters might be different.";
+            // 
+            // button1
+            // 
+            button1.Location = new System.Drawing.Point(257, 108);
+            button1.Name = "button1";
+            button1.Size = new System.Drawing.Size(110, 28);
+            button1.TabIndex = 19;
+            button1.Text = "Export .wz to .img";
+            button1.UseVisualStyleBackColor = true;
+            button1.Click += button_unpack_Click;
             // 
             // Initialization
             // 
@@ -159,6 +170,7 @@
             AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             ClientSize = new System.Drawing.Size(372, 196);
+            Controls.Add(button1);
             Controls.Add(label4);
             Controls.Add(label1);
             Controls.Add(comboBox_localisation);
@@ -171,13 +183,13 @@
             Controls.Add(textBox2);
             Controls.Add(button_initialise);
             Font = new System.Drawing.Font("Segoe UI", 8.25F);
-            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             Icon = (System.Drawing.Icon)resources.GetObject("$this.Icon");
             KeyPreview = true;
             MaximizeBox = false;
             Name = "Initialization";
             StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            Text = "HaCreator";
+            Text = "Initialisation";
             Load += Initialization_Load;
             KeyDown += Initialization_KeyDown;
             ResumeLayout(false);
@@ -198,6 +210,7 @@
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox comboBox_localisation;
         private System.Windows.Forms.Label label4;
+        private System.Windows.Forms.Button button1;
     }
 }
 

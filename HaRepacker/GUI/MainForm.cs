@@ -1249,41 +1249,35 @@ namespace HaRepacker.GUI
             MainPanel.PromptRemoveSelectedTreeNodes();
         }
 
-        private const string WZ_EXTRACT_ERROR_FILE = "WzExtract_Errors.txt";
 
+        /// <summary>
+        /// Extracts and processes WZ files based on the specified parameters.
+        /// Called when exporting WZ files to various formats (XML, IMG, BSON, etc.)
+        /// </summary>
+        /// <param name="param">
+        /// An object array containing:
+        /// [0] - string[] wzFilesToDump: Array of WZ file paths to process
+        /// [1] - string baseDir: Base output directory path
+        /// [2] - WzMapleVersion encryption: The MapleStory encryption key
+        /// [3] - IWzFileSerializer serializer: Serializer to use for file processing
+        /// </param>
         private void RunWzFilesExtraction(object param)
         {
             ChangeApplicationState(false);
 
             string[] wzFilesToDump = (string[])((object[])param)[0];
             string baseDir = (string)((object[])param)[1];
-            WzMapleVersion version = GetWzMapleVersionByWzEncryptionBoxSelection((int)(((object[])param)[2]));
+            WzMapleVersion version = (WzMapleVersion) ((object[])param)[2];
             IWzFileSerializer serializer = (IWzFileSerializer)((object[])param)[3];
 
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, wzFilesToDump.Length, true, true);
 
-            if (!Directory.Exists(baseDir))
-            {
-                Directory.CreateDirectory(baseDir);
-            }
-
-            foreach (string wzpath in wzFilesToDump)
-            {
-                if (WzTool.IsListFile(wzpath))
-                {
-                    Warning.Error(string.Format(HaRepacker.Properties.Resources.MainListWzDetected, wzpath));
-                    continue;
-                }
-                WzFile f = new WzFile(wzpath, version);
-
-                WzFileParseStatus parseStatus = f.ParseWzFile();
-
-                serializer.SerializeFile(f, Path.Combine(baseDir, f.Name));
-                f.Dispose();
-                UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
-            }
-            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
+            // Export
+            WzFileExporter.RunWzFilesExtraction(wzFilesToDump, baseDir, version, serializer, 
+                progressCallback: (x) => {
+                    UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
+                });
 
             // Reset progress bar to 0
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
@@ -1292,44 +1286,27 @@ namespace HaRepacker.GUI
             threadDone = true;
         }
 
+        /// <summary>
+        /// Extracts and processes the WZ files into .img files
+        /// </summary>
+        /// <param name="param"></param>
         private void RunWzImgDirsExtraction(object param)
         {
             ChangeApplicationState(false);
 
             List<WzDirectory> dirsToDump = (List<WzDirectory>)((object[])param)[0];
             List<WzImage> imgsToDump = (List<WzImage>)((object[])param)[1];
-
             string baseDir = (string)((object[])param)[2];
             IWzImageSerializer serializer = (IWzImageSerializer)((object[])param)[3];
 
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
             UpdateProgressBar(MainPanel.mainProgressBar, dirsToDump.Count + imgsToDump.Count, true, true);
 
-
-            if (!Directory.Exists(baseDir))
-            {
-                Directory.CreateDirectory(baseDir);
-            }
-
-            // Selected Wz Images
-            foreach (WzImage img in imgsToDump)
-            {
-                string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(img.Name));
-
-                serializer.SerializeImage(img, escapedPath);
-                UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
-            }
-            // Selected Wz Dirs
-            foreach (WzDirectory dir in dirsToDump)
-            {
-                string escapedPath = Path.Combine(baseDir, ProgressingWzSerializer.EscapeInvalidFilePathNames(dir.Name));
-
-                serializer.SerializeDirectory(dir, escapedPath);
-                UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
-            }
-
-            // Loggers
-            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
+            // Export 
+            WzFileExporter.RunWzImgDirsExtraction(dirsToDump, imgsToDump, baseDir, serializer,
+                progressCallback: (x) => {
+                    UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
+                });
 
             // Reset progress bar to 0
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
@@ -1338,6 +1315,10 @@ namespace HaRepacker.GUI
             threadDone = true;
         }
 
+        /// <summary>
+        /// Extracts and processes the WZ files into .xml files
+        /// </summary>
+        /// <param name="param"></param>
         private void RunWzObjExtraction(object param)
         {
             ChangeApplicationState(false);
@@ -1352,28 +1333,14 @@ namespace HaRepacker.GUI
 
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
 
-            if (serializers is IWzObjectSerializer serializer)
-            {
-                UpdateProgressBar(MainPanel.mainProgressBar, objsToDump.Count, true, true);
-                foreach (WzObject obj in objsToDump)
-                {
-                    serializer.SerializeObject(obj, path);
-                    UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
-                }
-            }
-            else if (serializers is WzNewXmlSerializer serializer_)
-            {
-                UpdateProgressBar(MainPanel.mainProgressBar, 1, true, true);
-                serializer_.ExportCombinedXml(objsToDump, path);
-                UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
+            WzFileExporter.RunWzXmlExtraction(objsToDump, path, serializers,
+                progressCallback: (isSetMax, value) => {
+                    if (isSetMax)
+                        UpdateProgressBar(MainPanel.mainProgressBar, value, true, true);
+                    else
+                        UpdateProgressBar(MainPanel.mainProgressBar, 1, false, false);
+                });
 
-            }
-            MapleLib.Helpers.ErrorLogger.SaveToFile(WZ_EXTRACT_ERROR_FILE);
-#if DEBUG
-            // test benchmark
-            watch.Stop();
-            Debug.WriteLine($"WZ files Extracted. Execution Time: {watch.ElapsedMilliseconds} ms");
-#endif
 
             // Reset progress bar to 0
             UpdateProgressBar(MainPanel.mainProgressBar, 0, false, true);
@@ -1381,6 +1348,7 @@ namespace HaRepacker.GUI
 
             threadDone = true;
         }
+
 
         //yes I know this is a stupid way to synchronize threads, I'm just too lazy to use events or locks
         private bool threadDone = false;
@@ -1424,7 +1392,11 @@ namespace HaRepacker.GUI
                 Program.ConfigurationManager.UserSettings.LineBreakType, false);
 
             threadDone = false;
-            new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start((object)new object[] { dialog.FileNames, folderDialog.SelectedPath, encryptionBox.SelectedIndex, serializer });
+            new Thread(new ParameterizedThreadStart(RunWzFilesExtraction)).Start(
+                (object)new object[] 
+                {
+                    dialog.FileNames, folderDialog.SelectedPath, GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex), serializer 
+                });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
@@ -1499,7 +1471,11 @@ namespace HaRepacker.GUI
             WzPngMp3Serializer serializer = new WzPngMp3Serializer();
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
-            runningThread.Start((object)new object[] { dialog.FileNames, outPath, encryptionBox.SelectedIndex, serializer });
+            runningThread.Start(
+                (object)new object[] 
+                {
+                    dialog.FileNames, outPath, GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex), serializer 
+                });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
@@ -1525,7 +1501,11 @@ namespace HaRepacker.GUI
             WzImgSerializer serializer = new WzImgSerializer();
             threadDone = false;
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
-            runningThread.Start((object)new object[] { dialog.FileNames, outPath, encryptionBox.SelectedIndex, serializer });
+            runningThread.Start(
+                (object)new object[] 
+                {
+                    dialog.FileNames, outPath, GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex), serializer 
+                });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
 
@@ -1543,8 +1523,8 @@ namespace HaRepacker.GUI
                 return;
             }
 
-            List<WzDirectory> dirs = new List<WzDirectory>();
-            List<WzImage> imgs = new List<WzImage>();
+            List<WzDirectory> dirs = new();
+            List<WzImage> imgs = new();
 
             foreach (WzNode node in MainPanel.DataTree.SelectedNodes)
             {
@@ -2204,7 +2184,11 @@ namespace HaRepacker.GUI
             threadDone = false;
 
             runningThread = new Thread(new ParameterizedThreadStart(RunWzFilesExtraction));
-            runningThread.Start((object)new object[] { dialog.FileNames, outPath, encryptionBox.SelectedIndex, serializer });
+            runningThread.Start(
+                (object)new object[] 
+                { 
+                    dialog.FileNames, outPath, GetWzMapleVersionByWzEncryptionBoxSelection(encryptionBox.SelectedIndex), serializer 
+                });
             new Thread(new ParameterizedThreadStart(ProgressBarThread)).Start(serializer);
         }
     }

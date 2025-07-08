@@ -296,7 +296,7 @@ namespace HaRepacker.GUI.Panels
         public void AddWzCanvasToSelectedNode(System.Windows.Forms.TreeNode target)
         {
             string name;
-            List<System.Drawing.Bitmap> bitmaps = new List<Bitmap>();
+            List<Bitmap> bitmaps = new();
             if (!(target.Tag is IPropertyContainer))
             {
                 Warning.Error(Properties.Resources.MainCannotInsertToNode);
@@ -319,11 +319,11 @@ namespace HaRepacker.GUI.Panels
                     continue;
                 }
 
-                WzCanvasProperty canvas = new WzCanvasProperty(proposedName);
-                WzPngProperty pngProperty = new WzPngProperty();
+                WzPngProperty pngProperty = new();
                 pngProperty.PNG = bmp;
-                canvas.PngProperty = pngProperty;
 
+                WzCanvasProperty canvas = new(proposedName);
+                canvas.PngProperty = pngProperty;
 
                 WzNode newInsertedNode = wzNode.AddObject(canvas, UndoRedoMan);
                 // Add an additional WzVectorProperty with X Y of 0,0
