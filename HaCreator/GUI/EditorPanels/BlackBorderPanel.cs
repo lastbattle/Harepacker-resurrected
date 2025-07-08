@@ -90,6 +90,11 @@ namespace HaCreator.GUI.EditorPanels
             if (!checkBox_top.Checked)
             {
                 numericUpDown_top.Value = 0;
+
+                var selectedBoard = hcsm.MultiBoard.SelectedBoard;
+                if (selectedBoard == null)
+                    return; // No board selected 
+                selectedBoard.MapInfo.LBTop = 0;
             }
         }
 
@@ -100,6 +105,11 @@ namespace HaCreator.GUI.EditorPanels
             if (!checkBox_bottom.Checked)
             {
                 numericUpDown_bottom.Value = 0;
+
+                var selectedBoard = hcsm.MultiBoard.SelectedBoard;
+                if (selectedBoard == null)
+                    return; // No board selected 
+                selectedBoard.MapInfo.LBBottom = 0;
             }
         }
 
@@ -110,6 +120,11 @@ namespace HaCreator.GUI.EditorPanels
             if (!checkBox_side.Checked)
             {
                 numericUpDown_side.Value = 0;
+
+                var selectedBoard = hcsm.MultiBoard.SelectedBoard;
+                if (selectedBoard == null)
+                    return; // No board selected 
+                selectedBoard.MapInfo.LBSide = 0;
             }
         }
 
