@@ -343,6 +343,32 @@ namespace HaRepacker.GUI
                     node.DeleteWzNode();
             }
         }
+
+        /// <summary>
+        /// Unload the loaded WZ image file
+        /// </summary>
+        /// <param name="file"></param>
+        public async void UnloadWzImageFile(WzImage wzImage, Dispatcher currentDispatcher = null)
+        {
+            WzNode node = (WzNode)wzImage.HRTag; // get the ref first
+
+            // unload the wz file
+            Program.WzFileManager.UnloadWzImgFile(wzImage);
+
+            // remove from treeview
+            if (node != null)
+            {
+                if (currentDispatcher != null)
+                {
+                    await currentDispatcher.BeginInvoke((Action)(() =>
+                    {
+                        node.DeleteWzNode();
+                    }));
+                }
+                else
+                    node.DeleteWzNode();
+            }
+        }
         #endregion
 
         #region Theme colors
@@ -1088,6 +1114,16 @@ namespace HaRepacker.GUI
                 Parallel.ForEach(wzFiles, wzFile =>
                 {
                     UnloadWzFile(wzFile, currentThread);
+                });
+
+                var wzImages = Program.WzFileManager.WzImagesList;
+                /*foreach (WzFile wzFile in wzFiles)
+                {
+                    UnloadWzFile(wzFile);
+                };*/
+                Parallel.ForEach(wzImages, wzImage =>
+                {
+                    UnloadWzImageFile(wzImage, currentThread);
                 });
             }
         }

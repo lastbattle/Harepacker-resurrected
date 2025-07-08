@@ -183,17 +183,6 @@ namespace HaCreator.GUI
                         });
                     }
                 }
-
-
-                /*if (InitializeWzFiles(wzPath, fileVersion))
-                {
-                    Hide();
-                    Application.DoEvents();
-                    editor = new HaEditor();
-                    editor.ShowDialog();
-
-                    Application.Exit();
-                }*/
             }
             finally
             {
