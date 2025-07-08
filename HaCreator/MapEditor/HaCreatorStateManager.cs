@@ -5,10 +5,23 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using HaCreator.CustomControls;
-using HaCreator.GUI.EditorPanels;
+using HaCreator.Exceptions;
 using HaCreator.GUI;
+using HaCreator.GUI.EditorPanels;
 using HaCreator.GUI.InstanceEditor;
+using HaCreator.GUI.Quest;
+using HaCreator.MapEditor.Info;
+using HaCreator.MapEditor.Input;
+using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor.Instance.Misc;
+using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapEditor.UndoRedo;
+using HaCreator.Wz;
+using HaSharedLibrary;
+using MapleLib;
 using MapleLib.Helpers;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections;
@@ -16,25 +29,12 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using MapleLib.WzLib;
-using HaCreator.Wz;
-using MapleLib.WzLib.WzStructure;
-using HaCreator.MapEditor.Instance;
-using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapEditor.Input;
-using HaCreator.MapEditor.UndoRedo;
-using HaCreator.Exceptions;
-using HaCreator.MapEditor.Info;
-using HaCreator.MapEditor.Instance.Misc;
-
-using SystemWinCtl = System.Windows.Controls;
-using HaSharedLibrary;
-using MapleLib;
 using System.Windows.Forms.Integration;
-using HaCreator.GUI.Quest;
+using SystemWinCtl = System.Windows.Controls;
 
 namespace HaCreator.MapEditor
 {
@@ -963,61 +963,66 @@ namespace HaCreator.MapEditor
             StringBuilder sb = new StringBuilder();
             if (item is TileInstance)
             {
-                sb.Append("[Tile]").Append(Environment.NewLine);
+                sb.Append("[Tile] ");
                 sb.Append(firstLineSpacer).Append(((TileInfo)item.BaseInfo).tS).Append(@"\").Append(((TileInfo)item.BaseInfo).u).Append(@"\").Append(((TileInfo)item.BaseInfo).no);
             }
             else if (item is ObjectInstance)
             {
-                sb.Append("[Object]").Append(Environment.NewLine);
+                sb.Append("[Object] ");
                 sb.Append(firstLineSpacer).Append(((ObjectInfo)item.BaseInfo).oS).Append(@"\").Append(((ObjectInfo)item.BaseInfo).l0).Append(@"\")
                     .Append(((ObjectInfo)item.BaseInfo).l1).Append(@"\").Append(((ObjectInfo)item.BaseInfo).l2);
             }
             else if (item is BackgroundInstance)
             {
-                sb.Append("[Background]").Append(Environment.NewLine);
+                sb.Append("[Background] ");
                 sb.Append(firstLineSpacer).Append(((BackgroundInfo)item.BaseInfo).bS).Append(@"\").Append((((BackgroundInfo)item.BaseInfo).Type.ToString())).Append(@"\")
                     .Append(((BackgroundInfo)item.BaseInfo).no);
             }
             else if (item is PortalInstance)
             {
                 PortalInstance portal = (PortalInstance)item;
-                sb.Append("[Portal]").Append(Environment.NewLine);
+                sb.Append("[Portal] ");
                 sb.Append(firstLineSpacer).Append("Name: ").Append(((PortalInstance)item).pn).Append(Environment.NewLine);
                 sb.Append(firstLineSpacer).Append("Type: ").Append(PortalTypeExtensions.GetFriendlyName(portal.pt));
             }
             else if (item is MobInstance)
             {
-                sb.Append("[Mob]").Append(Environment.NewLine);
+                sb.Append("[Mob] ");
                 sb.Append(firstLineSpacer).Append("Name: ").Append(((MobInfo)item.BaseInfo).Name).Append(Environment.NewLine);
                 sb.Append(firstLineSpacer).Append("ID: ").Append(((MobInfo)item.BaseInfo).ID);
             }
             else if (item is NpcInstance)
             {
-                sb.Append("[Npc]").Append(Environment.NewLine);
+                sb.Append("[Npc] ");
                 sb.Append(firstLineSpacer).Append("Name: ").Append(((NpcInfo)item.BaseInfo).StringName).Append(Environment.NewLine);
                 sb.Append(firstLineSpacer).Append("ID: ").Append(((NpcInfo)item.BaseInfo).ID);
             }
             else if (item is ReactorInstance)
             {
-                sb.Append("[Reactor]").Append(Environment.NewLine);
+                sb.Append("[Reactor] ");
                 sb.Append(firstLineSpacer).Append("ID: ").Append(((ReactorInfo)item.BaseInfo).ID);
             }
-            else if (item is FootholdAnchor)
+            else if (item is FootholdAnchor foothold)
             {
-                sb.Append("[Foothold]");
+                sb.Append("[Foothold Anchor] ");
+                sb.Append("X: ").Append(foothold.X).Append(Environment.NewLine);
+                sb.Append("Y: ").Append(foothold.Y).Append(Environment.NewLine);
             }
-            else if (item is RopeAnchor)
+            else if (item is RopeAnchor rope)
             {
-                RopeAnchor rope = (RopeAnchor)item;
-                sb.Append(rope.ParentRope.ladder ? "[Ladder]" : "[Rope]");
+                sb.Append(rope.ParentRope.ladder ? "[Ladder] " : "[Rope] ");
+                sb.Append("X: ").Append(rope.X).Append(Environment.NewLine);
+                sb.Append("Y: ").Append(rope.Y).Append(Environment.NewLine);
             }
-            else if (item is Chair)
+            else if (item is Chair chair)
             {
-                sb.Append("[Chair]");
+                sb.Append("[Chair] ");
+                sb.Append("X: ").Append(chair.X).Append(Environment.NewLine);
+                sb.Append("Y: ").Append(chair.Y).Append(Environment.NewLine);
             }
             else if (item is ToolTipChar || item is ToolTipDot || item is ToolTipInstance)
             {
-                sb.Append("[Tooltip]");
+                sb.Append("[Tooltip] ");
             }
             else if (item is INamedMisc misc)
             {
@@ -1025,12 +1030,30 @@ namespace HaCreator.MapEditor
             } 
             else if (item is MirrorFieldData mirrorFieldData)
             {
-                sb.Append("[MirrorFieldData]").Append(Environment.NewLine);
+                sb.Append("[MirrorFieldData] ");
                 sb.Append("Ground reflections for '").Append(mirrorFieldData.MirrorFieldDataType.ToString()).Append("'");
-            }
 
+            } 
+            else if (item is VRDot vrDot)
+            {
+                sb.Append("[VR Dot] ");
+                sb.Append("X: ").Append(vrDot.X).Append(Environment.NewLine);
+                sb.Append("Y: ").Append(vrDot.Y).Append(Environment.NewLine);
+            }
+            else if (item is MinimapDot minimapDot)
+            {
+                sb.Append("[Minimap Dot] ");
+                sb.Append("X: ").Append(minimapDot.X).Append(Environment.NewLine);
+                sb.Append("Y: ").Append(minimapDot.Y).Append(Environment.NewLine);
+            }
+            else
+            {
+                sb.Append("[Unknown] ");
+                sb.Append(item.ToString());
+            }
+            
             sb.Append(Environment.NewLine);
-            sb.Append("width: ").Append(item.Width).Append(", height: ").Append(item.Height);
+            sb.Append("Width: ").Append(item.Width).Append(", Height: ").Append(item.Height);
 
             return sb.ToString();
         }
