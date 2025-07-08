@@ -857,22 +857,41 @@ namespace HaRepacker.GUI
                     }
 
                     // Data.wz hotfix file
-                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath)) {
+                    if (filePathLowerCase.EndsWith("data.wz") && WzTool.IsDataWzHotfixFile(filePath))
+                    {
                         WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
-                        if (img == null) {
+                        if (img == null)
+                        {
                             MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
                             break;
                         }
                         AddLoadedWzObjectToMainPanel(img);
 
                     }
+                    
+                    // Raw .img file before being packed into .wz
+                    // this is the same as the hotfix Data.wz
+                    else if (filePathLowerCase.EndsWith(".img"))
+                    {
+                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(filePath, MapleVersionEncryptionSelected);
+                        if (img == null)
+                        {
+                            MessageBox.Show(HaRepacker.Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                            break;
+                        }
+                        AddLoadedWzObjectToMainPanel(img);
+                    }
+
                     // List.wz file (pre-bb maplestory enc)
-                    else if (WzTool.IsListFile(filePath)) {
+                    else if (WzTool.IsListFile(filePath))
+                    {
                         new ListEditor(filePath, MapleVersionEncryptionSelected).Show();
                     }
                     // Other WZs
-                    else {
-                        if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE) {
+                    else
+                    {
+                        if (MapleVersionEncryptionSelected == WzMapleVersion.GENERATE)
+                        {
                             WzKeyBruteforceForm bfForm = new WzKeyBruteforceForm();
                             bfForm.ShowDialog(); // find needles in a haystack
                             return;
@@ -885,17 +904,22 @@ namespace HaRepacker.GUI
                         bool bWithRelated = false;
                         string relatedFileName = null;
 
-                        foreach (string wz in wzsWithRelatedFiles) {
-                            if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz")) {
+                        foreach (string wz in wzsWithRelatedFiles)
+                        {
+                            if (filePathLowerCase.EndsWith(wz.ToLower() + ".wz"))
+                            {
                                 bWithRelated = true;
                                 relatedFileName = wz;
                                 break;
                             }
                         }
-                        if (bWithRelated) {
-                            if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles) {
+                        if (bWithRelated)
+                        {
+                            if (Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles)
+                            {
                                 string[] otherMapWzFiles = Directory.GetFiles(filePath.Substring(0, filePath.LastIndexOf("\\")), relatedFileName + "*.wz");
-                                foreach (string filePath_Others in otherMapWzFiles) {
+                                foreach (string filePath_Others in otherMapWzFiles)
+                                {
                                     if (filePath_Others != filePath)
                                         wzfilePathsToLoad.Add(filePath_Others);
                                 }
@@ -953,8 +977,7 @@ namespace HaRepacker.GUI
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|*.wz;ZLZ.dll;ZLZ64.dll",
-                HaRepacker.Properties.Resources.WzFilter),
+                Filter = string.Format("{0}|*.wz;*.img;ZLZ.dll;ZLZ64.dll", HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
             })
             {
