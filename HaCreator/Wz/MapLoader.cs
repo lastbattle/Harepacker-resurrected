@@ -993,7 +993,8 @@ namespace HaCreator.Wz
 
             lock (multiBoard)
             {
-                CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), CreateStandardMapMenu(rightClickHandler), size, center, Tabs, multiBoard);
+                CreateMap(streetName, mapName, mapId, WzInfoTools.RemoveLeadingZeros(WzInfoTools.RemoveExtension(mapImage.Name)), false, 
+                    CreateStandardMapMenu(rightClickHandler), size, center, Tabs, multiBoard);
 
                 Board mapBoard = multiBoard.SelectedBoard;
                 mapBoard.Loading = true; // prevents TS Change callbacks
@@ -1046,17 +1047,20 @@ namespace HaCreator.Wz
         /// <param name="mapName"></param>
         /// <param name="mapId">May be -1 if none. If mapid == -1, it suggest a map that is cloned from a source or loaded from .ham file.</param>
         /// <param name="tooltip"></param>
+        /// <param name="isNewMapDesign"></param>
         /// <param name="menu"></param>
         /// <param name="size"></param>
         /// <param name="center"></param>
         /// <param name="layers"></param>
         /// <param name="Tabs"></param>
         /// <param name="multiBoard"></param>
-        public static void CreateMap(string streetName, string mapName, int mapId, string tooltip, System.Windows.Controls.ContextMenu menu, Point size, Point center, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
+        public static void CreateMap(string streetName, string mapName, int mapId, string tooltip, 
+            bool isNewMapDesign,
+            System.Windows.Controls.ContextMenu menu, Point size, Point center, System.Windows.Controls.TabControl Tabs, MultiBoard multiBoard)
         {
             lock (multiBoard)
             {
-                bool bIsNewMapDesign = mapId == -1;
+                bool bIsNewMapDesign = mapId == -1 && isNewMapDesign;
 
                 Board newBoard = multiBoard.CreateBoard(size, center, menu, bIsNewMapDesign);
                 GenerateDefaultZms(newBoard);
@@ -1102,7 +1106,7 @@ namespace HaCreator.Wz
 
         public static void CreateMapFromHam(MultiBoard multiBoard, System.Windows.Controls.TabControl Tabs, string data, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
-            CreateMap("", "", -1, "", CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), Tabs, multiBoard);
+            CreateMap("", "", -1, "", false, CreateStandardMapMenu(rightClickHandler), new XNA.Point(), new XNA.Point(), Tabs, multiBoard);
             multiBoard.SelectedBoard.Loading = true; // Prevent TS Change callbacks while were loading
             lock (multiBoard)
             {

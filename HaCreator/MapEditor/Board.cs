@@ -364,6 +364,7 @@ namespace HaCreator.MapEditor
             private set { }
         }
 
+
         public System.Drawing.Bitmap MiniMap
         {
             get { return miniMap; }
