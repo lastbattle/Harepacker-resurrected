@@ -21,6 +21,8 @@ namespace HaCreator.GUI.Quest
             // MapleStorySEA, Europe, Korea
             {"이상", QuestEditorCheckSkillCondType.OrGreater}, // "more"
             {"or higher", QuestEditorCheckSkillCondType.OrGreater},
+            {"or above", QuestEditorCheckSkillCondType.OrGreater},
+            {" or above", QuestEditorCheckSkillCondType.OrGreater},
             {"일치", QuestEditorCheckSkillCondType.Equal},
             {"none", QuestEditorCheckSkillCondType.None}, // dont write to wz if none, this is a non-standard text as a place-holder
 

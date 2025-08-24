@@ -48,6 +48,13 @@ namespace HaCreator.GUI.Quest
             {"罕見", QuestEditorActInfoPotentialType.Unique},
             {"傳說", QuestEditorActInfoPotentialType.Legendary},
 
+            // MapleStory Japan
+            {"ノーマル", QuestEditorActInfoPotentialType.Normal},
+            {"レア", QuestEditorActInfoPotentialType.Rare},
+            {"エピック", QuestEditorActInfoPotentialType.Epic},
+            {"ユーニーク", QuestEditorActInfoPotentialType.Unique},
+            {"レジェンダリー", QuestEditorActInfoPotentialType.Legendary},
+
             // MapleStory Global
             {"Normal", QuestEditorActInfoPotentialType.Normal}, // however this is not 100% necessary as the above still works
             {"Rare", QuestEditorActInfoPotentialType.Rare},
