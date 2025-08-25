@@ -42,6 +42,7 @@
             comboBox_localisation = new System.Windows.Forms.ComboBox();
             label4 = new System.Windows.Forms.Label();
             button1 = new System.Windows.Forms.Button();
+            button_initialiseImg = new System.Windows.Forms.Button();
             SuspendLayout();
             // 
             // button_initialise
@@ -49,7 +50,7 @@
             button_initialise.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             button_initialise.Location = new System.Drawing.Point(4, 137);
             button_initialise.Name = "button_initialise";
-            button_initialise.Size = new System.Drawing.Size(247, 28);
+            button_initialise.Size = new System.Drawing.Size(117, 28);
             button_initialise.TabIndex = 1;
             button_initialise.Text = "Initialize";
             button_initialise.Click += button_initialise_Click;
@@ -164,12 +165,23 @@
             button1.UseVisualStyleBackColor = true;
             button1.Click += button_unpack_Click;
             // 
+            // button_initialiseImg
+            // 
+            button_initialiseImg.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
+            button_initialiseImg.Location = new System.Drawing.Point(127, 137);
+            button_initialiseImg.Name = "button_initialiseImg";
+            button_initialiseImg.Size = new System.Drawing.Size(116, 28);
+            button_initialiseImg.TabIndex = 20;
+            button_initialiseImg.Text = "Initialize from .img";
+            button_initialiseImg.Click += button_initialiseImg_Click;
+            // 
             // Initialization
             // 
             AccessibleRole = System.Windows.Forms.AccessibleRole.ScrollBar;
             AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             ClientSize = new System.Drawing.Size(372, 196);
+            Controls.Add(button_initialiseImg);
             Controls.Add(button1);
             Controls.Add(label4);
             Controls.Add(label1);
@@ -211,6 +223,7 @@
         private System.Windows.Forms.ComboBox comboBox_localisation;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Button button1;
+        private System.Windows.Forms.Button button_initialiseImg;
     }
 }
 
