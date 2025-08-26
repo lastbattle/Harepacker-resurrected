@@ -410,17 +410,14 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Load canvas section for the directory
         /// </summary>
         /// <param name="directory"></param>
         private void LoadCanvasSection(string directory)
         {
             directory = directory.Replace("\\", "/"); // TODO: normalise this to just '/' some day across the project
-            string directory_ = directory +
-                    string.Format(@"/{0}/{1}_0", WzFileManager.CANVAS_DIRECTORY_NAME.ToLower(), WzFileManager.CANVAS_DIRECTORY_NAME.ToLower());
-            string mapCanvasDirectory = Path.Combine(WzFileManager.fileManager.WzBaseDirectory, directory, WzFileManager.CANVAS_DIRECTORY_NAME);
 
-            WzFileManager.fileManager.LoadCanvasSection(directory_, mapCanvasDirectory, _wzMapleVersion);
+            WzFileManager.fileManager.LoadCanvasSection(directory, _wzMapleVersion);
         }
 
         private void UpdateUI_CurrentLoadingWzFile(string fileName, bool isWzFile)
