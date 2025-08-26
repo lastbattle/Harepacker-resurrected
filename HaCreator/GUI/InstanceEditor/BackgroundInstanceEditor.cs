@@ -331,7 +331,6 @@ namespace HaCreator.GUI.InstanceEditor
                 item.type = (BackgroundType)typeBox.SelectedIndex;
                 item.a = (int)alphaBox.Value;
                 item.rx = (int)rxBox.Value;
-                Debug.WriteLine("RX set to " + (item.rx));
                 item.ry = (int)ryBox.Value;
                 item.cx = (int)cxBox.Value;
                 item.cy = (int)cyBox.Value;

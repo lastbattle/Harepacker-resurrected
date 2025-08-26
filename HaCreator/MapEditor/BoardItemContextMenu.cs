@@ -52,9 +52,9 @@ namespace HaCreator.MapEditor
         private void generateContextMenuStrip()
         {
             cms = new ContextMenuStrip();
-            List<ToolStripMenuItem> generalCategory = new List<ToolStripMenuItem>();
-            List<ToolStripMenuItem> zCategory = new List<ToolStripMenuItem>();
-            List<ToolStripMenuItem> platformCategory = new List<ToolStripMenuItem>();
+            List<ToolStripMenuItem> generalCategory = [];
+            List<ToolStripMenuItem> zCategory = new();
+            List<ToolStripMenuItem> platformCategory = new();
 
             ToolStripMenuItem editInstance = new ToolStripMenuItem("Edit this instance...");
             editInstance.Click += editInstance_Click;

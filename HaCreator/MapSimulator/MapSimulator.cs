@@ -1053,7 +1053,7 @@ namespace HaCreator.MapSimulator
 
                     if (mobItem.CanUpdateDebugText(TickCount, 1000))
                     {
-                        StringBuilder sb = new StringBuilder();
+                        StringBuilder sb = new();
                         sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
                         sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
                         sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
@@ -1263,12 +1263,14 @@ namespace HaCreator.MapSimulator
 
         /// <summary>
         /// Draws the LB border
+        /// This code is part of the map boundary rendering system that creates a black border near the map edges (LBTop, LBSide, LBBottom) when viewing maps that are not created for > 1366x768 resolution
         /// </summary>
         /// <param name="sprite"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawLBFieldBorder(SpriteBatch sprite)
         {
-            if (!bBigBang2Update || (vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0))
+            if (!bBigBang2Update // not used before the 1024x768 screen update
+                || (vr_fieldBoundary.X == 0 && vr_fieldBoundary.Y == 0))
                 return;
 
             Color borderColor = Color.Black;
@@ -1279,18 +1281,27 @@ namespace HaCreator.MapSimulator
             if (texture_lbLeft != null)
             {
                 // Define rectangle for left border:
-                // - X: Position at leftmost edge (-LB_BORDER_WIDTHHEIGHT) and adjust for map shifting
+                // - X: Position at left boundary (-LB_BORDER_WIDTHHEIGHT) and adjust for map shifting
                 // - Y: Position at the very top (0) and adjust for map shifting
                 // - Width: Use configured side border width (LBSide) plus border width
                 // - Height: Use full texture height from border asset
-                sprite.Draw(texture_lbLeft,
-                    new Rectangle(
-                                x: -(LB_BORDER_WIDTHHEIGHT + LBSide), // Position fully offscreen to the left
-                                y: -0, // Align to top of viewport
-                                width: texture_lbRight.Width,
-                                height: texture_lbRight.Height
-                            ),
-                    borderColor);
+
+                int distanceToVRLeft = vr_fieldBoundary.Left - mapShiftX; // distance to the left VR border
+                int adjustedWidth = Math.Min(texture_lbLeft.Width, distanceToVRLeft + LB_BORDER_WIDTHHEIGHT); // ensure the width is at least LBSide
+                //Debug.WriteLine("Distance to VRLeft: " + distanceToVRLeft + ", Draw width: " + adjustedWidth);
+
+                // Ensures the border width doesn't exceed far into the map VRBoundary
+                if (adjustedWidth > LB_BORDER_WIDTHHEIGHT)
+                {
+                    sprite.Draw(texture_lbLeft,
+                        new Rectangle(
+                            x: (0 - LB_BORDER_WIDTHHEIGHT), // Position fully offscreen to the left
+                            y: -0, // Align to top of viewport
+                            width: adjustedWidth,
+                            height: texture_lbLeft.Height
+                        ),
+                        borderColor);
+                }
             }
 
             // Draw right line
@@ -1299,19 +1310,29 @@ namespace HaCreator.MapSimulator
             if (texture_lbRight != null)
             {
                 // Define rectangle for right border:
-                // - X: Position at right boundary (vr_fieldBoundary.Right) minus border width and adjust for map shifting
+                // - X: Position at right boundary minus border width and adjust for map shifting
                 // - Y: Position at the very top (0) and adjust for map shifting  
                 // - Width: Use configured side border width (LBSide) plus border width
                 // - Height: Use full texture height from border asset
-                sprite.Draw(texture_lbRight,
-                    new Rectangle(
-                        x: vr_fieldBoundary.Right, // Start at VR right edge
-                        y: -0, // Align to top of viewport  
-                        width: texture_lbRight.Width,
-                        height: texture_lbRight.Height
-                    ),
+
+                int distanceToVRRight = this.Width - vr_fieldBoundary.Right - mapShiftX; // distance to the left VR border
+                int adjustedWidth = Math.Min(texture_lbRight.Width, distanceToVRRight + LB_BORDER_WIDTHHEIGHT); // ensure the width is at least LBSide
+                //Debug.WriteLine("Distance to VRRight: " + distanceToVRRight + ", Draw width: " + adjustedWidth);
+
+                // Ensures the border width doesn't exceed far into the map VRBoundary
+                if (adjustedWidth > LB_BORDER_WIDTHHEIGHT)
+                {
+                    sprite.Draw(texture_lbRight,
+                        new Rectangle(
+                            x: (this.Width - LBSide), // Position fully offscreen to the left
+                            y: -0, // Align to top of viewport  
+                            width: adjustedWidth,
+                            height: texture_lbRight.Height
+                        ),
                     borderColor);
+                }
             }
+  
 
             // Draw top line
             // Starting Point: The texture(a 2D image or graphic applied to a surface) begins at the top edge of the screen and extends upward beyond the screen's upper limit.
@@ -1323,14 +1344,23 @@ namespace HaCreator.MapSimulator
                 // - Y: Position at the very top (0) and adjust for map shifting
                 // - Width: Use texture width from top border asset 
                 // - Height: Use configured top border height (LBTop)
-                sprite.Draw(texture_lbTop,
-                    new Rectangle(
-                        x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
-                        y: (0 - LB_BORDER_WIDTHHEIGHT), // Extend above viewport
-                        width: texture_lbTop.Width,
-                        height: texture_lbTop.Height
-                    ),
+
+                int distanceToVRTop = vr_fieldBoundary.Top - mapShiftY; // distance to the top VR border
+                int adjustedHeight = Math.Min(texture_lbTop.Height, distanceToVRTop + LB_BORDER_WIDTHHEIGHT); // ensure the width is at least LBSide
+                //Debug.WriteLine("Distance to VRTop: " + distanceToVRTop + ", Draw height: " + adjustedHeight);
+
+                // Ensures the border height doesn't exceed far into the map VRBoundary
+                if (adjustedHeight > LB_BORDER_WIDTHHEIGHT)
+                {
+                    sprite.Draw(texture_lbTop,
+                        new Rectangle(
+                            x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
+                            y: (0 - LB_BORDER_WIDTHHEIGHT), // Extend above viewport
+                            width: texture_lbTop.Width,
+                            height: adjustedHeight
+                        ),
                     borderColor);
+                }
             }
 
             // Draw bottom line
@@ -1343,14 +1373,23 @@ namespace HaCreator.MapSimulator
                 // - Y: Position at bottom of screen, accounting for scaled height and UI elements
                 // - Width: Use texture width from bottom border asset
                 // - Height: Use configured bottom border height
-                sprite.Draw(texture_lbBottom,
-                    new Rectangle(
-                        x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
-                        y: (Height - LB_BORDER_UI_MENUHEIGHT - LBBottom), // Align to bottom minus UI height
-                        width: texture_lbBottom.Width,
-                        height: texture_lbBottom.Height
-                    ),
+
+                int distanceToVRBottom = this.Height - vr_fieldBoundary.Bottom - mapShiftY; // distance to the bottom VR border
+                int adjustedHeight = Math.Min(texture_lbBottom.Height, distanceToVRBottom + LB_BORDER_WIDTHHEIGHT); // ensure the height is at least LBBottom
+                //Debug.WriteLine("Distance to VRBottom: " + distanceToVRBottom + ", Draw height: " + adjustedHeight);
+
+                // Ensures the border height doesn't exceed far into the map VRBoundary
+                if (adjustedHeight > LB_BORDER_WIDTHHEIGHT)
+                {
+                    sprite.Draw(texture_lbBottom,
+                        new Rectangle(
+                            x: -LB_BORDER_OFFSET_X, // Start 150px left of map edge
+                            y: (Height - LB_BORDER_UI_MENUHEIGHT - LBBottom), // Align to bottom minus UI height
+                            width: texture_lbBottom.Width,
+                            height: adjustedHeight
+                        ),
                     borderColor);
+                }
             }
         }
 

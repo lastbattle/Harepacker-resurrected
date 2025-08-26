@@ -200,48 +200,56 @@ namespace HaCreator.GUI
 
         private void New_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (NewClicked != null)
                 NewClicked.Invoke();
         }
 
         private void Open_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (OpenClicked != null)
                 OpenClicked.Invoke();
         }
 
         private void Save_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (SaveClicked != null)
                 SaveClicked.Invoke();
         }
 
         private void Repack_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (RepackClicked != null)
                 RepackClicked.Invoke();
         }
 
         private void About_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (AboutClicked != null)
                 AboutClicked.Invoke();
         }
 
         private void Help_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (HelpClicked != null)
                 HelpClicked.Invoke();
         }
 
         private void Settings_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (SettingsClicked != null)
                 SettingsClicked.Invoke();
         }
 
         private void Exit_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (ExitClicked != null)
                 ExitClicked.Invoke();
         }

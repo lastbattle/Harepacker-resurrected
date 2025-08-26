@@ -639,7 +639,7 @@ namespace HaCreator.MapSimulator {
                     grid_chat.AddRenderable(0, 0, uiImage_notice);
 
                     Texture2D texture_chatUI = grid_chat.Render().ToTexture2D(device);
-                    IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, renderParams.RenderHeight - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
+                    IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, (int) (renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
 
                     // Scroll up+down, Chat, report/ claim, notice, stat, quest, inventory, equip, skill, key set
                     System.Drawing.Bitmap bitmap_lvNumber1 = ((WzCanvasProperty)mainBarProperties?["lvNumber/1"])?.GetLinkedWzCanvasBitmap();
@@ -760,7 +760,7 @@ namespace HaCreator.MapSimulator {
 
                     Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
 
-                    IDXObject dxObj_backgrnd = new DXObject(0, renderParams.RenderHeight - grid.GetSize().Height, texture_backgrnd, 0);
+                    IDXObject dxObj_backgrnd = new DXObject(0, (int) (renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid.GetSize().Height, texture_backgrnd, 0);
                     StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
                         new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
                         new List<UIObject> {  });
