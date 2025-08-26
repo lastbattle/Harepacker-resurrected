@@ -102,7 +102,13 @@ namespace HaRepacker
                     var nodesSelected = GetNodes(sender);
                     foreach (WzNode node in nodesSelected)
                     {
-                        parentPanel.MainForm.UnloadWzFile(node.Tag as WzFile);
+                        if (node.Tag is WzFile)
+                        {
+                            parentPanel.MainForm.UnloadWzFile(node.Tag as WzFile);
+                        } else if (node.Tag is WzImage)
+                        {
+                            parentPanel.MainForm.UnloadWzImageFile(node.Tag as WzImage);
+                        }
                     }
                 }));
             Reload = new ToolStripMenuItem("Reload", Properties.Resources.arrow_refresh, new EventHandler(
