@@ -20,6 +20,7 @@ using MapleLib.WzLib.WzStructure;
 using System.Data.SQLite;
 using HaCreator.GUI.InstanceEditor;
 using System.Diagnostics;
+using System.ComponentModel;
 
 namespace HaCreator.CustomControls
 {
@@ -72,6 +73,7 @@ namespace HaCreator.CustomControls
         /// <summary>
         /// Sets the map browser inner contents to be enabled or not.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool IsEnabled
         {
             set
@@ -84,6 +86,7 @@ namespace HaCreator.CustomControls
         /// <summary>
         /// Sets the 'town' filter for searchbox
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool TownOnlyFilter {
             get { return _bTownOnlyFilter; }
             set { 

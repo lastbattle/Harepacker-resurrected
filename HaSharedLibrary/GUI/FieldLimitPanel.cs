@@ -5,6 +5,7 @@ https://github.com/lastbattle/Harepacker-resurrected
 using System;
 using System.Windows.Forms;
 using MapleLib.WzLib.WzStructure.Data;
+using System.ComponentModel;
 
 namespace HaSharedLibrary.GUI
 {
@@ -145,6 +146,7 @@ namespace HaSharedLibrary.GUI
 
         #region Member Values
         private ulong _fieldLimit = 0;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public ulong FieldLimit
         {
             get { return this._fieldLimit; }

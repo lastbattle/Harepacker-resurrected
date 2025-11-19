@@ -13,7 +13,10 @@ namespace HaCreator.GUI.Input
 {
     public partial class NameValueInput : Form
     {
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int SelectedValue { get; set; }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string SelectedName { get; set; }
 
         /// <summary>

@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using System;
+using System.ComponentModel;
 using System.Windows.Forms;
 
 namespace HaCreator.GUI.InstanceEditor
@@ -102,6 +103,7 @@ namespace HaCreator.GUI.InstanceEditor
 
         private bool _bNotUserClosing = false;
         private string _selectedMap = string.Empty;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string SelectedMap
         {
             get { return _selectedMap; }

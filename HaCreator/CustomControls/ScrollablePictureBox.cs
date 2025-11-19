@@ -30,6 +30,7 @@ namespace HaCreator.CustomControls
             pictureBox.Size = pictureBox.Image == null ? new Size(0, 0) : pictureBox.Image.Size;
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Bitmap Image
         {
             get { return (Bitmap)pictureBox.Image; }
