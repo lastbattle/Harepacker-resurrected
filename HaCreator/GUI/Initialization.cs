@@ -644,14 +644,30 @@ namespace HaCreator.GUI
                 foreach (WzImage mobImage in mobWzDir.WzImages)
                 {
                     string mobIdStr = mobImage.Name.Replace(".img", "");
-                    int mobId = int.Parse(mobIdStr);
 
-                    WzImageProperty standCanvas = (WzCanvasProperty)mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
+                    switch (mobIdStr)
+                    {
+                        case "BossAzmothCanyon":
+                        case "BossBaldrix":
+                        case "BossChampionRaid":
+                        case "BossCommon":
+                        case "BossEnterAni":
+                            // TODO
+                            break;
+                        default:
+                            {
+                                int mobId = int.Parse(mobIdStr);
 
-                    if (standCanvas == null) continue;
+                                WzImageProperty standCanvas = (WzCanvasProperty)mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
 
-                    if (!Program.InfoManager.MobIconCache.ContainsKey(mobId))
-                        Program.InfoManager.MobIconCache.Add(mobId, standCanvas);
+                                if (standCanvas == null) continue;
+
+                                if (!Program.InfoManager.MobIconCache.ContainsKey(mobId))
+                                    Program.InfoManager.MobIconCache.Add(mobId, standCanvas);
+                                break;
+                            }
+                    }
+
                 }
             }
             LoadCanvasSection(MOB_WZ_PATH); // Load canvas
