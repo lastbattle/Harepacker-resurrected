@@ -226,6 +226,8 @@ namespace HaCreator.GUI
                 // and contains the possible path of .img that uses a different encryption
                 Program.WzManager.LoadListWzFile(_wzMapleVersion);
 
+                Program.WzManager.LoadPacksFiles();
+
                 // String.wz
                 const string STRING_PATH = "string";
                 List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase(STRING_PATH);
