@@ -344,18 +344,18 @@ namespace HaRepacker.GUI
             resources.ApplyResources(collapseAllToolStripMenuItem, "collapseAllToolStripMenuItem");
             collapseAllToolStripMenuItem.Click += collapseAllToolStripMenuItem_Click;
             // 
-            // toolsToolStripMenuItem
-            // 
-            toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { exportFilesToXMLToolStripMenuItem, exportDataToolStripMenuItem, importToolStripMenuItem, toolStripSeparator9, optionsToolStripMenuItem, toolStripSeparator8, searchToolStripMenuItem, fHMappingToolStripMenuItem, toolStripMenuItem_searchWzStrings, toolsToolStripMenuItem1 });
-            toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
-            resources.ApplyResources(toolsToolStripMenuItem, "toolsToolStripMenuItem");
-            // 
             // exportFilesToXMLToolStripMenuItem
             // 
             exportFilesToXMLToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { xMLToolStripMenuItem, rawDataToolStripMenuItem, imgToolStripMenuItem, nXFormatToolStripMenuItem });
             exportFilesToXMLToolStripMenuItem.Image = Properties.Resources.folder_go;
             exportFilesToXMLToolStripMenuItem.Name = "exportFilesToXMLToolStripMenuItem";
             resources.ApplyResources(exportFilesToXMLToolStripMenuItem, "exportFilesToXMLToolStripMenuItem");
+            // 
+            // toolsToolStripMenuItem
+            // 
+            toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { exportFilesToXMLToolStripMenuItem, exportDataToolStripMenuItem, importToolStripMenuItem, toolStripSeparator9, optionsToolStripMenuItem, toolStripSeparator8, searchToolStripMenuItem, fHMappingToolStripMenuItem, toolStripMenuItem_searchWzStrings, toolsToolStripMenuItem1 });
+            toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
+            resources.ApplyResources(toolsToolStripMenuItem, "toolsToolStripMenuItem");
             // 
             // xMLToolStripMenuItem
             // 

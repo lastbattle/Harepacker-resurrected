@@ -131,7 +131,7 @@
     <value>238, 22</value>
   </data>
   <data name="openToolStripMenuItem.Text" xml:space="preserve">
-    <value>Open WZ/ IMG, ZLZ.dll (Ctl + O)</value>
+    <value>Open WZ/ IMG/ .ms, ZLZ.dll (Ctl + O)</value>
   </data>
   <data name="toolStripMenuItem_newWzFormat.Size" type="System.Drawing.Size, System.Drawing">
     <value>238, 22</value>

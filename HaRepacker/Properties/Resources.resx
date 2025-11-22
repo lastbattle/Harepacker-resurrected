@@ -282,7 +282,7 @@ Click "Yes" to download the new version.</value>
     <value>Select where to save the XML</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>Select WZ, or ZLZ.dll File</value>
+    <value>Select WZ, IMG, .ms, or ZLZ.dll File</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>Select the IMG files</value>
