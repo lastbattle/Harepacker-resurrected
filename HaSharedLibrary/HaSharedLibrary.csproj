@@ -1,13 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
 
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
     
-    <PublishAot>true</PublishAot>
+    <PublishAot>false</PublishAot>
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
 
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
   </PropertyGroup>
@@ -35,9 +36,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
     <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.4.1" />
