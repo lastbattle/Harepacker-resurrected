@@ -908,6 +908,35 @@ namespace HaRepacker.GUI
                         AddLoadedWzObjectToMainPanel(img);
                     }
 
+                    else if (filePathLowerCase.EndsWith(".ms"))
+                    {
+                        // Raw .ms file before being packed into .wz
+
+                        var fileStream = File.OpenRead(filePath);
+                        var memoryStream = new MemoryStream(); // leave open
+                        fileStream.CopyTo(memoryStream);
+                        memoryStream.Position = 0;
+
+                        string msFileName = Path.GetFileName(filePath);
+
+                        var msFile = new MapleLib.WzLib.MSFile.WzMsFile(memoryStream, msFileName, filePath, true);
+                        msFile.ReadEntries();
+
+                        // Use the new static method to load as WzFile
+                        var wzFile = msFile.LoadAsWzFile();
+
+                        Program.WzFileManager.LoadWzFile(msFileName, wzFile);
+
+                        AddLoadedWzObjectToMainPanel(wzFile, currentDispatcher);
+
+                        // write the file to temporary windows directory
+                        //string tempFilePath = Path.Combine(Path.GetTempPath(), msFileName.Replace(".ms", ".wz"));
+                        //wzFile.SaveToDisk(tempFilePath);
+
+                        // add to the list of WZ to load
+                        //wzfilePathsToLoad.Add(tempFilePath);
+                    }
+
                     // List.wz file (pre-bb maplestory enc)
                     else if (WzTool.IsListFile(filePath))
                     {
@@ -1003,7 +1032,7 @@ namespace HaRepacker.GUI
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|*.wz;*.img;ZLZ.dll;ZLZ64.dll", HaRepacker.Properties.Resources.WzFilter),
+                Filter = string.Format("{0}|*.wz;*.img;*.ms;ZLZ.dll;ZLZ64.dll", HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
             })
             {

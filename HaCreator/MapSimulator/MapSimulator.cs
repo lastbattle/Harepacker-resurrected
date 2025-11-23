@@ -21,7 +21,6 @@ using SharpDX.Direct3D9;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Data.Entity.Core.Common.CommandTrees.ExpressionBuilder;
 using System.Diagnostics;
 
 using System.Drawing.Imaging;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -17,6 +18,7 @@ namespace HaCreator.CustomControls
         /// <summary>
         /// Gets or Sets the text that will be presented as the watermak hint
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string WatermarkText
         {
             get { return _watermarkText; }
@@ -30,6 +32,7 @@ namespace HaCreator.CustomControls
         /// <summary>
         /// Gets or Sets whether watermark effect is enabled or not
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool WatermarkActive
         {
             get { return _watermarkActive; }

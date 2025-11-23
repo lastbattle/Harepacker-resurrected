@@ -15,7 +15,9 @@ using System.Linq;
 using System.Runtime.Versioning;
 
 namespace UnitTest_WzFile {
+
     [TestClass]
+    [SupportedOSPlatform("windows")]
     public class UnitTest_MapleLib {
 
 
@@ -26,7 +28,6 @@ namespace UnitTest_WzFile {
         /// Test CCrc32::GetCrc32 calculation
         /// </summary>
         [TestMethod]
-        [SupportedOSPlatform("windows")]
         public void TestCrcCalculation() {
             int useVersion = 200;
 
@@ -46,7 +47,6 @@ namespace UnitTest_WzFile {
         /// Bgra32 (Large Texture): 128x128 pixels, no alpha, gradients, many colors. Used for larger textures that need full color preservation without alpha.
         /// </summary>
         [TestMethod]
-        [SupportedOSPlatform("windows")]
         public void TestImageSurfaceFormatDetection() {
             string[] imageFiles = Directory.GetFiles("Assets/Images", "*.*", SearchOption.TopDirectoryOnly)
             .Where(file => new[] { ".png", ".jpg", ".bmp" }.Contains(Path.GetExtension(file).ToLower()))
@@ -69,7 +69,7 @@ namespace UnitTest_WzFile {
                     int height = bitmap.Height;
 
                     SurfaceFormat detectedFormat = ImageFormatDetector.DetermineTextureFormat(argbData, width, height);
-                    var (uniqueColors, hasAlpha, hasPartialAlpha, maxAlpha, alphaTransitions, alphaVariance) = ImageFormatDetector.AnalyzeImageData(argbData);
+                    var (uniqueRgbColors, uniqueAlphaValues, hasAlpha, hasPartialAlpha, maxAlpha, avgAlphaGradient, alphaVariance) = ImageFormatDetector.AnalyzeImageData(argbData, width, height);
                     bool isDxtCompressionCandidate = ImageFormatDetector.IsDxtCompressionCandidate(width, height);
 
                     Debug.WriteLine($"Image: {Path.GetFileName(imagePath)}");
@@ -77,9 +77,10 @@ namespace UnitTest_WzFile {
                     Debug.WriteLine($"Total pixels: {width * height}");
                     Debug.WriteLine($"Has Alpha: {hasAlpha}");
                     Debug.WriteLine($"Has Partial Alpha: {hasPartialAlpha}");
-                    Debug.WriteLine($"Unique Color: {uniqueColors}");
+                    Debug.WriteLine($"Unique RGB Color: {uniqueRgbColors}");
+                    Debug.WriteLine($"Unique Alpha Values: {uniqueAlphaValues}");
                     Debug.WriteLine($"Max Alpha: {maxAlpha}");
-                    Debug.WriteLine($"Alpha Transitions: {alphaTransitions}");
+                    Debug.WriteLine($"Avg Alpha Gradient: {avgAlphaGradient}");
                     Debug.WriteLine($"Alpha Variance: {alphaVariance}");
                     Debug.WriteLine($"IsDxtCompressionCandidate: {isDxtCompressionCandidate}");
                     Debug.WriteLine($"Detected Format: {detectedFormat}");
@@ -96,7 +97,6 @@ namespace UnitTest_WzFile {
             }
         }
 
-        [SupportedOSPlatform("windows")]
         private SurfaceFormat GetExpectedFormat(string imagePath) {
             // This is a placeholder. You should replace this with actual logic to determine
             // the expected format based on the image file name or properties.
@@ -107,8 +107,8 @@ namespace UnitTest_WzFile {
             else if (fileName.StartsWith("dxt3")) {
                 return SurfaceFormat.Dxt3;
             }
-            else if (fileName.StartsWith("bgra32")) {
-                return SurfaceFormat.Bgr32;
+            else if (fileName.StartsWith("bgra32") || fileName.StartsWith("bga32")) {
+                return SurfaceFormat.Bgra32;
             }
             else if (fileName.StartsWith("bgr565")) {
                 return SurfaceFormat.Bgr565;

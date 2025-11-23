@@ -426,7 +426,7 @@ namespace HaCreator.MapSimulator {
             MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
             WzImage source = mobInfo.LinkedWzImage;
 
-            List<IDXObject> frames = new List<IDXObject>(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
+            List<IDXObject> frames = new(); // All frames "stand", "speak" "blink" "hair", "angry", "wink" etc
 
             foreach (WzImageProperty childProperty in source.WzProperties) {
                 if (childProperty is WzSubProperty mobStateProperty) // issue with 867119250, Eluna map mobs

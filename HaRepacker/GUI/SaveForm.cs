@@ -4,16 +4,18 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-using System;
-using System.Windows.Forms;
-using MapleLib.WzLib;
-using System.IO;
-using MapleLib.WzLib.Util;
-using System.Diagnostics;
 using HaRepacker.GUI.Panels;
 using MapleLib.Configuration;
 using MapleLib.MapleCryptoLib;
+using MapleLib.WzLib;
+using MapleLib.WzLib.MSFile;
+using MapleLib.WzLib.Util;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Windows.Forms;
 
 namespace HaRepacker.GUI
 {
@@ -59,7 +61,7 @@ namespace HaRepacker.GUI
             {
                 this.wzf = (WzFile)wzNode.Tag;
                 this.IsRegularWzFile = true;
-                
+
                 SetWzEncryptionBoxSelectionByWzMapleVersion(wzf.MapleVersion);
 
                 versionBox.Value = wzf.Version;
@@ -67,11 +69,22 @@ namespace HaRepacker.GUI
                 checkBox_64BitFile.Checked = wzf.Is64BitWzFile;
             }
             this._mainPanel = panel;
-            
+
             defaultVersionIndex = encryptionBox.SelectedIndex;
             Closed += (sender, args) => encryptionBox.SelectedIndex = defaultVersionIndex;
-            
+
             bIsLoaded = true;
+        }
+
+        /// <summary>
+        /// --- Helper function to keep UI synchronized ---
+        /// </summary>
+        private void UpdateUIState()
+        {
+            // The WZ Options group box is only enabled if the WZ Radio button is checked.
+            groupBox_wzSaveSelection.Enabled = radioButton_wzFile.Checked;
+
+            versionBox.Enabled = checkBox_64BitFile.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
         }
 
         /// <summary>
@@ -112,7 +125,7 @@ namespace HaRepacker.GUI
                 MapleCryptoConstants.UserKey_WzLib = MapleCryptoConstants.MAPLESTORY_USERKEY_DEFAULT.ToArray();
             }
         }
-        
+
         private void SetWzEncryptionBoxSelectionByWzMapleVersion(WzMapleVersion versionSelected)
         {
             encryptionBox.SelectedIndex = MainForm.GetIndexByWzMapleVersion(versionSelected);
@@ -135,100 +148,133 @@ namespace HaRepacker.GUI
                 return;
             }
 
-            using (SaveFileDialog dialog = new SaveFileDialog()
-            {
-                Title = Properties.Resources.SelectOutWz,
-                FileName = wzNode.Text,
-                Filter = string.Format("{0}|*.wz",
-                Properties.Resources.WzFilter)
-            })
-            {
-                if (dialog.ShowDialog() != DialogResult.OK)
-                    return;
+            bool bSaveAsWzFile = radioButton_wzFile.Checked;
 
-                bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
-                WzMapleVersion wzMapleVersionSelected = ((EncryptionKey)encryptionBox.SelectedItem).MapleVersion; // new encryption selected
-                if (this.IsRegularWzFile)
+            if (bSaveAsWzFile)
+            {
+                using (SaveFileDialog dialog = new()
                 {
+                    Title = Properties.Resources.SelectOutWz,
+                    FileName = wzNode.Text,
+                    Filter = string.Format("{0}|*.wz",
+                    Properties.Resources.WzFilter)
+                })
+                {
+                    if (dialog.ShowDialog() != DialogResult.OK)
+                        return;
 
-                    if (wzf.MapleVersion != wzMapleVersionSelected)
+                    bool bSaveAs64BitWzFile = checkBox_64BitFile.Checked; // no version number
+                    WzMapleVersion wzMapleVersionSelected = ((EncryptionKey)encryptionBox.SelectedItem).MapleVersion; // new encryption selected
+                    if (this.IsRegularWzFile)
                     {
-                        PrepareAllImgs(wzf.WzDirectory);
-                    }
-                    wzf.Version = (short)versionBox.Value;
-                    wzf.MapleVersion = wzMapleVersionSelected;
 
-                    if (string.Equals(wzf.FilePath, dialog.FileName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        wzf.SaveToDisk(dialog.FileName + "$tmp", bSaveAs64BitWzFile, wzMapleVersionSelected);
-                        _mainPanel.MainForm.UnloadWzFile(wzf);
-                        try
+                        if (wzf.MapleVersion != wzMapleVersionSelected)
                         {
-                            File.Delete(dialog.FileName); // delete existing file
-                            File.Move(dialog.FileName + "$tmp", dialog.FileName);
+                            PrepareAllImgs(wzf.WzDirectory);
                         }
-                        catch (IOException ex)
+                        wzf.Version = (short)versionBox.Value;
+                        wzf.MapleVersion = wzMapleVersionSelected;
+
+                        if (string.Equals(wzf.FilePath, dialog.FileName, StringComparison.OrdinalIgnoreCase))
                         {
-                            MessageBox.Show("Handle error overwriting WZ file: " + ex.Message, Properties.Resources.Error);
+                            wzf.SaveToDisk(dialog.FileName + "$tmp", bSaveAs64BitWzFile, wzMapleVersionSelected);
+                            _mainPanel.MainForm.UnloadWzFile(wzf);
+                            try
+                            {
+                                File.Delete(dialog.FileName); // delete existing file
+                                File.Move(dialog.FileName + "$tmp", dialog.FileName);
+                            }
+                            catch (IOException ex)
+                            {
+                                MessageBox.Show("Handle error overwriting WZ file: " + ex.Message, Properties.Resources.Error);
+                            }
+                        }
+                        else
+                        {
+                            wzf.SaveToDisk(dialog.FileName, bSaveAs64BitWzFile, wzMapleVersionSelected);
+                            _mainPanel.MainForm.UnloadWzFile(wzf);
+                        }
+
+                        // Reload the new file
+                        var loadedFiles = Program.WzFileManager.WzFileList;
+                        WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
+                        if (loadedWzFile != null)
+                        {
+                            _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(loadedWzFile);
                         }
                     }
                     else
                     {
-                        wzf.SaveToDisk(dialog.FileName, bSaveAs64BitWzFile, wzMapleVersionSelected);
-                        _mainPanel.MainForm.UnloadWzFile(wzf);
-                    }
+                        byte[] WzIv = WzTool.GetIvByMapleVersion(wzMapleVersionSelected);
 
-                    // Reload the new file
-                    var loadedFiles = Program.WzFileManager.WzFileList;
-                    WzFile loadedWzFile = Program.WzFileManager.LoadWzFile(dialog.FileName, wzMapleVersionSelected);
-                    if (loadedWzFile != null)
-                    {
-                        _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(loadedWzFile);
-                    }
-                }
-                else
-                {
-                    byte[] WzIv = WzTool.GetIvByMapleVersion(wzMapleVersionSelected);
+                        // Save file
+                        string tmpFilePath = dialog.FileName + ".tmp";
+                        string targetFilePath = dialog.FileName;
 
-                    // Save file
-                    string tmpFilePath = dialog.FileName + ".tmp";
-                    string targetFilePath = dialog.FileName;
-
-                    bool error_noAdminPriviledge = false;
-                    try
-                    {
-                        using (FileStream oldfs = File.Open(tmpFilePath, FileMode.OpenOrCreate))
-                        {
-                            using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
-                            {
-                                wzImg.SaveImage(wzWriter, true); // Write to temp folder
-                            }
-                        }
+                        bool error_noAdminPriviledge = false;
                         try
                         {
-                            File.Copy(tmpFilePath, targetFilePath, true);
-                            File.Delete(tmpFilePath);
+                            using (FileStream oldfs = File.Open(tmpFilePath, FileMode.OpenOrCreate))
+                            {
+                                using (WzBinaryWriter wzWriter = new WzBinaryWriter(oldfs, WzIv))
+                                {
+                                    wzImg.SaveImage(wzWriter, true); // Write to temp folder
+                                }
+                            }
+                            try
+                            {
+                                File.Copy(tmpFilePath, targetFilePath, true);
+                                File.Delete(tmpFilePath);
+                            }
+                            catch (Exception exp)
+                            {
+                                Debug.WriteLine(exp); // nvm, dont show to user
+                            }
+                            wzNode.DeleteWzNode(); // this is a WzImage, and cannot be unloaded by _mainPanel.MainForm.UnloadWzFile
                         }
-                        catch (Exception exp)
+                        catch (UnauthorizedAccessException)
                         {
-                            Debug.WriteLine(exp); // nvm, dont show to user
+                            error_noAdminPriviledge = true;
                         }
-                        wzNode.DeleteWzNode(); // this is a WzImage, and cannot be unloaded by _mainPanel.MainForm.UnloadWzFile
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        error_noAdminPriviledge = true;
-                    }
 
-                    // Reload the new file
-                    WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected);
-                    if (img == null || error_noAdminPriviledge)
-                    {
-                        MessageBox.Show(Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                        // Reload the new file
+                        WzImage img = Program.WzFileManager.LoadDataWzHotfixFile(dialog.FileName, wzMapleVersionSelected);
+                        if (img == null || error_noAdminPriviledge)
+                        {
+                            MessageBox.Show(Properties.Resources.MainFileOpenFail, HaRepacker.Properties.Resources.Error);
+                        }
+                        _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(img);
                     }
-                    _mainPanel.MainForm.AddLoadedWzObjectToMainPanel(img);
+                }
+            } else
+            {
+                // save as .ms file
+                using (SaveFileDialog dialog = new()
+                {
+                    Title = Properties.Resources.SelectOutWz,
+                    FileName = wzNode.Text.Replace("wz", "ms"),
+                    Filter = string.Format("{0}|*.ms",
+                    Properties.Resources.MsFilter)
+                })
+                {
+                    if (dialog.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    using (var memoryStream = new MemoryStream())
+                    {
+                        var msFile = new WzMsFile(memoryStream, Path.GetFileName(dialog.FileName), dialog.FileName, true, isSavingFile: true);
+                        var savedStream = msFile.Save(wzf);
+
+                        // Now savedStream (which is the same as memoryStream) contains the saved .ms data
+                        // You can write it to a file or use it as needed
+                        using (var fileStream = new FileStream(dialog.FileName, FileMode.OpenOrCreate))
+                        {
+                            savedStream.CopyTo(fileStream);
+                        }
+                    }
                 }
             }
+
             Close();
         }
 
@@ -255,10 +301,18 @@ namespace HaRepacker.GUI
             if (!bIsLoaded)
                 return;
 
-            if (sender is CheckBox checkbox_64)
-            {
-                versionBox.Enabled = checkbox_64.Checked != true; // disable checkbox if its checked as 64-bit, since the version will always be 777
-            }
+            UpdateUIState();
+        }
+
+        /// <summary>
+        /// Selection between saving as .wz or .ms
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void FileFormat_CheckedChanged(object sender, EventArgs e)
+        {
+            // When either radio button changes state, update the UI.
+            UpdateUIState();
         }
     }
 }

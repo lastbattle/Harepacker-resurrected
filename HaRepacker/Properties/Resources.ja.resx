@@ -229,7 +229,7 @@
     <value>XMLの保存先を選択</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>WZ/ZLZ ファイルを選択</value>
+    <value>WZ/IMG/.ms/ZLZ ファイルを選択</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>IMGファイルを選択</value>
@@ -238,7 +238,7 @@
     <value>XMLファイルを選択</value>
   </data>
   <data name="WzFilter" xml:space="preserve">
-    <value>WZファイル (*.wz)</value>
+    <value>WZ ファイル (*.wz)</value>
   </data>
   <data name="WzImgFilter" xml:space="preserve">
     <value>WZ画像ファイル (*.img)</value>
@@ -426,5 +426,8 @@
   </data>
   <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
     <value />
+  </data>
+  <data name="MsFilter" xml:space="preserve">
+    <value>MS ファイル (*.ms)</value>
   </data>
 </root>

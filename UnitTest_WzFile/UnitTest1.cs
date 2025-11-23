@@ -6,16 +6,17 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.Versioning;
 
 namespace UnitTest_WzFile
 {
     [TestClass]
+    [SupportedOSPlatform("windows")]
     public class UnitTest1
     {
         private static WzFileManager _fileManager = new WzFileManager("", true);
 
         private static readonly List<Tuple<string, WzMapleVersion>> _testFiles = new List<Tuple<string, WzMapleVersion>>();
-
 
         public UnitTest1()
         {

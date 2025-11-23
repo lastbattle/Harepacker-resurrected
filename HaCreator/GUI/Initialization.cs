@@ -226,6 +226,9 @@ namespace HaCreator.GUI
                 // and contains the possible path of .img that uses a different encryption
                 Program.WzManager.LoadListWzFile(_wzMapleVersion);
 
+                UpdateUI_CurrentLoadingWzFile("encrypted .ms file(s).", false);
+                Program.WzManager.LoadPacksFiles();
+
                 // String.wz
                 const string STRING_PATH = "string";
                 List<string> stringWzFiles = Program.WzManager.GetWzFileNameListFromBase(STRING_PATH);
@@ -410,17 +413,14 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// 
+        /// Load canvas section for the directory
         /// </summary>
         /// <param name="directory"></param>
         private void LoadCanvasSection(string directory)
         {
             directory = directory.Replace("\\", "/"); // TODO: normalise this to just '/' some day across the project
-            string directory_ = directory +
-                    string.Format(@"/{0}/{1}_0", WzFileManager.CANVAS_DIRECTORY_NAME.ToLower(), WzFileManager.CANVAS_DIRECTORY_NAME.ToLower());
-            string mapCanvasDirectory = Path.Combine(WzFileManager.fileManager.WzBaseDirectory, directory, WzFileManager.CANVAS_DIRECTORY_NAME);
 
-            WzFileManager.fileManager.LoadCanvasSection(directory_, mapCanvasDirectory, _wzMapleVersion);
+            WzFileManager.fileManager.LoadCanvasSection(directory, _wzMapleVersion);
         }
 
         private void UpdateUI_CurrentLoadingWzFile(string fileName, bool isWzFile)
@@ -647,14 +647,30 @@ namespace HaCreator.GUI
                 foreach (WzImage mobImage in mobWzDir.WzImages)
                 {
                     string mobIdStr = mobImage.Name.Replace(".img", "");
-                    int mobId = int.Parse(mobIdStr);
 
-                    WzImageProperty standCanvas = (WzCanvasProperty)mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
+                    switch (mobIdStr)
+                    {
+                        case "BossAzmothCanyon":
+                        case "BossBaldrix":
+                        case "BossChampionRaid":
+                        case "BossCommon":
+                        case "BossEnterAni":
+                            // TODO
+                            break;
+                        default:
+                            {
+                                int mobId = int.Parse(mobIdStr);
 
-                    if (standCanvas == null) continue;
+                                WzImageProperty standCanvas = (WzCanvasProperty)mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
 
-                    if (!Program.InfoManager.MobIconCache.ContainsKey(mobId))
-                        Program.InfoManager.MobIconCache.Add(mobId, standCanvas);
+                                if (standCanvas == null) continue;
+
+                                if (!Program.InfoManager.MobIconCache.ContainsKey(mobId))
+                                    Program.InfoManager.MobIconCache.Add(mobId, standCanvas);
+                                break;
+                            }
+                    }
+
                 }
             }
             LoadCanvasSection(MOB_WZ_PATH); // Load canvas

@@ -31,7 +31,8 @@ namespace HaRepacker
 			base.OnPaint(pe);
 		}
 
-		public ArrayList SelectedNodes
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public ArrayList SelectedNodes
 		{
 			get
 			{

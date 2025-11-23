@@ -282,7 +282,7 @@ Click "Yes" to download the new version.</value>
     <value>Select where to save the XML</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>Select WZ, or ZLZ.dll File</value>
+    <value>Select WZ, IMG, .ms, or ZLZ.dll File</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>Select the IMG files</value>
@@ -529,5 +529,8 @@ Click "Yes" to download the new version.</value>
   </data>
   <data name="animate_save" type="System.Resources.ResXFileRef, System.Windows.Forms">
     <value>..\Resources\animate_save.png;System.Drawing.Bitmap, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a</value>
+  </data>
+  <data name="MsFilter" xml:space="preserve">
+    <value>MS File (*.ms)</value>
   </data>
 </root>

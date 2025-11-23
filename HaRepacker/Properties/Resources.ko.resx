@@ -229,7 +229,7 @@
     <value>XML을 저장할 위치 선택</value>
   </data>
   <data name="SelectWz" xml:space="preserve">
-    <value>WZ/ZLZ 파일 선택</value>
+    <value>WZ/IMG/.ms/ZLZ 파일 선택</value>
   </data>
   <data name="SelectWzImg" xml:space="preserve">
     <value>IMG 파일 선택</value>
@@ -426,5 +426,8 @@
   </data>
   <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
     <value />
+  </data>
+  <data name="MsFilter" xml:space="preserve">
+    <value>MS 파일 (*.ms)</value>
   </data>
 </root>

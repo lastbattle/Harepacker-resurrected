@@ -130,6 +130,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_side.Enabled = false;
             numericUpDown_side.Location = new System.Drawing.Point(135, 93);
             numericUpDown_side.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
+            numericUpDown_side.Minimum = new decimal(new int[] { 500, 0, 0, int.MinValue });
             numericUpDown_side.Name = "numericUpDown_side";
             numericUpDown_side.Size = new System.Drawing.Size(143, 22);
             numericUpDown_side.TabIndex = 5;
@@ -140,6 +141,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_bottom.Enabled = false;
             numericUpDown_bottom.Location = new System.Drawing.Point(135, 70);
             numericUpDown_bottom.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
+            numericUpDown_bottom.Minimum = new decimal(new int[] { 500, 0, 0, int.MinValue });
             numericUpDown_bottom.Name = "numericUpDown_bottom";
             numericUpDown_bottom.Size = new System.Drawing.Size(143, 22);
             numericUpDown_bottom.TabIndex = 4;
@@ -150,6 +152,7 @@ namespace HaCreator.GUI.EditorPanels
             numericUpDown_top.Enabled = false;
             numericUpDown_top.Location = new System.Drawing.Point(135, 47);
             numericUpDown_top.Maximum = new decimal(new int[] { 1000, 0, 0, 0 });
+            numericUpDown_top.Minimum = new decimal(new int[] { 500, 0, 0, int.MinValue });
             numericUpDown_top.Name = "numericUpDown_top";
             numericUpDown_top.Size = new System.Drawing.Size(143, 22);
             numericUpDown_top.TabIndex = 3;

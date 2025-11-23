@@ -58,18 +58,21 @@ namespace HaCreator.CustomControls
             InitializeComponent();
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Image Image
         {
             set { m_Image = value; }
             get { return m_Image; }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string ImageLocation
         {
             set { m_ImageLocation = value; }
             get { return m_ImageLocation; }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool IsActive
         {
             set 
@@ -80,6 +83,7 @@ namespace HaCreator.CustomControls
             get { return m_IsActive; }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool IsThumbnail
         {
             set { m_IsThumbnail = value; }
@@ -188,6 +192,7 @@ namespace HaCreator.CustomControls
             ((ImageViewer)sender).IsActive = false;
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int MaxHeight
         {
             get { return maxHeight; }
@@ -198,6 +203,7 @@ namespace HaCreator.CustomControls
             }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int MaxWidth
         {
             get { return maxWidth; }

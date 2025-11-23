@@ -6,6 +6,7 @@ using System;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
+using System.ComponentModel;
 
 
 namespace HaCreator.CustomControls
@@ -36,6 +37,7 @@ namespace HaCreator.CustomControls
         //  Implement Carl Mercier's workaround
         //  http://www.codeproject.com/cs/combobox/FixedCheckedListBox.asp
         //----------------------------------------------------------
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public new object DataSource
         {
             //Return our datatable variable
@@ -93,6 +95,7 @@ namespace HaCreator.CustomControls
         //Show our property under the Behavior section of the Properties window
         //So that it can be set at design time
         [System.ComponentModel.Description("Allow checkstate to be changed"), System.ComponentModel.Category("Behavior")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public bool AutoCheck
         {
             //Return our checkstate variable
@@ -120,6 +123,7 @@ namespace HaCreator.CustomControls
         //  Obtain Checkstatus, Text, and Values via an items index
         //----------------------------------------------------------
         [System.ComponentModel.Description("Gets or sets the CheckMember")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public string CheckMember
         {
             get { return ChkMember; }

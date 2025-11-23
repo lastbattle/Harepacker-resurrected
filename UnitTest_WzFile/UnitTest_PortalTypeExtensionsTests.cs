@@ -56,7 +56,6 @@ namespace UnitTest_WzFile
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
         [SupportedOSPlatform("windows7.0")] // Fix for CA1416: Specify platform support
         public void FromCode_NullCode_ThrowsArgumentNullException()
         {
@@ -65,7 +64,6 @@ namespace UnitTest_WzFile
         }
 
         [TestMethod]
-        [ExpectedException(typeof(ArgumentException))]
         [SupportedOSPlatform("windows7.0")] // Fix for CA1416: Specify platform support
         public void FromCode_InvalidCode_ThrowsArgumentException()
         {

@@ -6,6 +6,7 @@
 
 using System;
 using System.Windows.Forms;
+using System.ComponentModel;
 
 namespace HaRepacker.GUI.Input
 {
@@ -37,6 +38,7 @@ namespace HaRepacker.GUI.Input
             base.WndProc(ref msg);
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public double Value
         {
             get
