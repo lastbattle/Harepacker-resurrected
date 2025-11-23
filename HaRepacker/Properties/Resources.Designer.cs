@@ -1331,7 +1331,18 @@ namespace HaRepacker.Properties {
                 return ResourceManager.GetString("WzFilter", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to MS File (*.ms).
+        /// </summary>
+        public static string MsFilter
+        {
+            get
+            {
+                return ResourceManager.GetString("MsFilter", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to WZ Image Files (*.img).
         /// </summary>

@@ -238,7 +238,7 @@
     <value>選擇XML檔案</value>
   </data>
   <data name="WzFilter" xml:space="preserve">
-    <value>WZ檔案 (*.wz)</value>
+    <value>WZ 檔案 (*.wz)</value>
   </data>
   <data name="WzImgFilter" xml:space="preserve">
     <value>WZ圖像檔案 (*.img)</value>
@@ -426,5 +426,8 @@
   </data>
   <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
     <value />
+  </data>
+  <data name="MsFilter" xml:space="preserve">
+    <value>MS 檔案 (*.ms)</value>
   </data>
 </root>

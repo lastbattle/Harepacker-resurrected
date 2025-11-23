@@ -925,6 +925,8 @@ namespace HaRepacker.GUI
                         // Use the new static method to load as WzFile
                         var wzFile = msFile.LoadAsWzFile();
 
+                        Program.WzFileManager.LoadWzFile(msFileName, wzFile);
+
                         AddLoadedWzObjectToMainPanel(wzFile, currentDispatcher);
 
                         // write the file to temporary windows directory

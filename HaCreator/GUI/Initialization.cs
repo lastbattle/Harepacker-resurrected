@@ -226,6 +226,7 @@ namespace HaCreator.GUI
                 // and contains the possible path of .img that uses a different encryption
                 Program.WzManager.LoadListWzFile(_wzMapleVersion);
 
+                UpdateUI_CurrentLoadingWzFile("encrypted .ms file(s).", false);
                 Program.WzManager.LoadPacksFiles();
 
                 // String.wz

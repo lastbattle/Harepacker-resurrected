@@ -427,4 +427,7 @@
   <data name="animate_save" type="System.Resources.ResXNullRef, System.Windows.Forms">
     <value />
   </data>
+  <data name="MsFilter" xml:space="preserve">
+    <value>MS 파일 (*.ms)</value>
+  </data>
 </root>
