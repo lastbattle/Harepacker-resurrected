@@ -655,11 +655,23 @@ namespace HaCreator.GUI
                         case "BossChampionRaid":
                         case "BossCommon":
                         case "BossEnterAni":
+                        case "BossLimbo":
+                        case "BossNohime":
+                        case "BossSuu":
+                        case "PatternSystem":
+                        case "pack_ignore.txt": // GMS
                             // TODO
                             break;
                         default:
                             {
-                                int mobId = int.Parse(mobIdStr);
+                                int mobId = 0;
+                                int.TryParse(mobIdStr, out mobId);
+
+                                if (mobId == 0)
+                                {
+                                    ErrorLogger.Log(ErrorLevel.Info, "New file in Mob.wz: " + mobIdStr);
+                                    continue;
+                                }
 
                                 WzImageProperty standCanvas = (WzCanvasProperty)mobImage["stand"]?["0"]?.GetLinkedWzImageProperty();
 
