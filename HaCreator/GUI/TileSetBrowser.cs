@@ -42,23 +42,45 @@ namespace HaCreator.GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void TileSetBrowser_Load(object sender, EventArgs e) {
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets) {
+        private void TileSetBrowser_Load(object sender, EventArgs e)
+        {
+            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
+            {
                 WzImage tSImage = Program.InfoManager.TileSets[tS.Key];
-                if (!tSImage.Parsed) 
+                if (!tSImage.Parsed)
                     tSImage.ParseImage();
                 WzImageProperty enh0 = tSImage["enH0"];
                 if (enh0 == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' missing 'enH0' property.");
                     continue;
+                }
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
                 if (image == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' 'enH0' missing '0' property.");
                     continue;
+                }
 
                 Bitmap bitmap = image.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' bitmap is null.");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' loaded bitmap: {bitmap.Width}x{bitmap.Height}");
+                }
 
-                ImageViewer item = koolkLVContainer.Add(bitmap, tS.Key, true); // add to container and get back the ImageViewer object
+                ImageViewer item = koolkLVContainer.Add(bitmap, tS.Key, true);
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
+
+                // Add a visible border for debugging
+                item.BorderStyle = BorderStyle.FixedSingle;
+
+                // Log the control's size and location
+                System.Diagnostics.Debug.WriteLine($"Added ImageViewer for '{tS.Key}' at size {item.Width}x{item.Height}");
             }
         }
 
