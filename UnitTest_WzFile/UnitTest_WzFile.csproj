@@ -11,6 +11,7 @@
 
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\Images\dxt3_back.blackheaven.98.png" />
