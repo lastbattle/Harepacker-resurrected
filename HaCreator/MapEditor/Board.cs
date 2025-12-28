@@ -236,25 +236,27 @@ namespace HaCreator.MapEditor
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
         {
-            if (list.ListType == ItemTypes.None)
+            lock (parent)
             {
-                foreach (BoardItem item in list)
-                {
-                    if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
-                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                }
-            }
-            else if ((sel.visibleTypes & list.ListType) != 0)
-            {
-                if (list.IsItem)
+                if (list.ListType == ItemTypes.None)
                 {
                     foreach (BoardItem item in list)
                     {
-                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
-                        {
+                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
                             item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                        }
                     }
+                }
+                else if ((sel.visibleTypes & list.ListType) != 0)
+                {
+                    if (list.IsItem)
+                    {
+                        foreach (BoardItem item in list)
+                        {
+                            if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
+                            {
+                                item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                            }
+                        }
 
                     // Render lines between local teleport portal
                     if (list.ListType == ItemTypes.Portals)
@@ -304,6 +306,7 @@ namespace HaCreator.MapEditor
                     }
                 }
             }
+            } // lock (parent)
         }
 
         public void Dispose()
