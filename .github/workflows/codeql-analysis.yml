@@ -32,13 +32,21 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v2
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
 
+    - name: Restore NuGet packages
+      run: |
+        nuget restore MapleHaSuite.sln
+        dotnet restore MapleHaSuite.sln
+
     - name: Build Solution
-      run: msbuild MapleHaSuite.sln /p:Configuration=Release /p:Platform="x64"
+      run: msbuild MapleHaSuite.sln /p:Configuration=Release /p:Platform="x64" /p:RestorePackages=false
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
