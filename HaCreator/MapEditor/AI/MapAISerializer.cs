@@ -124,28 +124,140 @@ namespace HaCreator.MapEditor.AI
                 WriteLine();
             }
 
-            // Available tilesets
-            if (Program.InfoManager.TileSets.Count > 0)
+            // Footholds/Platforms summary
+            if (board.BoardItems.FootholdLines.Count > 0)
             {
-                WriteLine("## Available Tilesets");
-                var tilesetNames = Program.InfoManager.TileSets.Keys.OrderBy(k => k).ToList();
-                WriteLine($"Total: {tilesetNames.Count} tilesets");
-                WriteLine(string.Join(", ", tilesetNames));
+                WriteLine("## Platforms (Footholds)");
+                var fhByLayer = board.BoardItems.FootholdLines.GroupBy(fh => fh.LayerNumber);
+                foreach (var layerGroup in fhByLayer.OrderBy(g => g.Key))
+                {
+                    WriteLine($"### Layer {layerGroup.Key}");
+                    foreach (var fh in layerGroup.OrderBy(f => Math.Min(f.FirstDot.X, f.SecondDot.X)))
+                    {
+                        var props = new List<string>();
+                        if (fh.CantThrough == true) props.Add("CantJumpThrough");
+                        if (fh.ForbidFallDown == true) props.Add("NoFallDown");
+                        var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
+                        WriteLine($"- ({fh.FirstDot.X}, {fh.FirstDot.Y}) to ({fh.SecondDot.X}, {fh.SecondDot.Y}){propsStr}");
+                    }
+                }
                 WriteLine();
             }
 
-            WriteLine("## Instructions");
-            WriteLine("You can modify this map using commands like:");
-            WriteLine("- ADD MOB <id> at (x, y)");
-            WriteLine("- ADD NPC <id> at (x, y)");
-            WriteLine("- ADD PLATFORM [(x1, y1), (x2, y2), ...]");
-            WriteLine("- ADD TILE tileset=\"<name>\" category=\"<cat>\" at (x, y)");
-            WriteLine("- MOVE portal \"<name>\" to (x, y)");
-            WriteLine("- DELETE portal \"<name>\"");
-            WriteLine("- SET portal \"<name>\" target_map=<mapid>");
-            WriteLine("- FLIP object at (x, y)");
-            WriteLine();
-            WriteLine("Provide your modifications as a list of commands.");
+            // Tiles summary
+            var tiles = board.BoardItems.TileObjs.OfType<TileInstance>().ToList();
+            if (tiles.Count > 0)
+            {
+                WriteLine("## Tiles");
+                var tilesByLayer = tiles.GroupBy(t => t.Layer.LayerNumber);
+                foreach (var layerGroup in tilesByLayer.OrderBy(g => g.Key))
+                {
+                    var layer = board.Layers[layerGroup.Key];
+                    WriteLine($"### Layer {layerGroup.Key} (TileSet: \"{layer.tS ?? "None"}\")");
+                    foreach (var tile in layerGroup.OrderBy(t => t.X).ThenBy(t => t.Y))
+                    {
+                        var tileInfo = (HaCreator.MapEditor.Info.TileInfo)tile.BaseInfo;
+                        WriteLine($"- ({tile.X}, {tile.Y}): {tileInfo.u}/{tileInfo.no}, Z={tile.Z}");
+                    }
+                }
+                WriteLine();
+            }
+
+            // Objects summary
+            var objects = board.BoardItems.TileObjs.OfType<ObjectInstance>().ToList();
+            if (objects.Count > 0)
+            {
+                WriteLine("## Objects");
+                var objsByLayer = objects.GroupBy(o => o.Layer.LayerNumber);
+                foreach (var layerGroup in objsByLayer.OrderBy(g => g.Key))
+                {
+                    WriteLine($"### Layer {layerGroup.Key}");
+                    foreach (var obj in layerGroup.OrderBy(o => o.X).ThenBy(o => o.Y))
+                    {
+                        var objInfo = (HaCreator.MapEditor.Info.ObjectInfo)obj.BaseInfo;
+                        var props = new List<string>();
+                        if (obj.Flip) props.Add("Flipped");
+                        if (obj.hide == true) props.Add("Hidden");
+                        var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
+                        WriteLine($"- ({obj.X}, {obj.Y}): {objInfo.oS}/{objInfo.l0}/{objInfo.l1}/{objInfo.l2}, Z={obj.Z}{propsStr}");
+                    }
+                }
+                WriteLine();
+            }
+
+            // Backgrounds summary
+            var backBGs = board.BoardItems.BackBackgrounds.ToList();
+            var frontBGs = board.BoardItems.FrontBackgrounds.ToList();
+            if (backBGs.Count > 0 || frontBGs.Count > 0)
+            {
+                WriteLine("## Backgrounds");
+                if (backBGs.Count > 0)
+                {
+                    WriteLine("### Back Backgrounds");
+                    foreach (var bg in backBGs.OrderBy(b => b.Z))
+                    {
+                        var bgInfo = (HaCreator.MapEditor.Info.BackgroundInfo)bg.BaseInfo;
+                        var props = new List<string>();
+                        if (bg.Flip) props.Add("Flipped");
+                        if (!string.IsNullOrEmpty(bg.SpineAni)) props.Add($"Spine:{bg.SpineAni}");
+                        var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
+                        WriteLine($"- ({bg.BaseX}, {bg.BaseY}): {bgInfo.bS}/{bg.type}/{bgInfo.no}, Z={bg.Z}, rx={bg.rx}, ry={bg.ry}, cx={bg.cx}, cy={bg.cy}, a={bg.a}{propsStr}");
+                    }
+                }
+                if (frontBGs.Count > 0)
+                {
+                    WriteLine("### Front Backgrounds");
+                    foreach (var bg in frontBGs.OrderBy(b => b.Z))
+                    {
+                        var bgInfo = (HaCreator.MapEditor.Info.BackgroundInfo)bg.BaseInfo;
+                        var props = new List<string>();
+                        if (bg.Flip) props.Add("Flipped");
+                        if (!string.IsNullOrEmpty(bg.SpineAni)) props.Add($"Spine:{bg.SpineAni}");
+                        var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
+                        WriteLine($"- ({bg.BaseX}, {bg.BaseY}): {bgInfo.bS}/{bg.type}/{bgInfo.no}, Z={bg.Z}, rx={bg.rx}, ry={bg.ry}, cx={bg.cx}, cy={bg.cy}, a={bg.a}{propsStr}");
+                    }
+                }
+                WriteLine();
+            }
+
+            // Ropes/Ladders summary
+            if (board.BoardItems.Ropes.Count > 0)
+            {
+                WriteLine("## Ropes & Ladders");
+                foreach (var rope in board.BoardItems.Ropes.OrderBy(r => r.FirstAnchor.X))
+                {
+                    var type = rope.ladder ? "Ladder" : "Rope";
+                    WriteLine($"- {type}: ({rope.FirstAnchor.X}, {rope.FirstAnchor.Y}) to ({rope.SecondAnchor.X}, {rope.SecondAnchor.Y})");
+                }
+                WriteLine();
+            }
+
+            // Chairs summary
+            if (board.BoardItems.Chairs.Count > 0)
+            {
+                WriteLine("## Chairs");
+                foreach (var chair in board.BoardItems.Chairs.OrderBy(c => c.X))
+                {
+                    WriteLine($"- ({chair.X}, {chair.Y})");
+                }
+                WriteLine();
+            }
+
+            // Reactors summary
+            if (board.BoardItems.Reactors.Count > 0)
+            {
+                WriteLine("## Reactors");
+                foreach (var reactor in board.BoardItems.Reactors.OrderBy(r => r.X))
+                {
+                    var reactorInfo = (HaCreator.MapEditor.Info.ReactorInfo)reactor.BaseInfo;
+                    var name = !string.IsNullOrEmpty(reactor.Name) ? $" \"{reactor.Name}\"" : "";
+                    WriteLine($"- Reactor {reactorInfo.ID}{name} at ({reactor.X}, {reactor.Y})");
+                }
+                WriteLine();
+            }
+
+            // Include asset catalog for AI awareness
+            sb.Append(MapAssetCatalog.GenerateCompactSummary());
 
             return sb.ToString();
         }

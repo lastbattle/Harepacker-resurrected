@@ -11,6 +11,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using MapleLib.WzLib.WzStructure.Data;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -24,11 +25,13 @@ namespace HaCreator.MapEditor.AI
     {
         private static readonly HttpClient httpClient = new HttpClient();
         private const string API_URL = "https://openrouter.ai/api/v1/chat/completions";
+        private const double TEMPERATURE = 1;
+        private const int MAX_TOKENS = 200000;
 
         private readonly string apiKey;
         private readonly string model;
 
-        public OpenRouterClient(string apiKey, string model = "google/gemini-2.0-flash-001")
+        public OpenRouterClient(string apiKey, string model = "google/gemini-3-flash-preview")
         {
             this.apiKey = apiKey;
             this.model = model;
@@ -36,6 +39,7 @@ namespace HaCreator.MapEditor.AI
 
         /// <summary>
         /// Process natural language instructions using function calling.
+        /// Handles multi-turn conversations for query functions (get_object_info, get_background_info).
         /// </summary>
         /// <param name="mapContext">The current map state in AI-readable format</param>
         /// <param name="userInstructions">Natural language instructions from the user</param>
@@ -49,51 +53,99 @@ namespace HaCreator.MapEditor.AI
 ## User Request
 {userInstructions}
 
-Use the available functions to fulfill the user's request. Call multiple functions as needed.";
+Use the available functions to fulfill the user's request. Call multiple functions as needed.
+IMPORTANT: For objects and backgrounds, call get_object_info or get_background_info FIRST to discover valid paths, then use add_object or add_background with those exact paths.";
 
-            var requestBody = new JObject
+            var messages = new JArray
             {
-                ["model"] = this.model,
-                ["messages"] = new JArray
-                {
-                    new JObject { ["role"] = "system", ["content"] = systemPrompt },
-                    new JObject { ["role"] = "user", ["content"] = userMessage }
-                },
-                ["tools"] = MapEditorFunctions.GetToolDefinitions(),
-                ["tool_choice"] = "required",  // Force function calling
-                ["temperature"] = 0.2,  // Lower temperature for more consistent output
-                ["max_tokens"] = 4000
+                new JObject { ["role"] = "system", ["content"] = systemPrompt },
+                new JObject { ["role"] = "user", ["content"] = userMessage }
             };
 
-            var request = new HttpRequestMessage(HttpMethod.Post, API_URL);
-            request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            request.Content = new StringContent(
-                requestBody.ToString(Formatting.None),
-                Encoding.UTF8,
-                "application/json");
+            var allCommands = new List<string>();
+            int maxTurns = 40; // Limit iterations for safety
 
-            var response = await httpClient.SendAsync(request);
-            var responseContent = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
+            for (int turn = 0; turn < maxTurns; turn++)
             {
-                throw new Exception($"OpenRouter API error: {response.StatusCode} - {responseContent}");
+                var requestBody = new JObject
+                {
+                    ["model"] = this.model,
+                    ["messages"] = messages,
+                    ["tools"] = MapEditorFunctions.GetToolDefinitions(),
+                    ["tool_choice"] = turn == 0 ? "required" : "auto", // First turn requires tools, subsequent are optional
+                    ["temperature"] = TEMPERATURE,
+                    ["max_tokens"] = MAX_TOKENS
+                };
+
+                var request = new HttpRequestMessage(HttpMethod.Post, API_URL);
+                request.Headers.Add("Authorization", $"Bearer {apiKey}");
+                request.Content = new StringContent(
+                    requestBody.ToString(Formatting.None),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var response = await httpClient.SendAsync(request);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new Exception($"OpenRouter API error: {response.StatusCode} - {responseContent}");
+                }
+
+                var jsonResponse = JObject.Parse(responseContent);
+                var (commands, toolResponses, hasQueryFunctions, assistantMessage) = ParseFunctionCallResponseWithQueries(jsonResponse);
+
+                // Add all action commands to the result
+                allCommands.AddRange(commands);
+
+                // If there were query function calls, we need to continue the conversation
+                // to let the AI use the query results to make action calls
+                if (hasQueryFunctions && toolResponses.Count > 0)
+                {
+                    // Add the assistant's message with tool_calls
+                    messages.Add(assistantMessage);
+
+                    // Add tool results for EVERY function call (required by Google Gemini)
+                    foreach (var (toolCallId, result) in toolResponses)
+                    {
+                        messages.Add(new JObject
+                        {
+                            ["role"] = "tool",
+                            ["tool_call_id"] = toolCallId,
+                            ["content"] = result
+                        });
+                    }
+
+                    // Continue to next turn to let AI use the query results
+                    continue;
+                }
+
+                // No query functions, we're done (action-only calls don't need follow-up)
+                break;
             }
 
-            var jsonResponse = JObject.Parse(responseContent);
-            return ParseFunctionCallResponse(jsonResponse);
+            if (allCommands.Count == 0)
+            {
+                return "# No commands generated";
+            }
+
+            return string.Join(Environment.NewLine, allCommands);
         }
 
         /// <summary>
-        /// Parse the function call response and convert to command strings
+        /// Parse the function call response, separating query functions from action functions.
+        /// Returns: (action commands, all tool responses for multi-turn, has query functions, assistant message for multi-turn)
         /// </summary>
-        private string ParseFunctionCallResponse(JObject response)
+        private (List<string> commands, List<(string toolCallId, string result)> toolResponses, bool hasQueryFunctions, JObject assistantMessage)
+            ParseFunctionCallResponseWithQueries(JObject response)
         {
             var commands = new List<string>();
-            var message = response["choices"]?[0]?["message"];
+            var toolResponses = new List<(string toolCallId, string result)>();
+            bool hasQueryFunctions = false;
+            var message = response["choices"]?[0]?["message"] as JObject;
 
             if (message == null)
-                return "# No response from AI";
+                return (new List<string> { "# No response from AI" }, toolResponses, false, null);
 
             // Check for tool calls
             var toolCalls = message["tool_calls"] as JArray;
@@ -101,6 +153,7 @@ Use the available functions to fulfill the user's request. Call multiple functio
             {
                 foreach (var toolCall in toolCalls)
                 {
+                    var toolCallId = toolCall["id"]?.ToString();
                     var function = toolCall["function"];
                     if (function != null)
                     {
@@ -112,42 +165,60 @@ Use the available functions to fulfill the user's request. Call multiple functio
                             try
                             {
                                 var arguments = JObject.Parse(argumentsStr);
-                                var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
-                                commands.Add(command);
+
+                                // Check if this is a query function
+                                if (MapEditorFunctions.IsQueryFunction(functionName))
+                                {
+                                    hasQueryFunctions = true;
+                                    var result = MapEditorFunctions.ExecuteQueryFunction(functionName, arguments);
+                                    toolResponses.Add((toolCallId, result));
+                                }
+                                else
+                                {
+                                    // Regular action function - convert to command
+                                    var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
+                                    commands.Add(command);
+
+                                    // Google Gemini requires a response for EVERY tool call
+                                    // Provide a simple acknowledgment for action functions
+                                    toolResponses.Add((toolCallId, $"Command queued: {functionName}"));
+                                }
                             }
                             catch (Exception ex)
                             {
                                 commands.Add($"# Error parsing {functionName}: {ex.Message}");
+                                // Still need to respond to the tool call even on error
+                                if (!string.IsNullOrEmpty(toolCallId))
+                                {
+                                    toolResponses.Add((toolCallId, $"Error: {ex.Message}"));
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // If no tool calls, check for regular content (fallback)
-            if (commands.Count == 0)
+            // If no tool calls at all, check for regular content (fallback)
+            if (commands.Count == 0 && toolResponses.Count == 0)
             {
                 var content = message["content"]?.ToString();
                 if (!string.IsNullOrEmpty(content))
                 {
-                    // The AI might have responded with text instead of function calls
                     commands.Add("# AI Response (no function calls):");
                     commands.Add(content);
                 }
-                else
-                {
-                    commands.Add("# No commands generated");
-                }
             }
 
-            return string.Join(Environment.NewLine, commands);
+            return (commands, toolResponses, hasQueryFunctions, message);
         }
 
         /// <summary>
-        /// Load the system prompt from external file or use embedded default
+        /// Load the system prompt from external file
         /// </summary>
         private string LoadSystemPrompt()
         {
+            string promptContent = null;
+
             // Try to load from external file first
             var externalPath = Path.Combine(
                 Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "",
@@ -155,73 +226,56 @@ Use the available functions to fulfill the user's request. Call multiple functio
 
             if (File.Exists(externalPath))
             {
-                try
+                promptContent = File.ReadAllText(externalPath);
+            }
+            else
+            {
+                // Try source location
+                var sourcePath = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "..", "..", "..", "MapEditor", "AI", "Prompts", "MapEditorSystemPrompt.txt");
+
+                if (File.Exists(sourcePath))
                 {
-                    return File.ReadAllText(externalPath);
+                    promptContent = File.ReadAllText(sourcePath);
                 }
-                catch
+                else
                 {
-                    // Fall through to default
+                    throw new FileNotFoundException(
+                        $"System prompt file not found. Expected at:\n- {externalPath}\n- {sourcePath}");
                 }
             }
 
-            // Try source location
-            var sourcePath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "..", "..", "..", "MapEditor", "AI", "Prompts", "MapEditorSystemPrompt.txt");
+            // Replace dynamic placeholders
+            promptContent = promptContent.Replace("{PORTAL_TYPES}", GeneratePortalTypesDocumentation());
 
-            if (File.Exists(sourcePath))
+            return promptContent;
+        }
+
+        /// <summary>
+        /// Generate portal types documentation dynamically from PortalType enum
+        /// </summary>
+        private string GeneratePortalTypesDocumentation()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Portal types control how the portal appears and behaves:");
+            sb.AppendLine();
+
+            foreach (PortalType portalType in Enum.GetValues(typeof(PortalType)))
             {
                 try
                 {
-                    return File.ReadAllText(sourcePath);
+                    var code = portalType.ToCode();
+                    var friendlyName = portalType.GetFriendlyName();
+                    sb.AppendLine($"- `{portalType}` ({code}) = {friendlyName}");
                 }
                 catch
                 {
-                    // Fall through to default
+                    // Skip if extension methods fail for any reason
                 }
             }
 
-            // Default embedded prompt
-            return GetDefaultSystemPrompt();
-        }
-
-        private string GetDefaultSystemPrompt()
-        {
-            return @"You are a MapleStory map editor assistant. Your job is to convert natural language instructions into map editing function calls.
-
-You have access to functions to modify the map. Use them to fulfill the user's requests.
-
-## Important Guidelines
-
-1. Coordinate System:
-   - X increases to the right, decreases to the left
-   - Y increases downward (so 'top' means smaller Y, 'bottom' means larger Y)
-   - The center point is typically (0, 0) or near it
-
-2. Common Mob IDs:
-   - 100100 = Blue Snail
-   - 100101 = Red Snail
-   - 100110 = Shroom
-   - 100120 = Stump
-   - 1210100 = Slime
-
-3. Common NPC IDs:
-   - 9000000 = Maple Administrator
-   - 9010000 = Henesys NPC
-
-4. Portal Types: StartPoint, Visible, Hidden, Script, Collision
-
-5. When the user says:
-   - 'left side' = negative X or X < center
-   - 'right side' = positive X or X > center
-   - 'top' = smaller Y values
-   - 'bottom' = larger Y values
-   - 'a few' = 2-3, 'some' = 3-5, 'many' = 5-8
-
-6. Space mobs apart by 100-200 pixels for good gameplay.
-
-Always use the current map state to determine appropriate positions.";
+            return sb.ToString().TrimEnd();
         }
 
         /// <summary>

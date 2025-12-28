@@ -236,27 +236,25 @@ namespace HaCreator.MapEditor
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
         {
-            lock (parent)
+            if (list.ListType == ItemTypes.None)
             {
-                if (list.ListType == ItemTypes.None)
+                foreach (BoardItem item in list)
+                {
+                    if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
+                        item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
+                }
+            }
+            else if ((sel.visibleTypes & list.ListType) != 0)
+            {
+                if (list.IsItem)
                 {
                     foreach (BoardItem item in list)
                     {
-                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y) && ((sel.visibleTypes & item.Type) != 0))
-                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                    }
-                }
-                else if ((sel.visibleTypes & list.ListType) != 0)
-                {
-                    if (list.IsItem)
-                    {
-                        foreach (BoardItem item in list)
+                        if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
                         {
-                            if (parent.IsItemInRange(item.X, item.Y, item.Width, item.Height, xShift - item.Origin.X, yShift - item.Origin.Y))
-                            {
-                                item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
-                            }
+                            item.Draw(sprite, item.GetColor(sel, item.Selected), xShift, yShift);
                         }
+                    }
 
                     // Render lines between local teleport portal
                     if (list.ListType == ItemTypes.Portals)
@@ -264,7 +262,7 @@ namespace HaCreator.MapEditor
                         Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor; // Semi-transparent light blue
 
                         HashSet<(string, string)> processedPairs = new();
-                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal => 
+                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal =>
                                 (portal.pt == PortalType.Hidden // post-bb maplestory
                                 || portal.pt == PortalType.Invisible) // pre-bb, beta maplestory generally for teleport portal
                                 ).ToList();
@@ -306,7 +304,6 @@ namespace HaCreator.MapEditor
                     }
                 }
             }
-            } // lock (parent)
         }
 
         public void Dispose()

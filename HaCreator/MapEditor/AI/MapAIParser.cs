@@ -140,6 +140,12 @@ namespace HaCreator.MapEditor.AI
                     ParseBackgroundProperties(commandText, command);
                 }
 
+                // Parse object-specific properties
+                if (command.ElementType == ElementType.Object)
+                {
+                    ParseObjectProperties(commandText, command);
+                }
+
                 // Parse platform-specific properties (array of points)
                 if (command.ElementType == ElementType.Platform)
                 {
@@ -150,6 +156,12 @@ namespace HaCreator.MapEditor.AI
                 if (command.ElementType == ElementType.Wall)
                 {
                     ParseWallProperties(commandText, command);
+                }
+
+                // Parse rope/ladder-specific properties
+                if (command.ElementType == ElementType.Rope || command.ElementType == ElementType.Ladder)
+                {
+                    ParseRopeProperties(commandText, command);
                 }
 
                 // Parse foothold flags
@@ -176,6 +188,12 @@ namespace HaCreator.MapEditor.AI
                 if (command.Type == CommandType.TileStructure)
                 {
                     ParseTileStructureProperties(commandText, command);
+                }
+
+                // Parse BGM properties
+                if (command.Type == CommandType.SetBgm)
+                {
+                    ParseBgmProperties(commandText, command);
                 }
 
                 command.IsValid = true;
@@ -235,6 +253,8 @@ namespace HaCreator.MapEditor.AI
                 return CommandType.Duplicate;
             if (normalized.StartsWith("FLIP"))
                 return CommandType.Flip;
+            if (normalized.StartsWith("SET BGM"))
+                return CommandType.SetBgm;
             if (normalized.StartsWith("SET"))
                 return CommandType.SetProperty;
             if (normalized.StartsWith("CLEAR"))
@@ -344,6 +364,27 @@ namespace HaCreator.MapEditor.AI
 
         private void ParseBackgroundProperties(string commandText, MapAICommand command)
         {
+            // Parse bS (background set): bS="name"
+            var bsMatch = Regex.Match(commandText, @"BS\s*[=:]\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (bsMatch.Success)
+            {
+                command.Parameters["bS"] = bsMatch.Groups[1].Value;
+            }
+
+            // Parse no (background number): no="N"
+            var noMatch = Regex.Match(commandText, @"NO\s*[=:]\s*""?(\d+)""?", RegexOptions.IgnoreCase);
+            if (noMatch.Success)
+            {
+                command.Parameters["no"] = noMatch.Groups[1].Value;
+            }
+
+            // Parse type: type="back|ani|spine"
+            var typeMatch = Regex.Match(commandText, @"TYPE\s*[=:]\s*""?(\w+)""?", RegexOptions.IgnoreCase);
+            if (typeMatch.Success)
+            {
+                command.Parameters["bg_type"] = typeMatch.Groups[1].Value;
+            }
+
             // Parallax
             var rxMatch = Regex.Match(commandText, @"RX\s*[=:]?\s*(-?\d+)", RegexOptions.IgnoreCase);
             if (rxMatch.Success)
@@ -357,21 +398,67 @@ namespace HaCreator.MapEditor.AI
                 command.Parameters["ry"] = int.Parse(ryMatch.Groups[1].Value);
             }
 
-            // Alpha
-            var alphaMatch = Regex.Match(commandText, @"ALPHA\s*[=:]?\s*(\d+)", RegexOptions.IgnoreCase);
+            // Tiling
+            var cxMatch = Regex.Match(commandText, @"CX\s*[=:]?\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (cxMatch.Success)
+            {
+                command.Parameters["cx"] = int.Parse(cxMatch.Groups[1].Value);
+            }
+
+            var cyMatch = Regex.Match(commandText, @"CY\s*[=:]?\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (cyMatch.Success)
+            {
+                command.Parameters["cy"] = int.Parse(cyMatch.Groups[1].Value);
+            }
+
+            // Alpha (a=N or alpha=N)
+            var alphaMatch = Regex.Match(commandText, @"(?:ALPHA|(?<!\w)A)\s*[=:]?\s*(\d+)", RegexOptions.IgnoreCase);
             if (alphaMatch.Success)
             {
-                command.Parameters["alpha"] = int.Parse(alphaMatch.Groups[1].Value);
+                command.Parameters["a"] = int.Parse(alphaMatch.Groups[1].Value);
             }
 
             // Front/back
-            if (commandText.ToUpperInvariant().Contains("FRONT"))
+            if (Regex.IsMatch(commandText, @"\bFRONT\b", RegexOptions.IgnoreCase))
             {
                 command.Parameters["front"] = true;
             }
-            else if (commandText.ToUpperInvariant().Contains("BACK"))
+        }
+
+        private void ParseObjectProperties(string commandText, MapAICommand command)
+        {
+            // Parse oS (object set): oS="name"
+            var osMatch = Regex.Match(commandText, @"OS\s*[=:]\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (osMatch.Success)
             {
-                command.Parameters["front"] = false;
+                command.Parameters["oS"] = osMatch.Groups[1].Value;
+            }
+
+            // Parse l0: l0="name"
+            var l0Match = Regex.Match(commandText, @"L0\s*[=:]\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (l0Match.Success)
+            {
+                command.Parameters["l0"] = l0Match.Groups[1].Value;
+            }
+
+            // Parse l1: l1="name"
+            var l1Match = Regex.Match(commandText, @"L1\s*[=:]\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (l1Match.Success)
+            {
+                command.Parameters["l1"] = l1Match.Groups[1].Value;
+            }
+
+            // Parse l2: l2="N"
+            var l2Match = Regex.Match(commandText, @"L2\s*[=:]\s*""?(\w+)""?", RegexOptions.IgnoreCase);
+            if (l2Match.Success)
+            {
+                command.Parameters["l2"] = l2Match.Groups[1].Value;
+            }
+
+            // Parse raw_position flag (disable ground-snapping)
+            if (Regex.IsMatch(commandText, @"\bRAW_POSITION\b", RegexOptions.IgnoreCase))
+            {
+                command.Parameters["raw_position"] = true;
             }
         }
 
@@ -411,6 +498,39 @@ namespace HaCreator.MapEditor.AI
                 int y2 = int.Parse(yRangeMatch.Groups[2].Value);
                 command.Parameters["top_y"] = Math.Min(y1, y2);
                 command.Parameters["bottom_y"] = Math.Max(y1, y2);
+            }
+        }
+
+        private void ParseRopeProperties(string commandText, MapAICommand command)
+        {
+            // Parse rope/ladder: x=N from y=N to y=N
+            // Or: at x=N from y=N to y=N
+            var xMatch = Regex.Match(commandText, @"(?:AT\s+)?X\s*[=:]?\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (xMatch.Success)
+            {
+                command.Parameters["rope_x"] = int.Parse(xMatch.Groups[1].Value);
+            }
+
+            // Parse Y range: "from y=N to y=N" or "y=N to y=N"
+            var yRangeMatch = Regex.Match(commandText, @"(?:FROM\s+)?Y\s*[=:]?\s*(-?\d+)\s+TO\s+Y\s*[=:]?\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (yRangeMatch.Success)
+            {
+                int y1 = int.Parse(yRangeMatch.Groups[1].Value);
+                int y2 = int.Parse(yRangeMatch.Groups[2].Value);
+                command.Parameters["top_y"] = Math.Min(y1, y2);
+                command.Parameters["bottom_y"] = Math.Max(y1, y2);
+            }
+
+            // Parse uf (upper foothold): uf=true/false
+            var ufMatch = Regex.Match(commandText, @"UF\s*[=:]?\s*(TRUE|FALSE)", RegexOptions.IgnoreCase);
+            if (ufMatch.Success)
+            {
+                command.Parameters["uf"] = ufMatch.Groups[1].Value.ToUpperInvariant() == "TRUE";
+            }
+            else
+            {
+                // Default to true if not specified
+                command.Parameters["uf"] = true;
             }
         }
 
@@ -537,6 +657,23 @@ namespace HaCreator.MapEditor.AI
             if (heightMatch.Success)
             {
                 command.Parameters["height"] = int.Parse(heightMatch.Groups[1].Value);
+            }
+
+            // Parse width: width=N
+            var widthMatch = Regex.Match(commandText, @"WIDTH\s*[=:]\s*(\d+)", RegexOptions.IgnoreCase);
+            if (widthMatch.Success)
+            {
+                command.Parameters["width"] = int.Parse(widthMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseBgmProperties(string commandText, MapAICommand command)
+        {
+            // Parse BGM path: "Bgm00/GoPicnic" or BGM="path"
+            var bgmMatch = Regex.Match(commandText, @"(?:BGM\s*[=:]\s*)?""([^""]+)""", RegexOptions.IgnoreCase);
+            if (bgmMatch.Success)
+            {
+                command.Parameters["bgm"] = bgmMatch.Groups[1].Value;
             }
         }
 

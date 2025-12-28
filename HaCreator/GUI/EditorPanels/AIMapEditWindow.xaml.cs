@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Windows;
 using HaCreator.MapEditor;
+using HaCreator.MapEditor.AI;
 
 namespace HaCreator.GUI.EditorPanels
 {
@@ -21,15 +22,13 @@ namespace HaCreator.GUI.EditorPanels
         private static readonly Dictionary<Board, AIMapEditWindow> instances = new Dictionary<Board, AIMapEditWindow>();
 
         private readonly Board board;
+        private bool isProcessing = false;
 
         private AIMapEditWindow(Board board)
         {
             this.board = board;
 
             InitializeComponent();
-
-            // Set the board directly on the panel
-            panel.SetBoard(board);
 
             // Update title with map info
             UpdateTitle();
@@ -57,6 +56,8 @@ namespace HaCreator.GUI.EditorPanels
             e.Cancel = true;
             this.Hide();
         }
+
+        #region Static Instance Management
 
         /// <summary>
         /// Get or create an AI Map Edit window for the specified board
@@ -108,7 +109,7 @@ namespace HaCreator.GUI.EditorPanels
             }
 
             // Auto-load map context every time the window is shown/focused
-            window.panel.LoadMapContext();
+            window.LoadMapContext();
         }
 
         /// <summary>
@@ -142,7 +143,6 @@ namespace HaCreator.GUI.EditorPanels
             var toRemove = new List<Board>();
             foreach (var kvp in instances)
             {
-                // Check if window is still valid
                 try
                 {
                     var _ = kvp.Value.IsVisible;
@@ -157,5 +157,185 @@ namespace HaCreator.GUI.EditorPanels
                 instances.Remove(key);
             }
         }
+
+        #endregion
+
+        #region Map Context
+
+        /// <summary>
+        /// Loads the current map context into the description panel.
+        /// </summary>
+        public void LoadMapContext()
+        {
+            if (board == null)
+            {
+                txtMapContext.Text = "# No map loaded";
+                return;
+            }
+
+            try
+            {
+                var serializer = new MapAISerializer(board);
+                var text = serializer.GenerateAISummary();
+                txtMapContext.Text = text;
+                LogMessage($"Loaded map context ({text.Length} characters)");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error loading map context: {ex.Message}");
+                txtMapContext.Text = $"# Error loading map: {ex.Message}";
+            }
+        }
+
+        #endregion
+
+        #region Event Handlers
+
+        private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            LoadMapContext();
+        }
+
+        private async void BtnProcessAI_Click(object sender, RoutedEventArgs e)
+        {
+            if (isProcessing)
+            {
+                LogMessage("Already processing, please wait...");
+                return;
+            }
+
+            if (!AISettings.IsConfigured)
+            {
+                MessageBox.Show("Please configure your OpenRouter API key first.\nClick 'Settings' to set it up.",
+                    "API Key Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            if (board == null)
+            {
+                MessageBox.Show("No map is currently loaded.", "Process with AI", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var instructions = txtInstructions.Text;
+            if (string.IsNullOrWhiteSpace(instructions) ||
+                instructions.StartsWith("Example instructions:") ||
+                instructions == "Add 3 blue snails on the left side\nAdd a portal to Henesys on the right")
+            {
+                MessageBox.Show("Please enter your instructions in natural language.", "Process with AI", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                isProcessing = true;
+                btnProcessAI.IsEnabled = false;
+                btnProcessAI.Content = "Processing...";
+                LogMessage("Sending instructions to AI...");
+
+                // Get map context
+                var serializer = new MapAISerializer(board);
+                var mapContext = serializer.GenerateAISummary();
+
+                // Call OpenRouter
+                var client = new OpenRouterClient(AISettings.ApiKey, AISettings.Model);
+                var result = await client.ProcessInstructionsAsync(mapContext, instructions);
+
+                txtCommands.Text = result;
+                LogMessage($"AI generated {result.Split('\n').Length} command(s)");
+                LogMessage("Review the commands and click 'Execute Commands' to apply them.");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"AI processing error: {ex.Message}");
+                MessageBox.Show($"Error processing with AI: {ex.Message}", "AI Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                isProcessing = false;
+                btnProcessAI.IsEnabled = true;
+                btnProcessAI.Content = "Process with AI";
+            }
+        }
+
+        private void BtnExecute_Click(object sender, RoutedEventArgs e)
+        {
+            if (board == null)
+            {
+                MessageBox.Show("No map is currently loaded.", "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var commandText = txtCommands.Text;
+            if (string.IsNullOrWhiteSpace(commandText) ||
+                commandText.StartsWith("# Commands will appear"))
+            {
+                MessageBox.Show("No commands to execute. Use 'Process with AI' first or enter commands manually.",
+                    "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                var parser = new MapAIParser();
+                var commands = parser.ParseCommands(commandText);
+
+                if (commands.Count == 0)
+                {
+                    LogMessage("No valid commands found in input");
+                    return;
+                }
+
+                LogMessage($"Parsed {commands.Count} command(s)");
+
+                var executor = new MapAIExecutor(board);
+                var result = executor.ExecuteCommands(commands);
+
+                // Log execution results
+                foreach (var logEntry in result.Log)
+                {
+                    LogMessage(logEntry);
+                }
+
+                LogMessage($"Execution complete: {result.SuccessCount} succeeded, {result.FailCount} failed");
+
+                if (result.SuccessCount > 0)
+                {
+                    board.Dirty = true;
+
+                    // Auto-refresh map context to show updated state
+                    LoadMapContext();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Error executing commands: {ex.Message}");
+                MessageBox.Show($"Error executing commands: {ex.Message}", "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new AISettingsDialog();
+            dialog.ShowDialog();
+        }
+
+        private void BtnClearLog_Click(object sender, RoutedEventArgs e)
+        {
+            txtLog.Clear();
+        }
+
+        #endregion
+
+        #region Logging
+
+        private void LogMessage(string message)
+        {
+            var timestamp = DateTime.Now.ToString("HH:mm:ss");
+            txtLog.AppendText($"[{timestamp}] {message}{Environment.NewLine}");
+            txtLog.ScrollToEnd();
+        }
+
+        #endregion
     }
 }

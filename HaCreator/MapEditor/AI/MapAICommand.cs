@@ -62,7 +62,8 @@ namespace HaCreator.MapEditor.AI
         Clear,
         Select,
         TilePlatform,   // Auto-tile a platform with proper spacing (simple flat)
-        TileStructure   // Build complex tile structures (tall, slopes, pillars, stairs)
+        TileStructure,  // Build complex tile structures (tall, slopes, pillars, stairs)
+        SetBgm          // Change background music
     }
 
     public enum ElementType
