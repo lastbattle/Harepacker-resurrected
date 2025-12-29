@@ -63,6 +63,10 @@ namespace HaCreator.MapEditor
 
         private static int uidCounter = 0;
 
+        // Cached portal connection pairs for efficient rendering
+        private List<(PortalInstance, PortalInstance)> _cachedPortalPairs = null;
+        private int _cachedPortalCount = -1;
+
         public ItemTypes VisibleTypes { get { return visibleTypes; } set { visibleTypes = value; } }
         public ItemTypes EditedTypes { get { return editedTypes; } set { editedTypes = value; } }
 
@@ -256,42 +260,24 @@ namespace HaCreator.MapEditor
                         }
                     }
 
-                    // Render lines between local teleport portal
+                    // Render lines between local teleport portal (using cached pairs)
                     if (list.ListType == ItemTypes.Portals)
                     {
-                        Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor; // Semi-transparent light blue
+                        Color portalLineColor = (sel.editedTypes & ItemTypes.Portals) == ItemTypes.Portals ? Color.LightBlue : MultiBoard.InactiveColor;
 
-                        HashSet<(string, string)> processedPairs = new();
-                        List<PortalInstance> localTeleportPortal = BoardItems.Portals.Where(portal =>
-                                (portal.pt == PortalType.Hidden // post-bb maplestory
-                                || portal.pt == PortalType.Invisible) // pre-bb, beta maplestory generally for teleport portal
-                                ).ToList();
-                        foreach (PortalInstance portal1 in localTeleportPortal)
+                        foreach (var (portal1, portal2) in GetPortalConnectionPairs())
                         {
-                            PortalInstance portal2 = localTeleportPortal.Where(portal => portal.pn == portal1.tn).FirstOrDefault();
-                            if (portal2 != null && portal1 != portal2)
-                            {
-                                // Create a unique pair identifier (sort the portal names to ensure consistent ordering)
-                                var pair = portal1.pn.CompareTo(portal2.pn) < 0
-                                    ? (portal1.pn, portal2.pn)
-                                    : (portal2.pn, portal1.pn);
-                                if (processedPairs.Contains(pair))
-                                    return;
-                                // Add the pair to processed pairs
-                                processedPairs.Add(pair);
+                            // Calculate screen positions
+                            int x1 = MultiBoard.VirtualToPhysical(portal1.X, centerPoint.X, hScroll, 0);
+                            int y1 = MultiBoard.VirtualToPhysical(portal1.Y, centerPoint.Y, vScroll, 0);
+                            int x2 = MultiBoard.VirtualToPhysical(portal2.X, centerPoint.X, hScroll, 0);
+                            int y2 = MultiBoard.VirtualToPhysical(portal2.Y, centerPoint.Y, vScroll, 0);
 
-                                // Calculate screen positions
-                                int x1 = MultiBoard.VirtualToPhysical(portal1.X, centerPoint.X, hScroll, 0);
-                                int y1 = MultiBoard.VirtualToPhysical(portal1.Y, centerPoint.Y, vScroll, 0);
-                                int x2 = MultiBoard.VirtualToPhysical(portal2.X, centerPoint.X, hScroll, 0);
-                                int y2 = MultiBoard.VirtualToPhysical(portal2.Y, centerPoint.Y, vScroll, 0);
-
-                                // Draw the line
-                                parent.DrawLine(sprite,
-                                    new Vector2(x1, y1),
-                                    new Vector2(x2, y2),
-                                    portalLineColor);
-                            }
+                            // Draw the line
+                            parent.DrawLine(sprite,
+                                new Vector2(x1, y1),
+                                new Vector2(x2, y2),
+                                portalLineColor);
                         }
                     }
                 }
@@ -304,6 +290,72 @@ namespace HaCreator.MapEditor
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Gets cached portal connection pairs for local teleport portals.
+        /// Rebuilds cache if portals have changed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private List<(PortalInstance, PortalInstance)> GetPortalConnectionPairs()
+        {
+            int currentCount = BoardItems.Portals.Count;
+
+            // Rebuild cache if portal count changed or cache doesn't exist
+            if (_cachedPortalPairs == null || _cachedPortalCount != currentCount)
+            {
+                _cachedPortalPairs = new List<(PortalInstance, PortalInstance)>();
+                _cachedPortalCount = currentCount;
+
+                // Build lookup dictionary for O(1) portal name lookups
+                var portalsByName = new Dictionary<string, PortalInstance>();
+                var localTeleportPortals = new List<PortalInstance>();
+
+                foreach (var portal in BoardItems.Portals)
+                {
+                    if (portal.pt == PortalType.Hidden || portal.pt == PortalType.Invisible)
+                    {
+                        localTeleportPortals.Add(portal);
+                    }
+                    // Store all portals by name for target lookup
+                    if (!string.IsNullOrEmpty(portal.pn) && !portalsByName.ContainsKey(portal.pn))
+                    {
+                        portalsByName[portal.pn] = portal;
+                    }
+                }
+
+                // Build pairs using HashSet to avoid duplicates
+                var processedPairs = new HashSet<(string, string)>();
+                foreach (var portal1 in localTeleportPortals)
+                {
+                    if (string.IsNullOrEmpty(portal1.tn) || !portalsByName.TryGetValue(portal1.tn, out var portal2))
+                        continue;
+                    if (portal1 == portal2)
+                        continue;
+
+                    // Create unique pair identifier
+                    var pair = string.CompareOrdinal(portal1.pn, portal2.pn) < 0
+                        ? (portal1.pn, portal2.pn)
+                        : (portal2.pn, portal1.pn);
+
+                    if (!processedPairs.Contains(pair))
+                    {
+                        processedPairs.Add(pair);
+                        _cachedPortalPairs.Add((portal1, portal2));
+                    }
+                }
+            }
+
+            return _cachedPortalPairs;
+        }
+
+        /// <summary>
+        /// Invalidates the cached portal pairs. Call when portal pn/tn properties change.
+        /// </summary>
+        public void InvalidatePortalPairCache()
+        {
+            _cachedPortalPairs = null;
+            _cachedPortalCount = -1;
         }
 
         public void Dispose()
