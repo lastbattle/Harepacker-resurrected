@@ -1031,74 +1031,78 @@ namespace HaCreator.MapEditor.AI
                 // - Top row is at y (surface level)
                 // - If we have a bottom row, it's below
 
-                // === TOP ROW (enH0) - at the surface Y ===
-                if (topTile != null)
+                // Lock the board during tile additions to prevent concurrent access from render thread
+                lock (board.ParentControl)
                 {
-                    int currentX = startX;
-                    int topTileWidth = topTile.Width;
-
-                    // Place left cap if available
-                    if (leftTile != null)
+                    // === TOP ROW (enH0) - at the surface Y ===
+                    if (topTile != null)
                     {
-                        var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        currentX += leftTile.Width;
-                        tilesAdded++;
+                        int currentX = startX;
+                        int topTileWidth = topTile.Width;
+
+                        // Place left cap if available
+                        if (leftTile != null)
+                        {
+                            var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            currentX += leftTile.Width;
+                            tilesAdded++;
+                        }
+
+                        // Fill with top tiles
+                        int rightWidth = rightTile?.Width ?? 0;
+                        while (currentX + topTileWidth <= endX - rightWidth)
+                        {
+                            var tile = (TileInstance)topTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            currentX += topTileWidth;
+                            tilesAdded++;
+                        }
+
+                        // Place right cap if available
+                        if (rightTile != null && currentX < endX)
+                        {
+                            var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            tilesAdded++;
+                        }
                     }
 
-                    // Fill with top tiles
-                    int rightWidth = rightTile?.Width ?? 0;
-                    while (currentX + topTileWidth <= endX - rightWidth)
+                    // === BOTTOM ROW (enH1) - below the top row ===
+                    if (bottomTile != null && topTile != null)
                     {
-                        var tile = (TileInstance)topTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        currentX += topTileWidth;
-                        tilesAdded++;
-                    }
+                        int bottomY = y + topTile.Height;
+                        int currentX = startX;
+                        int bottomTileWidth = bottomTile.Width;
 
-                    // Place right cap if available
-                    if (rightTile != null && currentX < endX)
-                    {
-                        var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, y, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        tilesAdded++;
-                    }
-                }
+                        // Place left cap if available
+                        if (leftTile != null)
+                        {
+                            var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            currentX += leftTile.Width;
+                            tilesAdded++;
+                        }
 
-                // === BOTTOM ROW (enH1) - below the top row ===
-                if (bottomTile != null && topTile != null)
-                {
-                    int bottomY = y + topTile.Height;
-                    int currentX = startX;
-                    int bottomTileWidth = bottomTile.Width;
+                        // Fill with bottom tiles
+                        int rightWidth = rightTile?.Width ?? 0;
+                        while (currentX + bottomTileWidth <= endX - rightWidth)
+                        {
+                            var tile = (TileInstance)bottomTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            currentX += bottomTileWidth;
+                            tilesAdded++;
+                        }
 
-                    // Place left cap if available
-                    if (leftTile != null)
-                    {
-                        var tile = (TileInstance)leftTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        currentX += leftTile.Width;
-                        tilesAdded++;
+                        // Place right cap if available
+                        if (rightTile != null && currentX < endX)
+                        {
+                            var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
+                            board.BoardItems.TileObjs.Add(tile);
+                            tilesAdded++;
+                        }
                     }
-
-                    // Fill with bottom tiles
-                    int rightWidth = rightTile?.Width ?? 0;
-                    while (currentX + bottomTileWidth <= endX - rightWidth)
-                    {
-                        var tile = (TileInstance)bottomTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        currentX += bottomTileWidth;
-                        tilesAdded++;
-                    }
-
-                    // Place right cap if available
-                    if (rightTile != null && currentX < endX)
-                    {
-                        var tile = (TileInstance)rightTile.CreateInstance(layer, board, currentX, bottomY, 0, layer.zMDefault, false, true);
-                        board.BoardItems.TileObjs.Add(tile);
-                        tilesAdded++;
-                    }
-                }
+                } // End lock
 
                 Log($"Auto-tiled platform from x={startX} to x={endX} at y={y} with {tilesAdded} tiles (2 rows) using '{tileset}'");
                 return true;
@@ -1528,33 +1532,37 @@ namespace HaCreator.MapEditor.AI
             {
                 int platformNumber = GetNextPlatformNumber(layerNum);
 
-                // Create two anchors at start and end X positions, same Y
-                var startAnchor = new FootholdAnchor(board, startX, y, layerNum, platformNumber, true);
-                var endAnchor = new FootholdAnchor(board, endX, y, layerNum, platformNumber, true);
-
-                board.BoardItems.FHAnchors.Add(startAnchor);
-                board.BoardItems.FHAnchors.Add(endAnchor);
-
-                // Create the foothold line connecting them
-                var line = new FootholdLine(board, startAnchor, endAnchor);
-                board.BoardItems.FootholdLines.Add(line);
-
-                // Track for undo if list provided
-                if (undoActions != null)
+                // Lock the board during foothold creation to prevent concurrent access from render thread
+                lock (board.ParentControl)
                 {
-                    undoActions.Add(UndoRedoManager.ItemAdded(startAnchor));
-                    undoActions.Add(UndoRedoManager.ItemAdded(endAnchor));
-                    undoActions.Add(UndoRedoManager.LineAdded(line, startAnchor, endAnchor));
-                }
-                else
-                {
-                    var actions = new List<UndoRedoAction>
+                    // Create two anchors at start and end X positions, same Y
+                    var startAnchor = new FootholdAnchor(board, startX, y, layerNum, platformNumber, true);
+                    var endAnchor = new FootholdAnchor(board, endX, y, layerNum, platformNumber, true);
+
+                    board.BoardItems.FHAnchors.Add(startAnchor);
+                    board.BoardItems.FHAnchors.Add(endAnchor);
+
+                    // Create the foothold line connecting them
+                    var line = new FootholdLine(board, startAnchor, endAnchor);
+                    board.BoardItems.FootholdLines.Add(line);
+
+                    // Track for undo if list provided
+                    if (undoActions != null)
                     {
-                        UndoRedoManager.ItemAdded(startAnchor),
-                        UndoRedoManager.ItemAdded(endAnchor),
-                        UndoRedoManager.LineAdded(line, startAnchor, endAnchor)
-                    };
-                    board.UndoRedoMan.AddUndoBatch(actions);
+                        undoActions.Add(UndoRedoManager.ItemAdded(startAnchor));
+                        undoActions.Add(UndoRedoManager.ItemAdded(endAnchor));
+                        undoActions.Add(UndoRedoManager.LineAdded(line, startAnchor, endAnchor));
+                    }
+                    else
+                    {
+                        var actions = new List<UndoRedoAction>
+                        {
+                            UndoRedoManager.ItemAdded(startAnchor),
+                            UndoRedoManager.ItemAdded(endAnchor),
+                            UndoRedoManager.LineAdded(line, startAnchor, endAnchor)
+                        };
+                        board.UndoRedoMan.AddUndoBatch(actions);
+                    }
                 }
 
                 Log($"Created foothold for tile structure: ({startX}, {y}) to ({endX}, {y}) on layer {layerNum}");

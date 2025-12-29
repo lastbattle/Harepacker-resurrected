@@ -42,19 +42,33 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo Get(string tS, string u, string no)
         {
-            int? mag = InfoTool.GetOptionalInt(Program.InfoManager.TileSets[tS]["info"]["mag"]);
+            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            if (tileSet == null)
+                return null;
+
+            int? mag = InfoTool.GetOptionalInt(tileSet["info"]?["mag"]);
             return Get(tS, u, no, mag);
         }
 
         public static TileInfo GetWithDefaultNo(string tS, string u, string no, string defaultNo)
         {
-            int? mag = InfoTool.GetOptionalInt(Program.InfoManager.TileSets[tS]["info"]["mag"]);
-            WzImageProperty prop = Program.InfoManager.TileSets[tS][u];
+            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            if (tileSet == null)
+                return null;
+
+            int? mag = InfoTool.GetOptionalInt(tileSet["info"]?["mag"]);
+            WzImageProperty prop = tileSet[u];
+            if (prop == null)
+                return null;
+
             WzImageProperty tileInfoProp = prop[no];
             if (tileInfoProp == null)
             {
                 tileInfoProp = prop[defaultNo];
             }
+            if (tileInfoProp == null)
+                return null;
+
             if (tileInfoProp.HCTag == null)
                 tileInfoProp.HCTag = TileInfo.Load((WzCanvasProperty)tileInfoProp, tS, u, no, mag);
             return (TileInfo)tileInfoProp.HCTag;
@@ -63,7 +77,18 @@ namespace HaCreator.MapEditor.Info
         // Optimized version, for cases where you already know the mag (e.g. mass loading tiles of the same tileSet)
         public static TileInfo Get(string tS, string u, string no, int? mag)
         {
-            WzImageProperty tileInfoProp = Program.InfoManager.TileSets[tS][u][no];
+            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            if (tileSet == null)
+                return null;
+
+            WzImageProperty categoryProp = tileSet[u];
+            if (categoryProp == null)
+                return null;
+
+            WzImageProperty tileInfoProp = categoryProp[no];
+            if (tileInfoProp == null)
+                return null;
+
             if (tileInfoProp.HCTag == null)
                 tileInfoProp.HCTag = TileInfo.Load((WzCanvasProperty)tileInfoProp, tS, u, no, mag);
             return (TileInfo)tileInfoProp.HCTag;
