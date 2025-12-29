@@ -28,6 +28,14 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         // Custom property
         private readonly bool disabledBackground; // disabled background for images that are removed from Map.wz/bg, but entry still presist in maps
 
+        // Pre-calculated tile iteration limits (optimization - avoid while loop overhead)
+        private int _cachedMaxHorizontalTiles = 0;
+        private int _cachedMaxVerticalTiles = 0;
+        private int _lastCalcWidth = 0;
+        private int _lastCalcHeight = 0;
+        private int _lastCalcCx = 0;
+        private int _lastCalcCy = 0;
+
         /// <summary>
         /// 
         /// </summary>
@@ -103,7 +111,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         }
 
         /// <summary>
-        /// Input validation for the background data. 
+        /// Input validation for the background data.
         /// </summary>
         private void CheckBGData()
         {
@@ -116,23 +124,46 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             }
         }
 
+        /// <summary>
+        /// Updates the cached max tile counts if screen dimensions or tile spacing changed.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateTileCache(int screenWidth, int screenHeight, int tileCx, int tileCy)
+        {
+            if (screenWidth != _lastCalcWidth || tileCx != _lastCalcCx)
+            {
+                _lastCalcWidth = screenWidth;
+                _lastCalcCx = tileCx;
+                // +2 for partial tiles on edges
+                _cachedMaxHorizontalTiles = tileCx > 0 ? (screenWidth / tileCx) + 2 : 1;
+            }
+            if (screenHeight != _lastCalcHeight || tileCy != _lastCalcCy)
+            {
+                _lastCalcHeight = screenHeight;
+                _lastCalcCy = tileCy;
+                _cachedMaxVerticalTiles = tileCy > 0 ? (screenHeight / tileCy) + 2 : 1;
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawHorizontalCopies(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int simWidth, int x, int y, int cx, IDXObject frame)
         {
             int width = frame.Width;
             Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+
+            // Draw left copies using bounded for loop
             int copyX = x - cx;
-            while (copyX + width > 0)
+            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= cx)
             {
                 Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame);
-                copyX -= cx;
             }
+
+            // Draw right copies using bounded for loop
             copyX = x + cx;
-            while (copyX < simWidth)
+            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += cx)
             {
                 Draw2D(sprite, skeletonMeshRenderer, gameTime, copyX, y, frame);
-                copyX += cx;
             }
         }
 
@@ -142,17 +173,19 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         {
             int height = frame.Height;
             Draw2D(sprite, skeletonMeshRenderer, gameTime, x, y, frame);
+
+            // Draw top copies using bounded for loop
             int copyY = y - cy;
-            while (copyY + height > 0)
+            for (int i = 0; i < _cachedMaxVerticalTiles && copyY + height > 0; i++, copyY -= cy)
             {
                 Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame);
-                copyY -= cy;
             }
+
+            // Draw bottom copies using bounded for loop
             copyY = y + cy;
-            while (copyY < simHeight)
+            for (int i = 0; i < _cachedMaxVerticalTiles && copyY < simHeight; i++, copyY += cy)
             {
                 Draw2D(sprite, skeletonMeshRenderer, gameTime, x, copyY, frame);
-                copyY += cy;
             }
         }
 
@@ -162,17 +195,19 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         {
             int width = frame.Width;
             DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, x, y, cy, frame);
+
+            // Draw left column copies using bounded for loop
             int copyX = x - cx;
-            while (copyX + width > 0)
+            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX + width > 0; i++, copyX -= cx)
             {
                 DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, cy, frame);
-                copyX -= cx;
             }
+
+            // Draw right column copies using bounded for loop
             copyX = x + cx;
-            while (copyX < simWidth)
+            for (int i = 0; i < _cachedMaxHorizontalTiles && copyX < simWidth; i++, copyX += cx)
             {
                 DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, simHeight, copyX, y, cy, frame);
-                copyX += cx;
             }
         }
 
@@ -215,6 +250,9 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int Y = CalculateBackgroundPosY(drawFrame, mapShiftY, centerY, renderParameters.RenderHeight, renderParameters.RenderObjectScaling);
             int _cx = cx == 0 ? drawFrame.Width : cx;
             int _cy = cy == 0 ? drawFrame.Height : cy;
+
+            // Update tile cache if needed (only recalculates when dimensions change)
+            UpdateTileCache(renderParameters.RenderWidth, renderParameters.RenderHeight, _cx, _cy);
 
             switch (type)
             {

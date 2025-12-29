@@ -39,6 +39,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public NpcMovementInfo MovementInfo { get; private set; }
         public bool MovementEnabled { get; set; } = true;
 
+        // Cached mirror boundary (optimization - avoid recalculating every frame)
+        private ReflectionDrawableBoundary _cachedMirrorBoundary = null;
+        private int _lastMirrorCheckX = int.MinValue;
+        private int _lastMirrorCheckY = int.MinValue;
+        private const int MIRROR_CHECK_THRESHOLD = 50;
+
         /// <summary>
         /// Constructor with animation set
         /// </summary>
@@ -310,5 +316,39 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public int CurrentY => MovementEnabled && MovementInfo != null && MovementInfo.CanMove
             ? (int)MovementInfo.Y
             : npcInstance.Y;
+
+        /// <summary>
+        /// Gets the cached mirror boundary for this NPC
+        /// </summary>
+        public ReflectionDrawableBoundary CachedMirrorBoundary => _cachedMirrorBoundary;
+
+        /// <summary>
+        /// Updates the cached mirror boundary if the NPC has moved significantly.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void UpdateMirrorBoundary(Rectangle mirrorBottomRect, ReflectionDrawableBoundary mirrorBottomReflection,
+            Func<int, int, ReflectionDrawableBoundary> checkMirrorFieldData)
+        {
+            int npcX = CurrentX;
+            int npcY = CurrentY;
+
+            int dx = Math.Abs(npcX - _lastMirrorCheckX);
+            int dy = Math.Abs(npcY - _lastMirrorCheckY);
+            if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
+                return;
+
+            _lastMirrorCheckX = npcX;
+            _lastMirrorCheckY = npcY;
+
+            _cachedMirrorBoundary = null;
+            if (mirrorBottomReflection != null && mirrorBottomRect.Contains(new Point(npcX, npcY)))
+            {
+                _cachedMirrorBoundary = mirrorBottomReflection;
+            }
+            else if (checkMirrorFieldData != null)
+            {
+                _cachedMirrorBoundary = checkMirrorFieldData(npcX, npcY);
+            }
+        }
     }
 }

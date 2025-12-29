@@ -5,6 +5,41 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
 {
     /// <summary>
     /// Stores animation frames for different mob actions (stand, move, fly, etc.)
+    /// Used by MobItem to play appropriate animations based on movement state.
+    ///
+    /// <para><b>Animation Lookup System:</b></para>
+    /// <para>
+    /// When GetFrames(action) is called, the lookup follows this priority:
+    /// <list type="number">
+    ///   <item>Exact match for the requested action (e.g., "move" → "move")</item>
+    ///   <item>Fallback aliases (e.g., "move" → "walk", or "walk" → "move")</item>
+    ///   <item>Default "stand" animation</item>
+    ///   <item>Any available animation (last resort)</item>
+    /// </list>
+    /// </para>
+    ///
+    /// <para><b>Common Mob Actions:</b></para>
+    /// <list type="bullet">
+    ///   <item><b>stand</b>: Idle animation when stationary</item>
+    ///   <item><b>move/walk</b>: Walking animation for ground movement</item>
+    ///   <item><b>fly</b>: Flying animation for airborne mobs</item>
+    ///   <item><b>jump</b>: Jump animation (used during jump physics)</item>
+    ///   <item><b>hit1</b>: Damage taken animation</item>
+    ///   <item><b>die1</b>: Death animation</item>
+    ///   <item><b>attack1</b>: Attack animation</item>
+    /// </list>
+    ///
+    /// <para><b>Movement Type Detection:</b></para>
+    /// <para>
+    /// MobMovementInfo uses the CanFly, CanMove, and CanJump properties to determine
+    /// what movement type to use:
+    /// <list type="bullet">
+    ///   <item>CanFly=true → MobMoveType.Fly (floating movement, vertical bobbing)</item>
+    ///   <item>CanJump=true → MobMoveType.Jump (ground + periodic jumps)</item>
+    ///   <item>CanMove=true → MobMoveType.Move (ground walking along footholds)</item>
+    ///   <item>None → MobMoveType.Stand (stationary)</item>
+    /// </list>
+    /// </para>
     /// </summary>
     public class MobAnimationSet
     {

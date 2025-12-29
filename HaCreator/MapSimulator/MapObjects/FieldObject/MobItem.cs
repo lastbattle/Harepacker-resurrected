@@ -29,6 +29,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         private bool _isJumpingAnimation = false;     // Currently playing jump animation
         private bool _jumpAnimationCompleted = false; // Jump animation has played through once (hold last frame)
 
+        // Cached mirror boundary (optimization - avoid recalculating every frame)
+        private ReflectionDrawableBoundary _cachedMirrorBoundary = null;
+        private int _lastMirrorCheckX = int.MinValue;
+        private int _lastMirrorCheckY = int.MinValue;
+        private const int MIRROR_CHECK_THRESHOLD = 50; // Only recheck if moved more than this
+
         /// <summary>
         /// Movement information for this mob (position, direction, speed, foothold)
         /// </summary>
@@ -417,5 +423,45 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         public int CurrentY => MovementEnabled && MovementInfo != null
             ? (int)MovementInfo.Y
             : mobInstance.Y;
+
+        /// <summary>
+        /// Gets the cached mirror boundary for this mob
+        /// </summary>
+        public ReflectionDrawableBoundary CachedMirrorBoundary => _cachedMirrorBoundary;
+
+        /// <summary>
+        /// Updates the cached mirror boundary if the mob has moved significantly.
+        /// Call this once per frame to avoid redundant boundary checks.
+        /// </summary>
+        /// <param name="mirrorBottomRect">Mirror bottom rectangle</param>
+        /// <param name="mirrorBottomReflection">Mirror bottom reflection info</param>
+        /// <param name="checkMirrorFieldData">Function to check mirror field data boundaries</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void UpdateMirrorBoundary(Rectangle mirrorBottomRect, ReflectionDrawableBoundary mirrorBottomReflection,
+            Func<int, int, ReflectionDrawableBoundary> checkMirrorFieldData)
+        {
+            int mobX = CurrentX;
+            int mobY = CurrentY;
+
+            // Only recalculate if mob has moved significantly
+            int dx = Math.Abs(mobX - _lastMirrorCheckX);
+            int dy = Math.Abs(mobY - _lastMirrorCheckY);
+            if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
+                return;
+
+            _lastMirrorCheckX = mobX;
+            _lastMirrorCheckY = mobY;
+
+            // Check mirror boundaries
+            _cachedMirrorBoundary = null;
+            if (mirrorBottomReflection != null && mirrorBottomRect.Contains(new Point(mobX, mobY)))
+            {
+                _cachedMirrorBoundary = mirrorBottomReflection;
+            }
+            else if (checkMirrorFieldData != null)
+            {
+                _cachedMirrorBoundary = checkMirrorFieldData(mobX, mobY);
+            }
+        }
     }
 }
