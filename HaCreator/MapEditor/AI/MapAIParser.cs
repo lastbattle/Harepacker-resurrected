@@ -220,6 +220,92 @@ namespace HaCreator.MapEditor.AI
                     ParseVRProperties(commandText, command);
                 }
 
+                // Parse new map property commands
+                if (command.Type == CommandType.SetReturnMap)
+                {
+                    ParseReturnMapProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetMobRate)
+                {
+                    ParseMobRateProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetFieldType)
+                {
+                    ParseFieldTypeProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetTimeLimit)
+                {
+                    ParseTimeLimitProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetLevelLimit)
+                {
+                    ParseLevelLimitProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetScript)
+                {
+                    ParseScriptProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetEffect)
+                {
+                    ParseEffectProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetHelp)
+                {
+                    ParseHelpProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetMapDesc)
+                {
+                    ParseMapDescProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetDropSettings)
+                {
+                    ParseDropProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetDecaySettings)
+                {
+                    ParseDecayProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetRecovery)
+                {
+                    ParseRecoveryProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetMinimapRect)
+                {
+                    ParseMinimapRectProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetPatrolRange)
+                {
+                    ParsePatrolRangeProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetRespawnTime)
+                {
+                    ParseRespawnTimeProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetTeam)
+                {
+                    ParseTeamProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetLayerTileset)
+                {
+                    ParseLayerTilesetProperties(commandText, command);
+                }
+                if (command.Type == CommandType.SetZ)
+                {
+                    ParseSetZProperties(commandText, command);
+                }
+                if (command.Type == CommandType.Rename)
+                {
+                    ParseRenameProperties(commandText, command);
+                }
+
+                // Parse tooltip properties
+                if (command.Type == CommandType.AddToolTip ||
+                    command.Type == CommandType.ModifyToolTip ||
+                    command.Type == CommandType.RemoveToolTip)
+                {
+                    ParseToolTipProperties(commandText, command);
+                }
+
                 command.IsValid = true;
             }
             catch (Exception ex)
@@ -265,6 +351,15 @@ namespace HaCreator.MapEditor.AI
                 return CommandType.TileStructure;
             if (normalized.StartsWith("TILE PLATFORM"))
                 return CommandType.TilePlatform;
+
+            // ToolTip commands (check before generic ADD/MODIFY)
+            if (normalized.StartsWith("ADD TOOLTIP") || normalized.StartsWith("CREATE TOOLTIP"))
+                return CommandType.AddToolTip;
+            if (normalized.StartsWith("REMOVE TOOLTIP") || normalized.StartsWith("DELETE TOOLTIP"))
+                return CommandType.RemoveToolTip;
+            if (normalized.StartsWith("MODIFY TOOLTIP") || normalized.StartsWith("CHANGE TOOLTIP") || normalized.StartsWith("SET TOOLTIP"))
+                return CommandType.ModifyToolTip;
+
             if (normalized.StartsWith("ADD") || normalized.StartsWith("CREATE") || normalized.StartsWith("PLACE"))
                 return CommandType.Add;
             if (normalized.StartsWith("REMOVE") || normalized.StartsWith("DELETE"))
@@ -289,6 +384,59 @@ namespace HaCreator.MapEditor.AI
                 return CommandType.SetVR;
             if (normalized.StartsWith("CLEAR VR"))
                 return CommandType.ClearVR;
+
+            // New map property commands
+            if (normalized.StartsWith("SET RETURN_MAP") || normalized.StartsWith("SET RETURNMAP"))
+                return CommandType.SetReturnMap;
+            if (normalized.StartsWith("SET MOB_RATE") || normalized.StartsWith("SET MOBRATE"))
+                return CommandType.SetMobRate;
+            if (normalized.StartsWith("SET FIELD_TYPE") || normalized.StartsWith("SET FIELDTYPE"))
+                return CommandType.SetFieldType;
+            if (normalized.StartsWith("SET TIME_LIMIT") || normalized.StartsWith("SET TIMELIMIT"))
+                return CommandType.SetTimeLimit;
+            if (normalized.StartsWith("SET LEVEL_LIMIT") || normalized.StartsWith("SET LEVELLIMIT"))
+                return CommandType.SetLevelLimit;
+            if (normalized.StartsWith("SET SCRIPT"))
+                return CommandType.SetScript;
+            if (normalized.StartsWith("SET EFFECT"))
+                return CommandType.SetEffect;
+            if (normalized.StartsWith("SET HELP"))
+                return CommandType.SetHelp;
+            if (normalized.StartsWith("SET MAP_DESC") || normalized.StartsWith("SET MAPDESC") || normalized.StartsWith("SET DESCRIPTION"))
+                return CommandType.SetMapDesc;
+            if (normalized.StartsWith("SET DROP"))
+                return CommandType.SetDropSettings;
+            if (normalized.StartsWith("SET DECAY"))
+                return CommandType.SetDecaySettings;
+            if (normalized.StartsWith("SET RECOVERY"))
+                return CommandType.SetRecovery;
+
+            // Minimap commands
+            if (normalized.StartsWith("SET MINIMAP"))
+                return CommandType.SetMinimapRect;
+            if (normalized.StartsWith("CLEAR MINIMAP"))
+                return CommandType.ClearMinimapRect;
+
+            // Life/Spawn commands
+            if (normalized.StartsWith("SET PATROL"))
+                return CommandType.SetPatrolRange;
+            if (normalized.StartsWith("SET RESPAWN"))
+                return CommandType.SetRespawnTime;
+            if (normalized.StartsWith("SET TEAM"))
+                return CommandType.SetTeam;
+
+            // Layer management
+            if (normalized.StartsWith("SET LAYER_TILESET") || normalized.StartsWith("SET TILESET"))
+                return CommandType.SetLayerTileset;
+
+            // Z-Order commands
+            if (normalized.StartsWith("SET Z"))
+                return CommandType.SetZ;
+
+            // Rename
+            if (normalized.StartsWith("RENAME"))
+                return CommandType.Rename;
+
             if (normalized.StartsWith("SET"))
                 return CommandType.SetProperty;
             if (normalized.StartsWith("CLEAR"))
@@ -776,6 +924,364 @@ namespace HaCreator.MapEditor.AI
                 command.Parameters["bottom"] = int.Parse(bottomMatch.Groups[1].Value);
             }
         }
+
+        #region New Command Property Parsers
+
+        private void ParseReturnMapProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET RETURN_MAP return=N forced=N
+            var returnMatch = Regex.Match(commandText, @"RETURN\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (returnMatch.Success)
+                command.Parameters["return"] = int.Parse(returnMatch.Groups[1].Value);
+
+            var forcedMatch = Regex.Match(commandText, @"FORCED\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (forcedMatch.Success)
+                command.Parameters["forced"] = int.Parse(forcedMatch.Groups[1].Value);
+
+            // Also support: SET RETURN_MAP 100000000 (single value sets both)
+            if (!returnMatch.Success && !forcedMatch.Success)
+            {
+                var singleMatch = Regex.Match(commandText, @"RETURN_?MAP\s+(\d+)", RegexOptions.IgnoreCase);
+                if (singleMatch.Success)
+                {
+                    int mapId = int.Parse(singleMatch.Groups[1].Value);
+                    command.Parameters["return"] = mapId;
+                    command.Parameters["forced"] = mapId;
+                }
+            }
+        }
+
+        private void ParseMobRateProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET MOB_RATE rate=N or SET MOB_RATE N
+            var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
+            if (rateMatch.Success)
+            {
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"MOB_?RATE\s+([\d.]+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseFieldTypeProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET FIELD_TYPE type=Name or SET FIELD_TYPE Name
+            var typeMatch = Regex.Match(commandText, @"TYPE\s*=\s*(\w+)", RegexOptions.IgnoreCase);
+            if (typeMatch.Success)
+            {
+                command.Parameters["type"] = typeMatch.Groups[1].Value;
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"FIELD_?TYPE\s+(\w+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["type"] = valueMatch.Groups[1].Value;
+            }
+        }
+
+        private void ParseTimeLimitProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET TIME_LIMIT seconds=N or SET TIME_LIMIT N
+            var secondsMatch = Regex.Match(commandText, @"SECONDS\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (secondsMatch.Success)
+            {
+                command.Parameters["seconds"] = int.Parse(secondsMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"TIME_?LIMIT\s+(\d+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["seconds"] = int.Parse(valueMatch.Groups[1].Value);
+            }
+
+            if (commandText.ToUpperInvariant().Contains("CLEAR"))
+                command.Parameters["clear"] = true;
+        }
+
+        private void ParseLevelLimitProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET LEVEL_LIMIT min=N force=N
+            var minMatch = Regex.Match(commandText, @"MIN\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (minMatch.Success)
+                command.Parameters["min"] = int.Parse(minMatch.Groups[1].Value);
+
+            var forceMatch = Regex.Match(commandText, @"FORCE\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (forceMatch.Success)
+                command.Parameters["force"] = int.Parse(forceMatch.Groups[1].Value);
+
+            // Single value sets min
+            if (!minMatch.Success)
+            {
+                var valueMatch = Regex.Match(commandText, @"LEVEL_?LIMIT\s+(\d+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["min"] = int.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseScriptProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET SCRIPT onUserEnter="script" onFirstUserEnter="script"
+            var onUserMatch = Regex.Match(commandText, @"ONUSERENTER\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (onUserMatch.Success)
+                command.Parameters["onUserEnter"] = onUserMatch.Groups[1].Value;
+
+            var onFirstMatch = Regex.Match(commandText, @"ONFIRSTUSERENTER\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (onFirstMatch.Success)
+                command.Parameters["onFirstUserEnter"] = onFirstMatch.Groups[1].Value;
+
+            // Single quoted script name
+            var quotedMatches = QuotedStringPattern.Matches(commandText);
+            if (quotedMatches.Count > 0 && !onUserMatch.Success)
+                command.Parameters["onUserEnter"] = quotedMatches[0].Groups[1].Value;
+        }
+
+        private void ParseEffectProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET EFFECT "effectName"
+            var quotedMatches = QuotedStringPattern.Matches(commandText);
+            if (quotedMatches.Count > 0)
+                command.Parameters["effect"] = quotedMatches[0].Groups[1].Value;
+        }
+
+        private void ParseHelpProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET HELP "help text"
+            var quotedMatches = QuotedStringPattern.Matches(commandText);
+            if (quotedMatches.Count > 0)
+                command.Parameters["text"] = quotedMatches[0].Groups[1].Value;
+        }
+
+        private void ParseMapDescProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET MAP_DESC "description"
+            var quotedMatches = QuotedStringPattern.Matches(commandText);
+            if (quotedMatches.Count > 0)
+                command.Parameters["desc"] = quotedMatches[0].Groups[1].Value;
+        }
+
+        private void ParseDropProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET DROP expire=N rate=N
+            var expireMatch = Regex.Match(commandText, @"EXPIRE\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (expireMatch.Success)
+                command.Parameters["expire"] = int.Parse(expireMatch.Groups[1].Value);
+
+            var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
+            if (rateMatch.Success)
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+        }
+
+        private void ParseDecayProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET DECAY hp=N interval=N
+            var hpMatch = Regex.Match(commandText, @"HP\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (hpMatch.Success)
+                command.Parameters["hp"] = int.Parse(hpMatch.Groups[1].Value);
+
+            var intervalMatch = Regex.Match(commandText, @"INTERVAL\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (intervalMatch.Success)
+                command.Parameters["interval"] = int.Parse(intervalMatch.Groups[1].Value);
+        }
+
+        private void ParseRecoveryProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET RECOVERY rate=N or SET RECOVERY N
+            var rateMatch = Regex.Match(commandText, @"RATE\s*=\s*([\d.]+)", RegexOptions.IgnoreCase);
+            if (rateMatch.Success)
+            {
+                command.Parameters["rate"] = float.Parse(rateMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"RECOVERY\s+([\d.]+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["rate"] = float.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseMinimapRectProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET MINIMAP left=N top=N right=N bottom=N
+            var leftMatch = Regex.Match(commandText, @"LEFT\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (leftMatch.Success)
+                command.Parameters["left"] = int.Parse(leftMatch.Groups[1].Value);
+
+            var topMatch = Regex.Match(commandText, @"TOP\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (topMatch.Success)
+                command.Parameters["top"] = int.Parse(topMatch.Groups[1].Value);
+
+            var rightMatch = Regex.Match(commandText, @"RIGHT\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (rightMatch.Success)
+                command.Parameters["right"] = int.Parse(rightMatch.Groups[1].Value);
+
+            var bottomMatch = Regex.Match(commandText, @"BOTTOM\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (bottomMatch.Success)
+                command.Parameters["bottom"] = int.Parse(bottomMatch.Groups[1].Value);
+        }
+
+        private void ParsePatrolRangeProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET PATROL rx0=N rx1=N at (x,y) mob|npc
+            var rx0Match = Regex.Match(commandText, @"RX0\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (rx0Match.Success)
+                command.Parameters["rx0"] = int.Parse(rx0Match.Groups[1].Value);
+
+            var rx1Match = Regex.Match(commandText, @"RX1\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (rx1Match.Success)
+                command.Parameters["rx1"] = int.Parse(rx1Match.Groups[1].Value);
+        }
+
+        private void ParseRespawnTimeProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET RESPAWN time=N at (x,y)
+            var timeMatch = Regex.Match(commandText, @"TIME\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (timeMatch.Success)
+            {
+                command.Parameters["time"] = int.Parse(timeMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"RESPAWN\s+(\d+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["time"] = int.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseTeamProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET TEAM team=N at (x,y)
+            var teamMatch = Regex.Match(commandText, @"TEAM\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (teamMatch.Success)
+            {
+                command.Parameters["team"] = int.Parse(teamMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"SET\s+TEAM\s+(\d+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["team"] = int.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseLayerTilesetProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET LAYER_TILESET layer=N tileset="name"
+            var layerMatch = Regex.Match(commandText, @"LAYER\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (layerMatch.Success)
+                command.Parameters["layer"] = int.Parse(layerMatch.Groups[1].Value);
+
+            var tilesetMatch = Regex.Match(commandText, @"TILESET\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (tilesetMatch.Success)
+            {
+                command.Parameters["tileset"] = tilesetMatch.Groups[1].Value;
+            }
+            else
+            {
+                var quotedMatches = QuotedStringPattern.Matches(commandText);
+                if (quotedMatches.Count > 0)
+                    command.Parameters["tileset"] = quotedMatches[0].Groups[1].Value;
+            }
+        }
+
+        private void ParseSetZProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET Z z=N at (x,y) type
+            var zMatch = Regex.Match(commandText, @"Z\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (zMatch.Success)
+            {
+                command.Parameters["z"] = int.Parse(zMatch.Groups[1].Value);
+            }
+            else
+            {
+                var valueMatch = Regex.Match(commandText, @"SET\s+Z\s+(-?\d+)", RegexOptions.IgnoreCase);
+                if (valueMatch.Success)
+                    command.Parameters["z"] = int.Parse(valueMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseRenameProperties(string commandText, MapAICommand command)
+        {
+            // Parse: RENAME portal "oldName" to "newName"
+            var quotedMatches = QuotedStringPattern.Matches(commandText);
+            if (quotedMatches.Count >= 2)
+            {
+                command.Parameters["from"] = quotedMatches[0].Groups[1].Value;
+                command.Parameters["to"] = quotedMatches[1].Groups[1].Value;
+            }
+        }
+
+        private void ParseToolTipProperties(string commandText, MapAICommand command)
+        {
+            // Parse: ADD TOOLTIP at (x, y) size=(w, h) title="title" desc="description"
+            // Parse: MODIFY TOOLTIP at (x, y) title="new title" desc="new desc"
+            // Parse: MODIFY TOOLTIP "old title" title="new title"
+            // Parse: REMOVE TOOLTIP at (x, y)
+            // Parse: REMOVE TOOLTIP "title"
+
+            // Size
+            var sizeMatch = Regex.Match(commandText, @"SIZE\s*[=:]\s*\(\s*(\d+)\s*[,x]\s*(\d+)\s*\)", RegexOptions.IgnoreCase);
+            if (sizeMatch.Success)
+            {
+                command.Parameters["width"] = int.Parse(sizeMatch.Groups[1].Value);
+                command.Parameters["height"] = int.Parse(sizeMatch.Groups[2].Value);
+            }
+            else
+            {
+                // Try individual width/height
+                var widthMatch = Regex.Match(commandText, @"WIDTH\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+                if (widthMatch.Success)
+                    command.Parameters["width"] = int.Parse(widthMatch.Groups[1].Value);
+                var heightMatch = Regex.Match(commandText, @"HEIGHT\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+                if (heightMatch.Success)
+                    command.Parameters["height"] = int.Parse(heightMatch.Groups[1].Value);
+            }
+
+            // Title (quoted)
+            var titleMatch = Regex.Match(commandText, @"TITLE\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (titleMatch.Success)
+                command.Parameters["title"] = titleMatch.Groups[1].Value;
+
+            // Description (quoted)
+            var descMatch = Regex.Match(commandText, @"DESC\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase);
+            if (descMatch.Success)
+                command.Parameters["desc"] = descMatch.Groups[1].Value;
+
+            // Old title for modify (quoted string not matched by title=)
+            if (command.Type == CommandType.ModifyToolTip || command.Type == CommandType.RemoveToolTip)
+            {
+                var quotedMatches = QuotedStringPattern.Matches(commandText);
+                foreach (Match qm in quotedMatches)
+                {
+                    string quoted = qm.Groups[1].Value;
+                    // If it's not the title= or desc= value, it might be the old title
+                    if (!command.Parameters.ContainsKey("title") || !command.Parameters["title"].ToString().Equals(quoted, StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!command.Parameters.ContainsKey("desc") || !command.Parameters["desc"].ToString().Equals(quoted, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!command.Parameters.ContainsKey("old_title"))
+                                command.Parameters["old_title"] = quoted;
+                        }
+                    }
+                }
+
+                // For remove, if we have a quoted string and no old_title, use first quoted as title
+                if (command.Type == CommandType.RemoveToolTip && quotedMatches.Count > 0 && !command.Parameters.ContainsKey("old_title"))
+                {
+                    command.Parameters["title"] = quotedMatches[0].Groups[1].Value;
+                }
+            }
+
+            // Index (for referencing by #)
+            var indexMatch = Regex.Match(commandText, @"#(\d+)", RegexOptions.IgnoreCase);
+            if (indexMatch.Success)
+                command.Parameters["index"] = int.Parse(indexMatch.Groups[1].Value);
+        }
+
+        #endregion
 
         /// <summary>
         /// Generate help text describing the command format

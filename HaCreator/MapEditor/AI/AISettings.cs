@@ -68,8 +68,10 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableModels = new[]
         {
             DEFAULT_MODEL,
+            "google/gemini-3-pro-preview",
             "openai/gpt-5.2",
-            "anthropic/claude-sonnet-4.5"
+            "anthropic/claude-sonnet-4.5",
+            "anthropic/claude-opus-4.5"
         };
 
         private static void EnsureLoaded()

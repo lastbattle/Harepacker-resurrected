@@ -543,6 +543,124 @@ namespace HaCreator.MapEditor.AI
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Get list of available mobs (monsters) from the loaded data
+        /// </summary>
+        /// <param name="search">Optional search term to filter by name (case-insensitive)</param>
+        /// <param name="limit">Maximum number of results to return</param>
+        public static string GetMobList(string search = null, int limit = 50)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## Available Mobs");
+            sb.AppendLine("Format: ID = Name");
+            sb.AppendLine();
+
+            var mobCache = Program.InfoManager.MobNameCache;
+            if (mobCache == null || mobCache.Count == 0)
+            {
+                sb.AppendLine("No mobs loaded. Make sure Mob.wz is loaded.");
+                return sb.ToString();
+            }
+
+            IEnumerable<KeyValuePair<string, string>> mobs = mobCache;
+
+            // Apply search filter if provided
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchLower = search.ToLowerInvariant();
+                mobs = mobs.Where(m =>
+                    m.Key.Contains(search) ||
+                    (m.Value != null && m.Value.ToLowerInvariant().Contains(searchLower)));
+                sb.AppendLine($"Search: \"{search}\"");
+                sb.AppendLine();
+            }
+
+            var mobList = mobs.OrderBy(m => m.Key).Take(limit).ToList();
+
+            if (mobList.Count == 0)
+            {
+                sb.AppendLine("No mobs found matching the search criteria.");
+                return sb.ToString();
+            }
+
+            sb.AppendLine($"Showing {mobList.Count} of {mobCache.Count} total mobs:");
+            sb.AppendLine();
+
+            foreach (var mob in mobList)
+            {
+                var name = string.IsNullOrEmpty(mob.Value) ? "(unnamed)" : mob.Value;
+                sb.AppendLine($"  {mob.Key} = {name}");
+            }
+
+            if (mobList.Count == limit && mobCache.Count > limit)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"... and {mobCache.Count - limit} more. Use search to filter or increase limit.");
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Get list of available NPCs from the loaded data
+        /// </summary>
+        /// <param name="search">Optional search term to filter by name or function (case-insensitive)</param>
+        /// <param name="limit">Maximum number of results to return</param>
+        public static string GetNpcList(string search = null, int limit = 50)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("## Available NPCs");
+            sb.AppendLine("Format: ID = Name [Function]");
+            sb.AppendLine();
+
+            var npcCache = Program.InfoManager.NpcNameCache;
+            if (npcCache == null || npcCache.Count == 0)
+            {
+                sb.AppendLine("No NPCs loaded. Make sure NPC.wz is loaded.");
+                return sb.ToString();
+            }
+
+            IEnumerable<KeyValuePair<string, Tuple<string, string>>> npcs = npcCache;
+
+            // Apply search filter if provided
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var searchLower = search.ToLowerInvariant();
+                npcs = npcs.Where(n =>
+                    n.Key.Contains(search) ||
+                    (n.Value?.Item1 != null && n.Value.Item1.ToLowerInvariant().Contains(searchLower)) ||
+                    (n.Value?.Item2 != null && n.Value.Item2.ToLowerInvariant().Contains(searchLower)));
+                sb.AppendLine($"Search: \"{search}\"");
+                sb.AppendLine();
+            }
+
+            var npcList = npcs.OrderBy(n => n.Key).Take(limit).ToList();
+
+            if (npcList.Count == 0)
+            {
+                sb.AppendLine("No NPCs found matching the search criteria.");
+                return sb.ToString();
+            }
+
+            sb.AppendLine($"Showing {npcList.Count} of {npcCache.Count} total NPCs:");
+            sb.AppendLine();
+
+            foreach (var npc in npcList)
+            {
+                var name = string.IsNullOrEmpty(npc.Value?.Item1) ? "(unnamed)" : npc.Value.Item1;
+                var func = string.IsNullOrEmpty(npc.Value?.Item2) ? "" : $" [{npc.Value.Item2}]";
+                sb.AppendLine($"  {npc.Key} = {name}{func}");
+            }
+
+            if (npcList.Count == limit && npcCache.Count > limit)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"... and {npcCache.Count - limit} more. Use search to filter or increase limit.");
+            }
+
+            return sb.ToString();
+        }
+
         #region Helper Methods
 
         private static string GetTilesetCategory(string tilesetName)

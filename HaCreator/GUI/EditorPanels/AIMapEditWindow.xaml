@@ -161,7 +161,7 @@
                     <RowDefinition Height="5"/>
                     <RowDefinition Height="*" MinHeight="80"/>
                     <RowDefinition Height="5"/>
-                    <RowDefinition Height="Auto" MinHeight="80" MaxHeight="150"/>
+                    <RowDefinition Height="120"/>
                 </Grid.RowDefinitions>
 
                 <!-- Instructions Panel -->
@@ -172,8 +172,19 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="1. Enter Instructions:"
-                               Style="{StaticResource SectionLabelStyle}"/>
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="1. Enter Instructions:"
+                                   Style="{StaticResource SectionLabelStyle}"/>
+                        <Button x:Name="btnRunTests" Grid.Column="1" Content="Run Tests"
+                                Style="{StaticResource ToolbarButtonStyle}"
+                                Height="22" Padding="8,2" Margin="0"
+                                Click="BtnRunTests_Click"
+                                ToolTip="Run automated tests to verify AI agent capabilities"/>
+                    </Grid>
                     <TextBox x:Name="txtInstructions" Grid.Row="1"
                              AcceptsReturn="True"
                              TextWrapping="Wrap"
@@ -181,7 +192,7 @@
                              FontFamily="Segoe UI"
                              FontSize="12"
                              TextChanged="TxtInstructions_TextChanged"
-                             Text="Add a maze like platform in the middle of the map, any tile you like."/>
+                             Text="Add a maze like platform in the middle of the map, any tile you like, and maybe 10 orange mushroom and snails all around the map."/>
                     <Button x:Name="btnProcessAI" Grid.Row="2"
                             Content="Process with AI"
                             Style="{StaticResource PrimaryButtonStyle}"
@@ -245,7 +256,7 @@
                     <TextBox x:Name="txtLog" Grid.Row="1"
                              IsReadOnly="True"
                              AcceptsReturn="True"
-                             TextWrapping="NoWrap"
+                             TextWrapping="Wrap"
                              HorizontalScrollBarVisibility="Auto"
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="Consolas"

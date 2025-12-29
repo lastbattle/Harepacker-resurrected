@@ -85,6 +85,67 @@ namespace HaCreator.MapEditor.AI
                         return ExecuteSetVR(command);
                     case CommandType.ClearVR:
                         return ExecuteClearVR(command);
+
+                    // New map property commands
+                    case CommandType.SetReturnMap:
+                        return ExecuteSetReturnMap(command);
+                    case CommandType.SetMobRate:
+                        return ExecuteSetMobRate(command);
+                    case CommandType.SetFieldType:
+                        return ExecuteSetFieldType(command);
+                    case CommandType.SetTimeLimit:
+                        return ExecuteSetTimeLimit(command);
+                    case CommandType.SetLevelLimit:
+                        return ExecuteSetLevelLimit(command);
+                    case CommandType.SetScript:
+                        return ExecuteSetScript(command);
+                    case CommandType.SetEffect:
+                        return ExecuteSetEffect(command);
+                    case CommandType.SetHelp:
+                        return ExecuteSetHelp(command);
+                    case CommandType.SetMapDesc:
+                        return ExecuteSetMapDesc(command);
+                    case CommandType.SetDropSettings:
+                        return ExecuteSetDropSettings(command);
+                    case CommandType.SetDecaySettings:
+                        return ExecuteSetDecaySettings(command);
+                    case CommandType.SetRecovery:
+                        return ExecuteSetRecovery(command);
+
+                    // Minimap commands
+                    case CommandType.SetMinimapRect:
+                        return ExecuteSetMinimapRect(command);
+                    case CommandType.ClearMinimapRect:
+                        return ExecuteClearMinimapRect(command);
+
+                    // Life/Spawn commands
+                    case CommandType.SetPatrolRange:
+                        return ExecuteSetPatrolRange(command);
+                    case CommandType.SetRespawnTime:
+                        return ExecuteSetRespawnTime(command);
+                    case CommandType.SetTeam:
+                        return ExecuteSetTeam(command);
+
+                    // Layer management
+                    case CommandType.SetLayerTileset:
+                        return ExecuteSetLayerTileset(command);
+
+                    // Z-Order commands
+                    case CommandType.SetZ:
+                        return ExecuteSetZ(command);
+
+                    // Miscellaneous
+                    case CommandType.Rename:
+                        return ExecuteRename(command);
+
+                    // ToolTip commands
+                    case CommandType.AddToolTip:
+                        return ExecuteAddToolTip(command);
+                    case CommandType.RemoveToolTip:
+                        return ExecuteRemoveToolTip(command);
+                    case CommandType.ModifyToolTip:
+                        return ExecuteModifyToolTip(command);
+
                     default:
                         Log($"Unsupported command type: {command.Type}");
                         return false;
@@ -2545,6 +2606,597 @@ namespace HaCreator.MapEditor.AI
             }
 
             Log("Cleared VR (viewing range)");
+            return true;
+        }
+
+        #endregion
+
+        #region New Map Property Commands
+
+        private bool ExecuteSetReturnMap(MapAICommand command)
+        {
+            var info = board.MapInfo;
+
+            if (command.Parameters.TryGetValue("return", out var returnObj))
+            {
+                info.returnMap = Convert.ToInt32(returnObj);
+                Log($"Set returnMap to {info.returnMap}");
+            }
+
+            if (command.Parameters.TryGetValue("forced", out var forcedObj))
+            {
+                info.forcedReturn = Convert.ToInt32(forcedObj);
+                Log($"Set forcedReturn to {info.forcedReturn}");
+            }
+
+            return true;
+        }
+
+        private bool ExecuteSetMobRate(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("rate", out var rateObj))
+            {
+                Log("SetMobRate requires 'rate' parameter");
+                return false;
+            }
+
+            board.MapInfo.mobRate = Convert.ToSingle(rateObj);
+            Log($"Set mobRate to {board.MapInfo.mobRate}");
+            return true;
+        }
+
+        private bool ExecuteSetFieldType(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("type", out var typeObj))
+            {
+                Log("SetFieldType requires 'type' parameter");
+                return false;
+            }
+
+            if (typeObj is string typeStr && Enum.TryParse<FieldType>(typeStr, true, out var fieldType))
+            {
+                board.MapInfo.fieldType = fieldType;
+                Log($"Set fieldType to {fieldType}");
+                return true;
+            }
+            else if (int.TryParse(typeObj.ToString(), out int typeInt))
+            {
+                board.MapInfo.fieldType = (FieldType)typeInt;
+                Log($"Set fieldType to {(FieldType)typeInt}");
+                return true;
+            }
+
+            Log($"Invalid field type: {typeObj}");
+            return false;
+        }
+
+        private bool ExecuteSetTimeLimit(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("seconds", out var secondsObj))
+            {
+                // Allow clearing
+                if (command.Parameters.TryGetValue("clear", out var clearObj) && Convert.ToBoolean(clearObj))
+                {
+                    board.MapInfo.timeLimit = null;
+                    Log("Cleared timeLimit");
+                    return true;
+                }
+                Log("SetTimeLimit requires 'seconds' parameter");
+                return false;
+            }
+
+            board.MapInfo.timeLimit = Convert.ToInt32(secondsObj);
+            Log($"Set timeLimit to {board.MapInfo.timeLimit} seconds");
+            return true;
+        }
+
+        private bool ExecuteSetLevelLimit(MapAICommand command)
+        {
+            if (command.Parameters.TryGetValue("min", out var minObj))
+            {
+                board.MapInfo.lvLimit = Convert.ToInt32(minObj);
+                Log($"Set lvLimit to {board.MapInfo.lvLimit}");
+            }
+
+            if (command.Parameters.TryGetValue("force", out var forceObj))
+            {
+                board.MapInfo.lvForceMove = Convert.ToInt32(forceObj);
+                Log($"Set lvForceMove to {board.MapInfo.lvForceMove}");
+            }
+
+            return true;
+        }
+
+        private bool ExecuteSetScript(MapAICommand command)
+        {
+            if (command.Parameters.TryGetValue("onUserEnter", out var onUserObj))
+            {
+                board.MapInfo.onUserEnter = onUserObj?.ToString();
+                Log($"Set onUserEnter to \"{board.MapInfo.onUserEnter}\"");
+            }
+
+            if (command.Parameters.TryGetValue("onFirstUserEnter", out var onFirstObj))
+            {
+                board.MapInfo.onFirstUserEnter = onFirstObj?.ToString();
+                Log($"Set onFirstUserEnter to \"{board.MapInfo.onFirstUserEnter}\"");
+            }
+
+            return true;
+        }
+
+        private bool ExecuteSetEffect(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("effect", out var effectObj))
+            {
+                Log("SetEffect requires 'effect' parameter");
+                return false;
+            }
+
+            board.MapInfo.effect = effectObj?.ToString();
+            Log($"Set effect to \"{board.MapInfo.effect}\"");
+            return true;
+        }
+
+        private bool ExecuteSetHelp(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("text", out var textObj))
+            {
+                Log("SetHelp requires 'text' parameter");
+                return false;
+            }
+
+            board.MapInfo.help = textObj?.ToString();
+            Log($"Set help text to \"{board.MapInfo.help}\"");
+            return true;
+        }
+
+        private bool ExecuteSetMapDesc(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("desc", out var descObj))
+            {
+                Log("SetMapDesc requires 'desc' parameter");
+                return false;
+            }
+
+            board.MapInfo.mapDesc = descObj?.ToString();
+            Log($"Set map description to \"{board.MapInfo.mapDesc}\"");
+            return true;
+        }
+
+        private bool ExecuteSetDropSettings(MapAICommand command)
+        {
+            if (command.Parameters.TryGetValue("expire", out var expireObj))
+            {
+                board.MapInfo.dropExpire = Convert.ToInt32(expireObj);
+                Log($"Set dropExpire to {board.MapInfo.dropExpire} seconds");
+            }
+
+            if (command.Parameters.TryGetValue("rate", out var rateObj))
+            {
+                board.MapInfo.dropRate = Convert.ToSingle(rateObj);
+                Log($"Set dropRate to {board.MapInfo.dropRate}");
+            }
+
+            return true;
+        }
+
+        private bool ExecuteSetDecaySettings(MapAICommand command)
+        {
+            if (command.Parameters.TryGetValue("hp", out var hpObj))
+            {
+                board.MapInfo.decHP = Convert.ToInt32(hpObj);
+                Log($"Set decHP to {board.MapInfo.decHP}");
+            }
+
+            if (command.Parameters.TryGetValue("interval", out var intervalObj))
+            {
+                board.MapInfo.decInterval = Convert.ToInt32(intervalObj);
+                Log($"Set decInterval to {board.MapInfo.decInterval}ms");
+            }
+
+            return true;
+        }
+
+        private bool ExecuteSetRecovery(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("rate", out var rateObj))
+            {
+                Log("SetRecovery requires 'rate' parameter");
+                return false;
+            }
+
+            board.MapInfo.recovery = Convert.ToSingle(rateObj);
+            Log($"Set recovery rate to {board.MapInfo.recovery}");
+            return true;
+        }
+
+        #endregion
+
+        #region Minimap Commands
+
+        private bool ExecuteSetMinimapRect(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("left", out var leftObj) ||
+                !command.Parameters.TryGetValue("top", out var topObj) ||
+                !command.Parameters.TryGetValue("right", out var rightObj) ||
+                !command.Parameters.TryGetValue("bottom", out var bottomObj))
+            {
+                Log("SetMinimapRect requires left, top, right, bottom parameters");
+                return false;
+            }
+
+            int left = Convert.ToInt32(leftObj);
+            int top = Convert.ToInt32(topObj);
+            int right = Convert.ToInt32(rightObj);
+            int bottom = Convert.ToInt32(bottomObj);
+            int width = right - left;
+            int height = bottom - top;
+
+            if (width <= 0 || height <= 0)
+            {
+                Log($"Invalid minimap dimensions: {width}x{height}");
+                return false;
+            }
+
+            lock (board.ParentControl)
+            {
+                if (board.MinimapRectangle != null)
+                {
+                    board.MinimapRectangle.RemoveItem(null);
+                }
+
+                board.MinimapRectangle = new MinimapRectangle(board, new Microsoft.Xna.Framework.Rectangle(left, top, width, height));
+            }
+
+            Log($"Set minimap rect to left={left}, top={top}, right={right}, bottom={bottom}");
+            return true;
+        }
+
+        private bool ExecuteClearMinimapRect(MapAICommand command)
+        {
+            if (board.MinimapRectangle == null)
+            {
+                Log("Minimap rect is already not set");
+                return true;
+            }
+
+            lock (board.ParentControl)
+            {
+                board.MinimapRectangle.RemoveItem(null);
+            }
+
+            Log("Cleared minimap rect");
+            return true;
+        }
+
+        #endregion
+
+        #region Life/Spawn Commands
+
+        private bool ExecuteSetPatrolRange(MapAICommand command)
+        {
+            var targets = FindTargets(command);
+            if (targets.Count == 0)
+            {
+                Log("No matching life instances found for SetPatrolRange");
+                return false;
+            }
+
+            int rx0 = 0, rx1 = 0;
+            if (command.Parameters.TryGetValue("rx0", out var rx0Obj))
+                rx0 = Convert.ToInt32(rx0Obj);
+            if (command.Parameters.TryGetValue("rx1", out var rx1Obj))
+                rx1 = Convert.ToInt32(rx1Obj);
+
+            int count = 0;
+            foreach (var target in targets)
+            {
+                if (target is LifeInstance life)
+                {
+                    life.rx0Shift = rx0;
+                    life.rx1Shift = rx1;
+                    count++;
+                }
+            }
+
+            Log($"Set patrol range [{rx0}, {rx1}] on {count} life instance(s)");
+            return true;
+        }
+
+        private bool ExecuteSetRespawnTime(MapAICommand command)
+        {
+            var targets = FindTargets(command);
+            if (targets.Count == 0)
+            {
+                Log("No matching life instances found for SetRespawnTime");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("time", out var timeObj))
+            {
+                Log("SetRespawnTime requires 'time' parameter");
+                return false;
+            }
+
+            int time = Convert.ToInt32(timeObj);
+            int count = 0;
+            foreach (var target in targets)
+            {
+                if (target is LifeInstance life)
+                {
+                    life.MobTime = time;
+                    count++;
+                }
+            }
+
+            Log($"Set respawn time to {time}ms on {count} life instance(s)");
+            return true;
+        }
+
+        private bool ExecuteSetTeam(MapAICommand command)
+        {
+            var targets = FindTargets(command);
+            if (targets.Count == 0)
+            {
+                Log("No matching life instances found for SetTeam");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("team", out var teamObj))
+            {
+                Log("SetTeam requires 'team' parameter");
+                return false;
+            }
+
+            int team = Convert.ToInt32(teamObj);
+            int count = 0;
+            foreach (var target in targets)
+            {
+                if (target is LifeInstance life)
+                {
+                    life.Team = team;
+                    count++;
+                }
+            }
+
+            Log($"Set team to {team} on {count} life instance(s)");
+            return true;
+        }
+
+        #endregion
+
+        #region Layer Management Commands
+
+        private bool ExecuteSetLayerTileset(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("layer", out var layerObj))
+            {
+                Log("SetLayerTileset requires 'layer' parameter");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("tileset", out var tilesetObj))
+            {
+                Log("SetLayerTileset requires 'tileset' parameter");
+                return false;
+            }
+
+            int layerNum = Convert.ToInt32(layerObj);
+            string tileset = tilesetObj.ToString();
+
+            if (layerNum < 0 || layerNum >= board.Layers.Count)
+            {
+                Log($"Invalid layer number: {layerNum}");
+                return false;
+            }
+
+            board.Layers[layerNum].tS = tileset;
+            Log($"Set layer {layerNum} tileset to \"{tileset}\"");
+            return true;
+        }
+
+        #endregion
+
+        #region Z-Order Commands
+
+        private bool ExecuteSetZ(MapAICommand command)
+        {
+            var targets = FindTargets(command);
+            if (targets.Count == 0)
+            {
+                Log("No matching items found for SetZ");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("z", out var zObj))
+            {
+                Log("SetZ requires 'z' parameter");
+                return false;
+            }
+
+            int z = Convert.ToInt32(zObj);
+            int count = 0;
+            foreach (var target in targets)
+            {
+                target.Z = z;
+                count++;
+            }
+
+            Log($"Set Z to {z} on {count} item(s)");
+            return true;
+        }
+
+        #endregion
+
+        #region Rename Command
+
+        private bool ExecuteRename(MapAICommand command)
+        {
+            if (command.ElementType != ElementType.Portal)
+            {
+                Log("Rename currently only supports portals");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("from", out var fromObj) ||
+                !command.Parameters.TryGetValue("to", out var toObj))
+            {
+                Log("Rename requires 'from' and 'to' parameters");
+                return false;
+            }
+
+            string fromName = fromObj.ToString();
+            string toName = toObj.ToString();
+
+            var portal = board.BoardItems.Portals.FirstOrDefault(p =>
+                p.pn.Equals(fromName, StringComparison.OrdinalIgnoreCase));
+
+            if (portal == null)
+            {
+                Log($"Portal \"{fromName}\" not found");
+                return false;
+            }
+
+            portal.pn = toName;
+            Log($"Renamed portal \"{fromName}\" to \"{toName}\"");
+            return true;
+        }
+
+        #endregion
+
+        #region ToolTip Commands
+
+        private bool ExecuteAddToolTip(MapAICommand command)
+        {
+            // Required parameters
+            if (!command.TargetX.HasValue || !command.TargetY.HasValue)
+            {
+                Log("AddToolTip requires position (x, y)");
+                return false;
+            }
+
+            int x = command.TargetX.Value;
+            int y = command.TargetY.Value;
+
+            // Get size (default to 200x100)
+            int width = 200;
+            int height = 100;
+            if (command.Parameters.TryGetValue("width", out var widthObj))
+                width = Convert.ToInt32(widthObj);
+            if (command.Parameters.TryGetValue("height", out var heightObj))
+                height = Convert.ToInt32(heightObj);
+
+            // Get title and description
+            string title = "";
+            string desc = "";
+            if (command.Parameters.TryGetValue("title", out var titleObj))
+                title = titleObj?.ToString() ?? "";
+            if (command.Parameters.TryGetValue("desc", out var descObj))
+                desc = descObj?.ToString() ?? "";
+
+            lock (board.ParentControl)
+            {
+                var rect = new Microsoft.Xna.Framework.Rectangle(x, y, width, height);
+                var tooltip = new ToolTipInstance(board, rect, title, desc);
+
+                List<UndoRedo.UndoRedoAction> undoPipe = new List<UndoRedo.UndoRedoAction>();
+                tooltip.OnItemPlaced(undoPipe);
+                board.BoardItems.ToolTips.Add(tooltip);
+                board.UndoRedoMan.AddUndoBatch(undoPipe);
+            }
+
+            Log($"Added tooltip \"{title}\" at ({x}, {y}) size=({width}x{height})");
+            return true;
+        }
+
+        private bool ExecuteRemoveToolTip(MapAICommand command)
+        {
+            ToolTipInstance targetTooltip = null;
+
+            // Find by position
+            if (command.TargetX.HasValue && command.TargetY.HasValue)
+            {
+                int x = command.TargetX.Value;
+                int y = command.TargetY.Value;
+                targetTooltip = board.BoardItems.ToolTips.FirstOrDefault(t =>
+                    Math.Abs(t.X - x) < 50 && Math.Abs(t.Y - y) < 50);
+            }
+            // Find by title
+            else if (command.Parameters.TryGetValue("title", out var titleObj))
+            {
+                string title = titleObj.ToString();
+                targetTooltip = board.BoardItems.ToolTips.FirstOrDefault(t =>
+                    t.Title != null && t.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+            }
+            // Find by index
+            else if (command.Parameters.TryGetValue("index", out var indexObj))
+            {
+                int index = Convert.ToInt32(indexObj);
+                if (index >= 0 && index < board.BoardItems.ToolTips.Count)
+                    targetTooltip = board.BoardItems.ToolTips[index];
+            }
+
+            if (targetTooltip == null)
+            {
+                Log("No matching tooltip found to remove");
+                return false;
+            }
+
+            lock (board.ParentControl)
+            {
+                targetTooltip.RemoveItem(null);
+            }
+
+            Log($"Removed tooltip \"{targetTooltip.Title}\"");
+            return true;
+        }
+
+        private bool ExecuteModifyToolTip(MapAICommand command)
+        {
+            ToolTipInstance targetTooltip = null;
+
+            // Find by position
+            if (command.TargetX.HasValue && command.TargetY.HasValue)
+            {
+                int x = command.TargetX.Value;
+                int y = command.TargetY.Value;
+                targetTooltip = board.BoardItems.ToolTips.FirstOrDefault(t =>
+                    Math.Abs(t.X - x) < 50 && Math.Abs(t.Y - y) < 50);
+            }
+            // Find by old title
+            else if (command.Parameters.TryGetValue("old_title", out var oldTitleObj))
+            {
+                string oldTitle = oldTitleObj.ToString();
+                targetTooltip = board.BoardItems.ToolTips.FirstOrDefault(t =>
+                    t.Title != null && t.Title.Equals(oldTitle, StringComparison.OrdinalIgnoreCase));
+            }
+            // Find by index
+            else if (command.Parameters.TryGetValue("index", out var indexObj))
+            {
+                int index = Convert.ToInt32(indexObj);
+                if (index >= 0 && index < board.BoardItems.ToolTips.Count)
+                    targetTooltip = board.BoardItems.ToolTips[index];
+            }
+
+            if (targetTooltip == null)
+            {
+                Log("No matching tooltip found to modify");
+                return false;
+            }
+
+            // Apply modifications
+            if (command.Parameters.TryGetValue("title", out var newTitleObj))
+            {
+                targetTooltip.Title = newTitleObj?.ToString() ?? "";
+                Log($"Set tooltip title to \"{targetTooltip.Title}\"");
+            }
+
+            if (command.Parameters.TryGetValue("desc", out var newDescObj))
+            {
+                targetTooltip.Desc = newDescObj?.ToString() ?? "";
+                Log($"Set tooltip description to \"{targetTooltip.Desc}\"");
+            }
+
             return true;
         }
 

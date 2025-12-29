@@ -207,6 +207,117 @@ add_portal portal_type="Script" name="start_event" x=-200 y=300 target_map=99999
 add_portal portal_type="Changeable" name="event_exit" x=300 y=300 target_map=100000000 target_portal="sp"
 ```
 
+## Removing Elements
+
+### remove_element
+Use to remove a specific individual portal by its ID.
+
+Parameters:
+- id: The unique identifier of the portal to remove
+- element_type: "portal"
+
+Use when:
+- Removing a single specific portal
+- Making targeted adjustments without affecting other portals
+
+Example:
+```
+remove_element id=5 element_type="portal"
+```
+
+### clear_elements
+Use to remove ALL portals at once.
+
+Parameters:
+- element_type: "portal"
+
+**When to use clear_elements:**
+- User explicitly asks to "clear all portals" or "remove all portals"
+- User wants to "start fresh" or "reset" portal layout
+- User says "delete all portals" or similar bulk removal requests
+- Redesigning the entire portal structure from scratch
+
+**When NOT to use clear_elements:**
+- User wants to remove just one or a few specific portals (use remove_element instead)
+- User wants to modify portal properties (use modify_portal instead)
+- User wants to reposition portals (use move_element instead)
+- User doesn't explicitly request bulk removal
+
+Example:
+```
+clear_elements element_type="portal"   // Removes ALL portals
+```
+
+**CAUTION**: clear_elements is destructive - it removes all portals including spawn points. Only use when the user clearly intends bulk removal. Remember to re-add a "sp" StartPoint portal after clearing!
+
+## Modifying Portal Properties
+
+### modify_portal
+Modify properties of an existing portal.
+
+Properties that can be modified:
+- target_map: Change destination map ID
+- target_portal: Change destination portal name
+- script: Change script name
+- delay: Activation delay in milliseconds
+- hide_tooltip: Hide/show the portal tooltip
+- only_once: Make portal one-time use
+
+Examples:
+```
+modify_portal name="out00" target_map=100000001 target_portal="in00"
+modify_portal name="out00" delay=1000    // 1 second delay
+modify_portal name="secret" hide_tooltip=true
+modify_portal name="quest_portal" only_once=true
+```
+
+### RENAME portal
+Change a portal's name.
+
+```
+RENAME portal "old_name" to "new_name"
+```
+
+Example:
+```
+RENAME portal "out00" to "town_exit"
+```
+
+## Advanced Portal Properties
+
+### delay
+Portal activation delay in milliseconds. Use for:
+- Dramatic effect before teleporting
+- Giving players time to cancel
+- Synchronized events
+
+```
+add_portal portal_type="Visible" name="boss_door" x=0 y=300 target_map=100010000 target_portal="sp" delay=2000
+```
+
+### hide_tooltip
+Hide the portal's name tooltip. Use for:
+- Secret portals
+- Cleaner visual appearance
+- Puzzle maps
+
+```
+add_portal portal_type="Visible" name="secret_path" x=200 y=300 target_map=100020000 target_portal="sp" hide_tooltip=true
+```
+
+### only_once
+Portal can only be used once per session. Use for:
+- One-way quest progression
+- Irreversible choices
+- Event-specific portals
+
+```
+add_portal portal_type="Visible" name="choice_a" x=-100 y=300 target_map=100030000 target_portal="sp" only_once=true
+```
+
+### hRange / vRange
+Horizontal and vertical activation range. Larger values = easier to trigger.
+
 ## Tips
 - Every map MUST have a "sp" (StartPoint) portal
 - target_map=999999999 means "this map" (for spawn points)

@@ -247,7 +247,7 @@ namespace HaCreator.GUI.EditorPanels
 
                 // Use multi-agent orchestrator for layer-by-layer editing
                 LogMessage("Analyzing request...");
-                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model);
+                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
                 orchestrator.OnProgress += (msg) => Dispatcher.Invoke(() => LogMessage(msg));
 
                 string result = await orchestrator.ProcessWithAgentsAsync(mapContext, instructions);
@@ -336,6 +336,289 @@ namespace HaCreator.GUI.EditorPanels
             txtLog.Clear();
         }
 
+        private async void BtnRunTests_Click(object sender, RoutedEventArgs e)
+        {
+            if (isProcessing)
+            {
+                LogMessage("Already processing, please wait...");
+                return;
+            }
+
+            if (!AISettings.IsConfigured)
+            {
+                var dialog = new AISettingsDialog();
+                dialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+                dialog.ShowDialog();
+
+                if (!AISettings.IsConfigured)
+                {
+                    LogMessage("API key not configured. Please set up your OpenRouter API key in Settings.");
+                    return;
+                }
+            }
+
+            if (board == null)
+            {
+                MessageBox.Show("No map is currently loaded.", "Run Tests", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                isProcessing = true;
+                btnRunTests.IsEnabled = false;
+                btnProcessAI.IsEnabled = false;
+                btnRunTests.Content = "Running...";
+
+                // Load test prompt
+                var testPrompt = MapEditorPromptBuilder.LoadPromptFile("ComprehensiveTestPrompt.txt");
+                txtInstructions.Text = testPrompt;
+                LogMessage("=== RUNNING AUTOMATED TESTS ===");
+
+                // Get map context
+                var serializer = new MapAISerializer(board);
+                var mapContext = serializer.GenerateAISummary();
+
+                // Run AI processing
+                LogMessage("Processing test prompt with AI...");
+                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
+                orchestrator.OnProgress += (msg) => Dispatcher.Invoke(() => LogMessage(msg));
+
+                string result = await orchestrator.ProcessWithAgentsAsync(mapContext, testPrompt);
+                txtCommands.Text = result;
+
+                // Calculate and display test score
+                var testResults = CalculateTestScore(result);
+                DisplayTestResults(testResults);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Test error: {ex.Message}");
+                MessageBox.Show($"Error running tests: {ex.Message}", "Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                isProcessing = false;
+                btnRunTests.IsEnabled = true;
+                btnProcessAI.IsEnabled = true;
+                btnRunTests.Content = "Run Tests";
+            }
+        }
+
+        private TestResults CalculateTestScore(string output)
+        {
+            var results = new TestResults();
+            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var line in lines)
+            {
+                // Query functions
+                if (line.Contains("# QUERY: get_mob_list")) results.QueryMobList = true;
+                if (line.Contains("# QUERY: get_npc_list")) results.QueryNpcList = true;
+                if (line.Contains("# QUERY: get_object_info")) results.QueryObjectInfo = true;
+                if (line.Contains("# QUERY: get_background_info")) results.QueryBackgroundInfo = true;
+                if (line.Contains("# QUERY: get_bgm_list")) results.QueryBgmList = true;
+
+                // Warnings (query violations)
+                if (line.Contains("# WARNING:")) results.QueryViolations++;
+
+                // Platforms
+                if (line.StartsWith("ADD PLATFORM")) results.PlatformsCreated++;
+
+                // Tiles
+                if (line.StartsWith("TILE STRUCTURE") || line.StartsWith("TILE PLATFORM")) results.TilesCreated++;
+
+                // Mobs with patrol ranges
+                if (line.StartsWith("ADD MOB") && line.Contains("rx0=") && line.Contains("rx1=")) results.MobsWithPatrol++;
+                else if (line.StartsWith("ADD MOB")) results.MobsWithoutPatrol++;
+
+                // NPCs
+                if (line.StartsWith("ADD NPC")) results.NpcsCreated++;
+
+                // Objects
+                if (line.StartsWith("ADD OBJECT")) results.ObjectsCreated++;
+
+                // Backgrounds
+                if (line.StartsWith("ADD BACKGROUND")) results.BackgroundsCreated++;
+
+                // Portals
+                if (line.StartsWith("ADD PORTAL")) results.PortalsCreated++;
+
+                // Walls, Ropes, Ladders
+                if (line.StartsWith("ADD WALL")) results.WallsCreated++;
+                if (line.StartsWith("ADD ROPE")) results.RopesCreated++;
+                if (line.StartsWith("ADD LADDER")) results.LaddersCreated++;
+
+                // Settings
+                if (line.StartsWith("SET MAP_SIZE")) results.MapSizeSet = true;
+                if (line.StartsWith("SET VR")) results.VRSet = true;
+                if (line.Contains("SET MAP_OPTION") && line.Contains("snow")) results.SnowEnabled = true;
+                if (line.Contains("SET MAP_OPTION") && line.Contains("town")) results.TownSet = true;
+                if (line.StartsWith("SET MOB_RATE")) results.MobRateSet = true;
+                if (line.StartsWith("SET RETURN_MAP")) results.ReturnMapSet = true;
+                if (line.StartsWith("SET LEVEL_LIMIT")) results.LevelLimitSet = true;
+                if (line.StartsWith("SET FIELD_LIMIT")) results.FieldLimitSet = true;
+                if (line.StartsWith("SET MAP_DESC")) results.MapDescSet = true;
+                if (line.StartsWith("SET HELP")) results.HelpSet = true;
+                if (line.StartsWith("ADD TOOLTIP")) results.TooltipAdded = true;
+                if (line.StartsWith("SET BGM")) results.BgmSet = true;
+            }
+
+            return results;
+        }
+
+        private void DisplayTestResults(TestResults results)
+        {
+            LogMessage("");
+            LogMessage("=== TEST RESULTS ===");
+            LogMessage("");
+
+            int passed = 0;
+            int total = 0;
+
+            // Query-first tests
+            LogMessage("QUERY-FIRST WORKFLOW:");
+            passed += LogTest("  get_mob_list called", results.QueryMobList, ref total);
+            passed += LogTest("  get_npc_list called", results.QueryNpcList, ref total);
+            passed += LogTest("  get_object_info called", results.QueryObjectInfo, ref total);
+            passed += LogTest("  get_background_info called", results.QueryBackgroundInfo, ref total);
+            passed += LogTest("  get_bgm_list called", results.QueryBgmList, ref total);
+            passed += LogTest("  No query violations", results.QueryViolations == 0, ref total);
+
+            LogMessage("");
+            LogMessage("STRUCTURE:");
+            passed += LogTest("  Platforms created", results.PlatformsCreated >= 3, ref total);
+            passed += LogTest("  Tiles created", results.TilesCreated >= 1, ref total);
+            passed += LogTest("  Walls created", results.WallsCreated >= 2, ref total);
+            passed += LogTest("  Ropes created", results.RopesCreated >= 1, ref total);
+            passed += LogTest("  Ladders created", results.LaddersCreated >= 1, ref total);
+
+            LogMessage("");
+            LogMessage("LIFE:");
+            passed += LogTest("  Mobs created with patrol ranges", results.MobsWithPatrol >= 5, ref total);
+            passed += LogTest("  No mobs without patrol ranges", results.MobsWithoutPatrol == 0, ref total);
+            passed += LogTest("  NPCs created", results.NpcsCreated >= 2, ref total);
+
+            LogMessage("");
+            LogMessage("DECORATION:");
+            passed += LogTest("  Objects created", results.ObjectsCreated >= 3, ref total);
+            passed += LogTest("  Backgrounds created", results.BackgroundsCreated >= 2, ref total);
+
+            LogMessage("");
+            LogMessage("PORTALS:");
+            passed += LogTest("  Portals created", results.PortalsCreated >= 3, ref total);
+
+            LogMessage("");
+            LogMessage("MAP SETTINGS:");
+            passed += LogTest("  Map size set", results.MapSizeSet, ref total);
+            passed += LogTest("  VR (camera bounds) set", results.VRSet, ref total);
+            passed += LogTest("  Snow weather enabled", results.SnowEnabled, ref total);
+            passed += LogTest("  Town flag set", results.TownSet, ref total);
+            passed += LogTest("  Mob rate set", results.MobRateSet, ref total);
+            passed += LogTest("  Return map set", results.ReturnMapSet, ref total);
+            passed += LogTest("  Level limit set", results.LevelLimitSet, ref total);
+            passed += LogTest("  Field limit set", results.FieldLimitSet, ref total);
+            passed += LogTest("  Map description set", results.MapDescSet, ref total);
+            passed += LogTest("  Help text set", results.HelpSet, ref total);
+            passed += LogTest("  Tooltip added", results.TooltipAdded, ref total);
+            passed += LogTest("  BGM set", results.BgmSet, ref total);
+
+            // Calculate percentage
+            double percentage = total > 0 ? (double)passed / total * 100 : 0;
+            string grade = percentage >= 95 ? "A+" :
+                          percentage >= 90 ? "A" :
+                          percentage >= 85 ? "B+" :
+                          percentage >= 80 ? "B" :
+                          percentage >= 70 ? "C" :
+                          percentage >= 60 ? "D" : "F";
+
+            LogMessage("");
+            LogMessage("===========================================");
+            LogMessage($"  SCORE: {passed}/{total} ({percentage:F1}%) - Grade: {grade}");
+            LogMessage("===========================================");
+
+            // Show message box with summary
+            MessageBox.Show(
+                $"Test Results: {passed}/{total} passed ({percentage:F1}%)\n\nGrade: {grade}\n\n" +
+                $"Query Functions: {(results.QueryMobList && results.QueryNpcList && results.QueryObjectInfo && results.QueryBackgroundInfo && results.QueryBgmList ? "All called" : "Some missing")}\n" +
+                $"Query Violations: {results.QueryViolations}\n" +
+                $"Mobs with Patrol: {results.MobsWithPatrol}\n" +
+                $"Settings Applied: {CountSettings(results)}/12",
+                "Test Results",
+                MessageBoxButton.OK,
+                percentage >= 90 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+
+        private int LogTest(string testName, bool passed, ref int total)
+        {
+            total++;
+            string status = passed ? "[PASS]" : "[FAIL]";
+            LogMessage($"{status} {testName}");
+            return passed ? 1 : 0;
+        }
+
+        private int CountSettings(TestResults results)
+        {
+            int count = 0;
+            if (results.MapSizeSet) count++;
+            if (results.VRSet) count++;
+            if (results.SnowEnabled) count++;
+            if (results.TownSet) count++;
+            if (results.MobRateSet) count++;
+            if (results.ReturnMapSet) count++;
+            if (results.LevelLimitSet) count++;
+            if (results.FieldLimitSet) count++;
+            if (results.MapDescSet) count++;
+            if (results.HelpSet) count++;
+            if (results.TooltipAdded) count++;
+            if (results.BgmSet) count++;
+            return count;
+        }
+
+        private class TestResults
+        {
+            // Query functions called
+            public bool QueryMobList { get; set; }
+            public bool QueryNpcList { get; set; }
+            public bool QueryObjectInfo { get; set; }
+            public bool QueryBackgroundInfo { get; set; }
+            public bool QueryBgmList { get; set; }
+            public int QueryViolations { get; set; }
+
+            // Structure
+            public int PlatformsCreated { get; set; }
+            public int TilesCreated { get; set; }
+            public int WallsCreated { get; set; }
+            public int RopesCreated { get; set; }
+            public int LaddersCreated { get; set; }
+
+            // Life
+            public int MobsWithPatrol { get; set; }
+            public int MobsWithoutPatrol { get; set; }
+            public int NpcsCreated { get; set; }
+
+            // Decoration
+            public int ObjectsCreated { get; set; }
+            public int BackgroundsCreated { get; set; }
+
+            // Portals
+            public int PortalsCreated { get; set; }
+
+            // Settings
+            public bool MapSizeSet { get; set; }
+            public bool VRSet { get; set; }
+            public bool SnowEnabled { get; set; }
+            public bool TownSet { get; set; }
+            public bool MobRateSet { get; set; }
+            public bool ReturnMapSet { get; set; }
+            public bool LevelLimitSet { get; set; }
+            public bool FieldLimitSet { get; set; }
+            public bool MapDescSet { get; set; }
+            public bool HelpSet { get; set; }
+            public bool TooltipAdded { get; set; }
+            public bool BgmSet { get; set; }
+        }
+
         private void TxtInstructions_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
             instructionsModified = true;
@@ -349,7 +632,12 @@ namespace HaCreator.GUI.EditorPanels
         {
             var timestamp = DateTime.Now.ToString("HH:mm:ss");
             txtLog.AppendText($"[{timestamp}] {message}{Environment.NewLine}");
-            txtLog.ScrollToEnd();
+
+            // Scroll after layout is updated
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+            {
+                txtLog.ScrollToEnd();
+            }));
         }
 
         #endregion

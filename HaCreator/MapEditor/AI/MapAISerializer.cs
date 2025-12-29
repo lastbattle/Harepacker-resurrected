@@ -113,57 +113,121 @@ namespace HaCreator.MapEditor.AI
             // Map Settings
             SerializeMapSettings();
 
-            // Key portals
+            // Portals with full details
             if (board.BoardItems.Portals.Count > 0)
             {
                 WriteLine("## Portals");
                 foreach (var portal in board.BoardItems.Portals.OrderBy(p => p.pn))
                 {
-                    var targetInfo = portal.tm != 999999999 ? $" -> Map {portal.tm}" : "";
-                    WriteLine($"- \"{portal.pn}\" at ({portal.X}, {portal.Y}) [{portal.pt}]{targetInfo}");
+                    var props = new List<string>();
+                    props.Add($"pos=({portal.X}, {portal.Y})");
+                    props.Add($"type={portal.pt}");
+                    if (portal.tm != 999999999)
+                    {
+                        props.Add($"targetMap={portal.tm}");
+                        if (!string.IsNullOrEmpty(portal.tn))
+                            props.Add($"targetPortal=\"{portal.tn}\"");
+                    }
+                    if (!string.IsNullOrEmpty(portal.script))
+                        props.Add($"script=\"{portal.script}\"");
+                    if (portal.delay.HasValue)
+                        props.Add($"delay={portal.delay.Value}ms");
+                    if (portal.hideTooltip == true)
+                        props.Add("hideTooltip");
+                    if (portal.onlyOnce == true)
+                        props.Add("onlyOnce");
+                    if (portal.hRange.HasValue || portal.vRange.HasValue)
+                        props.Add($"range=[h={portal.hRange ?? 0}, v={portal.vRange ?? 0}]");
+                    if (portal.horizontalImpact.HasValue || portal.verticalImpact.HasValue)
+                        props.Add($"impact=[h={portal.horizontalImpact ?? 0}, v={portal.verticalImpact ?? 0}]");
+                    if (!string.IsNullOrEmpty(portal.image))
+                        props.Add($"image=\"{portal.image}\"");
+                    WriteLine($"- Portal \"{portal.pn}\": {string.Join(", ", props)}");
                 }
                 WriteLine();
             }
 
-            // Mob summary
+            // Mob summary with detailed spawn info
             if (board.BoardItems.Mobs.Count > 0)
             {
                 WriteLine("## Mobs");
                 var mobGroups = board.BoardItems.Mobs.GroupBy(m => m.MobInfo.ID);
                 foreach (var group in mobGroups)
                 {
-                    var name = group.First().MobInfo.Name ?? "Unknown";
-                    WriteLine($"- Mob {group.Key} \"{name}\": {group.Count()} spawn(s)");
+                    var firstMob = group.First();
+                    var name = firstMob.MobInfo.Name ?? "Unknown";
+                    WriteLine($"### Mob {group.Key} \"{name}\" ({group.Count()} spawn(s))");
+                    foreach (var mob in group.OrderBy(m => m.X))
+                    {
+                        var props = new List<string>();
+                        props.Add($"pos=({mob.X}, {mob.Y})");
+                        if (mob.rx0Shift != 0 || mob.rx1Shift != 0)
+                            props.Add($"patrol=[{mob.rx0Shift}, {mob.rx1Shift}]");
+                        if (mob.MobTime.HasValue && mob.MobTime.Value > 0)
+                            props.Add($"respawn={mob.MobTime.Value}ms");
+                        if (mob.Flip)
+                            props.Add("flipped");
+                        if (mob.Hide == true)
+                            props.Add("hidden");
+                        if (mob.Team.HasValue)
+                            props.Add($"team={mob.Team.Value}");
+                        if (mob.Info.HasValue)
+                            props.Add($"info={mob.Info.Value}");
+                        WriteLine($"- {string.Join(", ", props)}");
+                    }
                 }
                 WriteLine();
             }
 
-            // NPC summary
+            // NPC summary with detailed info
             if (board.BoardItems.NPCs.Count > 0)
             {
                 WriteLine("## NPCs");
-                foreach (var npc in board.BoardItems.NPCs)
+                foreach (var npc in board.BoardItems.NPCs.OrderBy(n => n.X))
                 {
-                    WriteLine($"- NPC {npc.NpcInfo.ID} \"{npc.NpcInfo.StringName}\" at ({npc.X}, {npc.Y})");
+                    var props = new List<string>();
+                    props.Add($"pos=({npc.X}, {npc.Y})");
+                    if (npc.rx0Shift != 0 || npc.rx1Shift != 0)
+                        props.Add($"patrol=[{npc.rx0Shift}, {npc.rx1Shift}]");
+                    if (npc.Flip)
+                        props.Add("flipped");
+                    if (npc.Hide == true)
+                        props.Add("hidden");
+                    if (npc.MobTime.HasValue && npc.MobTime.Value > 0)
+                        props.Add($"respawn={npc.MobTime.Value}ms");
+                    WriteLine($"- NPC {npc.NpcInfo.ID} \"{npc.NpcInfo.StringName}\": {string.Join(", ", props)}");
                 }
                 WriteLine();
             }
 
-            // Footholds/Platforms summary
+            // Footholds/Platforms summary with advanced properties
             if (board.BoardItems.FootholdLines.Count > 0)
             {
                 WriteLine("## Platforms (Footholds)");
                 var fhByLayer = board.BoardItems.FootholdLines.GroupBy(fh => fh.LayerNumber);
                 foreach (var layerGroup in fhByLayer.OrderBy(g => g.Key))
                 {
-                    WriteLine($"### Layer {layerGroup.Key}");
-                    foreach (var fh in layerGroup.OrderBy(f => Math.Min(f.FirstDot.X, f.SecondDot.X)))
+                    // Group by platform number within layer
+                    var byPlatform = layerGroup.GroupBy(fh => fh.PlatformNumber);
+                    foreach (var platGroup in byPlatform.OrderBy(g => g.Key))
                     {
-                        var props = new List<string>();
-                        if (fh.CantThrough == true) props.Add("CantJumpThrough");
-                        if (fh.ForbidFallDown == true) props.Add("NoFallDown");
-                        var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
-                        WriteLine($"- ({fh.FirstDot.X}, {fh.FirstDot.Y}) to ({fh.SecondDot.X}, {fh.SecondDot.Y}){propsStr}");
+                        WriteLine($"### Layer {layerGroup.Key}, Platform {platGroup.Key} ({platGroup.Count()} segments)");
+                        foreach (var fh in platGroup.OrderBy(f => Math.Min(f.FirstDot.X, f.SecondDot.X)))
+                        {
+                            var props = new List<string>();
+                            if (fh.IsWall)
+                                props.Add("wall");
+                            if (fh.CantThrough == true)
+                                props.Add("cantThrough");
+                            if (fh.ForbidFallDown == true)
+                                props.Add("noFallDown");
+                            if (fh.Force.HasValue)
+                                props.Add($"force={fh.Force.Value}");
+                            if (fh.Piece.HasValue)
+                                props.Add($"piece={fh.Piece.Value}");
+                            var propsStr = props.Count > 0 ? $" [{string.Join(", ", props)}]" : "";
+                            WriteLine($"- ({fh.FirstDot.X}, {fh.FirstDot.Y}) to ({fh.SecondDot.X}, {fh.SecondDot.Y}){propsStr}");
+                        }
                     }
                 }
                 WriteLine();
@@ -281,10 +345,144 @@ namespace HaCreator.MapEditor.AI
                 WriteLine();
             }
 
+            // ToolTips summary
+            if (board.BoardItems.ToolTips.Count > 0)
+            {
+                WriteLine("## ToolTips (Area Text)");
+                int tooltipIndex = 0;
+                foreach (var tooltip in board.BoardItems.ToolTips.OrderBy(t => t.X))
+                {
+                    var title = !string.IsNullOrEmpty(tooltip.Title) ? $"\"{tooltip.Title}\"" : "(no title)";
+                    var desc = !string.IsNullOrEmpty(tooltip.Desc) ? $" desc=\"{tooltip.Desc}\"" : "";
+                    WriteLine($"- ToolTip #{tooltipIndex}: {title} at ({tooltip.X}, {tooltip.Y}) size=({tooltip.Width}x{tooltip.Height}){desc}");
+                    tooltipIndex++;
+                }
+                WriteLine();
+            }
+
             // Include asset catalog for AI awareness
             sb.Append(MapAssetCatalog.GenerateCompactSummary());
 
+            // Add contextual analysis for better AI understanding
+            SerializeContextualAnalysis();
+
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Serialize contextual analysis to help AI make better decisions
+        /// </summary>
+        private void SerializeContextualAnalysis()
+        {
+            WriteLine("## Contextual Analysis");
+
+            // Portal pair relationships
+            if (board.BoardItems.Portals.Count > 0)
+            {
+                WriteLine("### Portal Connections");
+                var exitPortals = board.BoardItems.Portals.Where(p => p.tm != 999999999).ToList();
+                if (exitPortals.Count > 0)
+                {
+                    foreach (var p in exitPortals)
+                    {
+                        string targetInfo = !string.IsNullOrEmpty(p.tn) ? $" -> \"{p.tn}\"" : "";
+                        WriteLine($"- \"{p.pn}\" exits to map {p.tm}{targetInfo}");
+                    }
+                }
+                else
+                {
+                    WriteLine("- No exit portals (self-contained map)");
+                }
+            }
+
+            // Spawn distribution analysis
+            if (board.BoardItems.Mobs.Count > 0)
+            {
+                WriteLine("### Mob Distribution");
+                var mobsByY = board.BoardItems.Mobs.GroupBy(m => (int)(m.Y / 100) * 100);
+                foreach (var group in mobsByY.OrderBy(g => g.Key))
+                {
+                    int count = group.Count();
+                    int minX = group.Min(m => m.X);
+                    int maxX = group.Max(m => m.X);
+                    string density = count > 5 ? "dense" : count > 2 ? "moderate" : "sparse";
+                    WriteLine($"- Y ~{group.Key}: {count} mob(s), X range [{minX} to {maxX}] ({density})");
+                }
+            }
+
+            // Platform height analysis
+            if (board.BoardItems.FootholdLines.Count > 0)
+            {
+                WriteLine("### Platform Levels");
+                var platformsByY = board.BoardItems.FootholdLines
+                    .Where(f => !f.IsWall)
+                    .GroupBy(f => (int)(Math.Min(f.FirstDot.Y, f.SecondDot.Y) / 50) * 50);
+
+                foreach (var group in platformsByY.OrderBy(g => g.Key).Take(10))
+                {
+                    int totalWidth = group.Sum(f => Math.Abs(f.SecondDot.X - f.FirstDot.X));
+                    int minX = group.Min(f => Math.Min(f.FirstDot.X, f.SecondDot.X));
+                    int maxX = group.Max(f => Math.Max(f.FirstDot.X, f.SecondDot.X));
+                    WriteLine($"- Y ~{group.Key}: {group.Count()} segment(s), total width ~{totalWidth}px, X range [{minX} to {maxX}]");
+                }
+            }
+
+            // Layer usage summary
+            WriteLine("### Layer Usage");
+            var tilesByLayer = board.BoardItems.TileObjs.OfType<TileInstance>().GroupBy(t => t.LayerNumber);
+            var objsByLayer = board.BoardItems.TileObjs.OfType<ObjectInstance>().GroupBy(o => o.LayerNumber);
+            for (int i = 0; i < board.Layers.Count; i++)
+            {
+                int tileCount = tilesByLayer.FirstOrDefault(g => g.Key == i)?.Count() ?? 0;
+                int objCount = objsByLayer.FirstOrDefault(g => g.Key == i)?.Count() ?? 0;
+                string tileset = board.Layers[i].tS ?? "(none)";
+                if (tileCount > 0 || objCount > 0)
+                {
+                    WriteLine($"- Layer {i}: {tileCount} tiles, {objCount} objects, tileset=\"{tileset}\"");
+                }
+            }
+
+            // Suggestions/warnings
+            WriteLine("### Suggestions");
+            var suggestions = new List<string>();
+
+            // Check for missing spawn point
+            if (!board.BoardItems.Portals.Any(p => p.pn.Equals("sp", StringComparison.OrdinalIgnoreCase)))
+            {
+                suggestions.Add("MISSING spawn point portal 'sp' - players won't be able to enter this map!");
+            }
+
+            // Check for very sparse mob distribution
+            if (board.BoardItems.Mobs.Count > 0 && board.BoardItems.Mobs.Count < 3)
+            {
+                suggestions.Add("Low mob count - consider adding more monsters for better training");
+            }
+
+            // Check for no footholds
+            if (board.BoardItems.FootholdLines.Count == 0)
+            {
+                suggestions.Add("No footholds - players won't be able to walk! Add platforms first.");
+            }
+
+            // Check for empty map
+            if (board.BoardItems.TileObjs.Count == 0)
+            {
+                suggestions.Add("No tiles or objects - map will appear empty. Consider adding visual elements.");
+            }
+
+            if (suggestions.Count > 0)
+            {
+                foreach (var suggestion in suggestions)
+                {
+                    WriteLine($"- **{suggestion}**");
+                }
+            }
+            else
+            {
+                WriteLine("- Map appears well-configured");
+            }
+
+            WriteLine();
         }
 
         /// <summary>
@@ -315,6 +513,13 @@ namespace HaCreator.MapEditor.AI
                 WriteLine($"- Viewing Range (VR): (not set - uses map bounds)");
             }
 
+            // Minimap Rectangle (if different from VR)
+            if (board.MinimapRectangle != null)
+            {
+                var mm = board.MinimapRectangle;
+                WriteLine($"- Minimap Rect: left={mm.X}, top={mm.Y}, right={mm.X + mm.Width}, bottom={mm.Y + mm.Height}");
+            }
+
             // BGM
             if (!string.IsNullOrEmpty(info.bgm))
             {
@@ -323,6 +528,122 @@ namespace HaCreator.MapEditor.AI
             else
             {
                 WriteLine($"- BGM: (not set)");
+            }
+
+            // Return Maps
+            WriteLine($"- Return Map: {(info.returnMap != 999999999 ? info.returnMap.ToString() : "(same map)")}");
+            WriteLine($"- Forced Return: {(info.forcedReturn != 999999999 ? info.forcedReturn.ToString() : "(same map)")}");
+
+            // Mob Rate
+            WriteLine($"- Mob Rate: {info.mobRate}");
+
+            // Field Type
+            if (info.fieldType.HasValue)
+            {
+                WriteLine($"- Field Type: {info.fieldType.Value} ({(int)info.fieldType.Value})");
+            }
+
+            // Time/Level Limits
+            if (info.timeLimit.HasValue)
+            {
+                WriteLine($"- Time Limit: {info.timeLimit.Value} seconds");
+            }
+            if (info.lvLimit.HasValue)
+            {
+                WriteLine($"- Level Limit: {info.lvLimit.Value}");
+            }
+            if (info.lvForceMove.HasValue)
+            {
+                WriteLine($"- Level Force Move: {info.lvForceMove.Value}");
+            }
+
+            // Scripts
+            if (!string.IsNullOrEmpty(info.onUserEnter))
+            {
+                WriteLine($"- OnUserEnter Script: \"{info.onUserEnter}\"");
+            }
+            if (!string.IsNullOrEmpty(info.onFirstUserEnter))
+            {
+                WriteLine($"- OnFirstUserEnter Script: \"{info.onFirstUserEnter}\"");
+            }
+
+            // Visual Effect
+            if (!string.IsNullOrEmpty(info.effect))
+            {
+                WriteLine($"- Effect: \"{info.effect}\"");
+            }
+
+            // Help Text
+            if (!string.IsNullOrEmpty(info.help))
+            {
+                WriteLine($"- Help: \"{info.help}\"");
+            }
+
+            // Map Description
+            if (!string.IsNullOrEmpty(info.mapDesc))
+            {
+                WriteLine($"- Description: \"{info.mapDesc}\"");
+            }
+
+            // Drop Settings
+            if (info.dropExpire.HasValue)
+            {
+                WriteLine($"- Drop Expire: {info.dropExpire.Value} seconds");
+            }
+            if (info.dropRate.HasValue)
+            {
+                WriteLine($"- Drop Rate: {info.dropRate.Value}");
+            }
+
+            // HP Decay Settings
+            if (info.decHP.HasValue || info.decInterval.HasValue)
+            {
+                WriteLine($"- HP Decay: {info.decHP ?? 0} HP every {info.decInterval ?? 0}ms");
+            }
+
+            // Recovery Rate
+            if (info.recovery.HasValue)
+            {
+                WriteLine($"- Recovery Rate: {info.recovery.Value}");
+            }
+
+            // Ice Slip Speed
+            if (info.fs.HasValue)
+            {
+                WriteLine($"- Ice Slip Speed (fs): {info.fs.Value}");
+            }
+
+            // Mob Capacity Settings (for massacre PQs)
+            if (info.createMobInterval.HasValue)
+            {
+                WriteLine($"- Create Mob Interval: {info.createMobInterval.Value}ms");
+            }
+            if (info.fixedMobCapacity.HasValue)
+            {
+                WriteLine($"- Fixed Mob Capacity: {info.fixedMobCapacity.Value}");
+            }
+
+            // Time Mob
+            if (info.timeMob.HasValue)
+            {
+                var tm = info.timeMob.Value;
+                WriteLine($"- Time Mob: ID={tm.id}, Hours={tm.startHour}-{tm.endHour}, Message=\"{tm.message}\"");
+            }
+
+            // Protect/Allowed Items
+            if (info.protectItem != null && info.protectItem.Count > 0)
+            {
+                WriteLine($"- Protect Items: {string.Join(", ", info.protectItem)}");
+            }
+            if (info.allowedItem != null && info.allowedItem.Count > 0)
+            {
+                WriteLine($"- Allowed Items: {string.Join(", ", info.allowedItem)}");
+            }
+
+            // Black Border Hack (LB values)
+            if (info.LBSide.HasValue || info.LBTop.HasValue || info.LBBottom.HasValue)
+            {
+                WriteLine($"- Black Borders: Side={info.LBSide ?? 0}, Top={info.LBTop ?? 0}, Bottom={info.LBBottom ?? 0}");
             }
 
             // Collect enabled map options
@@ -350,6 +671,9 @@ namespace HaCreator.MapEditor.AI
             if (info.allMoveCheck) enabledOptions.Add("allMoveCheck");
             if (info.VRLimit) enabledOptions.Add("VRLimit");
             if (info.mirror_Bottom) enabledOptions.Add("mirror_Bottom");
+            if (info.reactorShuffle) enabledOptions.Add("reactorShuffle");
+            if (info.consumeItemCoolTime) enabledOptions.Add("consumeItemCoolTime");
+            if (info.zeroSideOnly) enabledOptions.Add("zeroSideOnly");
 
             if (enabledOptions.Count > 0)
             {

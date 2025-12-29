@@ -50,7 +50,15 @@ namespace HaCreator.MapEditor.AI
                 CreateSetMapOptionTool(),
                 CreateSetFieldLimitTool(),
                 CreateSetMapSizeTool(),
-                CreateSetVRTool()
+                CreateSetVRTool(),
+                CreateSetReturnMapTool(),
+                CreateSetMobRateTool(),
+                CreateSetLevelLimitTool(),
+                CreateSetMapDescTool(),
+                CreateSetHelpTool(),
+                CreateAddTooltipTool(),
+                CreateGetMobListTool(),
+                CreateGetNpcListTool()
             };
         }
 
@@ -59,7 +67,61 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static bool IsQueryFunction(string functionName)
         {
-            return functionName == "get_object_info" || functionName == "get_background_info" || functionName == "get_bgm_list";
+            return functionName == "get_object_info" ||
+                   functionName == "get_background_info" ||
+                   functionName == "get_bgm_list" ||
+                   functionName == "get_mob_list" ||
+                   functionName == "get_npc_list";
+        }
+
+        /// <summary>
+        /// Maps action functions to the query function that must be called first.
+        /// If a function is not in this dictionary, it doesn't require a query.
+        /// </summary>
+        private static readonly Dictionary<string, string> QueryRequirements = new Dictionary<string, string>
+        {
+            // Life functions require querying the mob/npc list first
+            ["add_mob"] = "get_mob_list",
+            ["add_npc"] = "get_npc_list",
+
+            // Object functions require querying object info first
+            ["add_object"] = "get_object_info",
+
+            // Background functions require querying background info first
+            ["add_background"] = "get_background_info",
+
+            // BGM setting requires querying BGM list first
+            ["set_bgm"] = "get_bgm_list"
+        };
+
+        /// <summary>
+        /// Check if a function requires a query to be called first.
+        /// Returns the required query function name, or null if no query is required.
+        /// </summary>
+        public static string GetRequiredQuery(string functionName)
+        {
+            return QueryRequirements.TryGetValue(functionName, out var requiredQuery) ? requiredQuery : null;
+        }
+
+        /// <summary>
+        /// Get the error message to return when a query is required but wasn't called.
+        /// </summary>
+        public static string GetQueryRequiredError(string functionName, string requiredQuery)
+        {
+            var examples = new Dictionary<string, string>
+            {
+                ["get_mob_list"] = "get_mob_list(search=\"snail\") to find mob IDs",
+                ["get_npc_list"] = "get_npc_list(search=\"shop\") to find NPC IDs",
+                ["get_object_info"] = "get_object_info(oS=\"Christmas\") to find valid l0/l1/l2 paths",
+                ["get_background_info"] = "get_background_info(bS=\"forest\") to find valid background numbers",
+                ["get_bgm_list"] = "get_bgm_list() to find valid BGM paths"
+            };
+
+            var example = examples.TryGetValue(requiredQuery, out var ex) ? ex : requiredQuery + "()";
+
+            return $"ERROR: You must call {requiredQuery}() BEFORE calling {functionName}! " +
+                   $"Call {example} first, then use the IDs/paths from the results. " +
+                   $"Do NOT guess or make up IDs - they will be invalid!";
         }
 
         /// <summary>
@@ -84,6 +146,16 @@ namespace HaCreator.MapEditor.AI
                 case "get_bgm_list":
                     return MapAssetCatalog.GetBgmList();
 
+                case "get_mob_list":
+                    var mobSearch = arguments["search"]?.ToString();
+                    var mobLimit = arguments["limit"]?.Value<int>() ?? 50;
+                    return MapAssetCatalog.GetMobList(mobSearch, mobLimit);
+
+                case "get_npc_list":
+                    var npcSearch = arguments["search"]?.ToString();
+                    var npcLimit = arguments["limit"]?.Value<int>() ?? 50;
+                    return MapAssetCatalog.GetNpcList(npcSearch, npcLimit);
+
                 default:
                     return $"Unknown query function: {functionName}";
             }
@@ -97,7 +169,7 @@ namespace HaCreator.MapEditor.AI
                 ["function"] = new JObject
                 {
                     ["name"] = "add_mob",
-                    ["description"] = "Add a monster spawn point to the map",
+                    ["description"] = "Add a monster spawn point to the map. IMPORTANT: You MUST include rx0 and rx1 patrol boundaries!",
                     ["parameters"] = new JObject
                     {
                         ["type"] = "object",
@@ -106,7 +178,7 @@ namespace HaCreator.MapEditor.AI
                             ["mob_id"] = new JObject
                             {
                                 ["type"] = "string",
-                                ["description"] = "The mob ID (e.g., '100100' for Blue Snail, '1210100' for Slime)"
+                                ["description"] = "The mob ID (e.g., '100100' for Blue Snail, '1210100' for Slime). Use get_mob_list first to find valid IDs!"
                             },
                             ["x"] = new JObject
                             {
@@ -117,6 +189,16 @@ namespace HaCreator.MapEditor.AI
                             {
                                 ["type"] = "integer",
                                 ["description"] = "Y coordinate for the mob spawn"
+                            },
+                            ["rx0"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "REQUIRED: Left patrol boundary X. Calculate as: x - 100 (or platform start_x)"
+                            },
+                            ["rx1"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "REQUIRED: Right patrol boundary X. Calculate as: x + 100 (or platform end_x)"
                             },
                             ["flip"] = new JObject
                             {
@@ -129,7 +211,7 @@ namespace HaCreator.MapEditor.AI
                                 ["description"] = "Respawn time in milliseconds (optional)"
                             }
                         },
-                        ["required"] = new JArray { "mob_id", "x", "y" }
+                        ["required"] = new JArray { "mob_id", "x", "y", "rx0", "rx1" }
                     }
                 }
             };
@@ -1250,6 +1332,264 @@ namespace HaCreator.MapEditor.AI
             };
         }
 
+        private static JObject CreateSetReturnMapTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_return_map",
+                    ["description"] = "Set the return map (where players go when dying/using return scroll) and forced return map IDs.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["return_map"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Return map ID (where players respawn on death). Common values: 100000000 (Henesys), 999999999 (same map)"
+                            },
+                            ["forced_return"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Forced return map ID (where players are teleported). Usually same as return_map."
+                            }
+                        },
+                        ["required"] = new JArray { "return_map" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetMobRateTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_mob_rate",
+                    ["description"] = "Set the monster spawn rate multiplier for the map.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["rate"] = new JObject
+                            {
+                                ["type"] = "number",
+                                ["description"] = "Spawn rate multiplier. 1.0 = normal, 1.5 = 50% more spawns, 2.0 = double spawns"
+                            }
+                        },
+                        ["required"] = new JArray { "rate" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetLevelLimitTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_level_limit",
+                    ["description"] = "Set level requirements for the map. Players below min level cannot enter, players above force level are teleported out.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["min_level"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Minimum level required to enter (0 for no minimum)"
+                            },
+                            ["max_level"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Maximum level allowed (0 for no maximum)"
+                            },
+                            ["force_level"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Force teleport players above this level (0 for no force)"
+                            }
+                        },
+                        ["required"] = new JArray { }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetMapDescTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_map_desc",
+                    ["description"] = "Set the map description text.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["description"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "The description text for the map"
+                            }
+                        },
+                        ["required"] = new JArray { "description" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetHelpTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_help",
+                    ["description"] = "Set the help text displayed to players in this map.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["text"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "The help text to display to players"
+                            }
+                        },
+                        ["required"] = new JArray { "text" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateAddTooltipTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "add_tooltip",
+                    ["description"] = "Add a tooltip area to the map. Tooltips display text when players enter the defined rectangular area.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["x"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "X coordinate of the top-left corner of the tooltip area"
+                            },
+                            ["y"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Y coordinate of the top-left corner of the tooltip area"
+                            },
+                            ["width"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Width of the tooltip area in pixels (default 200)"
+                            },
+                            ["height"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Height of the tooltip area in pixels (default 100)"
+                            },
+                            ["title"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "Title text shown in the tooltip"
+                            },
+                            ["desc"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "Description text shown below the title"
+                            }
+                        },
+                        ["required"] = new JArray { "x", "y", "title" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateGetMobListTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "get_mob_list",
+                    ["description"] = "Query the list of available mobs (monsters) loaded in HaCreator. Use this to find mob IDs by name. Returns mob IDs and names that can be used with add_mob.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["search"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "Optional search term to filter mobs by name (case-insensitive). Examples: 'snail', 'mushroom', 'slime', 'balrog'. Leave empty to get all mobs."
+                            },
+                            ["limit"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Maximum number of results to return (default 50). Use a higher limit if you need more results."
+                            }
+                        },
+                        ["required"] = new JArray { }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateGetNpcListTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "get_npc_list",
+                    ["description"] = "Query the list of available NPCs loaded in HaCreator. Use this to find NPC IDs by name or function. Returns NPC IDs, names, and functions that can be used with add_npc.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["search"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["description"] = "Optional search term to filter NPCs by name or function (case-insensitive). Examples: 'shop', 'storage', 'instructor', 'henesys'. Leave empty to get all NPCs."
+                            },
+                            ["limit"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Maximum number of results to return (default 50). Use a higher limit if you need more results."
+                            }
+                        },
+                        ["required"] = new JArray { }
+                    }
+                }
+            };
+        }
+
         /// <summary>
         /// Convert camelCase or PascalCase to readable format
         /// </summary>
@@ -1287,6 +1627,10 @@ namespace HaCreator.MapEditor.AI
             {
                 case "add_mob":
                     var mobCmd = $"ADD MOB {arguments["mob_id"]} at ({arguments["x"]}, {arguments["y"]})";
+                    if (arguments["rx0"] != null)
+                        mobCmd += $" rx0={arguments["rx0"]}";
+                    if (arguments["rx1"] != null)
+                        mobCmd += $" rx1={arguments["rx1"]}";
                     if (arguments["flip"]?.Value<bool>() == true)
                         mobCmd += " facing left";
                     if (arguments["respawn_time"] != null)
@@ -1454,6 +1798,43 @@ namespace HaCreator.MapEditor.AI
                     if (arguments["clear"]?.Value<bool>() == true)
                         return "CLEAR VR";
                     return $"SET VR left={arguments["left"]} top={arguments["top"]} right={arguments["right"]} bottom={arguments["bottom"]}";
+
+                case "set_return_map":
+                    var returnMapCmd = $"SET RETURN_MAP return={arguments["return_map"]}";
+                    if (arguments["forced_return"] != null)
+                        returnMapCmd += $" forced={arguments["forced_return"]}";
+                    return returnMapCmd;
+
+                case "set_mob_rate":
+                    return $"SET MOB_RATE rate={arguments["rate"]}";
+
+                case "set_level_limit":
+                    var levelLimitCmd = "SET LEVEL_LIMIT";
+                    if (arguments["min_level"] != null)
+                        levelLimitCmd += $" min={arguments["min_level"]}";
+                    if (arguments["max_level"] != null)
+                        levelLimitCmd += $" max={arguments["max_level"]}";
+                    if (arguments["force_level"] != null)
+                        levelLimitCmd += $" force={arguments["force_level"]}";
+                    return levelLimitCmd;
+
+                case "set_map_desc":
+                    return $"SET MAP_DESC \"{arguments["description"]}\"";
+
+                case "set_help":
+                    return $"SET HELP \"{arguments["text"]}\"";
+
+                case "add_tooltip":
+                    var tooltipCmd = $"ADD TOOLTIP at ({arguments["x"]}, {arguments["y"]})";
+                    if (arguments["width"] != null)
+                        tooltipCmd += $" width={arguments["width"]}";
+                    if (arguments["height"] != null)
+                        tooltipCmd += $" height={arguments["height"]}";
+                    if (arguments["title"] != null)
+                        tooltipCmd += $" title=\"{arguments["title"]}\"";
+                    if (arguments["desc"] != null)
+                        tooltipCmd += $" desc=\"{arguments["desc"]}\"";
+                    return tooltipCmd;
 
                 default:
                     return $"# Unknown function: {functionName}";

@@ -68,7 +68,48 @@ namespace HaCreator.MapEditor.AI
         SetFieldLimit,  // Set field limit restrictions
         SetMapSize,     // Set map dimensions
         SetVR,          // Set viewing range
-        ClearVR         // Clear viewing range
+        ClearVR,        // Clear viewing range
+
+        // New map property commands
+        SetReturnMap,       // Set returnMap and forcedReturn
+        SetMobRate,         // Set monster spawn rate multiplier
+        SetFieldType,       // Set field type (underwater, flying, etc.)
+        SetTimeLimit,       // Set map time limit in seconds
+        SetLevelLimit,      // Set level requirement
+        SetScript,          // Set onUserEnter/onFirstUserEnter scripts
+        SetEffect,          // Set visual effect name
+        SetHelp,            // Set help text
+        SetMapDesc,         // Set map description
+        SetDropSettings,    // Set dropExpire and dropRate
+        SetDecaySettings,   // Set decHP and decInterval
+        SetRecovery,        // Set HP recovery rate
+        SetTimeMob,         // Set time-based mob spawn
+
+        // Minimap commands
+        SetMinimapRect,     // Set minimap bounds
+        ClearMinimapRect,   // Clear minimap bounds
+
+        // Life/Spawn commands
+        SetPatrolRange,     // Set rx0/rx1 for mob/NPC
+        SetRespawnTime,     // Set MobTime for spawn
+        SetTeam,            // Set team for mob/NPC (PvP maps)
+
+        // Layer management
+        CreateLayer,        // Create new layer
+        DeleteLayer,        // Remove layer
+        SetLayerTileset,    // Change layer tileset
+        MoveToLayer,        // Move items between layers
+
+        // Z-Order commands
+        SetZ,               // Set explicit Z value
+        BringToFront,       // Maximize Z in layer
+        SendToBack,         // Minimize Z in layer
+
+        // Miscellaneous
+        Rename,             // Rename portal/item
+        AddToolTip,         // Add area tooltip
+        RemoveToolTip,      // Remove tooltip
+        ModifyToolTip       // Modify tooltip text
     }
 
     public enum ElementType
@@ -87,6 +128,10 @@ namespace HaCreator.MapEditor.AI
         Ladder,
         Chair,
         Reactor,
+        ToolTip,   // Area tooltip
+        Layer,     // Map layer
+        Map,       // Map-wide settings
+        Life,      // Generic mob or NPC
         All
     }
 }

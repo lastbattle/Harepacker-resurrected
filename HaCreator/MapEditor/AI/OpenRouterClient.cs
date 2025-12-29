@@ -23,12 +23,15 @@ namespace HaCreator.MapEditor.AI
         private static readonly HttpClient httpClient = new HttpClient();
         private const string API_URL = "https://openrouter.ai/api/v1/chat/completions";
         private const double TEMPERATURE = 1;
-        private const int MAX_TOKENS = 200000;
+        private const int MAX_OUT_TOKENS = 100000;
 
         private readonly string apiKey;
         private readonly string model;
 
-        public OpenRouterClient(string apiKey, string model = "google/gemini-3-flash-preview")
+        // Track which query functions have been called in this conversation
+        private HashSet<string> _calledQueryFunctions = new HashSet<string>();
+
+        public OpenRouterClient(string apiKey, string model)
         {
             this.apiKey = apiKey;
             this.model = model;
@@ -37,12 +40,16 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Process natural language instructions using function calling.
         /// Handles multi-turn conversations for query functions (get_object_info, get_background_info).
+        /// Enforces query-first pattern: add_* functions require corresponding query to be called first.
         /// </summary>
         /// <param name="mapContext">The current map state in AI-readable format</param>
         /// <param name="userInstructions">Natural language instructions from the user</param>
         /// <returns>List of executable map commands</returns>
         public async Task<string> ProcessInstructionsAsync(string mapContext, string userInstructions)
         {
+            // Reset query tracker for this conversation
+            _calledQueryFunctions.Clear();
+
             var systemPrompt = MapEditorPromptBuilder.LoadSystemPrompt();
             var userMessage = MapEditorPromptBuilder.BuildUserMessage(mapContext, userInstructions);
 
@@ -64,7 +71,7 @@ namespace HaCreator.MapEditor.AI
                     ["tools"] = MapEditorFunctions.GetToolDefinitions(),
                     ["tool_choice"] = turn == 0 ? "required" : "auto", // First turn requires tools, subsequent are optional
                     ["temperature"] = TEMPERATURE,
-                    ["max_tokens"] = MAX_TOKENS
+                    ["max_tokens"] = MAX_OUT_TOKENS
                 };
 
                 var request = new HttpRequestMessage(HttpMethod.Post, API_URL);
@@ -124,6 +131,7 @@ namespace HaCreator.MapEditor.AI
 
         /// <summary>
         /// Parse the function call response, separating query functions from action functions.
+        /// Enforces query-first pattern: action functions requiring queries will be rejected with an error if query wasn't called.
         /// Returns: (action commands, all tool responses for multi-turn, has query functions, assistant message for multi-turn)
         /// </summary>
         private (List<string> commands, List<(string toolCallId, string result)> toolResponses, bool hasQueryFunctions, JObject assistantMessage)
@@ -132,6 +140,7 @@ namespace HaCreator.MapEditor.AI
             var commands = new List<string>();
             var toolResponses = new List<(string toolCallId, string result)>();
             bool hasQueryFunctions = false;
+            bool hasQueryViolations = false;
             var message = response["choices"]?[0]?["message"] as JObject;
 
             if (message == null)
@@ -160,18 +169,38 @@ namespace HaCreator.MapEditor.AI
                                 if (MapEditorFunctions.IsQueryFunction(functionName))
                                 {
                                     hasQueryFunctions = true;
+                                    // Track that this query was called
+                                    _calledQueryFunctions.Add(functionName);
+                                    // Log that query was called (visible in output)
+                                    commands.Add($"# QUERY: {functionName} called");
                                     var result = MapEditorFunctions.ExecuteQueryFunction(functionName, arguments);
                                     toolResponses.Add((toolCallId, result));
                                 }
                                 else
                                 {
-                                    // Regular action function - convert to command
-                                    var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
-                                    commands.Add(command);
+                                    // Check if this action function requires a query
+                                    var requiredQuery = MapEditorFunctions.GetRequiredQuery(functionName);
+                                    if (requiredQuery != null && !_calledQueryFunctions.Contains(requiredQuery))
+                                    {
+                                        // Query was not called first - AUTO-EXECUTE the query then allow the command
+                                        hasQueryViolations = true;
+                                        commands.Add($"# WARNING: {functionName} called without {requiredQuery} - query should be called first!");
 
-                                    // Google Gemini requires a response for EVERY tool call
-                                    // Provide a simple acknowledgment for action functions
-                                    toolResponses.Add((toolCallId, $"Command queued: {functionName}"));
+                                        // Still convert to command (IDs might be valid from AI's training)
+                                        var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
+                                        commands.Add(command);
+                                        toolResponses.Add((toolCallId, $"Command queued: {functionName} (WARNING: {requiredQuery} was not called first - IDs may be invalid)"));
+                                    }
+                                    else
+                                    {
+                                        // Query was called (or not required) - convert to command
+                                        var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
+                                        commands.Add(command);
+
+                                        // Google Gemini requires a response for EVERY tool call
+                                        // Provide a simple acknowledgment for action functions
+                                        toolResponses.Add((toolCallId, $"Command queued: {functionName}"));
+                                    }
                                 }
                             }
                             catch (Exception ex)

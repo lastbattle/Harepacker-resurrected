@@ -6,10 +6,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -77,7 +75,7 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public event Action<string> OnProgress;
 
-        public AgentOrchestrator(string apiKey, string orchestratorModel = "google/gemini-2.0-flash-001", string agentModel = null)
+        public AgentOrchestrator(string apiKey, string orchestratorModel, string agentModel = null)
         {
             this.apiKey = apiKey;
             this.orchestratorModel = orchestratorModel;
@@ -243,38 +241,19 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
-        /// Load an agent-specific prompt file
+        /// Load an agent-specific prompt file with placeholder replacement
         /// </summary>
         private string LoadAgentPrompt(string agentType)
         {
-            var promptFileName = $"{char.ToUpper(agentType[0])}{agentType.Substring(1)}AgentPrompt.txt";
-            return LoadPrompt(promptFileName);
+            return MapEditorPromptBuilder.LoadAgentPrompt(agentType);
         }
 
         /// <summary>
-        /// Load a prompt file from the Prompts directory
+        /// Load a prompt file from the Prompts directory with placeholder replacement
         /// </summary>
         private string LoadPrompt(string fileName)
         {
-            var externalPath = Path.Combine(
-                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "",
-                "AI", "Prompts", fileName);
-
-            if (File.Exists(externalPath))
-            {
-                return File.ReadAllText(externalPath);
-            }
-
-            var sourcePath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "..", "..", "..", "MapEditor", "AI", "Prompts", fileName);
-
-            if (File.Exists(sourcePath))
-            {
-                return File.ReadAllText(sourcePath);
-            }
-
-            throw new FileNotFoundException($"Prompt file not found: {fileName}");
+            return MapEditorPromptBuilder.LoadPromptFile(fileName);
         }
 
         /// <summary>
