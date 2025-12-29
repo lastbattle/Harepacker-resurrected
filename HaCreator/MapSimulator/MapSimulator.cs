@@ -481,6 +481,9 @@ namespace HaCreator.MapSimulator
                 Thread.Sleep(100);
             }
 
+            // Initialize mob foothold references after all mobs are loaded
+            InitializeMobFootholds();
+
 #if DEBUG
             // test benchmark
             watch.Stop();
@@ -678,8 +681,12 @@ namespace HaCreator.MapSimulator
         }
 
         private int currTickCount = Environment.TickCount;
+        private int lastTickCount = Environment.TickCount;
         private KeyboardState oldKeyboardState = Keyboard.GetState();
         private MouseState oldMouseState;
+
+        // Mob movement enabled flag
+        private bool bMobMovementEnabled = true;
         /// <summary>
         /// Key, and frame update handling
         /// </summary>
@@ -761,10 +768,101 @@ namespace HaCreator.MapSimulator
                 this.bShowDebugMode = !this.bShowDebugMode;
             }
 
+            // Toggle mob movement with F6
+            if (newKeyboardState.IsKeyUp(Keys.F6) && oldKeyboardState.IsKeyDown(Keys.F6))
+            {
+                this.bMobMovementEnabled = !this.bMobMovementEnabled;
+            }
+
+            // Update mob movement
+            UpdateMobMovement(gameTime);
+
+            // Update NPC movement and action cycling
+            UpdateNpcActions(gameTime);
+
             this.oldKeyboardState = newKeyboardState;  // set the new state as the old state for next time
             this.oldMouseState = newMouseState;  // set the new state as the old state for next time
 
             base.Update(gameTime);
+        }
+
+        /// <summary>
+        /// Updates all mob positions based on their movement logic
+        /// </summary>
+        /// <param name="gameTime"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateMobMovement(GameTime gameTime)
+        {
+            if (!bMobMovementEnabled)
+                return;
+
+            int deltaTimeMs = (int)gameTime.ElapsedGameTime.TotalMilliseconds;
+
+            foreach (MobItem mobItem in mapObjects_Mobs)
+            {
+                if (mobItem == null || mobItem.MovementInfo == null)
+                    continue;
+
+                mobItem.MovementEnabled = bMobMovementEnabled;
+                mobItem.UpdateMovement(deltaTimeMs);
+            }
+        }
+
+        /// <summary>
+        /// Updates all NPC movement and action cycling
+        /// </summary>
+        /// <param name="gameTime"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateNpcActions(GameTime gameTime)
+        {
+            int deltaTimeMs = (int)gameTime.ElapsedGameTime.TotalMilliseconds;
+
+            foreach (var item in mapObjects_NPCs)
+            {
+                if (item is NpcItem npcItem)
+                {
+                    npcItem.Update(deltaTimeMs);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initializes foothold references for all mobs.
+        /// Call this after loading is complete.
+        /// </summary>
+        private void InitializeMobFootholds()
+        {
+            var footholds = mapBoard.BoardItems.FootholdLines;
+
+            // Use raw VR coordinates (without CenterPoint offset) since mob coordinates are in raw format
+            Rectangle rawVR = mapBoard.VRRectangle != null
+                ? new Rectangle(mapBoard.VRRectangle.X, mapBoard.VRRectangle.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height)
+                : new Rectangle(-mapBoard.CenterPoint.X, -mapBoard.CenterPoint.Y, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+
+            foreach (MobItem mobItem in mapObjects_Mobs)
+            {
+                if (mobItem?.MovementInfo == null)
+                    continue;
+
+                // Set map boundaries using raw VR coordinates (mob coordinates are in raw map format)
+                mobItem.SetMapBoundaries(
+                    rawVR.Left,
+                    rawVR.Right,
+                    rawVR.Top,
+                    rawVR.Bottom
+                );
+
+                // Find footholds for ground-based mobs (including jumping mobs)
+                if (footholds != null && footholds.Count > 0)
+                {
+                    if (mobItem.MovementInfo.MoveType == Objects.FieldObject.MobMoveType.Move ||
+                        mobItem.MovementInfo.MoveType == Objects.FieldObject.MobMoveType.Stand ||
+                        mobItem.MovementInfo.MoveType == Objects.FieldObject.MobMoveType.Jump)
+                    {
+                        mobItem.MovementInfo.FindCurrentFoothold(footholds);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -805,11 +903,10 @@ namespace HaCreator.MapSimulator
             //skeletonMeshRenderer.Begin();
 
             DrawLayer(backgrounds_back, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
-            DrawMapObjects(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
+            DrawMapObjects(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // tiles and objects
             DrawPortals(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // portals
             DrawReactors(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // reactors
-            DrawLife(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs)
-
+            DrawLife(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs) - rendered on top
             DrawLayer(backgrounds_front, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // front background
 
             // Borders
@@ -830,7 +927,7 @@ namespace HaCreator.MapSimulator
 
             if (gameTime.TotalGameTime.TotalSeconds < 5)
                 spriteBatch.DrawString(font_navigationKeysHelper,
-                    _navHelpTextMobOff,
+                    bMobMovementEnabled ? _navHelpTextMobOn : _navHelpTextMobOff,
                     new Vector2(20, Height - 190), Color.White);
             
             if (!bSaveScreenshot && bShowDebugMode)
@@ -1073,8 +1170,6 @@ namespace HaCreator.MapSimulator
                             _debugStringBuilder.Append(" type: ").Append(mobItem.MovementInfo.MoveType).Append('\n');
                             _debugStringBuilder.Append(" action: ").Append(mobItem.CurrentAction).Append('\n');
                             _debugStringBuilder.Append(" dir: ").Append(mobItem.MovementInfo.MoveDirection).Append('\n');
-                            _debugStringBuilder.Append(" SrcY: ").Append(mobItem.MovementInfo.SrcY).Append('\n');
-                            _debugStringBuilder.Append(" MapT/B: ").Append(mobItem.MovementInfo.MapTop).Append('/').Append(mobItem.MovementInfo.MapBottom);
                         }
 
                         mobItem.DebugText = _debugStringBuilder.ToString();
