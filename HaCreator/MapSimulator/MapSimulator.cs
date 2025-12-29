@@ -5,6 +5,7 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.MapObjects.UIObject;
 using HaCreator.MapSimulator.Objects.FieldObject;
 using HaCreator.MapSimulator.Objects.UIObject;
+using MobItem = HaCreator.MapSimulator.Objects.FieldObject.MobItem;
 using HaRepacker.Utils;
 using HaSharedLibrary;
 using HaSharedLibrary.Render;
@@ -117,6 +118,13 @@ namespace HaCreator.MapSimulator
         private Texture2D texture_debugBoundaryRect;
         private bool bShowDebugMode = false;
         private bool bHideUIMode = false;
+
+        // Cached StringBuilder for debug text to avoid GC allocations every frame
+        private readonly StringBuilder _debugStringBuilder = new StringBuilder(256);
+
+        // Cached navigation help strings to avoid string.Format every frame
+        private string _navHelpTextMobOn;
+        private string _navHelpTextMobOff;
 
         /// <summary>
         /// MapSimulator Constructor
@@ -261,11 +269,15 @@ namespace HaCreator.MapSimulator
 
             // https://stackoverflow.com/questions/55045066/how-do-i-convert-a-ttf-or-other-font-to-a-xnb-xna-game-studio-font
             // if you're having issues building on w10, install Visual C++ Redistributable for Visual Studio 2012 Update 4
-            // 
+            //
             // to build your own font: /MonoGame Font Builder/game.mgcb
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
             font_navigationKeysHelper = Content.Load<SpriteFont>("XnaDefaultFont");
             font_DebugValues = Content.Load<SpriteFont>("XnaDefaultFont");//("XnaFont_Debug");
+
+            // Pre-cache navigation help text strings to avoid string.Format allocations in Draw()
+            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI";
+            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI";
 
             base.Initialize();
         }
@@ -463,7 +475,7 @@ namespace HaCreator.MapSimulator
                 }
             });
 
-            while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted || 
+            while (!t_tiles.IsCompleted || !t_Background.IsCompleted || !t_reactor.IsCompleted || !t_npc.IsCompleted || !t_mobs.IsCompleted || !t_portal.IsCompleted ||
                 !t_tooltips.IsCompleted || !t_cursor.IsCompleted || !t_spine.IsCompleted || !t_minimap.IsCompleted || !t_statusBar.IsCompleted)
             {
                 Thread.Sleep(100);
@@ -816,20 +828,19 @@ namespace HaCreator.MapSimulator
                 DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
             }
 
-            if (gameTime.TotalGameTime.TotalSeconds < 4)
-                spriteBatch.DrawString(font_navigationKeysHelper, 
-                    string.Format("[Left] [Right] [Up] [Down] [Shift] for navigation.{0}[F5] for debug mode{1}[Alt+Enter] Full screen{2}[PrintSc] Screenshot{3}[H] Hide UI", 
-                    Environment.NewLine, Environment.NewLine, Environment.NewLine, Environment.NewLine), 
+            if (gameTime.TotalGameTime.TotalSeconds < 5)
+                spriteBatch.DrawString(font_navigationKeysHelper,
+                    _navHelpTextMobOff,
                     new Vector2(20, Height - 190), Color.White);
             
             if (!bSaveScreenshot && bShowDebugMode)
             {
-                StringBuilder sb = new StringBuilder();
-                sb.Append("FPS: ").Append(frameRate).Append(Environment.NewLine);
-                sb.Append("Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append(Environment.NewLine);
-                sb.Append("Relative cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
+                _debugStringBuilder.Clear();
+                _debugStringBuilder.Append("FPS: ").Append(frameRate).Append('\n');
+                _debugStringBuilder.Append("Cursor: X ").Append(mouseState.X).Append(", Y ").Append(mouseState.Y).Append('\n');
+                _debugStringBuilder.Append("Relative cursor: X ").Append(mouseXRelativeToMap).Append(", Y ").Append(mouseYRelativeToMap);
 
-                spriteBatch.DrawString(font_DebugValues, sb.ToString(), 
+                spriteBatch.DrawString(font_DebugValues, _debugStringBuilder,
                     new Vector2(Width - 270, 10), Color.White); // use the original width to render text
             }
 
@@ -937,18 +948,17 @@ namespace HaCreator.MapSimulator
 
                     if (portalItem.CanUpdateDebugText(TickCount, 1000))
                     {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" script: ").Append(instance.script).Append(Environment.NewLine);
-                        sb.Append(" tm: ").Append(instance.tm).Append(Environment.NewLine);
-                        sb.Append(" pt: ").Append(instance.pt).Append(Environment.NewLine);
-                        sb.Append(" pn: ").Append(instance.pt).Append(Environment.NewLine);
+                        _debugStringBuilder.Clear();
+                        _debugStringBuilder.Append(" x: ").Append(rect.X).Append('\n');
+                        _debugStringBuilder.Append(" y: ").Append(rect.Y).Append('\n');
+                        _debugStringBuilder.Append(" script: ").Append(instance.script).Append('\n');
+                        _debugStringBuilder.Append(" tm: ").Append(instance.tm).Append('\n');
+                        _debugStringBuilder.Append(" pt: ").Append(instance.pt).Append('\n');
+                        _debugStringBuilder.Append(" pn: ").Append(instance.pt);
 
-                        portalItem.DebugText = sb.ToString();
+                        portalItem.DebugText = _debugStringBuilder.ToString();
                     }
                     spriteBatch.DrawString(font_DebugValues, portalItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
                 }
             }
         }
@@ -990,17 +1000,16 @@ namespace HaCreator.MapSimulator
 
                     if (reactorItem.CanUpdateDebugText(TickCount, 1000))
                     {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.ReactorInfo.ID).Append(Environment.NewLine);
-                        sb.Append(" name: ").Append(instance.Name).Append(Environment.NewLine);
+                        _debugStringBuilder.Clear();
+                        _debugStringBuilder.Append(" x: ").Append(rect.X).Append('\n');
+                        _debugStringBuilder.Append(" y: ").Append(rect.Y).Append('\n');
+                        _debugStringBuilder.Append(" id: ").Append(instance.ReactorInfo.ID).Append('\n');
+                        _debugStringBuilder.Append(" name: ").Append(instance.Name);
 
-                        reactorItem.DebugText = sb.ToString();
+                        reactorItem.DebugText = _debugStringBuilder.ToString();
                     }
 
                     spriteBatch.DrawString(font_DebugValues, reactorItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
                 }
             }
         }
@@ -1020,18 +1029,22 @@ namespace HaCreator.MapSimulator
             int mapCenterX, int mapCenterY, int TickCount)
         {
             // mobs
-            foreach (MobItem mobItem in mapObjects_Mobs) 
+            foreach (MobItem mobItem in mapObjects_Mobs)
             {
                 MobInstance instance = mobItem.MobInstance;
+
+                // Use current position (which may be different from spawn position if moving)
+                int mobX = mobItem.CurrentX;
+                int mobY = mobItem.CurrentY;
 
                 ReflectionDrawableBoundary mirrorFieldData = null;
                 if (mirrorBottomReflection != null)
                 {
-                    if (rect_mirrorBottom.Contains(new Point(mobItem.MobInstance.X, mobItem.MobInstance.Y)))
+                    if (rect_mirrorBottom.Contains(new Point(mobX, mobY)))
                         mirrorFieldData = mirrorBottomReflection;
                 }
                 if (mirrorFieldData == null) // a field may contain both 'info/mirror_Bottom' and 'MirrorFieldData'
-                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobItem.MobInstance.X, mobItem.MobInstance.Y, MirrorFieldDataType.mob)?.ReflectionInfo;
+                    mirrorFieldData = mapBoard.BoardItems.CheckObjectWithinMirrorFieldDataBoundary(mobX, mobY, MirrorFieldDataType.mob)?.ReflectionInfo;
 
                 mobItem.Draw(spriteBatch, skeletonMeshRenderer, gameTime,
                     mapShiftX, mapShiftY, mapCenterX, mapCenterY,
@@ -1043,26 +1056,31 @@ namespace HaCreator.MapSimulator
                 if (bShowDebugMode)
                 {
                     Rectangle rect = new Rectangle(
-                        instance.X - (int)shiftCenter.X - (instance.Width - 20),
-                        instance.Y - (int)shiftCenter.Y - instance.Height,
+                        mobX - (int)shiftCenter.X - (instance.Width - 20),
+                        mobY - (int)shiftCenter.Y - instance.Height,
                         Math.Max(100, instance.Width + 40),
-                        Math.Max(120, instance.Height));
+                        Math.Max(140, instance.Height));
 
                     DrawBorder(spriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f));
 
-                    if (mobItem.CanUpdateDebugText(TickCount, 1000))
+                    if (mobItem.CanUpdateDebugText(TickCount, 500))
                     {
-                        StringBuilder sb = new();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.MobInfo.ID).Append(Environment.NewLine);
-                        //sb.Append(" name: ").Append(instance.MobInfo.Name).Append(Environment.NewLine);
+                        _debugStringBuilder.Clear();
+                        _debugStringBuilder.Append(" x: ").Append(mobX).Append(", y: ").Append(mobY).Append('\n');
+                        _debugStringBuilder.Append(" id: ").Append(instance.MobInfo.ID).Append('\n');
+                        if (mobItem.MovementInfo != null)
+                        {
+                            _debugStringBuilder.Append(" type: ").Append(mobItem.MovementInfo.MoveType).Append('\n');
+                            _debugStringBuilder.Append(" action: ").Append(mobItem.CurrentAction).Append('\n');
+                            _debugStringBuilder.Append(" dir: ").Append(mobItem.MovementInfo.MoveDirection).Append('\n');
+                            _debugStringBuilder.Append(" SrcY: ").Append(mobItem.MovementInfo.SrcY).Append('\n');
+                            _debugStringBuilder.Append(" MapT/B: ").Append(mobItem.MovementInfo.MapTop).Append('/').Append(mobItem.MovementInfo.MapBottom);
+                        }
 
-                        mobItem.DebugText = sb.ToString();
+                        mobItem.DebugText = _debugStringBuilder.ToString();
                     }
 
                     spriteBatch.DrawString(font_DebugValues, mobItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
                 }
             }
             // npcs
@@ -1098,16 +1116,14 @@ namespace HaCreator.MapSimulator
 
                     if (npcItem.CanUpdateDebugText(TickCount, 1000))
                     {
-                        StringBuilder sb = new StringBuilder();
-                        sb.Append(" x: ").Append(rect.X).Append(Environment.NewLine);
-                        sb.Append(" y: ").Append(rect.Y).Append(Environment.NewLine);
-                        sb.Append(" id: ").Append(instance.NpcInfo.ID).Append(Environment.NewLine);
-                        //sb.Append(" name: ").Append(instance.NpcInfo.Name).Append(Environment.NewLine);
+                        _debugStringBuilder.Clear();
+                        _debugStringBuilder.Append(" x: ").Append(rect.X).Append('\n');
+                        _debugStringBuilder.Append(" y: ").Append(rect.Y).Append('\n');
+                        _debugStringBuilder.Append(" id: ").Append(instance.NpcInfo.ID);
 
-                        npcItem.DebugText = sb.ToString();
+                        npcItem.DebugText = _debugStringBuilder.ToString();
                     }
                     spriteBatch.DrawString(font_DebugValues, npcItem.DebugText, new Vector2(rect.X, rect.Y), Color.White);
-                    Debug.WriteLine(rect.ToString());
                 }
             }
         }
