@@ -6,12 +6,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Net.Http;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using MapleLib.WzLib.WzStructure.Data;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -31,7 +28,7 @@ namespace HaCreator.MapEditor.AI
         private readonly string apiKey;
         private readonly string model;
 
-        public OpenRouterClient(string apiKey, string model = "google/gemini-3-flash-preview")
+        public OpenRouterClient(string apiKey, string model = "google/gemini-2.0-flash-001")
         {
             this.apiKey = apiKey;
             this.model = model;
@@ -46,15 +43,8 @@ namespace HaCreator.MapEditor.AI
         /// <returns>List of executable map commands</returns>
         public async Task<string> ProcessInstructionsAsync(string mapContext, string userInstructions)
         {
-            var systemPrompt = LoadSystemPrompt();
-            var userMessage = $@"## Current Map State
-{mapContext}
-
-## User Request
-{userInstructions}
-
-Use the available functions to fulfill the user's request. Call multiple functions as needed.
-IMPORTANT: For objects and backgrounds, call get_object_info or get_background_info FIRST to discover valid paths, then use add_object or add_background with those exact paths.";
+            var systemPrompt = MapEditorPromptBuilder.LoadSystemPrompt();
+            var userMessage = MapEditorPromptBuilder.BuildUserMessage(mapContext, userInstructions);
 
             var messages = new JArray
             {
@@ -213,72 +203,6 @@ IMPORTANT: For objects and backgrounds, call get_object_info or get_background_i
         }
 
         /// <summary>
-        /// Load the system prompt from external file
-        /// </summary>
-        private string LoadSystemPrompt()
-        {
-            string promptContent = null;
-
-            // Try to load from external file first
-            var externalPath = Path.Combine(
-                Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "",
-                "AI", "Prompts", "MapEditorSystemPrompt.txt");
-
-            if (File.Exists(externalPath))
-            {
-                promptContent = File.ReadAllText(externalPath);
-            }
-            else
-            {
-                // Try source location
-                var sourcePath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "..", "..", "..", "MapEditor", "AI", "Prompts", "MapEditorSystemPrompt.txt");
-
-                if (File.Exists(sourcePath))
-                {
-                    promptContent = File.ReadAllText(sourcePath);
-                }
-                else
-                {
-                    throw new FileNotFoundException(
-                        $"System prompt file not found. Expected at:\n- {externalPath}\n- {sourcePath}");
-                }
-            }
-
-            // Replace dynamic placeholders
-            promptContent = promptContent.Replace("{PORTAL_TYPES}", GeneratePortalTypesDocumentation());
-
-            return promptContent;
-        }
-
-        /// <summary>
-        /// Generate portal types documentation dynamically from PortalType enum
-        /// </summary>
-        private string GeneratePortalTypesDocumentation()
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("Portal types control how the portal appears and behaves:");
-            sb.AppendLine();
-
-            foreach (PortalType portalType in Enum.GetValues(typeof(PortalType)))
-            {
-                try
-                {
-                    var code = portalType.ToCode();
-                    var friendlyName = portalType.GetFriendlyName();
-                    sb.AppendLine($"- `{portalType}` ({code}) = {friendlyName}");
-                }
-                catch
-                {
-                    // Skip if extension methods fail for any reason
-                }
-            }
-
-            return sb.ToString().TrimEnd();
-        }
-
-        /// <summary>
         /// Test if the API key is valid
         /// </summary>
         public async Task<bool> TestConnectionAsync()
@@ -309,115 +233,6 @@ IMPORTANT: For objects and backgrounds, call get_object_info or get_background_i
             catch
             {
                 return false;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Settings for AI integration with persistent storage
-    /// </summary>
-    public static class AISettings
-    {
-        private const string DEFAULT_MODEL = "google/gemini-3-flash-preview";
-
-        private static string _apiKey = string.Empty;
-        private static string _model = DEFAULT_MODEL;
-        private static bool _loaded = false;
-
-        private static readonly string SettingsFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "HaCreator", "ai_settings.json");
-
-        public static string ApiKey
-        {
-            get
-            {
-                EnsureLoaded();
-                return _apiKey;
-            }
-            set
-            {
-                _apiKey = value ?? string.Empty;
-                Save();
-            }
-        }
-
-        public static string Model
-        {
-            get
-            {
-                EnsureLoaded();
-                return _model;
-            }
-            set
-            {
-                _model = value ?? DEFAULT_MODEL;
-                Save();
-            }
-        }
-
-        public static bool IsConfigured
-        {
-            get
-            {
-                EnsureLoaded();
-                return !string.IsNullOrWhiteSpace(_apiKey);
-            }
-        }
-
-        /// <summary>
-        /// Available models on OpenRouter that support function calling
-        /// </summary>
-        public static readonly string[] AvailableModels = new[]
-        {
-            DEFAULT_MODEL
-        };
-
-        private static void EnsureLoaded()
-        {
-            if (_loaded) return;
-            _loaded = true;
-            Load();
-        }
-
-        private static void Load()
-        {
-            try
-            {
-                if (File.Exists(SettingsFilePath))
-                {
-                    var json = File.ReadAllText(SettingsFilePath);
-                    var settings = JObject.Parse(json);
-                    _apiKey = settings["apiKey"]?.ToString() ?? string.Empty;
-                    _model = settings["model"]?.ToString() ?? DEFAULT_MODEL;
-                }
-            }
-            catch
-            {
-                // Ignore load errors
-            }
-        }
-
-        private static void Save()
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(SettingsFilePath);
-                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                var settings = new JObject
-                {
-                    ["apiKey"] = _apiKey,
-                    ["model"] = _model
-                };
-                File.WriteAllText(SettingsFilePath, settings.ToString(Formatting.Indented));
-            }
-            catch
-            {
-                // Ignore save errors
             }
         }
     }

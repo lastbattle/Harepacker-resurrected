@@ -36,6 +36,10 @@ namespace HaCreator.MapEditor.AI
             this.sb = new StringBuilder();
         }
 
+        // ASCII map configuration
+        private const int ASCII_MAP_WIDTH = 80;  // Characters wide
+        private const int ASCII_MAP_HEIGHT = 30; // Characters tall (max)
+
         /// <summary>
         /// Generate a compact summary for AI context (shorter than full serialize)
         /// </summary>
@@ -67,6 +71,18 @@ namespace HaCreator.MapEditor.AI
                 maxY = Math.Max(maxY, Math.Max(fh.FirstDot.Y, fh.SecondDot.Y));
                 hasElements = true;
             }
+            foreach (var mob in board.BoardItems.Mobs)
+            {
+                minX = Math.Min(minX, mob.X); maxX = Math.Max(maxX, mob.X);
+                minY = Math.Min(minY, mob.Y); maxY = Math.Max(maxY, mob.Y);
+                hasElements = true;
+            }
+            foreach (var npc in board.BoardItems.NPCs)
+            {
+                minX = Math.Min(minX, npc.X); maxX = Math.Max(maxX, npc.X);
+                minY = Math.Min(minY, npc.Y); maxY = Math.Max(maxY, npc.Y);
+                hasElements = true;
+            }
 
             if (hasElements)
             {
@@ -74,6 +90,12 @@ namespace HaCreator.MapEditor.AI
                 WriteLine($"** IMPORTANT: Place new elements within these bounds! **");
             }
             WriteLine();
+
+            // Generate ASCII map visualization
+            if (hasElements)
+            {
+                GenerateAsciiMapVisualization(minX, maxX, minY, maxY);
+            }
 
             // Quick counts
             WriteLine("## Element Counts");
@@ -260,6 +282,240 @@ namespace HaCreator.MapEditor.AI
             sb.Append(MapAssetCatalog.GenerateCompactSummary());
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Generate an ASCII art visualization of the map layout.
+        /// This helps the AI understand the spatial arrangement of elements.
+        /// </summary>
+        private void GenerateAsciiMapVisualization(int minX, int maxX, int minY, int maxY)
+        {
+            WriteLine("## ASCII Map Visualization");
+            WriteLine("```");
+            WriteLine("Legend: = Platform  | Wall  I Rope/Ladder  P Portal  M Mob  N NPC  C Chair  R Reactor  O Object  * Spawn");
+            WriteLine();
+
+            // Add padding to bounds
+            int padding = 50;
+            minX -= padding;
+            maxX += padding;
+            minY -= padding;
+            maxY += padding;
+
+            int worldWidth = maxX - minX;
+            int worldHeight = maxY - minY;
+
+            // Calculate scale to fit within ASCII_MAP dimensions
+            // Use proportional scaling to maintain aspect ratio
+            double scaleX = (double)(ASCII_MAP_WIDTH - 2) / Math.Max(worldWidth, 1);
+            double scaleY = (double)(ASCII_MAP_HEIGHT - 2) / Math.Max(worldHeight, 1);
+            double scale = Math.Min(scaleX, scaleY);
+
+            int mapWidth = Math.Max(20, Math.Min(ASCII_MAP_WIDTH, (int)(worldWidth * scale) + 2));
+            int mapHeight = Math.Max(10, Math.Min(ASCII_MAP_HEIGHT, (int)(worldHeight * scale) + 2));
+
+            // Create the character grid
+            char[,] grid = new char[mapHeight, mapWidth];
+            int[,] priority = new int[mapHeight, mapWidth]; // Higher priority overwrites lower
+
+            // Initialize with empty space
+            for (int y = 0; y < mapHeight; y++)
+            {
+                for (int x = 0; x < mapWidth; x++)
+                {
+                    grid[y, x] = ' ';
+                    priority[y, x] = 0;
+                }
+            }
+
+            // Helper function to convert world coordinates to grid coordinates
+            int ToGridX(int worldX) => Math.Max(0, Math.Min(mapWidth - 1, (int)((worldX - minX) * scale)));
+            int ToGridY(int worldY) => Math.Max(0, Math.Min(mapHeight - 1, (int)((worldY - minY) * scale)));
+
+            // Helper function to set a character with priority
+            void SetChar(int gx, int gy, char c, int p)
+            {
+                if (gx >= 0 && gx < mapWidth && gy >= 0 && gy < mapHeight)
+                {
+                    if (p >= priority[gy, gx])
+                    {
+                        grid[gy, gx] = c;
+                        priority[gy, gx] = p;
+                    }
+                }
+            }
+
+            // Draw footholds (platforms) - priority 1
+            foreach (var fh in board.BoardItems.FootholdLines)
+            {
+                int x1 = ToGridX(fh.FirstDot.X);
+                int y1 = ToGridY(fh.FirstDot.Y);
+                int x2 = ToGridX(fh.SecondDot.X);
+                int y2 = ToGridY(fh.SecondDot.Y);
+
+                // Draw line between points
+                DrawLine(grid, priority, x1, y1, x2, y2, mapWidth, mapHeight);
+            }
+
+            // Draw ropes and ladders - priority 2
+            foreach (var rope in board.BoardItems.Ropes)
+            {
+                int x = ToGridX(rope.FirstAnchor.X);
+                int y1 = ToGridY(rope.FirstAnchor.Y);
+                int y2 = ToGridY(rope.SecondAnchor.Y);
+
+                int startY = Math.Min(y1, y2);
+                int endY = Math.Max(y1, y2);
+                for (int y = startY; y <= endY; y++)
+                {
+                    SetChar(x, y, 'I', 2);
+                }
+            }
+
+            // Draw chairs - priority 3
+            foreach (var chair in board.BoardItems.Chairs)
+            {
+                int x = ToGridX(chair.X);
+                int y = ToGridY(chair.Y);
+                SetChar(x, y, 'C', 3);
+            }
+
+            // Draw reactors - priority 4
+            foreach (var reactor in board.BoardItems.Reactors)
+            {
+                int x = ToGridX(reactor.X);
+                int y = ToGridY(reactor.Y);
+                SetChar(x, y, 'R', 4);
+            }
+
+            // Draw objects - priority 5 (sample some, not all)
+            var objects = board.BoardItems.TileObjs.OfType<ObjectInstance>().Take(50).ToList();
+            foreach (var obj in objects)
+            {
+                int x = ToGridX(obj.X);
+                int y = ToGridY(obj.Y);
+                SetChar(x, y, 'O', 5);
+            }
+
+            // Draw mobs - priority 6
+            foreach (var mob in board.BoardItems.Mobs)
+            {
+                int x = ToGridX(mob.X);
+                int y = ToGridY(mob.Y);
+                SetChar(x, y, 'M', 6);
+            }
+
+            // Draw NPCs - priority 7
+            foreach (var npc in board.BoardItems.NPCs)
+            {
+                int x = ToGridX(npc.X);
+                int y = ToGridY(npc.Y);
+                SetChar(x, y, 'N', 7);
+            }
+
+            // Draw portals - priority 8 (highest for important gameplay elements)
+            foreach (var portal in board.BoardItems.Portals)
+            {
+                int x = ToGridX(portal.X);
+                int y = ToGridY(portal.Y);
+                char c = portal.pn == "sp" ? '*' : 'P';
+                SetChar(x, y, c, 8);
+            }
+
+            // Draw axis labels
+            WriteLine($"    X: {minX} to {maxX} (scale: 1 char = ~{(int)(1 / scale)} pixels)");
+            WriteLine($"    Y: {minY} (top) to {maxY} (bottom)");
+            WriteLine();
+
+            // Output the grid with border
+            StringBuilder rowSb = new StringBuilder();
+
+            // Top border
+            rowSb.Append("    +");
+            for (int x = 0; x < mapWidth; x++) rowSb.Append('-');
+            rowSb.Append('+');
+            WriteLine(rowSb.ToString());
+
+            // Grid rows
+            for (int y = 0; y < mapHeight; y++)
+            {
+                rowSb.Clear();
+                rowSb.Append("    |");
+                for (int x = 0; x < mapWidth; x++)
+                {
+                    rowSb.Append(grid[y, x]);
+                }
+                rowSb.Append('|');
+                WriteLine(rowSb.ToString());
+            }
+
+            // Bottom border
+            rowSb.Clear();
+            rowSb.Append("    +");
+            for (int x = 0; x < mapWidth; x++) rowSb.Append('-');
+            rowSb.Append('+');
+            WriteLine(rowSb.ToString());
+
+            WriteLine("```");
+            WriteLine();
+        }
+
+        /// <summary>
+        /// Draw a line on the grid using Bresenham's algorithm.
+        /// Uses '=' for horizontal, '|' for vertical, '/' and '\' for diagonals.
+        /// </summary>
+        private void DrawLine(char[,] grid, int[,] priority, int x1, int y1, int x2, int y2, int width, int height)
+        {
+            int dx = Math.Abs(x2 - x1);
+            int dy = Math.Abs(y2 - y1);
+            int sx = x1 < x2 ? 1 : -1;
+            int sy = y1 < y2 ? 1 : -1;
+            int err = dx - dy;
+
+            // Determine line character based on slope
+            char lineChar;
+            if (dy == 0)
+            {
+                lineChar = '='; // Horizontal
+            }
+            else if (dx == 0)
+            {
+                lineChar = '|'; // Vertical
+            }
+            else if ((sx > 0 && sy > 0) || (sx < 0 && sy < 0))
+            {
+                lineChar = '\\'; // Diagonal down-right or up-left
+            }
+            else
+            {
+                lineChar = '/'; // Diagonal down-left or up-right
+            }
+
+            while (true)
+            {
+                if (x1 >= 0 && x1 < width && y1 >= 0 && y1 < height)
+                {
+                    if (priority[y1, x1] <= 1)
+                    {
+                        grid[y1, x1] = lineChar;
+                        priority[y1, x1] = 1;
+                    }
+                }
+
+                if (x1 == x2 && y1 == y2) break;
+
+                int e2 = 2 * err;
+                if (e2 > -dy)
+                {
+                    err -= dy;
+                    x1 += sx;
+                }
+                if (e2 < dx)
+                {
+                    err += dx;
+                    y1 += sy;
+                }
+            }
         }
 
         /// <summary>

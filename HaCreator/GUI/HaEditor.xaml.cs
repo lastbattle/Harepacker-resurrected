@@ -186,8 +186,14 @@ namespace HaCreator.GUI
         /// <summary>
         /// Opens the AI Map Editor popup for the currently selected map
         /// </summary>
-        private void BtnOpenAIMapEditor_Click(object sender, RoutedEventArgs e)
+        private void ExpanderAIMapEditor_Expanded(object sender, RoutedEventArgs e)
         {
+            // Collapse immediately - we use the expander as a styled button
+            if (sender is Expander expander)
+            {
+                expander.IsExpanded = false;
+            }
+
             var board = multiBoard?.SelectedBoard;
             if (board == null)
             {

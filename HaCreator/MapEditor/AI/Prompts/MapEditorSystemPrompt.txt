@@ -34,6 +34,41 @@ You can modify these element types:
 - "Right side" = higher X values within Content Bounds
 - "Middle" = center of Content Bounds, NOT (0,0)
 
+## ASCII Map Visualization
+
+The map summary includes an ASCII visualization showing the spatial layout of map elements. This helps you understand where things are positioned before making changes.
+
+### Legend
+- `=` Horizontal platform (foothold)
+- `|` Vertical wall
+- `/` `\` Sloped platform/ramp
+- `I` Rope or ladder (climbable)
+- `P` Portal (map transition)
+- `*` Spawn point (special portal "sp")
+- `M` Mob spawn location
+- `N` NPC location
+- `C` Chair (sitting spot)
+- `R` Reactor
+- `O` Object (decoration)
+
+### Reading the Map
+- The visualization shows a scaled-down view of the map
+- Scale information is provided (e.g., "1 char = ~50 pixels")
+- Y coordinates: top of visualization = lower Y values (higher in map)
+- X coordinates: left = lower X, right = higher X
+- Use the visualization to understand:
+  - Platform layout and connectivity
+  - Where mobs and NPCs are clustered
+  - Portal positions relative to platforms
+  - Gaps between platforms (for adding ropes/ladders)
+
+### Using the Visualization
+When the user says things like:
+- "Add mobs on the left platform" → Look for `=` symbols on the left side
+- "Put a portal near the NPC" → Find the `N` and place portal nearby
+- "Add a rope between the two platforms" → Find gaps between `=` lines
+- "Clear the middle area" → Identify elements in the center of the grid
+
 ## Screen Resolutions
 
 MapleStory has used different screen resolutions over its history:
@@ -347,6 +382,8 @@ cx=400 cy=400 -> Tiles in both directions (for patterns, textures)
 - **Seamless ground texture:** cx=(image width), cy=0 (repeating ground pattern)
 - **Wallpaper effect:** cx=(image width), cy=(image height) (fills entire view)
 
+{BACKGROUND_TYPES}
+
 ### add_background
 
 Add a background image to the map.
@@ -354,10 +391,11 @@ Add a background image to the map.
 
 - `bS`: Background set name (required) - from Available Background Sets
 - `no`: Background number (required) - from get_background_info results
-- `type`: Background type (required) - from get_background_info results: "back", "ani", or "spine"
+- `type`: Image source type (required) - from get_background_info results: "back", "ani", or "spine"
 - `x`, `y`: Position coordinates (required)
 - `rx`, `ry`: Parallax factor 0-100 (see "Understanding Parallax" above)
 - `cx`, `cy`: Tiling interval in pixels (see "Understanding Tiling" above)
+- `background_type`: Behavior type 0-7 (optional) - see "Background Behavior Types" above. Auto-determined from cx/cy if not specified.
 - `a`: Alpha/opacity 0-255 (default 255 = fully opaque)
 - `z`: Z-order within the layer (lower = further back)
 - `front`: Place in front layer (default false = back layer behind map content)
@@ -513,7 +551,7 @@ Only use `add_platform` separately if you need:
 ## Positioning Guidelines
 
 1. Spacing:
-   - Space mobs apart by at least 100-200 pixels
+   - Space mobs apart by at around 100 pixels
    - Place NPCs on ground level (use Y from existing footholds)
    - Portals should be accessible - place near footholds
 

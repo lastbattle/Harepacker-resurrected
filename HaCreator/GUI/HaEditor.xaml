@@ -53,13 +53,6 @@
                       x:Name="editorPanel">
             <StackPanel Orientation="Vertical">
 
-                <Button x:Name="btnOpenAIMapEditor"
-                        Content="Open AI Map Editor"
-                        Height="30"
-                        Margin="5"
-                        Click="BtnOpenAIMapEditor_Click"
-                        ToolTip="Open AI Map Editor popup for the current map"/>
-
                 <Expander Header="Tile"
                           Expanded="Expander_Expanded" Collapsed="Expander_Collapsed">
                     <WindowsFormsHost x:Name="tilePanelHost" Visibility="Collapsed">
@@ -109,6 +102,11 @@
                         <editorItems:CommonPanel x:Name="commonPanel"/>
                     </WindowsFormsHost>
                 </Expander>
+
+                <Expander x:Name="expanderAIMapEditor"
+                          Header="AI Map Editor"
+                          Expanded="ExpanderAIMapEditor_Expanded"
+                          ToolTip="Open AI Map Editor for the current map"/>
             </StackPanel>
         </ScrollViewer>
 

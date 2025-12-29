@@ -115,7 +115,7 @@
         <!-- Main Content: Left (Map Context) | Right (Workflow) -->
         <Grid Grid.Row="1" Margin="5,0,5,5">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="200"/>
+                <ColumnDefinition Width="*" MinWidth="150"/>
                 <ColumnDefinition Width="5"/>
                 <ColumnDefinition Width="1.5*" MinWidth="400"/>
             </Grid.ColumnDefinitions>
@@ -180,6 +180,7 @@
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="Segoe UI"
                              FontSize="12"
+                             TextChanged="TxtInstructions_TextChanged"
                              Text="Add a maze like platform in the middle of the map, any tile you like."/>
                     <Button x:Name="btnProcessAI" Grid.Row="2"
                             Content="Process with AI"

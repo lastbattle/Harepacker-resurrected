@@ -23,12 +23,16 @@ namespace HaCreator.GUI.EditorPanels
 
         private readonly Board board;
         private bool isProcessing = false;
+        private bool instructionsModified = false;
 
         private AIMapEditWindow(Board board)
         {
             this.board = board;
 
             InitializeComponent();
+
+            // Reset flag after InitializeComponent (default text triggers TextChanged)
+            instructionsModified = false;
 
             // Update title with map info
             UpdateTitle();
@@ -206,9 +210,16 @@ namespace HaCreator.GUI.EditorPanels
 
             if (!AISettings.IsConfigured)
             {
-                MessageBox.Show("Please configure your OpenRouter API key first.\nClick 'Settings' to set it up.",
-                    "API Key Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                var dialog = new AISettingsDialog();
+                dialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+                dialog.ShowDialog();
+
+                // Check again after dialog closes
+                if (!AISettings.IsConfigured)
+                {
+                    LogMessage("API key not configured. Please set up your OpenRouter API key in Settings.");
+                    return;
+                }
             }
 
             if (board == null)
@@ -218,9 +229,7 @@ namespace HaCreator.GUI.EditorPanels
             }
 
             var instructions = txtInstructions.Text;
-            if (string.IsNullOrWhiteSpace(instructions) ||
-                instructions.StartsWith("Example instructions:") ||
-                instructions == "Add 3 blue snails on the left side\nAdd a portal to Henesys on the right")
+            if (string.IsNullOrWhiteSpace(instructions) || !instructionsModified)
             {
                 MessageBox.Show("Please enter your instructions in natural language.", "Process with AI", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
@@ -231,15 +240,17 @@ namespace HaCreator.GUI.EditorPanels
                 isProcessing = true;
                 btnProcessAI.IsEnabled = false;
                 btnProcessAI.Content = "Processing...";
-                LogMessage("Sending instructions to AI...");
 
                 // Get map context
                 var serializer = new MapAISerializer(board);
                 var mapContext = serializer.GenerateAISummary();
 
-                // Call OpenRouter
-                var client = new OpenRouterClient(AISettings.ApiKey, AISettings.Model);
-                var result = await client.ProcessInstructionsAsync(mapContext, instructions);
+                // Use multi-agent orchestrator for layer-by-layer editing
+                LogMessage("Analyzing request...");
+                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model);
+                orchestrator.OnProgress += (msg) => Dispatcher.Invoke(() => LogMessage(msg));
+
+                string result = await orchestrator.ProcessWithAgentsAsync(mapContext, instructions);
 
                 txtCommands.Text = result;
                 LogMessage($"AI generated {result.Split('\n').Length} command(s)");
@@ -323,6 +334,11 @@ namespace HaCreator.GUI.EditorPanels
         private void BtnClearLog_Click(object sender, RoutedEventArgs e)
         {
             txtLog.Clear();
+        }
+
+        private void TxtInstructions_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            instructionsModified = true;
         }
 
         #endregion
