@@ -196,6 +196,30 @@ namespace HaCreator.MapEditor.AI
                     ParseBgmProperties(commandText, command);
                 }
 
+                // Parse map option properties
+                if (command.Type == CommandType.SetMapOption)
+                {
+                    ParseMapOptionProperties(commandText, command);
+                }
+
+                // Parse field limit properties
+                if (command.Type == CommandType.SetFieldLimit)
+                {
+                    ParseFieldLimitProperties(commandText, command);
+                }
+
+                // Parse map size properties
+                if (command.Type == CommandType.SetMapSize)
+                {
+                    ParseMapSizeProperties(commandText, command);
+                }
+
+                // Parse VR properties
+                if (command.Type == CommandType.SetVR)
+                {
+                    ParseVRProperties(commandText, command);
+                }
+
                 command.IsValid = true;
             }
             catch (Exception ex)
@@ -255,6 +279,16 @@ namespace HaCreator.MapEditor.AI
                 return CommandType.Flip;
             if (normalized.StartsWith("SET BGM"))
                 return CommandType.SetBgm;
+            if (normalized.StartsWith("SET MAP_OPTION"))
+                return CommandType.SetMapOption;
+            if (normalized.StartsWith("SET FIELD_LIMIT"))
+                return CommandType.SetFieldLimit;
+            if (normalized.StartsWith("SET MAP_SIZE"))
+                return CommandType.SetMapSize;
+            if (normalized.StartsWith("SET VR"))
+                return CommandType.SetVR;
+            if (normalized.StartsWith("CLEAR VR"))
+                return CommandType.ClearVR;
             if (normalized.StartsWith("SET"))
                 return CommandType.SetProperty;
             if (normalized.StartsWith("CLEAR"))
@@ -674,6 +708,72 @@ namespace HaCreator.MapEditor.AI
             if (bgmMatch.Success)
             {
                 command.Parameters["bgm"] = bgmMatch.Groups[1].Value;
+            }
+        }
+
+        private void ParseMapOptionProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET MAP_OPTION option_name=true/false
+            var match = Regex.Match(commandText, @"SET\s+MAP_OPTION\s+(\w+)\s*=\s*(true|false)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                command.Parameters["option"] = match.Groups[1].Value;
+                command.Parameters["value"] = bool.Parse(match.Groups[2].Value.ToLower());
+            }
+        }
+
+        private void ParseFieldLimitProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET FIELD_LIMIT limit_name=true/false
+            var match = Regex.Match(commandText, @"SET\s+FIELD_LIMIT\s+(\w+)\s*=\s*(true|false)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                command.Parameters["limit"] = match.Groups[1].Value;
+                command.Parameters["enabled"] = bool.Parse(match.Groups[2].Value.ToLower());
+            }
+        }
+
+        private void ParseMapSizeProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET MAP_SIZE width=N height=N
+            var widthMatch = Regex.Match(commandText, @"WIDTH\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (widthMatch.Success)
+            {
+                command.Parameters["width"] = int.Parse(widthMatch.Groups[1].Value);
+            }
+
+            var heightMatch = Regex.Match(commandText, @"HEIGHT\s*=\s*(\d+)", RegexOptions.IgnoreCase);
+            if (heightMatch.Success)
+            {
+                command.Parameters["height"] = int.Parse(heightMatch.Groups[1].Value);
+            }
+        }
+
+        private void ParseVRProperties(string commandText, MapAICommand command)
+        {
+            // Parse: SET VR left=N top=N right=N bottom=N
+            var leftMatch = Regex.Match(commandText, @"LEFT\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (leftMatch.Success)
+            {
+                command.Parameters["left"] = int.Parse(leftMatch.Groups[1].Value);
+            }
+
+            var topMatch = Regex.Match(commandText, @"TOP\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (topMatch.Success)
+            {
+                command.Parameters["top"] = int.Parse(topMatch.Groups[1].Value);
+            }
+
+            var rightMatch = Regex.Match(commandText, @"RIGHT\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (rightMatch.Success)
+            {
+                command.Parameters["right"] = int.Parse(rightMatch.Groups[1].Value);
+            }
+
+            var bottomMatch = Regex.Match(commandText, @"BOTTOM\s*=\s*(-?\d+)", RegexOptions.IgnoreCase);
+            if (bottomMatch.Success)
+            {
+                command.Parameters["bottom"] = int.Parse(bottomMatch.Groups[1].Value);
             }
         }
 

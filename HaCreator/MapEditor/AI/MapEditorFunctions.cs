@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using MapleLib.WzLib.WzStructure.Data;
 using Newtonsoft.Json.Linq;
 
@@ -45,7 +46,11 @@ namespace HaCreator.MapEditor.AI
                 CreateGetBgmListTool(),
                 CreateSetBgmTool(),
                 CreateAddRopeTool(),
-                CreateAddLadderTool()
+                CreateAddLadderTool(),
+                CreateSetMapOptionTool(),
+                CreateSetFieldLimitTool(),
+                CreateSetMapSizeTool(),
+                CreateSetVRTool()
             };
         }
 
@@ -1071,6 +1076,209 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
+        /// Map option names that correspond to boolean properties in MapInfo
+        /// </summary>
+        public static readonly string[] MapOptionNames = {
+            "cloud", "snow", "rain", "swim", "fly", "town",
+            "partyOnly", "expeditionOnly", "noMapCmd", "hideMinimap",
+            "miniMapOnOff", "personalShop", "entrustedShop", "noRegenMap",
+            "blockPBossChange", "everlast", "damageCheckFree", "scrollDisable",
+            "needSkillForFly", "zakum2Hack", "allMoveCheck", "VRLimit", "mirror_Bottom"
+        };
+
+        private static JObject CreateSetMapOptionTool()
+        {
+            // Build enum dynamically from MapOptionNames
+            var optionEnum = new JArray(MapOptionNames);
+
+            // Build description dynamically by converting option names to readable format
+            var descriptions = MapOptionNames
+                .Select(opt => $"- {opt}: {ConvertCamelCaseToReadable(opt)}")
+                .ToList();
+            var descriptionText = "Map option to set:\n" + string.Join("\n", descriptions);
+
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_map_option",
+                    ["description"] = "Set a boolean map option/flag. These control various map behaviors like weather effects, restrictions, and special features.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["option"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["enum"] = optionEnum,
+                                ["description"] = descriptionText
+                            },
+                            ["value"] = new JObject
+                            {
+                                ["type"] = "boolean",
+                                ["description"] = "True to enable, false to disable"
+                            }
+                        },
+                        ["required"] = new JArray { "option", "value" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetFieldLimitTool()
+        {
+            // Build enum dynamically from FieldLimitType
+            var fieldLimitNames = Enum.GetNames(typeof(FieldLimitType));
+            var fieldLimitEnum = new JArray(fieldLimitNames);
+
+            // Build description dynamically from enum values
+            var descriptions = new List<string>();
+            foreach (FieldLimitType flt in Enum.GetValues(typeof(FieldLimitType)))
+            {
+                // Convert enum name to readable description
+                var readable = flt.ToString().Replace("_", " ");
+                descriptions.Add($"- {flt}: {readable}");
+            }
+            var descriptionText = "Field limit to set:\n" + string.Join("\n", descriptions);
+
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_field_limit",
+                    ["description"] = "Set a field limit restriction. Field limits control what actions players can perform in the map.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["limit"] = new JObject
+                            {
+                                ["type"] = "string",
+                                ["enum"] = fieldLimitEnum,
+                                ["description"] = descriptionText
+                            },
+                            ["enabled"] = new JObject
+                            {
+                                ["type"] = "boolean",
+                                ["description"] = "True to enable this restriction, false to disable"
+                            }
+                        },
+                        ["required"] = new JArray { "limit", "enabled" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetMapSizeTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_map_size",
+                    ["description"] = "Set the map dimensions (width and height in pixels). This defines the total size of the map area.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["width"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Map width in pixels. Typical values: 800-4000. Minimum recommended: 800."
+                            },
+                            ["height"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Map height in pixels. Typical values: 600-2000. Minimum recommended: 600."
+                            }
+                        },
+                        ["required"] = new JArray { "width", "height" }
+                    }
+                }
+            };
+        }
+
+        private static JObject CreateSetVRTool()
+        {
+            return new JObject
+            {
+                ["type"] = "function",
+                ["function"] = new JObject
+                {
+                    ["name"] = "set_vr",
+                    ["description"] = "Set the Viewing Range (VR) - the camera boundary that defines where the player can see. VR should be around the same size as the map to encompass all playable content. If not set, the entire map is visible. Set clear=true to remove VR.",
+                    ["parameters"] = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject
+                        {
+                            ["left"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Left boundary X coordinate (relative to center point, usually negative)"
+                            },
+                            ["top"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Top boundary Y coordinate (relative to center point, usually negative)"
+                            },
+                            ["right"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Right boundary X coordinate (relative to center point, usually positive)"
+                            },
+                            ["bottom"] = new JObject
+                            {
+                                ["type"] = "integer",
+                                ["description"] = "Bottom boundary Y coordinate (relative to center point, usually positive)"
+                            },
+                            ["clear"] = new JObject
+                            {
+                                ["type"] = "boolean",
+                                ["description"] = "If true, removes the VR entirely (map uses full dimensions). Default is false."
+                            }
+                        },
+                        ["required"] = new JArray { }
+                    }
+                }
+            };
+        }
+
+        /// <summary>
+        /// Convert camelCase or PascalCase to readable format
+        /// </summary>
+        private static string ConvertCamelCaseToReadable(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+
+            var result = new StringBuilder();
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (i > 0 && char.IsUpper(c))
+                {
+                    result.Append(' ');
+                    result.Append(char.ToLower(c));
+                }
+                else if (c == '_')
+                {
+                    result.Append(' ');
+                }
+                else
+                {
+                    result.Append(c);
+                }
+            }
+            return result.ToString();
+        }
+
+        /// <summary>
         /// Convert a function call result to a command string for the existing parser
         /// </summary>
         public static string FunctionCallToCommand(string functionName, JObject arguments)
@@ -1232,6 +1440,20 @@ namespace HaCreator.MapEditor.AI
                     if (arguments["layer"] != null)
                         ladderCmd += $" layer={arguments["layer"]}";
                     return ladderCmd;
+
+                case "set_map_option":
+                    return $"SET MAP_OPTION {arguments["option"]}={arguments["value"]}";
+
+                case "set_field_limit":
+                    return $"SET FIELD_LIMIT {arguments["limit"]}={arguments["enabled"]}";
+
+                case "set_map_size":
+                    return $"SET MAP_SIZE width={arguments["width"]} height={arguments["height"]}";
+
+                case "set_vr":
+                    if (arguments["clear"]?.Value<bool>() == true)
+                        return "CLEAR VR";
+                    return $"SET VR left={arguments["left"]} top={arguments["top"]} right={arguments["right"]} bottom={arguments["bottom"]}";
 
                 default:
                     return $"# Unknown function: {functionName}";

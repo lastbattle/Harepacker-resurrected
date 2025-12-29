@@ -75,6 +75,16 @@ namespace HaCreator.MapEditor.AI
                         return ExecuteTileStructure(command);
                     case CommandType.SetBgm:
                         return ExecuteSetBgm(command);
+                    case CommandType.SetMapOption:
+                        return ExecuteSetMapOption(command);
+                    case CommandType.SetFieldLimit:
+                        return ExecuteSetFieldLimit(command);
+                    case CommandType.SetMapSize:
+                        return ExecuteSetMapSize(command);
+                    case CommandType.SetVR:
+                        return ExecuteSetVR(command);
+                    case CommandType.ClearVR:
+                        return ExecuteClearVR(command);
                     default:
                         Log($"Unsupported command type: {command.Type}");
                         return false;
@@ -2343,6 +2353,198 @@ namespace HaCreator.MapEditor.AI
             board.MapInfo.bgm = bgm;
 
             Log($"Changed BGM from '{oldBgm}' to '{bgm}'");
+            return true;
+        }
+
+        private bool ExecuteSetMapOption(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("option", out var optionObj))
+            {
+                Log("SET MAP_OPTION requires option parameter");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("value", out var valueObj))
+            {
+                Log("SET MAP_OPTION requires value parameter");
+                return false;
+            }
+
+            string option = optionObj.ToString();
+            bool value = Convert.ToBoolean(valueObj);
+            var info = board.MapInfo;
+
+            // Use reflection-like switch to set the appropriate property
+            switch (option.ToLower())
+            {
+                case "cloud": info.cloud = value; break;
+                case "snow": info.snow = value; break;
+                case "rain": info.rain = value; break;
+                case "swim": info.swim = value; break;
+                case "fly": info.fly = value; break;
+                case "town": info.town = value; break;
+                case "partyonly": info.partyOnly = value; break;
+                case "expeditiononly": info.expeditionOnly = value; break;
+                case "nomapcmd": info.noMapCmd = value; break;
+                case "hideminimap": info.hideMinimap = value; break;
+                case "minimaponoff": info.miniMapOnOff = value; break;
+                case "personalshop": info.personalShop = value; break;
+                case "entrustedshop": info.entrustedShop = value; break;
+                case "noregenmap": info.noRegenMap = value; break;
+                case "blockpbosschange": info.blockPBossChange = value; break;
+                case "everlast": info.everlast = value; break;
+                case "damagecheckfree": info.damageCheckFree = value; break;
+                case "scrolldisable": info.scrollDisable = value; break;
+                case "needskillforfly": info.needSkillForFly = value; break;
+                case "zakum2hack": info.zakum2Hack = value; break;
+                case "allmovecheck": info.allMoveCheck = value; break;
+                case "vrlimit": info.VRLimit = value; break;
+                case "mirror_bottom": info.mirror_Bottom = value; break;
+                default:
+                    Log($"Unknown map option: {option}");
+                    return false;
+            }
+
+            Log($"Set map option '{option}' to {value}");
+            return true;
+        }
+
+        private bool ExecuteSetFieldLimit(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("limit", out var limitObj))
+            {
+                Log("SET FIELD_LIMIT requires limit parameter");
+                return false;
+            }
+
+            if (!command.Parameters.TryGetValue("enabled", out var enabledObj))
+            {
+                Log("SET FIELD_LIMIT requires enabled parameter");
+                return false;
+            }
+
+            string limitName = limitObj.ToString();
+            bool enabled = Convert.ToBoolean(enabledObj);
+
+            // Parse the field limit type from the enum
+            if (!Enum.TryParse<FieldLimitType>(limitName, true, out var limitType))
+            {
+                Log($"Unknown field limit: {limitName}");
+                return false;
+            }
+
+            int bitPosition = (int)limitType;
+            long currentLimit = board.MapInfo.fieldLimit;
+
+            if (enabled)
+            {
+                // Set the bit
+                board.MapInfo.fieldLimit = currentLimit | (1L << bitPosition);
+            }
+            else
+            {
+                // Clear the bit
+                board.MapInfo.fieldLimit = currentLimit & ~(1L << bitPosition);
+            }
+
+            Log($"Set field limit '{limitName}' to {enabled} (fieldLimit = {board.MapInfo.fieldLimit})");
+            return true;
+        }
+
+        private bool ExecuteSetMapSize(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("width", out var widthObj) ||
+                !command.Parameters.TryGetValue("height", out var heightObj))
+            {
+                Log("SET MAP_SIZE requires both width and height parameters");
+                return false;
+            }
+
+            int width = Convert.ToInt32(widthObj);
+            int height = Convert.ToInt32(heightObj);
+
+            // Validate dimensions (reasonable bounds for MapleStory maps)
+            if (width < 600 || width > 5000)
+            {
+                Log($"Map width {width} is out of range (600-5000)");
+                return false;
+            }
+            if (height < 400 || height > 5000)
+            {
+                Log($"Map height {height} is out of range (400-5000)");
+                return false;
+            }
+
+            var oldSize = board.MapSize;
+            board.MapSize = new Microsoft.Xna.Framework.Point(width, height);
+
+            Log($"Changed map size from ({oldSize.X}, {oldSize.Y}) to ({width}, {height})");
+            return true;
+        }
+
+        private bool ExecuteSetVR(MapAICommand command)
+        {
+            if (!command.Parameters.TryGetValue("left", out var leftObj) ||
+                !command.Parameters.TryGetValue("top", out var topObj) ||
+                !command.Parameters.TryGetValue("right", out var rightObj) ||
+                !command.Parameters.TryGetValue("bottom", out var bottomObj))
+            {
+                Log("SET VR requires left, top, right, and bottom parameters");
+                return false;
+            }
+
+            int left = Convert.ToInt32(leftObj);
+            int top = Convert.ToInt32(topObj);
+            int right = Convert.ToInt32(rightObj);
+            int bottom = Convert.ToInt32(bottomObj);
+
+            // Validate VR bounds
+            if (right <= left)
+            {
+                Log($"VR right ({right}) must be greater than left ({left})");
+                return false;
+            }
+            if (bottom <= top)
+            {
+                Log($"VR bottom ({bottom}) must be greater than top ({top})");
+                return false;
+            }
+
+            // Calculate dimensions from bounds
+            int width = right - left;
+            int height = bottom - top;
+
+            lock (board.ParentControl)
+            {
+                // Remove existing VR if present (VRRectangle properties are read-only, so recreate)
+                if (board.VRRectangle != null)
+                {
+                    board.VRRectangle.RemoveItem(null);
+                }
+
+                // Create new VR rectangle
+                board.VRRectangle = new VRRectangle(board, new Microsoft.Xna.Framework.Rectangle(left, top, width, height));
+            }
+
+            Log($"Set VR to left={left}, top={top}, right={right}, bottom={bottom} (width={width}, height={height})");
+            return true;
+        }
+
+        private bool ExecuteClearVR(MapAICommand command)
+        {
+            if (board.VRRectangle == null)
+            {
+                Log("VR is already not set");
+                return true;
+            }
+
+            lock (board.ParentControl)
+            {
+                // Remove VR rectangle properly
+                board.VRRectangle.RemoveItem(null);
+            }
+
+            Log("Cleared VR (viewing range)");
             return true;
         }
 

@@ -63,7 +63,12 @@ namespace HaCreator.MapEditor.AI
         Select,
         TilePlatform,   // Auto-tile a platform with proper spacing (simple flat)
         TileStructure,  // Build complex tile structures (tall, slopes, pillars, stairs)
-        SetBgm          // Change background music
+        SetBgm,         // Change background music
+        SetMapOption,   // Set boolean map options (town, swim, fly, etc.)
+        SetFieldLimit,  // Set field limit restrictions
+        SetMapSize,     // Set map dimensions
+        SetVR,          // Set viewing range
+        ClearVR         // Clear viewing range
     }
 
     public enum ElementType

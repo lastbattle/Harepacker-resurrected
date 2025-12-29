@@ -110,6 +110,9 @@ namespace HaCreator.MapEditor.AI
             WriteLine($"- Reactors: {board.BoardItems.Reactors.Count}");
             WriteLine();
 
+            // Map Settings
+            SerializeMapSettings();
+
             // Key portals
             if (board.BoardItems.Portals.Count > 0)
             {
@@ -282,6 +285,101 @@ namespace HaCreator.MapEditor.AI
             sb.Append(MapAssetCatalog.GenerateCompactSummary());
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Serialize current map settings (options and field limits)
+        /// </summary>
+        private void SerializeMapSettings()
+        {
+            var info = board.MapInfo;
+
+            WriteLine("## Map Settings");
+
+            // Map dimensions
+            WriteLine($"- Map Size: {board.MapSize.X} x {board.MapSize.Y} pixels");
+
+            // Viewing Range (VR)
+            if (board.VRRectangle != null)
+            {
+                var vr = board.VRRectangle;
+                int vrLeft = vr.X;
+                int vrTop = vr.Y;
+                int vrRight = vr.X + vr.Width;
+                int vrBottom = vr.Y + vr.Height;
+                WriteLine($"- Viewing Range (VR): left={vrLeft}, top={vrTop}, right={vrRight}, bottom={vrBottom}");
+                WriteLine($"  VR Size: {vr.Width} x {vr.Height} pixels");
+            }
+            else
+            {
+                WriteLine($"- Viewing Range (VR): (not set - uses map bounds)");
+            }
+
+            // BGM
+            if (!string.IsNullOrEmpty(info.bgm))
+            {
+                WriteLine($"- BGM: {info.bgm}");
+            }
+            else
+            {
+                WriteLine($"- BGM: (not set)");
+            }
+
+            // Collect enabled map options
+            var enabledOptions = new List<string>();
+            if (info.cloud) enabledOptions.Add("cloud");
+            if (info.snow) enabledOptions.Add("snow");
+            if (info.rain) enabledOptions.Add("rain");
+            if (info.swim) enabledOptions.Add("swim");
+            if (info.fly) enabledOptions.Add("fly");
+            if (info.town) enabledOptions.Add("town");
+            if (info.partyOnly) enabledOptions.Add("partyOnly");
+            if (info.expeditionOnly) enabledOptions.Add("expeditionOnly");
+            if (info.noMapCmd) enabledOptions.Add("noMapCmd");
+            if (info.hideMinimap) enabledOptions.Add("hideMinimap");
+            if (info.miniMapOnOff) enabledOptions.Add("miniMapOnOff");
+            if (info.personalShop) enabledOptions.Add("personalShop");
+            if (info.entrustedShop) enabledOptions.Add("entrustedShop");
+            if (info.noRegenMap) enabledOptions.Add("noRegenMap");
+            if (info.blockPBossChange) enabledOptions.Add("blockPBossChange");
+            if (info.everlast) enabledOptions.Add("everlast");
+            if (info.damageCheckFree) enabledOptions.Add("damageCheckFree");
+            if (info.scrollDisable) enabledOptions.Add("scrollDisable");
+            if (info.needSkillForFly) enabledOptions.Add("needSkillForFly");
+            if (info.zakum2Hack) enabledOptions.Add("zakum2Hack");
+            if (info.allMoveCheck) enabledOptions.Add("allMoveCheck");
+            if (info.VRLimit) enabledOptions.Add("VRLimit");
+            if (info.mirror_Bottom) enabledOptions.Add("mirror_Bottom");
+
+            if (enabledOptions.Count > 0)
+            {
+                WriteLine($"- Options: {string.Join(", ", enabledOptions)}");
+            }
+            else
+            {
+                WriteLine($"- Options: (none enabled)");
+            }
+
+            // Collect enabled field limits
+            var enabledLimits = new List<string>();
+            foreach (FieldLimitType limitType in Enum.GetValues(typeof(FieldLimitType)))
+            {
+                if (limitType.Check(info.fieldLimit))
+                {
+                    enabledLimits.Add(limitType.ToString());
+                }
+            }
+
+            if (enabledLimits.Count > 0)
+            {
+                WriteLine($"- Field Limits: {string.Join(", ", enabledLimits)}");
+            }
+            else
+            {
+                WriteLine($"- Field Limits: (none)");
+            }
+
+            WriteLine();
         }
 
         /// <summary>

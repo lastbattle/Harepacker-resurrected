@@ -205,7 +205,7 @@
                                Style="{StaticResource SectionLabelStyle}"/>
                     <TextBox x:Name="txtCommands" Grid.Row="1"
                              AcceptsReturn="True"
-                             TextWrapping="NoWrap"
+                             TextWrapping="Wrap"
                              HorizontalScrollBarVisibility="Auto"
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="Consolas"
