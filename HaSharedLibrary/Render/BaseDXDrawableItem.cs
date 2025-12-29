@@ -24,6 +24,16 @@ namespace HaSharedLibrary.Render.DX
         protected readonly bool notAnimated;
         private readonly IDXObject? frame0;
 
+        // Visibility culling (calculated once per frame in Update, used in Draw)
+        private bool _isVisible = true;
+        private int _lastVisibilityCheckFrame = -1;
+
+        /// <summary>
+        /// Whether this object is currently visible (within view frustum).
+        /// Pre-calculated during Update phase for performance.
+        /// </summary>
+        public bool IsVisible => _isVisible;
+
         // Debug
         private string? _debugText;
         private int _lastDebugSwitchTime;
@@ -182,6 +192,44 @@ namespace HaSharedLibrary.Render.DX
                    adjustedX <= width &&
                    adjustedY <= height;
         }
+
+        /// <summary>
+        /// Pre-calculates visibility for this frame. Call once per frame in Update phase.
+        /// </summary>
+        /// <param name="mapShiftX">Map shift X position</param>
+        /// <param name="mapShiftY">Map shift Y position</param>
+        /// <param name="centerX">Center X offset</param>
+        /// <param name="centerY">Center Y offset</param>
+        /// <param name="viewWidth">View width</param>
+        /// <param name="viewHeight">View height</param>
+        /// <param name="frameNumber">Current frame number to avoid redundant calculations</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void UpdateVisibility(int mapShiftX, int mapShiftY, int centerX, int centerY,
+            int viewWidth, int viewHeight, int frameNumber)
+        {
+            if (_lastVisibilityCheckFrame == frameNumber)
+                return; // Already calculated this frame
+
+            _lastVisibilityCheckFrame = frameNumber;
+
+            IDXObject frame = notAnimated ? frame0 : (frames != null && frames.Length > 0 ? frames[0] : null);
+            if (frame == null)
+            {
+                _isVisible = false;
+                return;
+            }
+
+            int shiftCenteredX = mapShiftX - centerX;
+            int shiftCenteredY = mapShiftY - centerY;
+
+            _isVisible = IsFrameWithinView(frame, shiftCenteredX, shiftCenteredY, viewWidth, viewHeight);
+        }
+
+        /// <summary>
+        /// Force sets visibility state (for objects that handle their own culling)
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetVisible(bool visible) => _isVisible = visible;
 
         /// <summary>
         /// Copies the X and Y position from copySrc
