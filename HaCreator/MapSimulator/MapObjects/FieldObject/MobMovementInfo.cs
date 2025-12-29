@@ -52,6 +52,136 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
     /// <summary>
     /// Stores movement state and physics for a mob in the MapSimulator.
     /// Based on MapleNecrocer's Mob.cs implementation.
+    ///
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    /// <para><b>MOVEMENT SYSTEM OVERVIEW</b></para>
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    ///
+    /// <para><b>1. Movement Types:</b></para>
+    /// <list type="bullet">
+    ///   <item><b>Stand</b>: Stationary mob, no movement updates</item>
+    ///   <item><b>Move</b>: Ground-based walking along footholds (most common)</item>
+    ///   <item><b>Jump</b>: Ground-based with periodic jumps using gravity physics</item>
+    ///   <item><b>Fly</b>: Airborne floating with vertical bobbing (sine wave)</item>
+    /// </list>
+    ///
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    /// <para><b>BOUNDARY CHECKING SYSTEM</b></para>
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    ///
+    /// <para><b>2. Boundary Hierarchy (from highest to lowest priority):</b></para>
+    /// <code>
+    ///   ┌─────────────────────────────────────────────────────────────┐
+    ///   │                     MAP BOUNDS (VR)                         │
+    ///   │   MapLeft, MapRight, MapTop, MapBottom                      │
+    ///   │   - Absolute limits from map's Viewing Range                │
+    ///   │   - Mobs cannot exceed these coordinates                    │
+    ///   │                                                             │
+    ///   │   ┌─────────────────────────────────────────────────────┐   │
+    ///   │   │              RX BOUNDS (Spawn Range)                │   │
+    ///   │   │   RX0 (left), RX1 (right)                           │   │
+    ///   │   │   - Horizontal patrol range from mob spawn data     │   │
+    ///   │   │   - Calculated: RX0 = spawnX - rx0Shift             │   │
+    ///   │   │                 RX1 = spawnX + rx1Shift             │   │
+    ///   │   │                                                     │   │
+    ///   │   │   ┌─────────────────────────────────────────────┐   │   │
+    ///   │   │   │        PLATFORM BOUNDS (Foothold)           │   │   │
+    ///   │   │   │   PlatformLeft, PlatformRight               │   │   │
+    ///   │   │   │   - Calculated by traversing connected      │   │   │
+    ///   │   │   │     footholds at similar Y level            │   │   │
+    ///   │   │   │   - Used for walking mobs to detect edges   │   │   │
+    ///   │   │   └─────────────────────────────────────────────┘   │   │
+    ///   │   └─────────────────────────────────────────────────────┘   │
+    ///   └─────────────────────────────────────────────────────────────┘
+    /// </code>
+    ///
+    /// <para><b>3. Effective Boundary Calculation:</b></para>
+    /// <code>
+    ///   effectiveLeft  = max(RX0, MapLeft + margin)
+    ///   effectiveRight = min(RX1, MapRight - margin)
+    ///   margin = 30-50 pixels (prevents edge clipping)
+    /// </code>
+    ///
+    /// <para><b>4. Boundary Check Behavior by Movement Type:</b></para>
+    /// <list type="bullet">
+    ///   <item><b>Flying:</b> Horizontal bounce at effectiveLeft/effectiveRight,
+    ///         vertical bobbing around SrcY (spawn Y)</item>
+    ///   <item><b>Walking:</b> Turn around at RX bounds, platform edges, or walls</item>
+    ///   <item><b>Jumping:</b> Same as walking + jump physics with gravity,
+    ///         reset to spawn if fall off map</item>
+    /// </list>
+    ///
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    /// <para><b>FOOTHOLD NAVIGATION SYSTEM</b></para>
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    ///
+    /// <para><b>5. Foothold Types:</b></para>
+    /// <list type="bullet">
+    ///   <item><b>Normal foothold:</b> Walkable platform segment (not vertical)</item>
+    ///   <item><b>Wall (IsWall=true):</b> Vertical segment blocking horizontal movement</item>
+    /// </list>
+    ///
+    /// <para><b>6. Foothold Search Methods:</b></para>
+    /// <list type="bullet">
+    ///   <item><b>FindBelow(x, y):</b> Find foothold directly below position (for landing)</item>
+    ///   <item><b>FindWallL(x, y):</b> Find wall to the left (collision check)</item>
+    ///   <item><b>FindWallR(x, y):</b> Find wall to the right (collision check)</item>
+    ///   <item><b>FindNextConnectedFoothold(dir):</b> Find connected foothold via anchor links</item>
+    /// </list>
+    ///
+    /// <para><b>7. Y Position Calculation on Slopes:</b></para>
+    /// <code>
+    ///   // Linear interpolation between foothold endpoints
+    ///   t = (x - x1) / (x2 - x1)    // 0.0 to 1.0 along foothold
+    ///   y = y1 + t * (y2 - y1)       // Interpolated Y position
+    /// </code>
+    ///
+    /// <para><b>8. Slope Movement (256-unit angle system):</b></para>
+    /// <code>
+    ///   direction = GetAngle256(x1, y1, x2, y2)  // Angle in 0-255 units
+    ///   deltaX = Cos256(direction) * moveSpeed
+    ///   deltaY = Sin256(direction) * moveSpeed
+    ///   // Mob follows the foothold slope naturally
+    /// </code>
+    ///
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    /// <para><b>JUMP PHYSICS SYSTEM</b></para>
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    ///
+    /// <para><b>9. Physics Constants (from Map.wz/Physics.img):</b></para>
+    /// <code>
+    ///   gravityAcc  = 2000 px/s² → 0.556 px/tick² (at 60fps)
+    ///   jumpSpeed   = 555 px/s  → 9.25 px/tick (initial upward velocity)
+    ///   fallSpeed   = 670 px/s  → 11.17 px/tick (terminal velocity)
+    /// </code>
+    ///
+    /// <para><b>10. Jump State Machine:</b></para>
+    /// <code>
+    ///   None → [TriggerJump] → Jumping (VelocityY = -JumpHeight)
+    ///                              ↓
+    ///                         VelocityY += GravityAcc
+    ///                              ↓
+    ///                         VelocityY >= 0 → Falling
+    ///                              ↓
+    ///                         Y >= footholdY → None (landed)
+    /// </code>
+    ///
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    /// <para><b>FLYING MOVEMENT SYSTEM</b></para>
+    /// <para><b>═══════════════════════════════════════════════════════════════</b></para>
+    ///
+    /// <para><b>11. Flying Vertical Bobbing:</b></para>
+    /// <code>
+    ///   CosY += 7 * speedFactor       // Advance phase (0-255 cycle)
+    ///   Y = SrcY - Cos256(CosY) * 16  // ±16 pixel oscillation around spawn Y
+    /// </code>
+    ///
+    /// <para><b>12. Flying Horizontal Movement:</b></para>
+    /// <code>
+    ///   moveAmount = 1.5f * FlySpeed * speedFactor
+    ///   X += moveAmount (or -= for left)
+    ///   // Bounce at effectiveLeft/effectiveRight boundaries
+    /// </code>
     /// </summary>
     public class MobMovementInfo
     {
