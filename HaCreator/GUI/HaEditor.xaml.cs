@@ -156,6 +156,9 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void HaEditor2_Closed(object sender, EventArgs e)
         {
+            // Close all AI Map Editor popups
+            AIMapEditWindow.CloseAll();
+
             multiBoard.Stop();
         }
 
@@ -176,8 +179,30 @@ namespace HaCreator.GUI
         {
             Expander expanderSrc = sender as Expander;
             UIElement childContent = expanderSrc.Content as UIElement;
-  
+
             childContent.Visibility = Visibility.Collapsed; // collapse when its not needed, speed up the performance here
+        }
+
+        /// <summary>
+        /// Opens the AI Map Editor popup for the currently selected map
+        /// </summary>
+        private void ExpanderAIMapEditor_Expanded(object sender, RoutedEventArgs e)
+        {
+            // Collapse immediately - we use the expander as a styled button
+            if (sender is Expander expander)
+            {
+                expander.IsExpanded = false;
+            }
+
+            var board = multiBoard?.SelectedBoard;
+            if (board == null)
+            {
+                System.Windows.MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            AIMapEditWindow.ShowForBoard(board, this);
         }
     }
 }

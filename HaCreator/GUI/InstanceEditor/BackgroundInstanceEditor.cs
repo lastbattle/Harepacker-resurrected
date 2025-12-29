@@ -51,8 +51,16 @@ namespace HaCreator.GUI.InstanceEditor
                 zInput.Value = item.Z;
 
             pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
-            typeBox.Items.AddRange((object[])Tables.BackgroundTypeNames.Cast<object>());
+
+            // Populate typeBox from BackgroundType enum with friendly names
+            foreach (BackgroundType bgType in Enum.GetValues(typeof(BackgroundType)))
+            {
+                typeBox.Items.Add(bgType.GetFriendlyName());
+            }
             typeBox.SelectedIndex = (int)item.type;
+
+            // Set initial description
+            UpdateTypeDescription();
             alphaBox.Value = item.a;
             front.Checked = item.front;
 
@@ -289,7 +297,22 @@ namespace HaCreator.GUI.InstanceEditor
             }
             okButton.Enabled = !bDisableSaveButton;
 
+            // Update description label
+            UpdateTypeDescription();
+
             UpdateBackgroundItem(); // Apply change for preview
+        }
+
+        /// <summary>
+        /// Updates the description label based on the selected background type.
+        /// </summary>
+        private void UpdateTypeDescription()
+        {
+            if (typeBox.SelectedIndex >= 0 && typeBox.SelectedIndex < Enum.GetValues(typeof(BackgroundType)).Length)
+            {
+                BackgroundType bgType = (BackgroundType)typeBox.SelectedIndex;
+                labelTypeDescription.Text = bgType.GetDescription();
+            }
         }
 
         #region Update

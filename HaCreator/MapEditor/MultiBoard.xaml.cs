@@ -846,6 +846,7 @@ namespace HaCreator.MapEditor
 
         #region Event Handlers
         private System.Windows.Point _mousePoint; // Initial point of drag
+        private bool _mousePointInitialized = false;
         public bool TriggerMouseWheel(System.Windows.Input.MouseEventArgs e, System.Windows.UIElement sender) // Were not overriding OnMouseWheel anymore because it's better to override it in mainform
         {
             lock (this)
@@ -854,6 +855,14 @@ namespace HaCreator.MapEditor
                     return false;
 
                 System.Windows.Point newMousePoint = e.MouseDevice.GetPosition(sender);
+
+                // Initialize mouse point on first call to prevent large delta from (0,0)
+                if (!_mousePointInitialized)
+                {
+                    _mousePoint = newMousePoint;
+                    _mousePointInitialized = true;
+                    return true;
+                }
 
                 double oldvalue = vScrollBar.Value;
                 var delta = _mousePoint - newMousePoint;

@@ -25,6 +25,7 @@ namespace HaCreator.MapEditor.Input
         private MultiBoard parentBoard;
         private int lastUserInteraction = 0;
         private int lastBackup = 0;
+        private XNA.Point lastPhysicalPos = new XNA.Point(0, 0); // Track physical position for auto-scroll
 
         public void OnUserInteraction()
         {
@@ -150,20 +151,32 @@ namespace HaCreator.MapEditor.Input
                     selectedBoard.Mouse.DoSnap();
                 }
 
+                // Always update lastPhysicalPos for accurate delta calculation
+                int deltaX = currPhysicalPos.X - lastPhysicalPos.X;
+                int deltaY = currPhysicalPos.Y - lastPhysicalPos.Y;
+                lastPhysicalPos = currPhysicalPos;
+
                 if ((selectedBoard.Mouse.BoundItems.Count > 0 || selectedBoard.Mouse.MultiSelectOngoing) && selectedBoard.Mouse.State == MouseState.Selection)
                 {
                     // auto scrolling
-                    // Bind physicalpos to our dxcontainer, to prevent extremely fast scrolling
-                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), (int) parentBoard.Width), Math.Min(Math.Max(currPhysicalPos.Y, 0),  (int) parentBoard.Height));
+                    // Use ActualWidth/ActualHeight for rendered dimensions (Width/Height can be NaN in WPF)
+                    int boardWidth = (int)parentBoard.ActualWidth;
+                    int boardHeight = (int)parentBoard.ActualHeight;
 
-                    if (currPhysicalPos.X - UserSettings.ScrollDistance < 0 && oldPos.X > newPos.X) //move to left
+                    // Bind physicalpos to our dxcontainer, to prevent extremely fast scrolling
+                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), boardWidth), Math.Min(Math.Max(currPhysicalPos.Y, 0), boardHeight));
+
+                    // Require minimum movement threshold to prevent accidental scrolling on click
+                    const int minMovement = 5;
+
+                    if (currPhysicalPos.X - UserSettings.ScrollDistance < 0 && deltaX < -minMovement) //move to left
                         selectedBoard.hScroll = (int)Math.Max(0, selectedBoard.hScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.X) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
-                    else if (currPhysicalPos.X + UserSettings.ScrollDistance > parentBoard.Width && oldPos.X < newPos.X) //move to right
-                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - parentBoard.Width + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxHScroll);
-                    if (currPhysicalPos.Y - UserSettings.ScrollDistance < 0 && oldPos.Y > newPos.Y) //move to top
+                    else if (currPhysicalPos.X + UserSettings.ScrollDistance > boardWidth && deltaX > minMovement) //move to right
+                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - boardWidth + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxHScroll);
+                    if (currPhysicalPos.Y - UserSettings.ScrollDistance < 0 && deltaY < -minMovement) //move to top
                         selectedBoard.vScroll = (int)Math.Max(0, selectedBoard.vScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.Y) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
-                    else if (currPhysicalPos.Y + UserSettings.ScrollDistance > parentBoard.Height && oldPos.Y < newPos.Y) //move to bottom
-                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - parentBoard.Height + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxVScroll);
+                    else if (currPhysicalPos.Y + UserSettings.ScrollDistance > boardHeight && deltaY > minMovement) //move to bottom
+                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - boardHeight + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxVScroll);
                 }
             }
         }
@@ -657,6 +670,7 @@ namespace HaCreator.MapEditor.Input
             lock (parentBoard)
             {
                 OnUserInteraction();
+                lastPhysicalPos = realPosition; // Initialize for auto-scroll direction detection
                 if (ClickOnMinimap(selectedBoard, realPosition) && selectedBoard.Mouse.State == MouseState.Selection)
                 {
                     //ClearSelectedItems(selectedBoard);
