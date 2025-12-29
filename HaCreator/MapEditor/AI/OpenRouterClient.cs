@@ -28,7 +28,7 @@ namespace HaCreator.MapEditor.AI
         private readonly string apiKey;
         private readonly string model;
 
-        public OpenRouterClient(string apiKey, string model = "google/gemini-2.0-flash-001")
+        public OpenRouterClient(string apiKey, string model = "google/gemini-3-flash-preview")
         {
             this.apiKey = apiKey;
             this.model = model;

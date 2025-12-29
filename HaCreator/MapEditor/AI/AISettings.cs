@@ -15,7 +15,7 @@ namespace HaCreator.MapEditor.AI
     /// </summary>
     public static class AISettings
     {
-        private const string DEFAULT_MODEL = "google/gemini-2.0-flash-001";
+        private const string DEFAULT_MODEL = "google/gemini-3-flash-preview";
 
         private static string _apiKey = string.Empty;
         private static string _model = DEFAULT_MODEL;
@@ -23,7 +23,7 @@ namespace HaCreator.MapEditor.AI
 
         private static readonly string SettingsFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "HaCreator", "ai_settings.json");
+            "HaCreator", "Settings_AI.json");
 
         public static string ApiKey
         {
@@ -67,7 +67,9 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static readonly string[] AvailableModels = new[]
         {
-            DEFAULT_MODEL
+            DEFAULT_MODEL,
+            "openai/gpt-5.2",
+            "anthropic/claude-sonnet-4.5"
         };
 
         private static void EnsureLoaded()
