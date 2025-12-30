@@ -11,6 +11,7 @@ using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using System.Drawing;
 
 namespace HaCreator.MapEditor.Info
@@ -21,6 +22,7 @@ namespace HaCreator.MapEditor.Info
         private readonly string name;
 
         private WzImage _LinkedWzImage;
+        private MobData _mobData;
 
         /// <summary>
         /// Constructor
@@ -148,6 +150,29 @@ namespace HaCreator.MapEditor.Info
                 return _LinkedWzImage;
             }
             set { this._LinkedWzImage = value; }
+        }
+
+        /// <summary>
+        /// Parsed mob data (lazy loaded, cached for all instances of same mob ID)
+        /// Contains stats, flags, attack data, skill data, etc.
+        /// </summary>
+        public MobData MobData
+        {
+            get
+            {
+                if (_mobData == null)
+                {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
+                    if (mobImage != null && !mobImage.Parsed)
+                    {
+                        mobImage.ParseImage();
+                    }
+                    int mobId = int.TryParse(id, out int parsedId) ? parsedId : 0;
+                    _mobData = MobData.Parse(mobImage, mobId);
+                }
+                return _mobData;
+            }
         }
     }
 }
