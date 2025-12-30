@@ -112,13 +112,23 @@ namespace HaCreator.GUI
             {
                 button_unpack.Text = "Cancel";
                 button_unpack.Enabled = true;
+                button_scanWzFiles.Enabled = false;
+                button_selectAll.Enabled = false;
+                button_selectNone.Enabled = false;
                 return;
             }
 
             button_unpack.Text = "Extract";
+            button_scanWzFiles.Enabled = true;
+            button_selectAll.Enabled = checkedListBox_wzFiles.Items.Count > 0;
+            button_selectNone.Enabled = checkedListBox_wzFiles.Items.Count > 0;
+
             bool pathValid = !string.IsNullOrEmpty(textBox_path.Text) && Directory.Exists(textBox_path.Text);
             bool versionValid = !string.IsNullOrEmpty(textBox_versionName.Text);
-            button_unpack.Enabled = pathValid && versionValid;
+            bool hasSelectedFiles = checkedListBox_wzFiles.CheckedItems.Count > 0;
+            bool hasMapleStoryPath = !string.IsNullOrEmpty(_mapleStoryPath) && Directory.Exists(_mapleStoryPath);
+
+            button_unpack.Enabled = pathValid && versionValid && hasSelectedFiles && hasMapleStoryPath;
         }
 
         /// <summary>
@@ -158,102 +168,95 @@ namespace HaCreator.GUI
                     return;
                 }
 
-                // Select Base.wz file
-                using (OpenFileDialog baseWzSelect = new()
+                if (string.IsNullOrEmpty(_mapleStoryPath) || !Directory.Exists(_mapleStoryPath))
                 {
-                    Filter = "MapleStory|Base.wz|All files (*.*)|*.*",
-                    Title = "Select Base.wz file from MapleStory installation",
-                    CheckFileExists = true,
-                    CheckPathExists = true
-                })
+                    MessageBox.Show("Please scan WZ files first.", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var selectedCategories = GetSelectedCategories();
+                if (selectedCategories.Count == 0)
                 {
-                    if (baseWzSelect.ShowDialog() != DialogResult.OK)
+                    MessageBox.Show("Please select at least one WZ file to extract.", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string versionOutputPath = Path.Combine(outputFolder, versionName);
+
+                // Check if version already exists
+                if (Directory.Exists(versionOutputPath))
+                {
+                    var result = MessageBox.Show(
+                        $"A version folder '{versionName}' already exists. Do you want to overwrite it?",
+                        "Confirm Overwrite",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+
+                    if (result != DialogResult.Yes)
                         return;
 
-                    string wzFullPath = Path.GetFullPath(baseWzSelect.FileName);
-                    string baseWzFileName = Path.GetFileName(wzFullPath);
+                    // Delete existing folder
+                    Directory.Delete(versionOutputPath, true);
+                }
 
-                    if (!baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
-                    {
-                        MessageBox.Show("Please select the Base.wz file.", "Error",
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        return;
-                    }
+                // Reset progress
+                progressBar.Value = 0;
+                progressBar.Style = ProgressBarStyle.Continuous;
+                textBox_status.Text = $"Starting extraction of {selectedCategories.Count} WZ files...";
+                listBox_log.Items.Clear();
+                listBox_log.Items.Add($"Selected {selectedCategories.Count} categories: {string.Join(", ", selectedCategories.Take(5))}{(selectedCategories.Count > 5 ? "..." : "")}");
+                Application.DoEvents();
 
-                    string mapleStoryPath = Path.GetDirectoryName(wzFullPath);
-                    string versionOutputPath = Path.Combine(outputFolder, versionName);
+                // Create progress reporter
+                var progress = new Progress<ExtractionProgress>(p =>
+                {
+                    UpdateProgress(p);
+                });
 
-                    // Check if version already exists
-                    if (Directory.Exists(versionOutputPath))
-                    {
-                        var result = MessageBox.Show(
-                            $"A version folder '{versionName}' already exists. Do you want to overwrite it?",
-                            "Confirm Overwrite",
-                            MessageBoxButtons.YesNo,
-                            MessageBoxIcon.Warning);
+                // Run extraction with selected categories
+                var extractionResult = await _extractionService.ExtractAsync(
+                    _mapleStoryPath,
+                    versionOutputPath,
+                    versionName,
+                    $"{versionName} (Extracted {DateTime.Now:yyyy-MM-dd})",
+                    mapleVer,
+                    selectedCategories,
+                    _cancellationTokenSource.Token,
+                    progress);
 
-                        if (result != DialogResult.Yes)
-                            return;
+                // Show result
+                if (extractionResult.Success)
+                {
+                    progressBar.Value = 100;
+                    textBox_status.Text = $"Extraction complete! {extractionResult.TotalImagesExtracted} images extracted.";
+                    listBox_log.Items.Add($"=== Extraction Complete ===");
+                    listBox_log.Items.Add($"Total images: {extractionResult.TotalImagesExtracted}");
+                    listBox_log.Items.Add($"Total size: {FormatBytes(extractionResult.TotalSize)}");
+                    listBox_log.Items.Add($"Duration: {extractionResult.Duration.TotalSeconds:F1}s");
+                    listBox_log.Items.Add($"Output: {versionOutputPath}");
 
-                        // Delete existing folder
-                        Directory.Delete(versionOutputPath, true);
-                    }
+                    MessageBox.Show(
+                        $"Extraction complete!\n\n" +
+                        $"Images extracted: {extractionResult.TotalImagesExtracted}\n" +
+                        $"Total size: {FormatBytes(extractionResult.TotalSize)}\n" +
+                        $"Duration: {extractionResult.Duration.TotalSeconds:F1} seconds\n" +
+                        $"Output: {versionOutputPath}",
+                        "Success",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    textBox_status.Text = $"Extraction failed: {extractionResult.ErrorMessage}";
+                    listBox_log.Items.Add($"ERROR: {extractionResult.ErrorMessage}");
 
-                    // Reset progress
-                    progressBar.Value = 0;
-                    progressBar.Style = ProgressBarStyle.Continuous;
-                    textBox_status.Text = "Starting extraction...";
-                    listBox_log.Items.Clear();
-                    Application.DoEvents();
-
-                    // Create progress reporter
-                    var progress = new Progress<ExtractionProgress>(p =>
-                    {
-                        UpdateProgress(p);
-                    });
-
-                    // Run extraction
-                    var extractionResult = await _extractionService.ExtractAsync(
-                        mapleStoryPath,
-                        versionOutputPath,
-                        versionName,
-                        $"{versionName} (Extracted {DateTime.Now:yyyy-MM-dd})",
-                        mapleVer,
-                        _cancellationTokenSource.Token,
-                        progress);
-
-                    // Show result
-                    if (extractionResult.Success)
-                    {
-                        progressBar.Value = 100;
-                        textBox_status.Text = $"Extraction complete! {extractionResult.TotalImagesExtracted} images extracted.";
-                        listBox_log.Items.Add($"=== Extraction Complete ===");
-                        listBox_log.Items.Add($"Total images: {extractionResult.TotalImagesExtracted}");
-                        listBox_log.Items.Add($"Total size: {FormatBytes(extractionResult.TotalSize)}");
-                        listBox_log.Items.Add($"Duration: {extractionResult.Duration.TotalSeconds:F1}s");
-                        listBox_log.Items.Add($"Output: {versionOutputPath}");
-
-                        MessageBox.Show(
-                            $"Extraction complete!\n\n" +
-                            $"Images extracted: {extractionResult.TotalImagesExtracted}\n" +
-                            $"Total size: {FormatBytes(extractionResult.TotalSize)}\n" +
-                            $"Duration: {extractionResult.Duration.TotalSeconds:F1} seconds\n" +
-                            $"Output: {versionOutputPath}",
-                            "Success",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Information);
-                    }
-                    else
-                    {
-                        textBox_status.Text = $"Extraction failed: {extractionResult.ErrorMessage}";
-                        listBox_log.Items.Add($"ERROR: {extractionResult.ErrorMessage}");
-
-                        MessageBox.Show(
-                            $"Extraction failed:\n{extractionResult.ErrorMessage}",
-                            "Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                    }
+                    MessageBox.Show(
+                        $"Extraction failed:\n{extractionResult.ErrorMessage}",
+                        "Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
                 }
             }
             catch (OperationCanceledException)
@@ -350,6 +353,167 @@ namespace HaCreator.GUI
 
             listBox_log.Items.Add($"ERROR: {e.Exception.Message}");
             listBox_log.TopIndex = listBox_log.Items.Count - 1;
+        }
+        #endregion
+
+        #region WZ File Selection
+        private string _mapleStoryPath;
+
+        private void button_scanWzFiles_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog baseWzSelect = new()
+            {
+                Filter = "MapleStory|Base.wz|All files (*.*)|*.*",
+                Title = "Select Base.wz file from MapleStory installation",
+                CheckFileExists = true,
+                CheckPathExists = true
+            })
+            {
+                if (baseWzSelect.ShowDialog() != DialogResult.OK)
+                    return;
+
+                string wzFullPath = Path.GetFullPath(baseWzSelect.FileName);
+                string baseWzFileName = Path.GetFileName(wzFullPath);
+
+                if (!baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
+                {
+                    MessageBox.Show("Please select the Base.wz file.", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                _mapleStoryPath = Path.GetDirectoryName(wzFullPath);
+                PopulateWzFileList();
+            }
+        }
+
+        private void PopulateWzFileList()
+        {
+            checkedListBox_wzFiles.Items.Clear();
+
+            if (string.IsNullOrEmpty(_mapleStoryPath) || !Directory.Exists(_mapleStoryPath))
+                return;
+
+            // Detect format
+            bool is64Bit = WzFileManager.Detect64BitDirectoryWzFileFormat(_mapleStoryPath);
+
+            // Get all WZ files
+            var wzFiles = new List<WzFileInfo>();
+
+            if (is64Bit)
+            {
+                // 64-bit: Look in Data folder
+                string dataPath = Path.Combine(_mapleStoryPath, "Data");
+                if (Directory.Exists(dataPath))
+                {
+                    foreach (var dir in Directory.EnumerateDirectories(dataPath))
+                    {
+                        string dirName = Path.GetFileName(dir);
+                        // Check if it has .wz files inside
+                        if (Directory.EnumerateFiles(dir, "*.wz").Any())
+                        {
+                            int wzCount = Directory.EnumerateFiles(dir, "*.wz", SearchOption.AllDirectories).Count();
+                            wzFiles.Add(new WzFileInfo(dirName, $"{dirName} ({wzCount} files)", true));
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Standard: Look for .wz files in root
+                foreach (var wzFile in Directory.EnumerateFiles(_mapleStoryPath, "*.wz"))
+                {
+                    string fileName = Path.GetFileName(wzFile);
+                    string category = Path.GetFileNameWithoutExtension(wzFile);
+                    long fileSize = new FileInfo(wzFile).Length;
+
+                    // Skip backup files and non-standard names
+                    bool isStandard = WzExtractionService.STANDARD_WZ_FILES.Contains(category, StringComparer.OrdinalIgnoreCase) ||
+                                      IsNumberedVariant(category);
+
+                    wzFiles.Add(new WzFileInfo(category, $"{fileName} ({FormatBytes(fileSize)})", isStandard));
+                }
+            }
+
+            // Sort: standard files first, then others
+            var sorted = wzFiles.OrderByDescending(f => f.IsStandard)
+                                .ThenBy(f => f.Category)
+                                .ToList();
+
+            foreach (var file in sorted)
+            {
+                checkedListBox_wzFiles.Items.Add(file);
+                // Auto-check standard files
+                if (file.IsStandard)
+                {
+                    checkedListBox_wzFiles.SetItemChecked(checkedListBox_wzFiles.Items.Count - 1, true);
+                }
+            }
+
+            UpdateButtonState();
+        }
+
+        private bool IsNumberedVariant(string category)
+        {
+            // Check if it's a numbered variant like "Mob001", "Map2", etc.
+            foreach (var standard in WzExtractionService.STANDARD_WZ_FILES)
+            {
+                if (category.StartsWith(standard, StringComparison.OrdinalIgnoreCase) &&
+                    category.Length > standard.Length &&
+                    char.IsDigit(category[standard.Length]))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void button_selectAll_Click(object sender, EventArgs e)
+        {
+            for (int i = 0; i < checkedListBox_wzFiles.Items.Count; i++)
+            {
+                checkedListBox_wzFiles.SetItemChecked(i, true);
+            }
+        }
+
+        private void button_selectNone_Click(object sender, EventArgs e)
+        {
+            for (int i = 0; i < checkedListBox_wzFiles.Items.Count; i++)
+            {
+                checkedListBox_wzFiles.SetItemChecked(i, false);
+            }
+        }
+
+        private List<string> GetSelectedCategories()
+        {
+            var selected = new List<string>();
+            foreach (var item in checkedListBox_wzFiles.CheckedItems)
+            {
+                if (item is WzFileInfo fileInfo)
+                {
+                    selected.Add(fileInfo.Category);
+                }
+            }
+            return selected;
+        }
+
+        /// <summary>
+        /// Helper class to store WZ file info in the checkedListBox
+        /// </summary>
+        private class WzFileInfo
+        {
+            public string Category { get; }
+            public string DisplayName { get; }
+            public bool IsStandard { get; }
+
+            public WzFileInfo(string category, string displayName, bool isStandard)
+            {
+                Category = category;
+                DisplayName = displayName;
+                IsStandard = isStandard;
+            }
+
+            public override string ToString() => DisplayName;
         }
         #endregion
 

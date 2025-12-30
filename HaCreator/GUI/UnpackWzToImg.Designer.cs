@@ -30,6 +30,11 @@ namespace HaCreator.GUI
             label5 = new System.Windows.Forms.Label();
             textBox_versionName = new System.Windows.Forms.TextBox();
             label6 = new System.Windows.Forms.Label();
+            label_wzFiles = new System.Windows.Forms.Label();
+            checkedListBox_wzFiles = new System.Windows.Forms.CheckedListBox();
+            button_selectAll = new System.Windows.Forms.Button();
+            button_selectNone = new System.Windows.Forms.Button();
+            button_scanWzFiles = new System.Windows.Forms.Button();
             SuspendLayout();
             //
             // label4
@@ -101,9 +106,57 @@ namespace HaCreator.GUI
             versionBox.Size = new System.Drawing.Size(327, 23);
             versionBox.TabIndex = 19;
             //
+            // label_wzFiles
+            //
+            label_wzFiles.AutoSize = true;
+            label_wzFiles.Location = new System.Drawing.Point(3, 148);
+            label_wzFiles.Name = "label_wzFiles";
+            label_wzFiles.Size = new System.Drawing.Size(111, 15);
+            label_wzFiles.TabIndex = 35;
+            label_wzFiles.Text = "WZ Files to Extract:";
+            //
+            // checkedListBox_wzFiles
+            //
+            checkedListBox_wzFiles.CheckOnClick = true;
+            checkedListBox_wzFiles.FormattingEnabled = true;
+            checkedListBox_wzFiles.Location = new System.Drawing.Point(3, 166);
+            checkedListBox_wzFiles.Name = "checkedListBox_wzFiles";
+            checkedListBox_wzFiles.Size = new System.Drawing.Size(462, 130);
+            checkedListBox_wzFiles.TabIndex = 36;
+            //
+            // button_selectAll
+            //
+            button_selectAll.Location = new System.Drawing.Point(3, 300);
+            button_selectAll.Name = "button_selectAll";
+            button_selectAll.Size = new System.Drawing.Size(75, 23);
+            button_selectAll.TabIndex = 37;
+            button_selectAll.Text = "Select All";
+            button_selectAll.UseVisualStyleBackColor = true;
+            button_selectAll.Click += button_selectAll_Click;
+            //
+            // button_selectNone
+            //
+            button_selectNone.Location = new System.Drawing.Point(84, 300);
+            button_selectNone.Name = "button_selectNone";
+            button_selectNone.Size = new System.Drawing.Size(85, 23);
+            button_selectNone.TabIndex = 38;
+            button_selectNone.Text = "Select None";
+            button_selectNone.UseVisualStyleBackColor = true;
+            button_selectNone.Click += button_selectNone_Click;
+            //
+            // button_scanWzFiles
+            //
+            button_scanWzFiles.Location = new System.Drawing.Point(370, 300);
+            button_scanWzFiles.Name = "button_scanWzFiles";
+            button_scanWzFiles.Size = new System.Drawing.Size(95, 23);
+            button_scanWzFiles.TabIndex = 39;
+            button_scanWzFiles.Text = "Scan WZ Files";
+            button_scanWzFiles.UseVisualStyleBackColor = true;
+            button_scanWzFiles.Click += button_scanWzFiles_Click;
+            //
             // button_unpack
             //
-            button_unpack.Location = new System.Drawing.Point(1, 145);
+            button_unpack.Location = new System.Drawing.Point(1, 330);
             button_unpack.Name = "button_unpack";
             button_unpack.Size = new System.Drawing.Size(465, 38);
             button_unpack.TabIndex = 27;
@@ -113,7 +166,7 @@ namespace HaCreator.GUI
             //
             // textBox_status
             //
-            textBox_status.Location = new System.Drawing.Point(1, 218);
+            textBox_status.Location = new System.Drawing.Point(1, 403);
             textBox_status.Name = "textBox_status";
             textBox_status.ReadOnly = true;
             textBox_status.Size = new System.Drawing.Size(464, 23);
@@ -129,7 +182,7 @@ namespace HaCreator.GUI
             //
             // progressBar
             //
-            progressBar.Location = new System.Drawing.Point(1, 189);
+            progressBar.Location = new System.Drawing.Point(1, 374);
             progressBar.Name = "progressBar";
             progressBar.Size = new System.Drawing.Size(464, 23);
             progressBar.TabIndex = 30;
@@ -139,7 +192,7 @@ namespace HaCreator.GUI
             listBox_log.Font = new System.Drawing.Font("Consolas", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
             listBox_log.FormattingEnabled = true;
             listBox_log.HorizontalScrollbar = true;
-            listBox_log.Location = new System.Drawing.Point(1, 247);
+            listBox_log.Location = new System.Drawing.Point(1, 432);
             listBox_log.Name = "listBox_log";
             listBox_log.Size = new System.Drawing.Size(464, 160);
             listBox_log.TabIndex = 31;
@@ -166,7 +219,7 @@ namespace HaCreator.GUI
             label6.AutoSize = true;
             label6.Font = new System.Drawing.Font("Segoe UI", 6.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, 0);
             label6.ForeColor = System.Drawing.SystemColors.GrayText;
-            label6.Location = new System.Drawing.Point(1, 410);
+            label6.Location = new System.Drawing.Point(1, 598);
             label6.Name = "label6";
             label6.Size = new System.Drawing.Size(282, 12);
             label6.TabIndex = 34;
@@ -176,7 +229,12 @@ namespace HaCreator.GUI
             //
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            ClientSize = new System.Drawing.Size(469, 428);
+            ClientSize = new System.Drawing.Size(469, 618);
+            Controls.Add(button_scanWzFiles);
+            Controls.Add(button_selectNone);
+            Controls.Add(button_selectAll);
+            Controls.Add(checkedListBox_wzFiles);
+            Controls.Add(label_wzFiles);
             Controls.Add(label6);
             Controls.Add(textBox_versionName);
             Controls.Add(label5);
@@ -218,5 +276,10 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.TextBox textBox_versionName;
         private System.Windows.Forms.Label label6;
+        private System.Windows.Forms.Label label_wzFiles;
+        private System.Windows.Forms.CheckedListBox checkedListBox_wzFiles;
+        private System.Windows.Forms.Button button_selectAll;
+        private System.Windows.Forms.Button button_selectNone;
+        private System.Windows.Forms.Button button_scanWzFiles;
     }
 }
