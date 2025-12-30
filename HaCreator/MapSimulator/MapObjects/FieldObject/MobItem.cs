@@ -448,11 +448,14 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int mobX = CurrentX;
             int mobY = CurrentY;
 
-            // Only recalculate if mob has moved significantly
-            int dx = Math.Abs(mobX - _lastMirrorCheckX);
-            int dy = Math.Abs(mobY - _lastMirrorCheckY);
-            if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
-                return;
+            // Only recalculate if mob has moved significantly (skip check on first call to avoid int.MinValue overflow)
+            if (_lastMirrorCheckX != int.MinValue)
+            {
+                int dx = Math.Abs(mobX - _lastMirrorCheckX);
+                int dy = Math.Abs(mobY - _lastMirrorCheckY);
+                if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
+                    return;
+            }
 
             _lastMirrorCheckX = mobX;
             _lastMirrorCheckY = mobY;

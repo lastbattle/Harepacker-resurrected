@@ -53,5 +53,21 @@ namespace HaCreator.MapSimulator
             lock (TEXTURE_POOL)
                 TEXTURE_POOL.Clear();
         }
+
+        /// <summary>
+        /// Disposes all textures in the pool and clears the pool.
+        /// Used for seamless map transitions.
+        /// </summary>
+        public void DisposeAll()
+        {
+            lock (TEXTURE_POOL)
+            {
+                foreach (var texture in TEXTURE_POOL.Values)
+                {
+                    texture?.Dispose();
+                }
+                TEXTURE_POOL.Clear();
+            }
+        }
     }
 }

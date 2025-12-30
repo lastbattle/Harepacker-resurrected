@@ -41,27 +41,35 @@ namespace HaCreator.MapSimulator {
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
 
         /// <summary>
-        /// Create map simulator board
+        /// Create map simulator board with seamless map transitions.
         /// </summary>
         /// <param name="mapBoard"></param>
         /// <param name="titleName"></param>
+        /// <param name="loadMapCallback">Optional callback to load a map by ID. Returns (Board, titleName) tuple or null if map not found. Enables seamless portal teleportation.</param>
+        /// <param name="onComplete">Optional callback invoked on the UI thread when the simulator exits.</param>
         /// <returns></returns>
-        public static MapSimulator CreateAndShowMapSimulator(Board mapBoard, string titleName) {
+        public static void CreateAndShowMapSimulator(Board mapBoard, string titleName, Func<int, Tuple<Board, string>> loadMapCallback = null, Action onComplete = null) {
             if (mapBoard.MiniMap == null)
                 mapBoard.RegenerateMinimap();
 
-            MapSimulator mapSimulator = null;
-
             Thread thread = new Thread(() => {
-                mapSimulator = new MapSimulator(mapBoard, titleName);
+                var mapSimulator = new MapSimulator(mapBoard, titleName);
+
+                // Set the callback for seamless map transitions
+                if (loadMapCallback != null)
+                {
+                    mapSimulator.SetLoadMapCallback(loadMapCallback);
+                }
+
                 mapSimulator.Run();
+
+                // Signal completion on the UI thread
+                onComplete?.Invoke();
             }) {
                 Priority = ThreadPriority.Highest
             };
             thread.Start();
-            thread.Join();
-
-            return mapSimulator;
+            // Don't Join() - let the game run independently to avoid deadlock with Dispatcher.Invoke
         }
 
         #region Common

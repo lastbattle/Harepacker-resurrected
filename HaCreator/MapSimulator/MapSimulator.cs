@@ -129,9 +129,10 @@ namespace HaCreator.MapSimulator
 
         // Audio
         private WzSoundResourceStreamer audio;
+        private WzSoundResourceStreamer portalSE; // Portal teleport sound effect
 
         // Etc
-        private readonly Board mapBoard;
+        private Board mapBoard; // Not readonly - can be replaced during seamless map transitions
         private bool bBigBangUpdate = true; // Big-Bang update
         private bool bBigBang2Update = true; // Chaos update
         private bool bIsLoginMap = false; // if the simulated map is the Login map.
@@ -151,6 +152,26 @@ namespace HaCreator.MapSimulator
 
         // Frame counter for visibility culling (increments each frame)
         private int _frameNumber = 0;
+
+        // Portal teleportation - seamless map transitions
+        private string _spawnPortalName = null; // The portal name to spawn at (set when loading map)
+        private int _lastClickTime = 0; // For double-click detection
+        private const int DOUBLE_CLICK_TIME_MS = 500; // Time window for double-click
+        private PortalItem _lastClickedPortal = null; // Track which portal was clicked
+
+        // Seamless map transition support
+        private bool _pendingMapChange = false; // Flag to trigger map change in Update loop
+        private int _pendingMapId = -1; // Target map ID for pending change
+        private string _pendingPortalName = null; // Target portal name for pending change
+        private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
+
+        /// <summary>
+        /// Sets the callback used to load maps for portal teleportation.
+        /// </summary>
+        public void SetLoadMapCallback(Func<int, Tuple<Board, string>> callback)
+        {
+            _loadMapCallback = callback;
+        }
 
         // Debug rendering data (collected during draw, rendered in separate pass)
         private struct DebugDrawData
@@ -180,9 +201,11 @@ namespace HaCreator.MapSimulator
         /// </summary>
         /// <param name="mapBoard"></param>
         /// <param name="titleName"></param>
-        public MapSimulator(Board mapBoard, string titleName)
+        /// <param name="spawnPortalName">Optional portal name to spawn at (from portal teleportation)</param>
+        public MapSimulator(Board mapBoard, string titleName, string spawnPortalName = null)
         {
             this.mapBoard = mapBoard;
+            this._spawnPortalName = spawnPortalName;
 
             // Check if the simulated map is the Login map. 'MapLogin1:MapLogin1'
             string[] titleNameParts = titleName.Split(':');
@@ -331,8 +354,8 @@ namespace HaCreator.MapSimulator
             font_DebugValues = Content.Load<SpriteFont>("XnaDefaultFont");//("XnaFont_Debug");
 
             // Pre-cache navigation help text strings to avoid string.Format allocations in Draw()
-            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI";
-            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI";
+            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport";
+            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport";
 
             base.Initialize();
         }
@@ -364,6 +387,18 @@ namespace HaCreator.MapSimulator
                     audio.Play();
                 }
             }
+
+            // Portal sound effect
+            WzImage soundGameImage = (WzImage)Program.WzManager.FindWzImageByName("sound", "Game.img");
+            if (soundGameImage != null)
+            {
+                WzBinaryProperty portalSound = (WzBinaryProperty)soundGameImage["Portal"];
+                if (portalSound != null)
+                {
+                    portalSE = new WzSoundResourceStreamer(portalSound, false);
+                }
+            }
+
             if (mapBoard.VRRectangle == null)
             {
                 vr_fieldBoundary = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
@@ -553,14 +588,32 @@ namespace HaCreator.MapSimulator
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
             ///////////////////////////////////////////////
-            // Get a random portal if any exists for spawnpoint
-            var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
-            if (startPortals.Any())
+            bool spawnPositionSet = false;
+
+            // First, check if we're spawning from a portal teleport (has target portal name)
+            if (!string.IsNullOrEmpty(_spawnPortalName))
             {
-                Random random = new Random();
-                PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
-                this.mapShiftX = randomStartPortal.X;
-                this.mapShiftY = randomStartPortal.Y;
+                // Find the portal with the matching name
+                var targetPortal = mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
+                if (targetPortal != null)
+                {
+                    this.mapShiftX = targetPortal.X;
+                    this.mapShiftY = targetPortal.Y;
+                    spawnPositionSet = true;
+                }
+            }
+
+            // Fallback: Get a random portal if any exists for spawnpoint
+            if (!spawnPositionSet)
+            {
+                var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
+                if (startPortals.Any())
+                {
+                    Random random = new Random();
+                    PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
+                    this.mapShiftX = randomStartPortal.X;
+                    this.mapShiftY = randomStartPortal.Y;
+                }
             }
 
             SetCameraMoveX(true, false, 0); // true true to center it, in case its out of the boundary
@@ -724,8 +777,373 @@ namespace HaCreator.MapSimulator
 
             // clear prior mirror bottom boundary
             rect_mirrorBottom = new Rectangle();
-            mirrorBottomReflection = null; 
-    }
+            mirrorBottomReflection = null;
+        }
+
+        /// <summary>
+        /// Unloads current map content for seamless map transitions.
+        /// Does not dispose shared resources (GraphicsDevice, SpriteBatch, fonts, cursor).
+        /// </summary>
+        private void UnloadMapContent()
+        {
+            // Stop and dispose audio
+            if (audio != null)
+            {
+                audio.Dispose();
+                audio = null;
+            }
+
+            // Clear object lists
+            mapObjects_NPCs.Clear();
+            mapObjects_Mobs.Clear();
+            mapObjects_Reactors.Clear();
+            mapObjects_Portal.Clear();
+            mapObjects_tooltips.Clear();
+            backgrounds_front.Clear();
+            backgrounds_back.Clear();
+
+            // Clear layer objects
+            if (mapObjects != null)
+            {
+                for (int i = 0; i < mapObjects.Length; i++)
+                {
+                    mapObjects[i]?.Clear();
+                }
+            }
+
+            // Clear arrays
+            _mapObjectsArray = null;
+            _npcsArray = null;
+            _mobsArray = null;
+            _reactorsArray = null;
+            _portalsArray = null;
+            _tooltipsArray = null;
+            _backgroundsFrontArray = null;
+            _backgroundsBackArray = null;
+
+            // Clear spatial grids
+            _mapObjectsGrid = null;
+            _portalsGrid = null;
+            _reactorsGrid = null;
+            _visibleMapObjects = null;
+            _visiblePortals = null;
+            _visibleReactors = null;
+            _useSpatialPartitioning = false;
+
+            // Dispose VR border textures
+            texture_vrBoundaryRectLeft?.Dispose();
+            texture_vrBoundaryRectRight?.Dispose();
+            texture_vrBoundaryRectTop?.Dispose();
+            texture_vrBoundaryRectBottom?.Dispose();
+            texture_vrBoundaryRectLeft = null;
+            texture_vrBoundaryRectRight = null;
+            texture_vrBoundaryRectTop = null;
+            texture_vrBoundaryRectBottom = null;
+            bDrawVRBorderLeftRight = false;
+
+            // Dispose LB border textures
+            texture_lbLeft?.Dispose();
+            texture_lbRight?.Dispose();
+            texture_lbTop?.Dispose();
+            texture_lbBottom?.Dispose();
+            texture_lbLeft = null;
+            texture_lbRight = null;
+            texture_lbTop = null;
+            texture_lbBottom = null;
+            LBSide = 0;
+            LBTop = 0;
+            LBBottom = 0;
+
+            // Clear minimap and status bar
+            miniMapUi = null;
+            statusBarUi = null;
+            statusBarChatUI = null;
+
+            // Clear mirror boundaries
+            rect_mirrorBottom = new Rectangle();
+            mirrorBottomReflection = null;
+
+            // Clear texture pool (dispose all textures)
+            texturePool.DisposeAll();
+
+            // Reset portal click tracking
+            _lastClickedPortal = null;
+            _lastClickTime = 0;
+        }
+
+        /// <summary>
+        /// Loads map content for a new map during seamless transitions.
+        /// </summary>
+        /// <param name="newBoard">The new map board to load</param>
+        /// <param name="newTitle">The new window title</param>
+        /// <param name="spawnPortalName">Optional portal name to spawn at</param>
+        private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName)
+        {
+            this.mapBoard = newBoard;
+            this._spawnPortalName = spawnPortalName;
+
+            // Update window title
+            Window.Title = newTitle;
+
+            // Update map type flags
+            string[] titleNameParts = newTitle.Split(':');
+            this.bIsLoginMap = titleNameParts.All(part => part.Contains("MapLogin"));
+            this.bIsCashShopMap = titleNameParts.All(part => part.Contains("CashShopPreview"));
+
+            // Regenerate minimap if needed
+            if (mapBoard.MiniMap == null)
+                mapBoard.RegenerateMinimap();
+
+            // Load WZ images needed for this map
+            WzImage mapHelperImage = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
+            WzImage soundUIImage = (WzImage)Program.WzManager.FindWzImageByName("sound", "UI.img");
+            WzImage uiToolTipImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIToolTip.img");
+            WzImage uiBasicImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "Basic.img");
+            WzImage uiWindow1Image = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIWindow.img");
+            WzImage uiWindow2Image = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIWindow2.img");
+            WzImage uiStatusBarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar.img");
+            WzImage uiStatus2BarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar2.img");
+
+            // BGM
+            if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
+            {
+                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
+                audio?.Play();
+            }
+
+            // VR boundaries
+            if (mapBoard.VRRectangle == null)
+            {
+                vr_fieldBoundary = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+                vr_rectangle = new Rectangle(0, 0, mapBoard.MapSize.X, mapBoard.MapSize.Y);
+            }
+            else
+            {
+                vr_fieldBoundary = new Rectangle(
+                    mapBoard.VRRectangle.X + mapBoard.CenterPoint.X,
+                    mapBoard.VRRectangle.Y + mapBoard.CenterPoint.Y,
+                    mapBoard.VRRectangle.Width,
+                    mapBoard.VRRectangle.Height);
+                vr_rectangle = new Rectangle(mapBoard.VRRectangle.X, mapBoard.VRRectangle.Y, mapBoard.VRRectangle.Width, mapBoard.VRRectangle.Height);
+            }
+
+            // Initialize layer lists
+            for (int i = 0; i < mapObjects.Length; i++)
+            {
+                mapObjects[i] = new List<BaseDXDrawableItem>();
+            }
+
+            List<WzObject> usedProps = new List<WzObject>();
+
+            // Load map objects in parallel
+            Task t_tiles = Task.Run(() =>
+            {
+                foreach (LayeredItem tileObj in mapBoard.BoardItems.TileObjs)
+                {
+                    WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
+                    mapObjects[tileObj.LayerNumber].Add(
+                        MapSimulatorLoader.CreateMapItemFromProperty(texturePool, tileParent, tileObj.X, tileObj.Y, mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                }
+            });
+
+            Task t_Background = Task.Run(() =>
+            {
+                foreach (BackgroundInstance background in mapBoard.BoardItems.BackBackgrounds)
+                {
+                    WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    if (bgItem != null)
+                        backgrounds_back.Add(bgItem);
+                }
+                foreach (BackgroundInstance background in mapBoard.BoardItems.FrontBackgrounds)
+                {
+                    WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    if (bgItem != null)
+                        backgrounds_front.Add(bgItem);
+                }
+            });
+
+            Task t_reactor = Task.Run(() =>
+            {
+                foreach (ReactorInstance reactor in mapBoard.BoardItems.Reactors)
+                {
+                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    if (reactorItem != null)
+                        mapObjects_Reactors.Add(reactorItem);
+                }
+            });
+
+            Task t_npc = Task.Run(() =>
+            {
+                foreach (NpcInstance npc in mapBoard.BoardItems.NPCs)
+                {
+                    if (npc.Hide)
+                        continue;
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    if (npcItem != null)
+                        mapObjects_NPCs.Add(npcItem);
+                }
+            });
+
+            Task t_mobs = Task.Run(() =>
+            {
+                foreach (MobInstance mob in mapBoard.BoardItems.Mobs)
+                {
+                    if (mob.Hide)
+                        continue;
+                    MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    mapObjects_Mobs.Add(mobItem);
+                }
+            });
+
+            Task t_portal = Task.Run(() =>
+            {
+                WzSubProperty portalParent = (WzSubProperty)mapHelperImage["portal"];
+                WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
+                foreach (PortalInstance portal in mapBoard.BoardItems.Portals)
+                {
+                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    if (portalItem != null)
+                        mapObjects_Portal.Add(portalItem);
+                }
+            });
+
+            Task t_tooltips = Task.Run(() =>
+            {
+                WzSubProperty farmFrameParent = (WzSubProperty)uiToolTipImage?["Item"]?["FarmFrame"];
+                foreach (ToolTipInstance tooltip in mapBoard.BoardItems.ToolTips)
+                {
+                    TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(texturePool, UserScreenScaleFactor, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
+                    mapObjects_tooltips.Add(item);
+                }
+            });
+
+            Task t_minimap = Task.Run(() =>
+            {
+                if (!this.bIsLoginMap && !mapBoard.MapInfo.hideMinimap && !this.bIsCashShopMap)
+                {
+                    miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, mapBoard.MapInfo.strMapName, mapBoard.MapInfo.strStreetName, soundUIImage, bBigBangUpdate);
+                }
+            });
+
+            Task t_statusBar = Task.Run(() =>
+            {
+                if (!this.bIsLoginMap && !this.bIsCashShopMap)
+                {
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, bBigBangUpdate);
+                    if (statusBar != null)
+                    {
+                        statusBarUi = statusBar.Item1;
+                        statusBarChatUI = statusBar.Item2;
+                    }
+                }
+            });
+
+            // Recreate cursor (textures were disposed in UnloadMapContent)
+            Task t_cursor = Task.Run(() =>
+            {
+                WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
+                this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+            });
+
+            // Wait for all loading tasks
+            Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_cursor);
+
+            // Initialize mob foothold references
+            InitializeMobFootholds();
+
+            // Convert lists to arrays
+            ConvertListsToArrays();
+
+            // Set camera position
+            bool spawnPositionSet = false;
+            if (!string.IsNullOrEmpty(_spawnPortalName))
+            {
+                var targetPortal = mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
+                if (targetPortal != null)
+                {
+                    this.mapShiftX = targetPortal.X;
+                    this.mapShiftY = targetPortal.Y;
+                    spawnPositionSet = true;
+                }
+            }
+            if (!spawnPositionSet)
+            {
+                var startPortals = mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
+                if (startPortals.Any())
+                {
+                    Random random = new Random();
+                    PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
+                    this.mapShiftX = randomStartPortal.X;
+                    this.mapShiftY = randomStartPortal.Y;
+                }
+            }
+
+            SetCameraMoveX(true, false, 0);
+            SetCameraMoveX(false, true, 0);
+            SetCameraMoveY(true, false, 0);
+            SetCameraMoveY(false, true, 0);
+
+            // Create border textures
+            int leftRightVRDifference = (int)((vr_fieldBoundary.Right - vr_fieldBoundary.Left) * _renderParams.RenderObjectScaling);
+            if (leftRightVRDifference < _renderParams.RenderWidth)
+            {
+                this.bDrawVRBorderLeftRight = true;
+                this.texture_vrBoundaryRectLeft = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectRight = CreateVRBorder(VR_BORDER_WIDTHHEIGHT, vr_fieldBoundary.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectTop = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
+                this.texture_vrBoundaryRectBottom = CreateVRBorder(vr_fieldBoundary.Width * 2, VR_BORDER_WIDTHHEIGHT, _DxDeviceManager.GraphicsDevice);
+            }
+
+            // LB borders
+            if (mapBoard.MapInfo.LBSide != null)
+            {
+                LBSide = (int)mapBoard.MapInfo.LBSide;
+                this.texture_lbLeft = CreateLBBorder(LB_BORDER_WIDTHHEIGHT + LBSide, this.Height, _DxDeviceManager.GraphicsDevice);
+                this.texture_lbRight = CreateLBBorder(LB_BORDER_WIDTHHEIGHT + LBSide, this.Height, _DxDeviceManager.GraphicsDevice);
+            }
+            if (mapBoard.MapInfo.LBTop != null)
+            {
+                LBTop = (int)mapBoard.MapInfo.LBTop;
+                this.texture_lbTop = CreateLBBorder((int)(vr_fieldBoundary.Width * 1.45), LB_BORDER_WIDTHHEIGHT + LBTop, _DxDeviceManager.GraphicsDevice);
+            }
+            if (mapBoard.MapInfo.LBBottom != null)
+            {
+                LBBottom = (int)mapBoard.MapInfo.LBBottom;
+                this.texture_lbBottom = CreateLBBorder((int)(vr_fieldBoundary.Width * 1.45), LB_BORDER_WIDTHHEIGHT + LBBottom, _DxDeviceManager.GraphicsDevice);
+            }
+
+            // Mirror bottom boundaries
+            if (mapBoard.MapInfo.mirror_Bottom)
+            {
+                if (mapBoard.MapInfo.VRLeft != null && mapBoard.MapInfo.VRRight != null)
+                {
+                    int vr_width = (int)mapBoard.MapInfo.VRRight - (int)mapBoard.MapInfo.VRLeft;
+                    const int obj_mirrorBottom_height = 200;
+                    rect_mirrorBottom = new Rectangle((int)mapBoard.MapInfo.VRLeft, (int)mapBoard.MapInfo.VRBottom - obj_mirrorBottom_height, vr_width, obj_mirrorBottom_height);
+                    mirrorBottomReflection = new ReflectionDrawableBoundary(128, 255, "mirror", true, false);
+                }
+            }
+
+            // Cleanup spine event handlers
+            foreach (WzObject obj in usedProps)
+            {
+                if (obj == null)
+                    continue;
+                WzSpineObject spineObj = (WzSpineObject)obj.MSTagSpine;
+                if (spineObj != null)
+                {
+                    spineObj.state.Start += Start;
+                    spineObj.state.End += End;
+                    spineObj.state.Complete += Complete;
+                    spineObj.state.Event += Event;
+                }
+                obj.MSTag = null;
+                obj.MSTagSpine = null;
+            }
+            usedProps.Clear();
+        }
 #endregion
      
         #region Update and Drawing
@@ -741,7 +1159,7 @@ namespace HaCreator.MapSimulator
         private int currTickCount = Environment.TickCount;
         private int lastTickCount = Environment.TickCount;
         private KeyboardState oldKeyboardState = Keyboard.GetState();
-        private MouseState oldMouseState;
+        private MouseState oldMouseState = Mouse.GetState();
 
         // Mob movement enabled flag
         private bool bMobMovementEnabled = true;
@@ -789,6 +1207,24 @@ namespace HaCreator.MapSimulator
             // Handle mouse
             mouseCursor.UpdateCursorState();
 
+            // Handle portal double-click for teleportation
+            HandlePortalDoubleClick(newMouseState);
+
+            // Handle pending map change (seamless transition)
+            if (_pendingMapChange && _loadMapCallback != null)
+            {
+                _pendingMapChange = false;
+                var result = _loadMapCallback(_pendingMapId);
+                if (result != null && result.Item1 != null)
+                {
+                    // Perform seamless map transition
+                    UnloadMapContent();
+                    LoadMapContent(result.Item1, result.Item2, _pendingPortalName);
+                }
+                _pendingMapId = -1;
+                _pendingPortalName = null;
+                return; // Skip the rest of this frame
+            }
 
             // Navigate around the rendered object
             bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
@@ -1018,6 +1454,87 @@ namespace HaCreator.MapSimulator
             {
                 _npcsArray[i].Update(deltaTimeMs);
             }
+        }
+
+        /// <summary>
+        /// Handles double-click on portals for map teleportation.
+        /// When a portal with a valid target map is double-clicked, sets the target map ID and exits.
+        /// </summary>
+        /// <param name="mouseState">Current mouse state</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void HandlePortalDoubleClick(MouseState mouseState)
+        {
+            // Check for left mouse button click (transition from pressed to released)
+            bool isLeftClick = mouseState.LeftButton == ButtonState.Released && oldMouseState.LeftButton == ButtonState.Pressed;
+            if (!isLeftClick)
+                return;
+
+            // Calculate mouse position relative to map coordinates
+            int mouseMapX = mouseState.X + mapShiftX - mapBoard.CenterPoint.X;
+            int mouseMapY = mouseState.Y + mapShiftY - mapBoard.CenterPoint.Y;
+
+            // Find which portal was clicked (if any)
+            PortalItem clickedPortal = null;
+            for (int i = 0; i < _portalsArray.Length; i++)
+            {
+                PortalItem portal = _portalsArray[i];
+                PortalInstance instance = portal.PortalInstance;
+
+                // Calculate portal bounds (portals are centered on their position)
+                int portalLeft = instance.X - instance.Width / 2;
+                int portalRight = instance.X + instance.Width / 2;
+                int portalTop = instance.Y - instance.Height;
+                int portalBottom = instance.Y;
+
+                // Expand hit area slightly for easier clicking
+                const int PORTAL_HIT_PADDING = 15;
+                if (mouseMapX >= portalLeft - PORTAL_HIT_PADDING &&
+                    mouseMapX <= portalRight + PORTAL_HIT_PADDING &&
+                    mouseMapY >= portalTop - PORTAL_HIT_PADDING &&
+                    mouseMapY <= portalBottom + PORTAL_HIT_PADDING)
+                {
+                    clickedPortal = portal;
+                    break;
+                }
+            }
+
+            if (clickedPortal == null)
+            {
+                // Clicked outside any portal, reset tracking
+                _lastClickedPortal = null;
+                return;
+            }
+
+            // Check if this is a double-click on the same portal
+            int currentTime = currTickCount;
+            if (_lastClickedPortal == clickedPortal && (currentTime - _lastClickTime) <= DOUBLE_CLICK_TIME_MS)
+            {
+                // Double-click detected! Check if portal has a valid destination
+                int targetMapId = clickedPortal.PortalInstance.tm;
+                if (targetMapId != MapConstants.MaxMap && targetMapId > 0)
+                {
+                    // Play portal sound effect
+                    PlayPortalSE();
+
+                    // Valid portal destination - set pending map change flag
+                    _pendingMapChange = true;
+                    _pendingMapId = targetMapId;
+                    _pendingPortalName = clickedPortal.PortalInstance.tn; // Target portal name on destination map
+                    return;
+                }
+            }
+
+            // Record this click for potential double-click detection
+            _lastClickedPortal = clickedPortal;
+            _lastClickTime = currentTime;
+        }
+
+        /// <summary>
+        /// Plays the portal teleport sound effect.
+        /// </summary>
+        private void PlayPortalSE()
+        {
+            portalSE?.Play();
         }
 
         /// <summary>

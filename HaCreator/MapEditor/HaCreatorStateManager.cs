@@ -704,9 +704,81 @@ namespace HaCreator.MapEditor
             System.Windows.Controls.TabItem tab = (System.Windows.Controls.TabItem) tabs.SelectedItem;
             if (selectedBoard == null || tab == null)
                 return;
-            MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header);
 
-            multiBoard.DeviceReady = true;
+            // Create callback for portal teleportation
+            Func<int, Tuple<Board, string>> loadMapCallback = (mapId) =>
+            {
+                return LoadMapForSimulator(mapId);
+            };
+
+            // Create callback for when simulator exits - restore DeviceReady on UI thread
+            Action onComplete = () =>
+            {
+                tabs.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    multiBoard.DeviceReady = true;
+                }));
+            };
+
+            MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header, loadMapCallback, onComplete);
+        }
+
+        /// <summary>
+        /// Loads a map by ID for the simulator (portal teleportation).
+        /// This loads the map into a new tab in the editor and returns the Board for simulation.
+        /// Must be called from the game thread - marshals UI operations to the UI thread.
+        /// </summary>
+        /// <param name="mapId">The map ID to load</param>
+        /// <returns>Tuple of (Board, titleName) or null if map not found</returns>
+        private Tuple<Board, string> LoadMapForSimulator(int mapId)
+        {
+            // Format map ID as 9-digit string
+            string mapIdStr = mapId.ToString().PadLeft(9, '0');
+
+            // Check if map exists in cache
+            if (!Program.InfoManager.MapsCache.ContainsKey(mapIdStr))
+            {
+                return null;
+            }
+
+            try
+            {
+                // Get map data from cache
+                Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapIdStr];
+
+                WzImage mapImage = loadedMap.Item1;
+                string mapName = loadedMap.Item2;
+                string streetName = loadedMap.Item3;
+                string categoryName = loadedMap.Item4;
+                MapInfo info = loadedMap.Item5;
+
+                // Use Dispatcher.Invoke to run UI operations on the UI thread
+                // Use the tabs control's Dispatcher since this is a WinForms app with WPF elements
+                Tuple<Board, string> result = null;
+                tabs.Dispatcher.Invoke(() =>
+                {
+                    // Load the map into a new tab
+                    MapLoader.CreateMapFromImage(mapId, mapImage, info, mapName, streetName, categoryName, tabs, multiBoard, MakeRightClickHandler());
+
+                    // Get the newly created board (it becomes the selected board)
+                    Board newBoard = multiBoard.SelectedBoard;
+                    System.Windows.Controls.TabItem newTab = (System.Windows.Controls.TabItem)tabs.SelectedItem;
+
+                    if (newBoard != null && newTab != null)
+                    {
+                        string titleName = (string)newTab.Header;
+                        result = new Tuple<Board, string>(newBoard, titleName);
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading map {mapId}: {ex.Message}");
+            }
+
+            return null;
         }
 
         void Ribbon_ParallaxToggled(bool pressed)
