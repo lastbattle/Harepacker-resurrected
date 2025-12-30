@@ -7,6 +7,7 @@
 using HaCreator.MapEditor.Info;
 using HaSharedLibrary.Wz;
 using MapleLib;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -23,10 +24,12 @@ namespace HaCreator.Wz
     public class WzInformationManager
     {
         public Dictionary<string, ReactorInfo> Reactors = new Dictionary<string, ReactorInfo>();
-        public Dictionary<string, WzImage> TileSets = new Dictionary<string, WzImage>();
-        public Dictionary<string, WzImage> ObjectSets = new Dictionary<string, WzImage>();
 
-        public Dictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
+        // Lazy-loading dictionaries for map assets - only load when accessed
+        public IDictionary<string, WzImage> TileSets = new Dictionary<string, WzImage>();
+        public IDictionary<string, WzImage> ObjectSets = new Dictionary<string, WzImage>();
+        public IDictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
+
         public Dictionary<string, WzBinaryProperty> BGMs = new Dictionary<string, WzBinaryProperty>();
 
         // Maps
@@ -62,6 +65,72 @@ namespace HaCreator.Wz
         public Dictionary<string, WzSubProperty> QuestInfos = new Dictionary<string, WzSubProperty>();
         public Dictionary<string, WzSubProperty> QuestSays = new Dictionary<string, WzSubProperty>();
 
+
+        /// <summary>
+        /// Gets a tile set image, loading on-demand if not already loaded.
+        /// </summary>
+        public WzImage GetTileSet(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !TileSets.ContainsKey(name))
+                return null;
+
+            var image = TileSets[name];
+            if (image == null && Program.DataSource != null)
+            {
+                image = Program.DataSource.GetImage("Map", $"Tile/{name}.img");
+                if (image != null)
+                {
+                    if (!image.Parsed)
+                        image.ParseImage();
+                    TileSets[name] = image;
+                }
+            }
+            return image;
+        }
+
+        /// <summary>
+        /// Gets an object set image, loading on-demand if not already loaded.
+        /// </summary>
+        public WzImage GetObjectSet(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !ObjectSets.ContainsKey(name))
+                return null;
+
+            var image = ObjectSets[name];
+            if (image == null && Program.DataSource != null)
+            {
+                image = Program.DataSource.GetImage("Map", $"Obj/{name}.img");
+                if (image != null)
+                {
+                    if (!image.Parsed)
+                        image.ParseImage();
+                    ObjectSets[name] = image;
+                }
+            }
+            return image;
+        }
+
+        /// <summary>
+        /// Gets a background set image, loading on-demand if not already loaded.
+        /// </summary>
+        public WzImage GetBackgroundSet(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !BackgroundSets.ContainsKey(name))
+                return null;
+
+            var image = BackgroundSets[name];
+            if (image == null && Program.DataSource != null)
+            {
+                image = Program.DataSource.GetImage("Map", $"Back/{name}.img");
+                if (image != null)
+                {
+                    if (!image.Parsed)
+                        image.ParseImage();
+                    BackgroundSets[name] = image;
+                }
+            }
+            return image;
+        }
 
         /// <summary>
         /// Gets the equipment's WzSubProperty from Character.wz

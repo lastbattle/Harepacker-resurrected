@@ -44,8 +44,8 @@ namespace HaCreator.GUI.EditorPanels
             this.hcsm = hcsm;
             hcsm.SetTilePanel(this);
 
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets) {
-                tileSetList.Items.Add(tS.Key);
+            foreach (string tileSetName in Program.InfoManager.TileSets.Keys) {
+                tileSetList.Items.Add(tileSetName);
             }
         }
 
@@ -98,7 +98,9 @@ namespace HaCreator.GUI.EditorPanels
                 // Clear existing
                 tileImagesContainer.Controls.Clear();
 
-                WzImage tileSetImage = Program.InfoManager.TileSets[selectedSetName];
+                WzImage tileSetImage = Program.InfoManager.GetTileSet(selectedSetName);
+                if (tileSetImage == null)
+                    return;
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
 
                 foreach (WzSubProperty tCat in tileSetImage.WzProperties)

@@ -11,6 +11,7 @@ using System.Text;
 using System.Windows.Forms;
 using HaCreator.MapEditor;
 using Microsoft.Xna.Framework;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
@@ -579,9 +580,21 @@ namespace HaCreator.Wz
                 return;
             }
 
-            WzImage tooltipsStringImage = (WzImage)Program.WzManager.FindWzImageByName("string", "ToolTipHelp.img");
+            WzImage tooltipsStringImage = null;
+
+            // Try IDataSource first if available
+            if (Program.DataSource != null)
+            {
+                tooltipsStringImage = Program.DataSource.GetImage("String", "ToolTipHelp.img");
+            }
+            // Fall back to WzManager
+            if (tooltipsStringImage == null && Program.WzManager != null)
+            {
+                tooltipsStringImage = (WzImage)Program.WzManager.FindWzImageByName("string", "ToolTipHelp.img");
+            }
+
             if (tooltipsStringImage == null)
-                throw new Exception("ToolTipHelp.img not found in string.wz");
+                throw new Exception("ToolTipHelp.img not found");
 
             if (!tooltipsStringImage.Parsed)
                 tooltipsStringImage.ParseImage();
@@ -960,6 +973,12 @@ namespace HaCreator.Wz
         {
             if (!mapImage.Parsed)
                 mapImage.ParseImage();
+
+            // Create MapInfo on-demand if null (memory optimization - not loaded during ExtractAll)
+            if (info == null)
+            {
+                info = new MapInfo(mapImage, streetName, mapName, categoryName);
+            }
 
             List<string> copyPropNames = VerifyMapPropsKnown(mapImage, false);
 

@@ -65,12 +65,7 @@ namespace HaCreator.GUI.EditorPanels
             this.hcsm = hcsm;
             hcsm.SetObjPanel(this);
 
-            List<string> sortedObjSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> oS in Program.InfoManager.ObjectSets)
-            {
-                sortedObjSets.Add(oS.Key);
-            }
-            sortedObjSets.Sort();
+            List<string> sortedObjSets = Program.InfoManager.ObjectSets.Keys.OrderBy(k => k).ToList();
             foreach (string oS in sortedObjSets)
             {
                 objSetListBox.Items.Add(oS);
@@ -90,11 +85,9 @@ namespace HaCreator.GUI.EditorPanels
             objL0ListBox.Items.Clear();
             objL1ListBox.Items.Clear();
             objImagesContainer.Controls.Clear();
-            WzImage oSImage = Program.InfoManager.ObjectSets[(string)objSetListBox.SelectedItem];
-            if (!oSImage.Parsed)
-            {
-                oSImage.ParseImage();
-            }
+            WzImage oSImage = Program.InfoManager.GetObjectSet((string)objSetListBox.SelectedItem);
+            if (oSImage == null)
+                return;
             foreach (WzImageProperty l0Prop in oSImage.WzProperties)
             {
                 objL0ListBox.Items.Add(l0Prop.Name);
@@ -118,7 +111,10 @@ namespace HaCreator.GUI.EditorPanels
 
             objL1ListBox.Items.Clear();
             objImagesContainer.Controls.Clear();
-            WzImageProperty l0Prop = Program.InfoManager.ObjectSets[(string)objSetListBox.SelectedItem][(string)objL0ListBox.SelectedItem];
+            WzImage oSImage = Program.InfoManager.GetObjectSet((string)objSetListBox.SelectedItem);
+            if (oSImage == null)
+                return;
+            WzImageProperty l0Prop = oSImage[(string)objL0ListBox.SelectedItem];
             foreach (WzImageProperty l1Prop in l0Prop.WzProperties)
             {
                 objL1ListBox.Items.Add(l1Prop.Name);
@@ -143,7 +139,10 @@ namespace HaCreator.GUI.EditorPanels
                     return;
 
                 objImagesContainer.Controls.Clear();
-                WzImageProperty l1Prop = Program.InfoManager.ObjectSets[(string)objSetListBox.SelectedItem][(string)objL0ListBox.SelectedItem][(string)objL1ListBox.SelectedItem];
+                WzImage oSImage = Program.InfoManager.GetObjectSet((string)objSetListBox.SelectedItem);
+                if (oSImage == null)
+                    return;
+                WzImageProperty l1Prop = oSImage[(string)objL0ListBox.SelectedItem]?[(string)objL1ListBox.SelectedItem];
 
                 foreach (WzSubProperty l2Prop in l1Prop.WzProperties)
                 {
@@ -229,7 +228,10 @@ namespace HaCreator.GUI.EditorPanels
                         string l1Name = (string)objL1ListBox.SelectedItem;
 
                         // Get the L1 property
-                        WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objSetName][l0Name][l1Name];
+                        WzImage oSImage = Program.InfoManager.GetObjectSet(objSetName);
+                        if (oSImage == null)
+                            return;
+                        WzImageProperty l1Prop = oSImage[l0Name]?[l1Name];
 
                         // Generate a unique name for the new object
                         string newObjL2Name = GenerateUniqueObjectName(objSetName, l0Name, l1Name);
@@ -297,7 +299,10 @@ namespace HaCreator.GUI.EditorPanels
         private string GenerateUniqueObjectName(string objSetName, string l0Name, string l1Name)
         {
             int counter = 1;
-            WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objSetName][l0Name][l1Name];
+            WzImage oSImage = Program.InfoManager.GetObjectSet(objSetName);
+            if (oSImage == null)
+                return counter.ToString();
+            WzImageProperty l1Prop = oSImage[l0Name]?[l1Name];
             while (l1Prop.WzProperties.Any(p => p.Name == counter.ToString()))
             {
                 counter++;
@@ -332,7 +337,7 @@ namespace HaCreator.GUI.EditorPanels
 
             ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
 
-            WzImageProperty l2Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1]?[objInfo.l2];
+            WzImageProperty l2Prop = Program.InfoManager.GetObjectSet(objInfo.oS)?[objInfo.l0]?[objInfo.l1]?[objInfo.l2];
 
             if (l2Prop != null)
             {
@@ -421,7 +426,7 @@ namespace HaCreator.GUI.EditorPanels
                     // delete off cached obj
                     ObjectInfo objInfo = (ObjectInfo)selectedItem.Tag;
 
-                    WzImageProperty l1Prop = Program.InfoManager.ObjectSets[objInfo.oS]?[objInfo.l0]?[objInfo.l1];
+                    WzImageProperty l1Prop = Program.InfoManager.GetObjectSet(objInfo.oS)?[objInfo.l0]?[objInfo.l1];
 
                     if (l1Prop != null)
                     {

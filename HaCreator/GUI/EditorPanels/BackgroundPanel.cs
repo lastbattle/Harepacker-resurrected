@@ -76,12 +76,7 @@ namespace HaCreator.GUI.EditorPanels
         {
             this.hcsm = hcsm;
 
-            List<string> sortedBgSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> bS in Program.InfoManager.BackgroundSets)
-            {
-                sortedBgSets.Add(bS.Key);
-            }
-            sortedBgSets.Sort();
+            List<string> sortedBgSets = Program.InfoManager.BackgroundSets.Keys.OrderBy(k => k).ToList();
             foreach (string bS in sortedBgSets)
             {
                 bgSetListBox.Items.Add(bS);
@@ -119,7 +114,10 @@ namespace HaCreator.GUI.EditorPanels
 
             BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
 
-            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem][infoType.ToPropertyString()];
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+            if (bgSetImage == null)
+                return;
+            WzImageProperty parentProp = bgSetImage[infoType.ToPropertyString()];
             if (parentProp == null || parentProp.WzProperties == null)
                 return;
 
@@ -192,7 +190,9 @@ namespace HaCreator.GUI.EditorPanels
                         string bgSetName = (string)bgSetListBox.SelectedItem;
                         BackgroundInfoType infoType = BackgroundInfoType.Background;// GetBackGroundInfoTypeByCheckbox();
 
-                        WzImage bgSetImage = Program.InfoManager.BackgroundSets[bgSetName];
+                        WzImage bgSetImage = Program.InfoManager.GetBackgroundSet(bgSetName);
+                        if (bgSetImage == null)
+                            return;
                         WzSubProperty parentProp = (WzSubProperty)bgSetImage[infoType.ToPropertyString()]; // "back" WzSubProperty
 
                         // Generate a new unique name for the background
@@ -255,7 +255,10 @@ namespace HaCreator.GUI.EditorPanels
         private string GenerateUniqueBgName(string objSetName, string infoTypeName)
         {
             int counter = 1;
-            WzImageProperty l1Prop = Program.InfoManager.BackgroundSets[objSetName][infoTypeName];
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet(objSetName);
+            if (bgSetImage == null)
+                return counter.ToString();
+            WzImageProperty l1Prop = bgSetImage[infoTypeName];
             while (l1Prop.WzProperties.Any(p => p.Name == counter.ToString()))
             {
                 counter++;
@@ -298,7 +301,8 @@ namespace HaCreator.GUI.EditorPanels
 
             BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
 
-            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem]?[infoType.ToPropertyString()]; // i,e syarenian.img  dragonDream.img > "back"
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+            WzImageProperty parentProp = bgSetImage?[infoType.ToPropertyString()]; // i,e syarenian.img  dragonDream.img > "back"
             if (parentProp != null)
             {
                 WzSubProperty parentSubProp = (WzSubProperty)parentProp;
@@ -426,7 +430,8 @@ namespace HaCreator.GUI.EditorPanels
                     // delete off cached obj
                     BackgroundInfo objInfo = (BackgroundInfo)selectedItem.Tag;
 
-                    WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem]?[infoType.ToPropertyString()];
+                    WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+                    WzImageProperty parentProp = bgSetImage?[infoType.ToPropertyString()];
                     if (parentProp != null)
                     {
                         WzImageProperty removeL2Prop = parentProp[objInfo.no];

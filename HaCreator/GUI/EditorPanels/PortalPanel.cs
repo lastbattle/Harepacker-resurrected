@@ -36,16 +36,23 @@ namespace HaCreator.GUI.EditorPanels
 
             foreach (PortalType pt in Program.InfoManager.PortalEditor_TypeById)
             {
-                PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
                 try
                 {
+                    PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
+                    if (pInfo == null || pInfo.Image == null)
+                        continue;
+
                     ImageViewer item = portalImageContainer.Add(pInfo.Image, PortalTypeExtensions.GetFriendlyName(pt), true);
                     item.Tag = pInfo;
                     item.MouseDown += new MouseEventHandler(portal_MouseDown);
                     item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
                 }
-                catch (KeyNotFoundException) 
-                { 
+                catch (KeyNotFoundException)
+                {
+                }
+                catch (Exception)
+                {
+                    // Skip portals that fail to load
                 }
             }
         }

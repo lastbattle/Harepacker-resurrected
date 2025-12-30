@@ -372,15 +372,15 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
-            WzImage mapHelperImage = (WzImage) Program.WzManager.FindWzImageByName("map", "MapHelper.img");
-            WzImage soundUIImage = (WzImage) Program.WzManager.FindWzImageByName("sound", "UI.img");
-            WzImage uiToolTipImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIToolTip.img"); // UI_003.wz
-            WzImage uiBasicImage = (WzImage) Program.WzManager.FindWzImageByName("ui", "Basic.img");
-            WzImage uiWindow1Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow.img"); //
-            WzImage uiWindow2Image = (WzImage) Program.WzManager.FindWzImageByName("ui", "UIWindow2.img"); // doesnt exist before big-bang
+            WzImage mapHelperImage = Program.FindImage("Map", "MapHelper.img");
+            WzImage soundUIImage = Program.FindImage("Sound", "UI.img");
+            WzImage uiToolTipImage = Program.FindImage("UI", "UIToolTip.img"); // UI_003.wz
+            WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
+            WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img"); //
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img"); // doesnt exist before big-bang
 
-            WzImage uiStatusBarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar.img");
-            WzImage uiStatus2BarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar2.img");
+            WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
+            WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
 
             this.bBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
             this.bBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // chaos update
@@ -397,7 +397,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Portal sound effect
-            WzImage soundGameImage = (WzImage)Program.WzManager.FindWzImageByName("sound", "Game.img");
+            WzImage soundGameImage = Program.FindImage("Sound", "Game.img");
             if (soundGameImage != null)
             {
                 WzBinaryProperty portalSound = (WzBinaryProperty)soundGameImage["Portal"];
@@ -906,14 +906,14 @@ namespace HaCreator.MapSimulator
                 mapBoard.RegenerateMinimap();
 
             // Load WZ images needed for this map
-            WzImage mapHelperImage = (WzImage)Program.WzManager.FindWzImageByName("map", "MapHelper.img");
-            WzImage soundUIImage = (WzImage)Program.WzManager.FindWzImageByName("sound", "UI.img");
-            WzImage uiToolTipImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIToolTip.img");
-            WzImage uiBasicImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "Basic.img");
-            WzImage uiWindow1Image = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIWindow.img");
-            WzImage uiWindow2Image = (WzImage)Program.WzManager.FindWzImageByName("ui", "UIWindow2.img");
-            WzImage uiStatusBarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar.img");
-            WzImage uiStatus2BarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar2.img");
+            WzImage mapHelperImage = Program.FindImage("Map", "MapHelper.img");
+            WzImage soundUIImage = Program.FindImage("Sound", "UI.img");
+            WzImage uiToolTipImage = Program.FindImage("UI", "UIToolTip.img");
+            WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
+            WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img");
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
+            WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
 
             // BGM - only reload if different from current BGM
             string newBgmName = mapBoard.MapInfo.bgm;

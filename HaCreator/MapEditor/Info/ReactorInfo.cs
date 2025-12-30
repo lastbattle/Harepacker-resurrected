@@ -101,17 +101,17 @@ namespace HaCreator.MapEditor.Info
             get {
                 if (_LinkedWzImage == null) {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                    WzObject reactorObject = Program.WzManager.FindWzImageByName("reactor", imgName);
+                    WzImage reactorImage = Program.FindImage("Reactor", imgName);
 
-                    WzStringProperty link = (WzStringProperty)reactorObject?["info"]?["link"];
+                    WzStringProperty link = (WzStringProperty)reactorImage?["info"]?["link"];
                     if (link != null) {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        WzImage findLinkedImg = (WzImage)Program.WzManager.FindWzImageByName("reactor", linkImgName);
+                        WzImage findLinkedImg = Program.FindImage("Reactor", linkImgName);
 
-                        _LinkedWzImage = findLinkedImg ?? (WzImage) reactorObject; // fallback if link is null
+                        _LinkedWzImage = findLinkedImg ?? reactorImage; // fallback if link is null
                     }
                     else
-                        _LinkedWzImage = (WzImage)reactorObject;
+                        _LinkedWzImage = reactorImage;
                 }
                 return _LinkedWzImage;
             }

@@ -103,10 +103,13 @@ namespace HaCreator.MapSimulator {
                         source.MSTag = textureFromCache;
                     }
                     else {
-                        source.MSTag = property.GetLinkedWzCanvasBitmap().ToTexture2D(device);
-
-                        // add to cache
-                        texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                        var bitmap = property.GetLinkedWzCanvasBitmap();
+                        if (bitmap != null)
+                        {
+                            source.MSTag = bitmap.ToTexture2D(device);
+                            // add to cache
+                            texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                        }
                     }
                 }
                 usedProps.Add(source);

@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.1.32203.90
@@ -35,6 +36,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HaSharedLibrary", "HaSharedLibrary\HaSharedLibrary.csproj", "{41AE973E-81EF-43D5-A41D-E3DB871480F2}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTest_Perf", "UnitTest_Perf\UnitTest_Perf.csproj", "{3FA5ED06-A093-4184-818E-2582210159E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleLib.Tests", "MapleLib.Tests\MapleLib.Tests.csproj", "{F125C2AC-431B-46A6-A918-1C83F0B316D6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "MapleLib", "MapleLib", "{3EA4A369-12E3-5E80-4816-D5392E0C2241}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -348,6 +353,30 @@ Global
 		{3FA5ED06-A093-4184-818E-2582210159E3}.Release|x64.Build.0 = Release|Any CPU
 		{3FA5ED06-A093-4184-818E-2582210159E3}.Release|x86.ActiveCfg = Release|Any CPU
 		{3FA5ED06-A093-4184-818E-2582210159E3}.Release|x86.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|ARM.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|ARM.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|ARM64.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|ARM64.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|Win32.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|Win32.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|x64.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Debug|x86.Build.0 = Debug|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|ARM.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|ARM.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|ARM64.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|ARM64.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|Win32.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|Win32.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|x64.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|x64.Build.0 = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|x86.ActiveCfg = Release|Any CPU
+		{F125C2AC-431B-46A6-A918-1C83F0B316D6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

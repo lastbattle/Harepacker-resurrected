@@ -287,7 +287,7 @@ namespace HaCreator.GUI.Quest
         #region Misc
         public bool IsPreBBDataWzFormat
         {
-            get { return Program.WzManager.IsPreBBDataWzFormat; }
+            get { return Program.IsPreBBDataWzFormat; }
             private set { }
         }
         #endregion

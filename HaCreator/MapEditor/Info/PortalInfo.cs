@@ -32,9 +32,20 @@ namespace HaCreator.MapEditor.Info
 
         public static PortalInfo Load(WzCanvasProperty parentObject)
         {
+            Bitmap bitmap = parentObject.GetLinkedWzCanvasBitmap();
+            // Create a placeholder if bitmap is null or invalid
+            if (bitmap == null)
+            {
+                bitmap = new Bitmap(20, 20);
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    g.Clear(Color.Magenta); // Placeholder color for missing portal image
+                }
+            }
+
             PortalInfo portal = new(
-                PortalTypeExtensions.FromCode(parentObject.Name), 
-                parentObject.GetLinkedWzCanvasBitmap(), 
+                PortalTypeExtensions.FromCode(parentObject.Name),
+                bitmap,
                 WzInfoTools.PointFToSystemPoint(parentObject.GetCanvasOriginPosition()), parentObject);
 
             Program.InfoManager.Portals.Add(portal.type, portal);

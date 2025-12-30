@@ -724,6 +724,36 @@ namespace HaCreator.MapEditor
         }
 
         /// <summary>
+        /// Loads a map image on-demand from the data source.
+        /// This is used when WzImage was not stored in MapsCache to save memory.
+        /// </summary>
+        /// <param name="mapId">The 9-digit map ID</param>
+        /// <returns>The loaded WzImage or null if not found</returns>
+        private WzImage LoadMapImageOnDemand(string mapId)
+        {
+            if (Program.DataSource == null)
+                return null;
+
+            string paddedId = mapId.PadLeft(9, '0');
+            string folderNum = paddedId[0].ToString();
+
+            // Try to load from Map/Map/MapX/mapid.img
+            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
+            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
+
+            if (mapImage == null)
+            {
+                // Try without extra Map/ prefix
+                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
+            }
+
+            if (mapImage != null)
+                mapImage.ParseImage();
+
+            return mapImage;
+        }
+
+        /// <summary>
         /// Loads a map by ID for the simulator (portal teleportation).
         /// This loads the map into a new tab in the editor and returns the Board for simulation.
         /// Must be called from the game thread - marshals UI operations to the UI thread.
@@ -751,6 +781,22 @@ namespace HaCreator.MapEditor
                 string streetName = loadedMap.Item3;
                 string categoryName = loadedMap.Item4;
                 MapInfo info = loadedMap.Item5;
+
+                // Load WzImage on-demand if null (memory optimization)
+                if (mapImage == null)
+                {
+                    mapImage = LoadMapImageOnDemand(mapIdStr);
+                }
+                if (mapImage == null)
+                {
+                    return null;
+                }
+
+                // Create MapInfo on-demand if null (memory optimization)
+                if (info == null)
+                {
+                    info = new MapInfo(mapImage, streetName, mapName, categoryName);
+                }
 
                 // Use Dispatcher.Invoke to run UI operations on the UI thread
                 // Use the tabs control's Dispatcher since this is a WinForms app with WPF elements
@@ -870,6 +916,44 @@ namespace HaCreator.MapEditor
 
         void Ribbon_RepackClicked()
         {
+            // Check if we're using IMG filesystem mode (no WzManager)
+            if (Program.WzManager == null)
+            {
+                // Show Pack to WZ dialog for IMG filesystem mode
+                if (Program.DataSource != null)
+                {
+                    // Get the version path from DataSource
+                    string versionPath = null;
+                    if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDs)
+                    {
+                        versionPath = imgDs.Manager?.VersionPath;
+                    }
+                    else if (Program.DataSource is MapleLib.Img.HybridDataSource hybridDs)
+                    {
+                        // Try to get from hybrid's img source
+                        versionPath = hybridDs.ImgSource?.Manager?.VersionPath;
+                    }
+
+                    if (!string.IsNullOrEmpty(versionPath))
+                    {
+                        lock (multiBoard)
+                        {
+                            PackToWz packDialog = new PackToWz(versionPath);
+                            packDialog.ShowDialog();
+                        }
+                        return;
+                    }
+                }
+
+                MessageBox.Show(
+                    "Unable to determine the IMG filesystem path.\n\n" +
+                    "Please use HaRepacker to pack IMG files to WZ.",
+                    "IMG Filesystem Mode",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             lock (multiBoard)
             {
                 Repack r = new Repack();

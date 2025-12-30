@@ -54,6 +54,36 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
+        /// Loads a map image on-demand from the data source.
+        /// This is used when WzImage was not stored in MapsCache to save memory.
+        /// </summary>
+        /// <param name="mapId">The 9-digit map ID</param>
+        /// <returns>The loaded WzImage or null if not found</returns>
+        private WzImage LoadMapImageOnDemand(string mapId)
+        {
+            if (Program.DataSource == null)
+                return null;
+
+            string paddedId = mapId.PadLeft(9, '0');
+            string folderNum = paddedId[0].ToString();
+
+            // Try to load from Map/Map/MapX/mapid.img
+            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
+            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
+
+            if (mapImage == null)
+            {
+                // Try without extra Map/ prefix
+                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
+            }
+
+            if (mapImage != null)
+                mapImage.ParseImage();
+
+            return mapImage;
+        }
+
+        /// <summary>
         /// On Load
         /// </summary>
         /// <param name="sender"></param>
@@ -292,6 +322,23 @@ namespace HaCreator.GUI
                         streetName = loadedMap.Item3;
                         categoryName = loadedMap.Item4;
                         info = loadedMap.Item5;
+
+                        // Load WzImage on-demand if null (memory optimization)
+                        if (mapImage == null)
+                        {
+                            mapImage = LoadMapImageOnDemand(mapid_str);
+                        }
+                        if (mapImage == null)
+                        {
+                            MessageBox.Show("Failed to load map image.", "Error");
+                            return;
+                        }
+
+                        // Create MapInfo on-demand if null (memory optimization)
+                        if (info == null)
+                        {
+                            info = new MapInfo(mapImage, streetName, mapName, categoryName);
+                        }
                     }
                     else
                     {

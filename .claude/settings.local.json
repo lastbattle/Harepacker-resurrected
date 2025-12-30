@@ -5,7 +5,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(dotnet build:*)",
       "WebFetch(domain:api.github.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(dotnet clean:*)",
+      "Bash(dotnet sln:*)"
     ]
   }
 }

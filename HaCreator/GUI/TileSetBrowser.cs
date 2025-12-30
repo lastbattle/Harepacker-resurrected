@@ -44,35 +44,35 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void TileSetBrowser_Load(object sender, EventArgs e)
         {
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
+            foreach (var tSKey in Program.InfoManager.TileSets.Keys.ToList())
             {
-                WzImage tSImage = Program.InfoManager.TileSets[tS.Key];
-                if (!tSImage.Parsed)
-                    tSImage.ParseImage();
+                WzImage tSImage = Program.InfoManager.GetTileSet(tSKey);
+                if (tSImage == null)
+                    continue;
                 WzImageProperty enh0 = tSImage["enH0"];
                 if (enh0 == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' missing 'enH0' property.");
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' missing 'enH0' property.");
                     continue;
                 }
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
                 if (image == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' 'enH0' missing '0' property.");
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' 'enH0' missing '0' property.");
                     continue;
                 }
 
                 Bitmap bitmap = image.GetLinkedWzCanvasBitmap();
                 if (bitmap == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' bitmap is null.");
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' bitmap is null.");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"TileSet '{tS.Key}' loaded bitmap: {bitmap.Width}x{bitmap.Height}");
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' loaded bitmap: {bitmap.Width}x{bitmap.Height}");
                 }
 
-                ImageViewer item = koolkLVContainer.Add(bitmap, tS.Key, true);
+                ImageViewer item = koolkLVContainer.Add(bitmap, tSKey, true);
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
 
@@ -80,7 +80,7 @@ namespace HaCreator.GUI
                 item.BorderStyle = BorderStyle.FixedSingle;
 
                 // Log the control's size and location
-                System.Diagnostics.Debug.WriteLine($"Added ImageViewer for '{tS.Key}' at size {item.Width}x{item.Height}");
+                System.Diagnostics.Debug.WriteLine($"Added ImageViewer for '{tSKey}' at size {item.Width}x{item.Height}");
             }
         }
 

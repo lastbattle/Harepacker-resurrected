@@ -33,6 +33,22 @@ namespace HaCreator.GUI
         public Repack()
         {
             InitializeComponent();
+
+            // Check if we're using IMG filesystem mode (no WzManager)
+            if (Program.WzManager == null)
+            {
+                // In IMG filesystem mode, changes are saved directly to disk
+                // No repacking is needed
+                MessageBox.Show(
+                    "Repacking is not needed when using IMG filesystem mode.\n\n" +
+                    "Changes are automatically saved directly to the IMG files on disk.",
+                    "IMG Filesystem Mode",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                _toRepack = new List<WzFile>();
+                return;
+            }
+
             _toRepack = Program.WzManager.GetUpdatedWzFiles();
 
             foreach (WzFile wzf in _toRepack)
@@ -216,6 +232,12 @@ namespace HaCreator.GUI
 
         private (string rootDir, bool saveInHaCreator) GetRootDirectoryAsync()
         {
+            // Handle IMG filesystem mode where WzManager is null
+            if (Program.WzManager == null)
+            {
+                return (Path.Combine(Directory.GetCurrentDirectory(), Program.APP_NAME), true);
+            }
+
             var baseDir = Path.Combine(Program.WzManager.WzBaseDirectory, Program.APP_NAME);
             var testDir = Path.Combine(baseDir, "Test");
 
@@ -257,6 +279,12 @@ namespace HaCreator.GUI
         private async void SaveXMLFilesAsync(DirectoryStructure dirs)
         {
             await UpdateUIAsync("Saving XMLs...");
+
+            // Skip if WzManager is null (IMG filesystem mode)
+            if (Program.WzManager == null)
+            {
+                return;
+            }
 
             foreach (var img in Program.WzManager.WzUpdatedImageList)
             {

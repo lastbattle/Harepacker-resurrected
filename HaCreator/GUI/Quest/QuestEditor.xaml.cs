@@ -393,7 +393,7 @@ namespace HaCreator.GUI.Quest
                             // if this property is an int, its prob for beta maplestory.
                             // maybe a bitfield here or something
 
-                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
+                            if (!Program.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
                                 if (checkTypeProp.WzProperties != null) // taiwanms v135 (devs left an empty WzSubProperty with nothing)
                                 {
@@ -1781,7 +1781,7 @@ namespace HaCreator.GUI.Quest
                                 // select any questInfo from the list, to get the CheckInfo parent directory
                                 WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
                                 // Set file updated
-                                Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                                Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
                             }
                         }
                     }
@@ -1802,7 +1802,7 @@ namespace HaCreator.GUI.Quest
                             // select any questInfo from the list, to get the CheckInfo parent directory
                             WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                            Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
 
                             // Remove old entry
                             anyQuestInfoParentImg.RemoveProperty(questId);
@@ -1822,7 +1822,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Say" from the list, to get the QuestSays parent directory
                             WzImage anyQuestSay = Program.InfoManager.QuestSays.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestSay.GetTopMostWzDirectory().Name /* "map" */, anyQuestSay);
+                            Program.MarkImageUpdated("Quest", anyQuestSay);
 
                             // Remove old entry
                             anyQuestSay.RemoveProperty(questId);
@@ -1842,7 +1842,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Act" from the list, to get the QuestActs parent directory
                             WzImage anyQuestAct = Program.InfoManager.QuestActs.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestAct.GetTopMostWzDirectory().Name /* "map" */, anyQuestAct);
+                            Program.MarkImageUpdated("Quest", anyQuestAct);
 
                             // Remove old entry
                             anyQuestAct.RemoveProperty(questId);
@@ -1862,7 +1862,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Act" from the list, to get the QuestActs parent directory
                             WzImage anyQuestCheck = Program.InfoManager.QuestChecks.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestCheck.GetTopMostWzDirectory().Name /* "map" */, anyQuestCheck);
+                            Program.MarkImageUpdated("Quest", anyQuestCheck);
 
                             // Remove old entry
                             anyQuestCheck.RemoveProperty(questId);
@@ -1947,7 +1947,7 @@ namespace HaCreator.GUI.Quest
 
                         // flag unsaved changes bool
                         _unsavedChanges = true;
-                        Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                        Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
 
 
                         // Navigate to this quest on the scrollviewer
@@ -3334,7 +3334,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag unsaved changes bool
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                Program.MarkImageUpdated("Quest", questInfoParentImg);
             }
 
             // Say.img
@@ -3362,7 +3362,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                Program.MarkImageUpdated("Quest", questSayParentImg);
             }
 
             // Act.img
@@ -3388,7 +3388,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                Program.MarkImageUpdated("Quest", questActParentImg);
             }
 
             // Check.img
@@ -3414,7 +3414,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                Program.MarkImageUpdated("Quest", questCheckParentImg);
             }
 
             // flag unsaved changes bool
@@ -3607,7 +3607,7 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.Job:
                         {
-                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
+                            if (!Program.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
                                 WzSubProperty jobSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(jobSubProperty);
@@ -4370,7 +4370,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag unsaved changes bool
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                Program.MarkImageUpdated("Quest", questInfoParentImg);
             }
 
             //////////////////
@@ -4386,7 +4386,7 @@ namespace HaCreator.GUI.Quest
                     if (oldSayWzProp != null)
                         oldSayWzProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                    Program.MarkImageUpdated("Quest", questSayParentImg);
                 }
             }
 
@@ -4403,7 +4403,7 @@ namespace HaCreator.GUI.Quest
                     if (oldActImgProp != null)
                         oldActImgProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                    Program.MarkImageUpdated("Quest", questActParentImg);
                 }
             }
 
@@ -4420,7 +4420,7 @@ namespace HaCreator.GUI.Quest
                     if (oldCheckImgProp != null)
                         oldCheckImgProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                    Program.MarkImageUpdated("Quest", questCheckParentImg);
                 }
             }
 

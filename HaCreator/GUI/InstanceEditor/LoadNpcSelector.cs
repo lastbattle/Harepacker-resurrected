@@ -165,17 +165,39 @@ namespace HaCreator.GUI.InstanceEditor
                     npcFuncs = val.Item2;
                 }
 
-                // npc image
-                if (Program.InfoManager.NpcNameCache.ContainsKey(npcId) && Program.InfoManager.NpcPropertyCache.ContainsKey(npcId))
+                // npc image - load on demand to reduce memory usage
+                pictureBox_IconPreview.Image = null;
+                if (Program.InfoManager.NpcNameCache.ContainsKey(npcId))
                 {
-                    WzCanvasProperty standCanvas = Program.InfoManager.NpcPropertyCache[npcId]?["stand"]?["0"] as WzCanvasProperty;
-                    if (standCanvas != null)
-                        pictureBox_IconPreview.Image = standCanvas.GetLinkedWzCanvasBitmap();
-                    else
-                        pictureBox_IconPreview.Image = null;
+                    // Try to get from cache first, or load on demand
+                    WzImage npcImage = null;
+                    if (Program.InfoManager.NpcPropertyCache.TryGetValue(npcId, out npcImage) && npcImage != null)
+                    {
+                        // Use cached image
+                    }
+                    else if (Program.DataSource != null)
+                    {
+                        // Load on demand from data source
+                        npcImage = Program.DataSource.GetImage("Npc", $"{npcId}.img");
+                        if (npcImage != null)
+                        {
+                            npcImage.ParseImage();
+                            // Cache for future use
+                            lock (Program.InfoManager.NpcPropertyCache)
+                            {
+                                if (!Program.InfoManager.NpcPropertyCache.ContainsKey(npcId))
+                                    Program.InfoManager.NpcPropertyCache[npcId] = npcImage;
+                            }
+                        }
+                    }
+
+                    if (npcImage != null)
+                    {
+                        WzCanvasProperty standCanvas = npcImage["stand"]?["0"] as WzCanvasProperty;
+                        if (standCanvas != null)
+                            pictureBox_IconPreview.Image = standCanvas.GetLinkedWzCanvasBitmap();
+                    }
                 }
-                else
-                    pictureBox_IconPreview.Image = null;
 
                 // label desc
                 label_npcName.Text = npcName;

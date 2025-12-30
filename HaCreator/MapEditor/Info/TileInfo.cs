@@ -42,7 +42,7 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo Get(string tS, string u, string no)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 
@@ -52,7 +52,7 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo GetWithDefaultNo(string tS, string u, string no, string defaultNo)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 
@@ -77,7 +77,7 @@ namespace HaCreator.MapEditor.Info
         // Optimized version, for cases where you already know the mag (e.g. mass loading tiles of the same tileSet)
         public static TileInfo Get(string tS, string u, string no, int? mag)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 

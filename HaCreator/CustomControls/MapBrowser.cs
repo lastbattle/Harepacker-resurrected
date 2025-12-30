@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Threading;
@@ -97,6 +98,38 @@ namespace HaCreator.CustomControls
         public delegate void MapSelectChangedDelegate();
         public event MapSelectChangedDelegate SelectionChanged;
 
+        #region Map Loading
+        /// <summary>
+        /// Loads a map image on-demand from the data source.
+        /// This is used when WzImage was not stored in MapsCache to save memory.
+        /// </summary>
+        /// <param name="mapId">The 9-digit map ID</param>
+        /// <returns>The loaded WzImage or null if not found</returns>
+        private WzImage LoadMapImageOnDemand(string mapId)
+        {
+            if (Program.DataSource == null)
+                return null;
+
+            string paddedId = mapId.PadLeft(9, '0');
+            string folderNum = paddedId[0].ToString();
+
+            // Try to load from Map/Map/MapX/mapid.img
+            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
+            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
+
+            if (mapImage == null)
+            {
+                // Try without extra Map/ prefix
+                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
+            }
+
+            if (mapImage != null)
+                mapImage.ParseImage();
+
+            return mapImage;
+        }
+        #endregion
+
         #region Initialise
         /// <summary>
         /// Initialise
@@ -117,12 +150,21 @@ namespace HaCreator.CustomControls
 
                 WzObject mapLogin = null;
 
-                List<WzDirectory> uiWzFiles = Program.WzManager.GetWzDirectoriesFromBase("ui");
-                foreach (WzDirectory uiWzFile in uiWzFiles)
+                // Try IDataSource first
+                if (Program.DataSource != null)
                 {
-                    mapLogin = uiWzFile?[imageName];
-                    if (mapLogin != null)
-                        break;
+                    mapLogin = Program.DataSource.GetImage("UI", imageName);
+                }
+                // Fall back to WzManager
+                if (mapLogin == null && Program.WzManager != null)
+                {
+                    List<WzDirectory> uiWzFiles = Program.WzManager.GetWzDirectoriesFromBase("ui");
+                    foreach (WzDirectory uiWzFile in uiWzFiles)
+                    {
+                        mapLogin = uiWzFile?[imageName];
+                        if (mapLogin != null)
+                            break;
+                    }
                 }
 
                 if (mapLogin == null)
@@ -133,6 +175,7 @@ namespace HaCreator.CustomControls
             // Maps
             // Loop through the list of loaded 'maps' against 'mapNames', so maps would appear even if there isnt a name for it yet.
             // this allows map naming later.
+            // Note: WzImage is now loaded on-demand, so map.Value.Item1 may be null
             foreach (KeyValuePair<string, Tuple<WzImage, string, string, string, MapInfo>> map in Program.InfoManager.MapsCache) // list of loaded maps
             {
                 string streetName = map.Value.Item2;
@@ -141,6 +184,7 @@ namespace HaCreator.CustomControls
                 string displayMapNameString = string.Format("{0} - {1} : {2}", map.Key, streetName, mapName);
 
                 maps.Add(displayMapNameString);
+                // WzImage is null here - will be loaded on-demand when map is selected
                 mapsMapInfo.Add(displayMapNameString, new Tuple<WzImage, MapInfo>(map.Value.Item1, map.Value.Item5));
             }
 
@@ -331,33 +375,55 @@ namespace HaCreator.CustomControls
                 }
                 else
                 {
-                    using (WzImageResource rsrc = new WzImageResource(mapTupleInfo.Item1))
+                    // Load WzImage on-demand if null (memory optimization)
+                    WzImage mapImage = mapTupleInfo.Item1;
+                    if (mapImage == null && Program.DataSource != null)
                     {
-                        if (mapTupleInfo.Item1["info"]["link"] != null)
+                        mapImage = LoadMapImageOnDemand(mapid);
+                        if (mapImage != null)
                         {
-                            panel_linkWarning.Visible = true;
-                            panel_mapExistWarning.Visible = false;
-                            label_linkMapId.Text = mapTupleInfo.Item1["info"]["link"].ToString();
-
-                            minimapBox.Image = new Bitmap(1, 1);
-                            bLoadMapEnabled = false;
+                            // Update cache with loaded image
+                            mapsMapInfo[selectedName] = new Tuple<WzImage, MapInfo>(mapImage, mapTupleInfo.Item2);
                         }
-                        else
-                        {
-                            panel_linkWarning.Visible = false;
-                            panel_mapExistWarning.Visible = false;
+                    }
 
-                            bLoadMapEnabled = true;
-                            WzCanvasProperty minimap = (WzCanvasProperty)mapTupleInfo.Item1.GetFromPath("miniMap/canvas");
-                            if (minimap != null)
+                    if (mapImage == null)
+                    {
+                        panel_linkWarning.Visible = false;
+                        panel_mapExistWarning.Visible = true;
+                        minimapBox.Image = (Image)new Bitmap(1, 1);
+                        bLoadMapEnabled = false;
+                    }
+                    else
+                    {
+                        using (WzImageResource rsrc = new WzImageResource(mapImage))
+                        {
+                            if (mapImage["info"]["link"] != null)
                             {
-                                minimapBox.Image = minimap.GetLinkedWzCanvasBitmap();
+                                panel_linkWarning.Visible = true;
+                                panel_mapExistWarning.Visible = false;
+                                label_linkMapId.Text = mapImage["info"]["link"].ToString();
+
+                                minimapBox.Image = new Bitmap(1, 1);
+                                bLoadMapEnabled = false;
                             }
                             else
                             {
-                                minimapBox.Image = new Bitmap(1, 1);
+                                panel_linkWarning.Visible = false;
+                                panel_mapExistWarning.Visible = false;
+
+                                bLoadMapEnabled = true;
+                                WzCanvasProperty minimap = (WzCanvasProperty)mapImage.GetFromPath("miniMap/canvas");
+                                if (minimap != null)
+                                {
+                                    minimapBox.Image = minimap.GetLinkedWzCanvasBitmap();
+                                }
+                                else
+                                {
+                                    minimapBox.Image = new Bitmap(1, 1);
+                                }
+                                bLoadMapEnabled = true;
                             }
-                            bLoadMapEnabled = true;
                         }
                     }
                 }

@@ -60,10 +60,9 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static BackgroundInfo Get(GraphicsDevice graphicsDevice, string bS, BackgroundInfoType type, string no)
         {
-            if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
+            WzImage bsImg = Program.InfoManager.GetBackgroundSet(bS);
+            if (bsImg == null)
                 return null;
-
-            WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
             WzImageProperty bgInfoProp = bsImg[type.ToPropertyString()]?[no];
 
             if (bgInfoProp == null)

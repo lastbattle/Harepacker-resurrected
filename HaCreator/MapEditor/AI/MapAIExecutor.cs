@@ -1414,7 +1414,7 @@ namespace HaCreator.MapEditor.AI
             // Get tileset magnification
             try
             {
-                var magProp = Program.InfoManager.TileSets[tileset]["info"]?["mag"];
+                var magProp = Program.InfoManager.GetTileSet(tileset)?["info"]?["mag"];
                 if (magProp != null)
                     tiles.mag = ((MapleLib.WzLib.WzProperties.WzIntProperty)magProp).Value;
             }

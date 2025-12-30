@@ -41,8 +41,8 @@
             label1 = new System.Windows.Forms.Label();
             comboBox_localisation = new System.Windows.Forms.ComboBox();
             label4 = new System.Windows.Forms.Label();
-            button1 = new System.Windows.Forms.Button();
             button_initialiseImg = new System.Windows.Forms.Button();
+            button_settings = new System.Windows.Forms.Button();
             SuspendLayout();
             // 
             // button_initialise
@@ -154,19 +154,9 @@
             label4.Size = new System.Drawing.Size(365, 33);
             label4.TabIndex = 18;
             label4.Text = "Please select the right localisation, as the saved .wz data parameters might be different.";
-            // 
-            // button1
-            // 
-            button1.Location = new System.Drawing.Point(257, 108);
-            button1.Name = "button1";
-            button1.Size = new System.Drawing.Size(110, 28);
-            button1.TabIndex = 19;
-            button1.Text = "Export .wz to .img";
-            button1.UseVisualStyleBackColor = true;
-            button1.Click += button_unpack_Click;
-            // 
+            //
             // button_initialiseImg
-            // 
+            //
             button_initialiseImg.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
             button_initialiseImg.Location = new System.Drawing.Point(127, 137);
             button_initialiseImg.Name = "button_initialiseImg";
@@ -174,6 +164,15 @@
             button_initialiseImg.TabIndex = 20;
             button_initialiseImg.Text = "Initialize from .img";
             button_initialiseImg.Click += button_initialiseImg_Click;
+            //
+            // button_settings
+            //
+            button_settings.Location = new System.Drawing.Point(314, 56);
+            button_settings.Name = "button_settings";
+            button_settings.Size = new System.Drawing.Size(54, 21);
+            button_settings.TabIndex = 21;
+            button_settings.Text = "Settings";
+            button_settings.Click += button_settings_Click;
             // 
             // Initialization
             // 
@@ -181,8 +180,8 @@
             AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             ClientSize = new System.Drawing.Size(372, 196);
+            Controls.Add(button_settings);
             Controls.Add(button_initialiseImg);
-            Controls.Add(button1);
             Controls.Add(label4);
             Controls.Add(label1);
             Controls.Add(comboBox_localisation);
@@ -222,8 +221,8 @@
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox comboBox_localisation;
         private System.Windows.Forms.Label label4;
-        private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button button_initialiseImg;
+        private System.Windows.Forms.Button button_settings;
     }
 }
 
