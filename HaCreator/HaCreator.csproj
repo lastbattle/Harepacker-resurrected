@@ -185,6 +185,13 @@
     <Resource Include="Images\new_icon.png" />
   </ItemGroup>
   <ItemGroup>
+    <!-- AI Prompt files - must be copied to output for runtime loading -->
+    <Content Include="MapEditor\AI\Prompts\*.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>AI\Prompts\%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="10.0.0" />
     <PackageReference Include="MonoGame.Framework.WindowsDX">
       <Version>3.8.4.1</Version>
