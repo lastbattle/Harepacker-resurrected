@@ -750,6 +750,7 @@ namespace HaCreator.MapEditor
         /// <summary>
         /// Loads a map by ID for the simulator (portal teleportation).
         /// This loads the map into a new tab in the editor and returns the Board for simulation.
+        /// If the map is already loaded in MultiBoard, it switches to that existing tab instead.
         /// Must be called from the game thread - marshals UI operations to the UI thread.
         /// </summary>
         /// <param name="mapId">The map ID to load</param>
@@ -758,6 +759,32 @@ namespace HaCreator.MapEditor
         {
             // Format map ID as 9-digit string
             string mapIdStr = mapId.ToString().PadLeft(9, '0');
+
+            // First, check if the map is already loaded in MultiBoard
+            Tuple<Board, string> existingResult = null;
+            tabs.Dispatcher.Invoke(() =>
+            {
+                foreach (Board board in multiBoard.Boards)
+                {
+                    if (board.MapInfo != null && board.MapInfo.id == mapId)
+                    {
+                        // Map is already loaded - switch to it
+                        multiBoard.SelectedBoard = board;
+                        if (board.TabPage != null)
+                        {
+                            tabs.SelectedItem = board.TabPage;
+                            string titleName = (string)board.TabPage.Header;
+                            existingResult = new Tuple<Board, string>(board, titleName);
+                        }
+                        break;
+                    }
+                }
+            });
+
+            if (existingResult != null)
+            {
+                return existingResult;
+            }
 
             // Check if map exists in cache
             if (!Program.InfoManager.MapsCache.ContainsKey(mapIdStr))
