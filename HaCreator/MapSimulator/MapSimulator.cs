@@ -1233,9 +1233,10 @@ namespace HaCreator.MapSimulator
 
             DrawLayer(_backgroundsBackArray, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
             DrawMapObjects(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // tiles and objects
+            DrawMobs(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // mobs - rendered behind portals
             DrawPortals(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // portals
             DrawReactors(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // reactors
-            DrawLife(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // Life (NPC + Mobs) - rendered on top
+            DrawNpcs(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // NPCs - rendered on top
             DrawLayer(_backgroundsFrontArray, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // front background
 
             // Borders
@@ -1407,7 +1408,7 @@ namespace HaCreator.MapSimulator
         }
 
         /// <summary>
-        /// Draws the life objects (npc, mobs)
+        /// Draws the mob objects
         /// </summary>
         /// <param name="gameTime"></param>
         /// <param name="shiftCenter"></param>
@@ -1416,11 +1417,10 @@ namespace HaCreator.MapSimulator
         /// <param name="mapCenterY"></param>
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DrawLife(
+        private void DrawMobs(
             GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
             int mapCenterX, int mapCenterY, int TickCount)
         {
-            // mobs
             for (int i = 0; i < _mobsArray.Length; i++)
             {
                 MobItem mobItem = _mobsArray[i];
@@ -1433,8 +1433,22 @@ namespace HaCreator.MapSimulator
                     _renderParams,
                     TickCount);
             }
+        }
 
-            // npcs
+        /// <summary>
+        /// Draws the NPC objects
+        /// </summary>
+        /// <param name="gameTime"></param>
+        /// <param name="shiftCenter"></param>
+        /// <param name="renderParams"></param>
+        /// <param name="mapCenterX"></param>
+        /// <param name="mapCenterY"></param>
+        /// <param name="TickCount"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DrawNpcs(
+            GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
+            int mapCenterX, int mapCenterY, int TickCount)
+        {
             for (int i = 0; i < _npcsArray.Length; i++)
             {
                 NpcItem npcItem = _npcsArray[i];
