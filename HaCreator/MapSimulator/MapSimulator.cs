@@ -162,7 +162,8 @@ namespace HaCreator.MapSimulator
         private string _spawnPortalName = null; // The portal name to spawn at (set when loading map)
         private int _lastClickTime = 0; // For double-click detection
         private const int DOUBLE_CLICK_TIME_MS = 500; // Time window for double-click
-        private PortalItem _lastClickedPortal = null; // Track which portal was clicked
+        private PortalItem _lastClickedPortal = null; // Track which visible portal was clicked
+        private PortalInstance _lastClickedHiddenPortal = null; // Track which hidden portal was clicked
 
         // Seamless map transition support
         private bool _pendingMapChange = false; // Flag to trigger map change in Update loop
@@ -876,6 +877,7 @@ namespace HaCreator.MapSimulator
 
             // Reset portal click tracking
             _lastClickedPortal = null;
+            _lastClickedHiddenPortal = null;
             _lastClickTime = 0;
 
             // Deactivate chat input (but preserve message history)
@@ -1243,12 +1245,31 @@ namespace HaCreator.MapSimulator
             if (_pendingMapChange && _loadMapCallback != null)
             {
                 _pendingMapChange = false;
-                var result = _loadMapCallback(_pendingMapId);
-                if (result != null && result.Item1 != null)
+
+                // Check if teleporting within the same map - just reposition camera
+                if (_pendingMapId == mapBoard.MapInfo.id && !string.IsNullOrEmpty(_pendingPortalName))
                 {
-                    // Perform seamless map transition
-                    UnloadMapContent();
-                    LoadMapContent(result.Item1, result.Item2, _pendingPortalName);
+                    var targetPortal = mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _pendingPortalName);
+                    if (targetPortal != null)
+                    {
+                        this.mapShiftX = targetPortal.X;
+                        this.mapShiftY = targetPortal.Y;
+                        SetCameraMoveX(true, false, 0);
+                        SetCameraMoveX(false, true, 0);
+                        SetCameraMoveY(true, false, 0);
+                        SetCameraMoveY(false, true, 0);
+                    }
+                }
+                else
+                {
+                    // Different map - perform full reload
+                    var result = _loadMapCallback(_pendingMapId);
+                    if (result != null && result.Item1 != null)
+                    {
+                        // Perform seamless map transition
+                        UnloadMapContent();
+                        LoadMapContent(result.Item1, result.Item2, _pendingPortalName);
+                    }
                 }
                 _pendingMapId = -1;
                 _pendingPortalName = null;
@@ -1495,6 +1516,7 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Handles double-click on portals for map teleportation.
         /// When a portal with a valid target map is double-clicked, sets the target map ID and exits.
+        /// Also supports hidden/invisible portals that have valid map destinations.
         /// </summary>
         /// <param name="mouseState">Current mouse state</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1509,7 +1531,10 @@ namespace HaCreator.MapSimulator
             int mouseMapX = mouseState.X + mapShiftX - mapBoard.CenterPoint.X;
             int mouseMapY = mouseState.Y + mapShiftY - mapBoard.CenterPoint.Y;
 
-            // Find which portal was clicked (if any)
+            const int PORTAL_HIT_PADDING = 15;
+            const int HIDDEN_PORTAL_HIT_SIZE = 30; // Default hit area for hidden portals
+
+            // Find which visible portal was clicked (if any)
             PortalItem clickedPortal = null;
             for (int i = 0; i < _portalsArray.Length; i++)
             {
@@ -1523,7 +1548,6 @@ namespace HaCreator.MapSimulator
                 int portalBottom = instance.Y;
 
                 // Expand hit area slightly for easier clicking
-                const int PORTAL_HIT_PADDING = 15;
                 if (mouseMapX >= portalLeft - PORTAL_HIT_PADDING &&
                     mouseMapX <= portalRight + PORTAL_HIT_PADDING &&
                     mouseMapY >= portalTop - PORTAL_HIT_PADDING &&
@@ -1534,35 +1558,76 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (clickedPortal == null)
+            // If visible portal found, handle it
+            if (clickedPortal != null)
             {
-                // Clicked outside any portal, reset tracking
-                _lastClickedPortal = null;
+                int currentTime = currTickCount;
+                if (_lastClickedPortal == clickedPortal && (currentTime - _lastClickTime) <= DOUBLE_CLICK_TIME_MS)
+                {
+                    // Double-click detected! Check if portal has a valid destination
+                    int targetMapId = clickedPortal.PortalInstance.tm;
+                    if (targetMapId != MapConstants.MaxMap && targetMapId > 0)
+                    {
+                        PlayPortalSE();
+                        _pendingMapChange = true;
+                        _pendingMapId = targetMapId;
+                        _pendingPortalName = clickedPortal.PortalInstance.tn;
+                        return;
+                    }
+                }
+
+                // Record this click for potential double-click detection
+                _lastClickedPortal = clickedPortal;
+                _lastClickedHiddenPortal = null;
+                _lastClickTime = currentTime;
                 return;
             }
 
-            // Check if this is a double-click on the same portal
-            int currentTime = currTickCount;
-            if (_lastClickedPortal == clickedPortal && (currentTime - _lastClickTime) <= DOUBLE_CLICK_TIME_MS)
+            // No visible portal found - check hidden portals from mapBoard.BoardItems.Portals
+            PortalInstance clickedHiddenPortal = null;
+            foreach (var portal in mapBoard.BoardItems.Portals)
             {
-                // Double-click detected! Check if portal has a valid destination
-                int targetMapId = clickedPortal.PortalInstance.tm;
-                if (targetMapId != MapConstants.MaxMap && targetMapId > 0)
-                {
-                    // Play portal sound effect
-                    PlayPortalSE();
+                // Only consider hidden portals with valid map destinations
+                if (portal.tm <= 0 || portal.tm == MapConstants.MaxMap)
+                    continue;
 
-                    // Valid portal destination - set pending map change flag
-                    _pendingMapChange = true;
-                    _pendingMapId = targetMapId;
-                    _pendingPortalName = clickedPortal.PortalInstance.tn; // Target portal name on destination map
-                    return;
+                // Use portal's range if available, otherwise use default hit area
+                int halfWidth = portal.hRange ?? HIDDEN_PORTAL_HIT_SIZE / 2;
+                int halfHeight = portal.vRange ?? HIDDEN_PORTAL_HIT_SIZE / 2;
+
+                if (mouseMapX >= portal.X - halfWidth &&
+                    mouseMapX <= portal.X + halfWidth &&
+                    mouseMapY >= portal.Y - halfHeight &&
+                    mouseMapY <= portal.Y + halfHeight)
+                {
+                    clickedHiddenPortal = portal;
+                    break;
                 }
             }
 
-            // Record this click for potential double-click detection
-            _lastClickedPortal = clickedPortal;
-            _lastClickTime = currentTime;
+            if (clickedHiddenPortal != null)
+            {
+                int currentTime = currTickCount;
+                if (_lastClickedHiddenPortal == clickedHiddenPortal && (currentTime - _lastClickTime) <= DOUBLE_CLICK_TIME_MS)
+                {
+                    // Double-click detected on hidden portal
+                    PlayPortalSE();
+                    _pendingMapChange = true;
+                    _pendingMapId = clickedHiddenPortal.tm;
+                    _pendingPortalName = clickedHiddenPortal.tn;
+                    return;
+                }
+
+                // Record this click for potential double-click detection
+                _lastClickedHiddenPortal = clickedHiddenPortal;
+                _lastClickedPortal = null;
+                _lastClickTime = currentTime;
+                return;
+            }
+
+            // Clicked outside any portal, reset tracking
+            _lastClickedPortal = null;
+            _lastClickedHiddenPortal = null;
         }
 
         /// <summary>
