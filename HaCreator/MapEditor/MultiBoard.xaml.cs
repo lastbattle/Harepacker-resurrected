@@ -303,7 +303,8 @@ namespace HaCreator.MapEditor
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
-            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(1.0f));
+            float zoom = selectedBoard?.Zoom ?? 1.0f;
+            sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(zoom));
 #endif
 
             if (selectedBoard != null) // No map selected to draw on
@@ -344,7 +345,13 @@ namespace HaCreator.MapEditor
 
         public bool IsItemInRange(int x, int y, int w, int h, int xshift, int yshift)
         {
-            return x + xshift + w > 0 && y + yshift + h > 0 && x + xshift < _CurrentDXWindowSize.Width && y + yshift < _CurrentDXWindowSize.Height;
+            // Get zoom from selected board, default to 1.0 if no board selected
+            float zoom = selectedBoard?.Zoom ?? 1.0f;
+            // When zoomed out (zoom < 1), more virtual space is visible, so divide viewport by zoom
+            // When zoomed in (zoom > 1), less virtual space is visible
+            float viewportWidth = _CurrentDXWindowSize.Width / zoom;
+            float viewportHeight = _CurrentDXWindowSize.Height / zoom;
+            return x + xshift + w > 0 && y + yshift + h > 0 && x + xshift < viewportWidth && y + yshift < viewportHeight;
         }
         #endregion
 
@@ -394,7 +401,9 @@ namespace HaCreator.MapEditor
                 {
                     selectedBoard = value;
                     if (value != null)
+                    {
                         AdjustScrollBars();
+                    }
                 }
             }
         }
@@ -452,9 +461,27 @@ namespace HaCreator.MapEditor
             return location - center + scroll + origin;
         }
 
+        /// <summary>
+        /// Converts physical (screen) coordinates to virtual (map) coordinates with zoom factor.
+        /// Use this for mouse input handling when zoom is applied.
+        /// </summary>
+        public static int PhysicalToVirtual(int location, int center, int scroll, int origin, float zoom)
+        {
+            // First unscale the screen position by zoom, then convert to virtual
+            return (int)(location / zoom) - center + scroll + origin;
+        }
+
         public static int VirtualToPhysical(int location, int center, int scroll, int origin)
         {
             return location + center - scroll - origin;
+        }
+
+        /// <summary>
+        /// Converts virtual (map) coordinates to physical (screen) coordinates with zoom factor.
+        /// </summary>
+        public static int VirtualToPhysical(int location, int center, int scroll, int origin, float zoom)
+        {
+            return (int)((location + center - scroll - origin) * zoom);
         }
 
         public static bool IsItemUnderRectangle(BoardItem item, Rectangle rect)
@@ -526,7 +553,8 @@ namespace HaCreator.MapEditor
         {
             selectedItemHigher = false; //to stop VS from bitching
             BoardItem itemUnderPoint = null, selectedUnderPoint = null;
-            Point locationVirtualPos = new Point(PhysicalToVirtual(location.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, /*item.Origin.X*/0), PhysicalToVirtual(location.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, /*item.Origin.Y*/0));
+            float zoom = selectedBoard.Zoom;
+            Point locationVirtualPos = new Point(PhysicalToVirtual(location.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, /*item.Origin.X*/0, zoom), PhysicalToVirtual(location.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, /*item.Origin.Y*/0, zoom));
             for (int i = 0; i < selectedBoard.BoardItems.AllItemLists.Length; i++)
             {
                 GetObjsUnderPointFromList(selectedBoard.BoardItems.AllItemLists[i], locationVirtualPos, ref itemUnderPoint, ref selectedUnderPoint, ref selectedItemHigher);
@@ -621,13 +649,14 @@ namespace HaCreator.MapEditor
                 Point realPosition = new Point(e.X, e.Y);
                 lock (this)
                 {
+                    float zoom = selectedBoard.Zoom;
                     RightMouseClick(
-                        selectedBoard, 
-                        GetObjectUnderPoint(realPosition), 
-                        realPosition, 
+                        selectedBoard,
+                        GetObjectUnderPoint(realPosition),
+                        realPosition,
                         new Point(
-                            PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), 
-                            PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)), 
+                            PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom),
+                            PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom)),
                         selectedBoard.Mouse.State);
                 }
             }
@@ -645,7 +674,8 @@ namespace HaCreator.MapEditor
                 Point realPosition = new Point(e.X, e.Y);
                 lock (this)
                 {
-                    MouseDoubleClick(selectedBoard, GetObjectUnderPoint(realPosition), realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)));
+                    float zoom = selectedBoard.Zoom;
+                    MouseDoubleClick(selectedBoard, GetObjectUnderPoint(realPosition), realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom)));
                 }
             }
         }
@@ -693,8 +723,9 @@ namespace HaCreator.MapEditor
                 Point realPosition = new Point(e.X, e.Y);
                 lock (this)
                 {
+                    float zoom = selectedBoard.Zoom;
                     BoardItemPair objsUnderMouse = GetObjectsUnderPoint(realPosition, out selectedItemHigher);
-                    LeftMouseDown(selectedBoard, objsUnderMouse.NonSelectedItem, objsUnderMouse.SelectedItem, realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)), selectedItemHigher);
+                    LeftMouseDown(selectedBoard, objsUnderMouse.NonSelectedItem, objsUnderMouse.SelectedItem, realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom)), selectedItemHigher);
                 }
             }
         }
@@ -716,8 +747,9 @@ namespace HaCreator.MapEditor
                 bool selectedItemHigher;
                 lock (this)
                 {
+                    float zoom = selectedBoard.Zoom;
                     BoardItemPair objsUnderMouse = GetObjectsUnderPoint(realPosition, out selectedItemHigher);
-                    LeftMouseUp(selectedBoard, objsUnderMouse.NonSelectedItem, objsUnderMouse.SelectedItem, realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)), selectedItemHigher);
+                    LeftMouseUp(selectedBoard, objsUnderMouse.NonSelectedItem, objsUnderMouse.SelectedItem, realPosition, new Point(PhysicalToVirtual(e.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom), PhysicalToVirtual(e.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom)), selectedItemHigher);
                 }
             }
         }
@@ -768,12 +800,13 @@ namespace HaCreator.MapEditor
             lock (this)
             {
                 Point realPosition = new Point(e.X, e.Y);
+                float zoom = selectedBoard.Zoom;
 
-                if (VirtualToPhysical(selectedBoard.Mouse.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0) != realPosition.X 
-                    || VirtualToPhysical(selectedBoard.Mouse.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0) != realPosition.Y)
+                if (VirtualToPhysical(selectedBoard.Mouse.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom) != realPosition.X
+                    || VirtualToPhysical(selectedBoard.Mouse.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom) != realPosition.Y)
                 {
                     Point oldPos = new Point(selectedBoard.Mouse.X, selectedBoard.Mouse.Y);
-                    Point newPos = new Point(PhysicalToVirtual(realPosition.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual(realPosition.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0));
+                    Point newPos = new Point(PhysicalToVirtual(realPosition.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom), PhysicalToVirtual(realPosition.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom));
                     selectedBoard.Mouse.Move(newPos.X, newPos.Y);
 
                     if (MouseMoved != null)
@@ -830,8 +863,11 @@ namespace HaCreator.MapEditor
                         continue;
                     }
                     if (ImageDropped != null)
-                        ImageDropped.Invoke(selectedBoard, bmp, Path.GetFileNameWithoutExtension(file), 
-                            new Point(PhysicalToVirtual((int) p.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0), PhysicalToVirtual((int) p.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0)));
+                    {
+                        float zoom = selectedBoard.Zoom;
+                        ImageDropped.Invoke(selectedBoard, bmp, Path.GetFileNameWithoutExtension(file),
+                            new Point(PhysicalToVirtual((int)p.X, selectedBoard.CenterPoint.X, selectedBoard.hScroll, 0, zoom), PhysicalToVirtual((int)p.Y, selectedBoard.CenterPoint.Y, selectedBoard.vScroll, 0, zoom)));
+                    }
                 }
             }
         }
@@ -880,10 +916,15 @@ namespace HaCreator.MapEditor
         {
             lock (this)
             {
-                if (MapSize.X > _CurrentDXWindowSize.Width)
+                // Get zoom factor - when zoomed out, viewport covers more virtual space
+                float zoom = selectedBoard?.Zoom ?? 1.0f;
+                float viewportWidth = _CurrentDXWindowSize.Width / zoom;
+                float viewportHeight = _CurrentDXWindowSize.Height / zoom;
+
+                if (MapSize.X > viewportWidth)
                 {
                     hScrollBar.IsEnabled = true;
-                    hScrollBar.Maximum = MapSize.X - _CurrentDXWindowSize.Width;
+                    hScrollBar.Maximum = MapSize.X - viewportWidth;
                     hScrollBar.Minimum = 0;
                     if (hScrollBar.Maximum < selectedBoard.hScroll)
                     {
@@ -902,15 +943,15 @@ namespace HaCreator.MapEditor
                     hScrollBar.Maximum = 0;
                 }
 
-                if (MapSize.Y > _CurrentDXWindowSize.Height)
+                if (MapSize.Y > viewportHeight)
                 {
                     vScrollBar.IsEnabled = true;
-                    vScrollBar.Maximum = MapSize.Y - _CurrentDXWindowSize.Height;
+                    vScrollBar.Maximum = MapSize.Y - viewportHeight;
                     vScrollBar.Minimum = 0;
                     if (vScrollBar.Maximum < selectedBoard.vScroll)
                     {
                         vScrollBar.Value = vScrollBar.Maximum - 1;
-                        selectedBoard.vScroll = (int) vScrollBar.Value;
+                        selectedBoard.vScroll = (int)vScrollBar.Value;
                     }
                     else
                     {

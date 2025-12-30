@@ -43,6 +43,12 @@ namespace HaCreator.MapEditor
         private int _hScroll = 0;
         private int _vScroll = 0;
         private int _mag = 16;
+        private float _zoom = 1.0f;
+
+        // Zoom limits
+        public const float MinZoom = 0.1f;
+        public const float MaxZoom = 4.0f;
+        public const float ZoomStep = 0.1f;
         private readonly UndoRedoManager undoRedoMan;
         private ItemTypes visibleTypes;
         private ItemTypes editedTypes;
@@ -388,6 +394,46 @@ namespace HaCreator.MapEditor
         {
             get { return _mag; }
             set { lock (parent) { _mag = value; } }
+        }
+
+        /// <summary>
+        /// Zoom level for the main viewport (1.0 = 100%, 0.5 = 50%, 2.0 = 200%)
+        /// </summary>
+        public float Zoom
+        {
+            get { return _zoom; }
+            set
+            {
+                lock (parent)
+                {
+                    _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    parent.AdjustScrollBars();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Zoom in by one step
+        /// </summary>
+        public void ZoomIn()
+        {
+            Zoom = _zoom + ZoomStep;
+        }
+
+        /// <summary>
+        /// Zoom out by one step
+        /// </summary>
+        public void ZoomOut()
+        {
+            Zoom = _zoom - ZoomStep;
+        }
+
+        /// <summary>
+        /// Reset zoom to 100%
+        /// </summary>
+        public void ResetZoom()
+        {
+            Zoom = 1.0f;
         }
 
         public MapInfo MapInfo
