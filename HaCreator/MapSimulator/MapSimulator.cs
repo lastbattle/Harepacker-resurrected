@@ -145,6 +145,10 @@ namespace HaCreator.MapSimulator
         // Text
         private SpriteFont font_navigationKeysHelper;
         private SpriteFont font_DebugValues;
+        private SpriteFont font_chat;
+
+        // Chat system
+        private readonly MapSimulatorChat _chat = new MapSimulatorChat();
 
         // Debug
         private Texture2D texture_debugBoundaryRect;
@@ -173,6 +177,7 @@ namespace HaCreator.MapSimulator
         {
             _loadMapCallback = callback;
         }
+
 
         // Debug rendering data (collected during draw, rendered in separate pass)
         private struct DebugDrawData
@@ -352,11 +357,12 @@ namespace HaCreator.MapSimulator
             // to build your own font: /MonoGame Font Builder/game.mgcb
             // build -> obj -> copy it over to HaRepacker-resurrected [Content]
             font_navigationKeysHelper = Content.Load<SpriteFont>("XnaDefaultFont");
+            font_chat = Content.Load<SpriteFont>("XnaFont_Chat");//("XnaFont_Debug");
             font_DebugValues = Content.Load<SpriteFont>("XnaDefaultFont");//("XnaFont_Debug");
 
             // Pre-cache navigation help text strings to avoid string.Format allocations in Draw()
-            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport";
-            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport";
+            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
+            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
 
             base.Initialize();
         }
@@ -694,6 +700,10 @@ namespace HaCreator.MapSimulator
             bitmap_debug.SetPixel(0, 0, System.Drawing.Color.White);
             texture_debugBoundaryRect = bitmap_debug.ToTexture2D(_DxDeviceManager.GraphicsDevice);
 
+            // Initialize chat system
+            _chat.Initialize(font_chat, texture_debugBoundaryRect, Height);
+            RegisterChatCommands();
+
             // cleanup
             // clear used items
             foreach (WzObject obj in usedProps)
@@ -867,6 +877,9 @@ namespace HaCreator.MapSimulator
             // Reset portal click tracking
             _lastClickedPortal = null;
             _lastClickTime = 0;
+
+            // Deactivate chat input (but preserve message history)
+            _chat.Deactivate();
         }
 
         /// <summary>
@@ -1190,10 +1203,11 @@ namespace HaCreator.MapSimulator
             KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
             MouseState newMouseState = mouseCursor.MouseState;
 
-            // Allows the game to exit
+            // Allows the game to exit (but not while chat is active - Escape closes chat instead)
 #if !WINDOWS_STOREAPP
-            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
-                || Keyboard.GetState().IsKeyDown(Keys.Escape))
+            if (!_chat.IsActive &&
+                (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed
+                || Keyboard.GetState().IsKeyDown(Keys.Escape)))
             {
                 this.Exit();
                 return;
@@ -1241,34 +1255,41 @@ namespace HaCreator.MapSimulator
                 return; // Skip the rest of this frame
             }
 
-            // Navigate around the rendered object
-            bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
+            // Handle chat input (returns true if chat consumed the input)
+            bool chatConsumedInput = _chat.HandleInput(newKeyboardState, oldKeyboardState, currTickCount);
 
-            bool bIsUpKeyPressed = newKeyboardState.IsKeyDown(Keys.Up);
-            bool bIsDownKeyPressed = newKeyboardState.IsKeyDown(Keys.Down);
-            bool bIsLeftKeyPressed = newKeyboardState.IsKeyDown(Keys.Left);
-            bool bIsRightKeyPressed = newKeyboardState.IsKeyDown(Keys.Right);
-
-            int moveOffset = bIsShiftPressed ? (int)(3000f / frameRate) : (int)(1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
-            if (bIsLeftKeyPressed || bIsRightKeyPressed)
+            // Skip navigation and other key handlers if chat is active
+            if (!chatConsumedInput && !_chat.IsActive)
             {
-                SetCameraMoveX(bIsLeftKeyPressed, bIsRightKeyPressed, moveOffset);
-            }
-            if (bIsUpKeyPressed || bIsDownKeyPressed)
-            {
-                SetCameraMoveY(bIsUpKeyPressed, bIsDownKeyPressed, moveOffset);
-            }
+                // Navigate around the rendered object
+                bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
 
-            // Minimap M
-            if (newKeyboardState.IsKeyDown(Keys.M))
-            {
-                if (miniMapUi != null)
-                    miniMapUi.MinimiseOrMaximiseMinimap(currTickCount);
-            }
+                bool bIsUpKeyPressed = newKeyboardState.IsKeyDown(Keys.Up);
+                bool bIsDownKeyPressed = newKeyboardState.IsKeyDown(Keys.Down);
+                bool bIsLeftKeyPressed = newKeyboardState.IsKeyDown(Keys.Left);
+                bool bIsRightKeyPressed = newKeyboardState.IsKeyDown(Keys.Right);
 
-            // Hide UI
-            if (newKeyboardState.IsKeyUp(Keys.H) && oldKeyboardState.IsKeyDown(Keys.H)) {
-                this.bHideUIMode = !this.bHideUIMode;
+                int moveOffset = bIsShiftPressed ? (int)(3000f / frameRate) : (int)(1500f / frameRate); // move a fixed amount a second, not dependent on GPU speed
+                if (bIsLeftKeyPressed || bIsRightKeyPressed)
+                {
+                    SetCameraMoveX(bIsLeftKeyPressed, bIsRightKeyPressed, moveOffset);
+                }
+                if (bIsUpKeyPressed || bIsDownKeyPressed)
+                {
+                    SetCameraMoveY(bIsUpKeyPressed, bIsDownKeyPressed, moveOffset);
+                }
+
+                // Minimap M
+                if (newKeyboardState.IsKeyDown(Keys.M))
+                {
+                    if (miniMapUi != null)
+                        miniMapUi.MinimiseOrMaximiseMinimap(currTickCount);
+                }
+
+                // Hide UI
+                if (newKeyboardState.IsKeyUp(Keys.H) && oldKeyboardState.IsKeyDown(Keys.H)) {
+                    this.bHideUIMode = !this.bHideUIMode;
+                }
             }
 
             // Debug keys
@@ -1804,6 +1825,12 @@ namespace HaCreator.MapSimulator
 
                 spriteBatch.DrawString(font_DebugValues, _debugStringBuilder,
                     new Vector2(Width - 270, 10), Color.White); // use the original width to render text
+            }
+
+            // Draw chat messages and input box
+            if (!bHideUIMode)
+            {
+                _chat.Draw(spriteBatch, TickCount);
             }
 
             // Cursor [this is in front of everything else]
@@ -2625,7 +2652,121 @@ namespace HaCreator.MapSimulator
             }
         }
         #endregion
-        
+
+        #region Chat Commands
+        /// <summary>
+        /// Registers all chat commands
+        /// </summary>
+        private void RegisterChatCommands()
+        {
+            // /map <id> - Change to a different map
+            _chat.CommandHandler.RegisterCommand(
+                "map",
+                "Teleport to a map by ID",
+                "/map <mapId>",
+                args =>
+                {
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /map <mapId>");
+                    }
+
+                    if (!int.TryParse(args[0], out int mapId))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Invalid map ID: {args[0]}");
+                    }
+
+                    if (_loadMapCallback == null)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Map loading not available");
+                    }
+
+                    // Trigger map change
+                    _pendingMapChange = true;
+                    _pendingMapId = mapId;
+                    _pendingPortalName = null;
+
+                    return ChatCommandHandler.CommandResult.Ok($"Loading map {mapId}...");
+                });
+
+            // /pos - Show current camera position
+            _chat.CommandHandler.RegisterCommand(
+                "pos",
+                "Show current camera position",
+                "/pos",
+                args =>
+                {
+                    return ChatCommandHandler.CommandResult.Info($"Camera: X={mapShiftX}, Y={mapShiftY}");
+                });
+
+            // /goto <x> <y> - Move camera to position
+            _chat.CommandHandler.RegisterCommand(
+                "goto",
+                "Move camera to X,Y position",
+                "/goto <x> <y>",
+                args =>
+                {
+                    if (args.Length < 2)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /goto <x> <y>");
+                    }
+
+                    if (!int.TryParse(args[0], out int x) || !int.TryParse(args[1], out int y))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Invalid coordinates");
+                    }
+
+                    mapShiftX = x;
+                    mapShiftY = y;
+                    return ChatCommandHandler.CommandResult.Ok($"Moved to ({x}, {y})");
+                });
+
+            // /mob - Toggle mob movement
+            _chat.CommandHandler.RegisterCommand(
+                "mob",
+                "Toggle mob movement on/off",
+                "/mob",
+                args =>
+                {
+                    bMobMovementEnabled = !bMobMovementEnabled;
+                    return ChatCommandHandler.CommandResult.Ok($"Mob movement: {(bMobMovementEnabled ? "ON" : "OFF")}");
+                });
+
+            // /debug - Toggle debug mode
+            _chat.CommandHandler.RegisterCommand(
+                "debug",
+                "Toggle debug overlay",
+                "/debug",
+                args =>
+                {
+                    bShowDebugMode = !bShowDebugMode;
+                    return ChatCommandHandler.CommandResult.Ok($"Debug mode: {(bShowDebugMode ? "ON" : "OFF")}");
+                });
+
+            // /hideui - Toggle UI visibility
+            _chat.CommandHandler.RegisterCommand(
+                "hideui",
+                "Toggle UI visibility",
+                "/hideui",
+                args =>
+                {
+                    bHideUIMode = !bHideUIMode;
+                    return ChatCommandHandler.CommandResult.Ok($"UI hidden: {(bHideUIMode ? "YES" : "NO")}");
+                });
+
+            // /clear - Clear chat messages
+            _chat.CommandHandler.RegisterCommand(
+                "clear",
+                "Clear chat messages",
+                "/clear",
+                args =>
+                {
+                    _chat.ClearMessages();
+                    return ChatCommandHandler.CommandResult.Ok("Chat cleared");
+                });
+        }
+        #endregion
+
         #region Spine specific
         public void Start(AnimationState state, int trackIndex)
         {
