@@ -16,6 +16,8 @@
     <!-- Required for WinForms -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Suppress CS8981: lowercase type names warning (bsc, enH0, etc.) -->
+    <NoWarn>$(NoWarn);CS8981</NoWarn>
   </PropertyGroup>
 
     <!-- x64-specific configuration -->
