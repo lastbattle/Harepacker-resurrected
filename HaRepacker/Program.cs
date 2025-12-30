@@ -50,6 +50,11 @@ namespace HaRepacker
         {
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
 
+            // App
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
             // Localisation
@@ -66,11 +71,6 @@ namespace HaRepacker
 
             // Threads
             ThreadPool.SetMaxThreads(Environment.ProcessorCount * 3, Environment.ProcessorCount * 3); // This includes hyper-threading(Intel)/SMT (AMD) count.
-
-            // App
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
 
             // Parameters
             bool firstRun = PrepareApplication(true);

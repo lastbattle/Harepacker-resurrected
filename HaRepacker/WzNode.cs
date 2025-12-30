@@ -6,6 +6,7 @@
 
 using System;
 using System.Windows.Forms;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System.Collections;
@@ -46,13 +47,22 @@ namespace HaRepacker
             Tag = SourceObject ?? throw new NullReferenceException("Cannot create a null WzNode");
             SourceObject.HRTag = this;
 
-            if (SourceObject is WzFile) 
+            if (SourceObject is WzFile)
                 SourceObject = ((WzFile)SourceObject).WzDirectory;
-            if (SourceObject is WzDirectory)
+
+            // Handle VirtualWzDirectory specifically (must check before WzDirectory since it inherits from it)
+            if (SourceObject is VirtualWzDirectory virtualDir)
             {
-                foreach (WzDirectory dir in ((WzDirectory)SourceObject).WzDirectories)
+                foreach (WzDirectory dir in virtualDir.WzDirectories)
                     Nodes.Add(new WzNode(dir));
-                foreach (WzImage img in ((WzDirectory)SourceObject).WzImages)
+                foreach (WzImage img in virtualDir.WzImages)
+                    Nodes.Add(new WzNode(img));
+            }
+            else if (SourceObject is WzDirectory wzDir)
+            {
+                foreach (WzDirectory dir in wzDir.WzDirectories)
+                    Nodes.Add(new WzNode(dir));
+                foreach (WzImage img in wzDir.WzImages)
                     Nodes.Add(new WzNode(img));
             }
             else if (SourceObject is WzImage image)
