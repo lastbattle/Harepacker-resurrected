@@ -130,6 +130,7 @@ namespace HaCreator.MapSimulator
         // Audio
         private WzSoundResourceStreamer audio;
         private WzSoundResourceStreamer portalSE; // Portal teleport sound effect
+        private string _currentBgmName = null; // Track current BGM to avoid reloading same BGM on map change
 
         // Etc
         private Board mapBoard; // Not readonly - can be replaced during seamless map transitions
@@ -381,6 +382,7 @@ namespace HaCreator.MapSimulator
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
             {
+                _currentBgmName = mapBoard.MapInfo.bgm;
                 audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
                 if (audio != null)
                 {
@@ -783,15 +785,11 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Unloads current map content for seamless map transitions.
         /// Does not dispose shared resources (GraphicsDevice, SpriteBatch, fonts, cursor).
+        /// Audio is handled separately in LoadMapContent to allow BGM continuity.
         /// </summary>
         private void UnloadMapContent()
         {
-            // Stop and dispose audio
-            if (audio != null)
-            {
-                audio.Dispose();
-                audio = null;
-            }
+            // Note: Audio is NOT disposed here - handled in LoadMapContent to allow same BGM to continue playing
 
             // Clear object lists
             mapObjects_NPCs.Clear();
@@ -904,12 +902,29 @@ namespace HaCreator.MapSimulator
             WzImage uiStatusBarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar.img");
             WzImage uiStatus2BarImage = (WzImage)Program.WzManager.FindWzImageByName("ui", "StatusBar2.img");
 
-            // BGM
-            if (Program.InfoManager.BGMs.ContainsKey(mapBoard.MapInfo.bgm))
+            // BGM - only reload if different from current BGM
+            string newBgmName = mapBoard.MapInfo.bgm;
+            if (_currentBgmName != newBgmName)
             {
-                audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[mapBoard.MapInfo.bgm], true);
-                audio?.Play();
+                // Different BGM - dispose old and load new
+                if (audio != null)
+                {
+                    audio.Dispose();
+                    audio = null;
+                }
+
+                if (Program.InfoManager.BGMs.ContainsKey(newBgmName))
+                {
+                    _currentBgmName = newBgmName;
+                    audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[newBgmName], true);
+                    audio?.Play();
+                }
+                else
+                {
+                    _currentBgmName = null;
+                }
             }
+            // If same BGM, just keep playing - no changes needed
 
             // VR boundaries
             if (mapBoard.VRRectangle == null)
