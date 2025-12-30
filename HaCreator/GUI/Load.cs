@@ -110,6 +110,18 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void button_clearHistory_Click(object sender, EventArgs e) {
             this.mapBrowser_history.ClearLoadedMapHistory();
+            button_deleteSelected.Enabled = false;
+        }
+
+        /// <summary>
+        /// Delete the selected map from history
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_deleteSelected_Click(object sender, EventArgs e) {
+            this.mapBrowser_history.RemoveSelectedMapFromHistory();
+            button_deleteSelected.Enabled = mapBrowser_history.LoadMapEnabled;
+            button_loadHistory.Enabled = mapBrowser_history.LoadMapEnabled;
         }
 
         private void SelectionChanged(object sender, EventArgs e)
@@ -317,6 +329,7 @@ namespace HaCreator.GUI
         /// </summary>
         private void mapBrowserHistory_OnSelectionChanged() {
             button_loadHistory.Enabled = mapBrowser_history.LoadMapEnabled;
+            button_deleteSelected.Enabled = mapBrowser_history.SelectedItem != null;
         }
 
         private void Load_KeyDown(object sender, KeyEventArgs e)

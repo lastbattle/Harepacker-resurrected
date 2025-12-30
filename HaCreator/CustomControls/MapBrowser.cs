@@ -244,6 +244,45 @@ namespace HaCreator.CustomControls
             maps.Clear();
             mapNamesBox.Items.Clear();
         }
+
+        /// <summary>
+        /// Removes the currently selected map from history
+        /// </summary>
+        /// <returns>True if an item was removed, false otherwise</returns>
+        public bool RemoveSelectedMapFromHistory() {
+            string selectedItem = (string)mapNamesBox.SelectedItem;
+            if (selectedItem == null) {
+                return false;
+            }
+
+            int selectedIndex = mapNamesBox.SelectedIndex;
+
+            // Remove only ONE entry from database (the one with the lowest Id for this map name)
+            using (var connection = new SQLiteConnection(SQLITE_DB_CONNECTION_STRING)) {
+                connection.Open();
+
+                // Delete only one row using subquery to get the minimum Id
+                string sql = string.Format(
+                    "DELETE FROM {0} WHERE Id = (SELECT Id FROM {0} WHERE OpenedMapName = @OpenedMapName LIMIT 1);",
+                    SQLITE_DB_HISTORY_TABLE_NAME);
+                SQLiteCommand sqlDelCommand = new SQLiteCommand(sql, connection);
+                sqlDelCommand.Parameters.AddWithValue("@OpenedMapName", selectedItem);
+
+                // Execute the command
+                sqlDelCommand.ExecuteNonQuery();
+            }
+
+            // Remove from current list (only removes the first occurrence)
+            maps.RemoveAt(selectedIndex);
+            mapNamesBox.Items.RemoveAt(selectedIndex);
+
+            // Only remove from mapsMapInfo if no more entries with this map name exist
+            if (!maps.Contains(selectedItem)) {
+                mapsMapInfo.Remove(selectedItem);
+            }
+
+            return true;
+        }
         #endregion
 
         #region UI
