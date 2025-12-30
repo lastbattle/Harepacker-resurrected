@@ -1,10 +1,4 @@
-/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using MapleLib.Img;
+﻿using MapleLib.Img;
 using MapleLib.WzLib;
 using System;
 using System.Collections.Generic;
@@ -123,6 +117,7 @@ namespace HaCreator.GUI
             this.progressBar = new System.Windows.Forms.ProgressBar();
             this.label_status = new System.Windows.Forms.Label();
             this.checkBox_64bit = new System.Windows.Forms.CheckBox();
+            this.checkBox_separateCanvas = new System.Windows.Forms.CheckBox();
             this.label_versionInfo = new System.Windows.Forms.Label();
             this.button_selectAll = new System.Windows.Forms.Button();
             this.button_selectNone = new System.Windows.Forms.Button();
@@ -220,11 +215,23 @@ namespace HaCreator.GUI
             this.checkBox_64bit.TabIndex = 8;
             this.checkBox_64bit.Text = "Save as 64-bit WZ format";
             this.checkBox_64bit.UseVisualStyleBackColor = true;
+            this.checkBox_64bit.CheckedChanged += new System.EventHandler(this.checkBox_64bit_CheckedChanged);
+            //
+            // checkBox_separateCanvas
+            //
+            this.checkBox_separateCanvas.AutoSize = true;
+            this.checkBox_separateCanvas.Enabled = false;
+            this.checkBox_separateCanvas.Location = new System.Drawing.Point(30, 344);
+            this.checkBox_separateCanvas.Name = "checkBox_separateCanvas";
+            this.checkBox_separateCanvas.Size = new System.Drawing.Size(230, 19);
+            this.checkBox_separateCanvas.TabIndex = 15;
+            this.checkBox_separateCanvas.Text = "Save images in separate _Canvas folder";
+            this.checkBox_separateCanvas.UseVisualStyleBackColor = true;
             //
             // label_patchVersion
             //
             this.label_patchVersion.AutoSize = true;
-            this.label_patchVersion.Location = new System.Drawing.Point(12, 350);
+            this.label_patchVersion.Location = new System.Drawing.Point(12, 372);
             this.label_patchVersion.Name = "label_patchVersion";
             this.label_patchVersion.Size = new System.Drawing.Size(85, 15);
             this.label_patchVersion.TabIndex = 13;
@@ -232,7 +239,7 @@ namespace HaCreator.GUI
             //
             // numericUpDown_patchVersion
             //
-            this.numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 348);
+            this.numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 370);
             this.numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
             this.numericUpDown_patchVersion.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
             this.numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
@@ -244,7 +251,7 @@ namespace HaCreator.GUI
             //
             this.progressBar.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.progressBar.Location = new System.Drawing.Point(12, 380);
+            this.progressBar.Location = new System.Drawing.Point(12, 402);
             this.progressBar.Name = "progressBar";
             this.progressBar.Size = new System.Drawing.Size(360, 23);
             this.progressBar.TabIndex = 9;
@@ -253,7 +260,7 @@ namespace HaCreator.GUI
             //
             this.label_status.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.label_status.Location = new System.Drawing.Point(12, 406);
+            this.label_status.Location = new System.Drawing.Point(12, 428);
             this.label_status.Name = "label_status";
             this.label_status.Size = new System.Drawing.Size(360, 15);
             this.label_status.TabIndex = 10;
@@ -262,7 +269,7 @@ namespace HaCreator.GUI
             // button_pack
             //
             this.button_pack.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_pack.Location = new System.Drawing.Point(216, 430);
+            this.button_pack.Location = new System.Drawing.Point(216, 452);
             this.button_pack.Name = "button_pack";
             this.button_pack.Size = new System.Drawing.Size(75, 23);
             this.button_pack.TabIndex = 11;
@@ -273,7 +280,7 @@ namespace HaCreator.GUI
             // button_cancel
             //
             this.button_cancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_cancel.Location = new System.Drawing.Point(297, 430);
+            this.button_cancel.Location = new System.Drawing.Point(297, 452);
             this.button_cancel.Name = "button_cancel";
             this.button_cancel.Size = new System.Drawing.Size(75, 23);
             this.button_cancel.TabIndex = 12;
@@ -285,13 +292,14 @@ namespace HaCreator.GUI
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(384, 461);
+            this.ClientSize = new System.Drawing.Size(384, 485);
             this.Controls.Add(this.numericUpDown_patchVersion);
             this.Controls.Add(this.label_patchVersion);
             this.Controls.Add(this.button_cancel);
             this.Controls.Add(this.button_pack);
             this.Controls.Add(this.label_status);
             this.Controls.Add(this.progressBar);
+            this.Controls.Add(this.checkBox_separateCanvas);
             this.Controls.Add(this.checkBox_64bit);
             this.Controls.Add(this.button_browse);
             this.Controls.Add(this.textBox_outputPath);
@@ -323,6 +331,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.ProgressBar progressBar;
         private System.Windows.Forms.Label label_status;
         private System.Windows.Forms.CheckBox checkBox_64bit;
+        private System.Windows.Forms.CheckBox checkBox_separateCanvas;
         private System.Windows.Forms.Label label_versionInfo;
         private System.Windows.Forms.Button button_selectAll;
         private System.Windows.Forms.Button button_selectNone;
@@ -409,6 +418,16 @@ namespace HaCreator.GUI
             }
         }
 
+        private void checkBox_64bit_CheckedChanged(object sender, EventArgs e)
+        {
+            // Only enable separate canvas option when 64-bit is checked
+            checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
+            if (!checkBox_64bit.Checked)
+            {
+                checkBox_separateCanvas.Checked = false;
+            }
+        }
+
         private async void button_pack_Click(object sender, EventArgs e)
         {
             if (_isPacking)
@@ -450,6 +469,7 @@ namespace HaCreator.GUI
             textBox_outputPath.Enabled = false;
             button_browse.Enabled = false;
             checkBox_64bit.Enabled = false;
+            checkBox_separateCanvas.Enabled = false;
             numericUpDown_patchVersion.Enabled = false;
 
             try
@@ -475,7 +495,8 @@ namespace HaCreator.GUI
                     checkBox_64bit.Checked,
                     _cancellationTokenSource.Token,
                     progress,
-                    (short)numericUpDown_patchVersion.Value);
+                    (short)numericUpDown_patchVersion.Value,
+                    checkBox_separateCanvas.Checked);
 
                 if (result.Success)
                 {
@@ -517,6 +538,7 @@ namespace HaCreator.GUI
                 textBox_outputPath.Enabled = true;
                 button_browse.Enabled = true;
                 checkBox_64bit.Enabled = true;
+                checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
                 numericUpDown_patchVersion.Enabled = true;
             }
         }
