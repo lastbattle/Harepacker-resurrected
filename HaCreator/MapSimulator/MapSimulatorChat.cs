@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator
         private readonly List<ChatMessage> _messages = new List<ChatMessage>();
         private int _cursorBlinkTimer = 0;
         private int _lastTickCount = 0;
+        private int _cursorPosition = 0; // Position within input text
 
         private SpriteFont _font;
         private Texture2D _backgroundTexture;
@@ -133,6 +134,7 @@ namespace HaCreator.MapSimulator
                         AddToInputHistory(message);
 
                         _inputText.Clear();
+                        _cursorPosition = 0;
                         ResetHistoryNavigation();
 
                         // Check if it's a command
@@ -175,6 +177,7 @@ namespace HaCreator.MapSimulator
             {
                 _isActive = false;
                 _inputText.Clear();
+                _cursorPosition = 0;
                 ResetKeyRepeat();
                 ResetHistoryNavigation();
                 return true;
@@ -197,6 +200,7 @@ namespace HaCreator.MapSimulator
                         _historyIndex++;
                         _inputText.Clear();
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
+                        _cursorPosition = _inputText.Length; // Move cursor to end
                     }
                 }
                 return true;
@@ -219,18 +223,70 @@ namespace HaCreator.MapSimulator
                     {
                         _inputText.Append(_inputHistory[_inputHistory.Count - 1 - _historyIndex]);
                     }
+                    _cursorPosition = _inputText.Length; // Move cursor to end
                 }
                 return true;
             }
 
-            // Handle backspace with key repeat
+            // Handle Left arrow - move cursor left (with key repeat)
+            if (newKeyboardState.IsKeyDown(Keys.Left))
+            {
+                if (oldKeyboardState.IsKeyUp(Keys.Left))
+                {
+                    if (_cursorPosition > 0)
+                        _cursorPosition--;
+                    _lastHeldKey = Keys.Left;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Left, tickCount))
+                {
+                    if (_cursorPosition > 0)
+                        _cursorPosition--;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                return true;
+            }
+            else if (_lastHeldKey == Keys.Left)
+            {
+                ResetKeyRepeat();
+            }
+
+            // Handle Right arrow - move cursor right (with key repeat)
+            if (newKeyboardState.IsKeyDown(Keys.Right))
+            {
+                if (oldKeyboardState.IsKeyUp(Keys.Right))
+                {
+                    if (_cursorPosition < _inputText.Length)
+                        _cursorPosition++;
+                    _lastHeldKey = Keys.Right;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Right, tickCount))
+                {
+                    if (_cursorPosition < _inputText.Length)
+                        _cursorPosition++;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                return true;
+            }
+            else if (_lastHeldKey == Keys.Right)
+            {
+                ResetKeyRepeat();
+            }
+
+            // Handle backspace with key repeat - delete at cursor position
             if (newKeyboardState.IsKeyDown(Keys.Back))
             {
                 if (oldKeyboardState.IsKeyUp(Keys.Back))
                 {
-                    // First press
-                    if (_inputText.Length > 0)
-                        _inputText.Remove(_inputText.Length - 1, 1);
+                    // First press - delete character before cursor
+                    if (_cursorPosition > 0)
+                    {
+                        _inputText.Remove(_cursorPosition - 1, 1);
+                        _cursorPosition--;
+                    }
                     _lastHeldKey = Keys.Back;
                     _keyHoldStartTime = tickCount;
                     _lastKeyRepeatTime = tickCount;
@@ -238,8 +294,11 @@ namespace HaCreator.MapSimulator
                 else if (ShouldRepeatKey(Keys.Back, tickCount))
                 {
                     // Key repeat
-                    if (_inputText.Length > 0)
-                        _inputText.Remove(_inputText.Length - 1, 1);
+                    if (_cursorPosition > 0)
+                    {
+                        _inputText.Remove(_cursorPosition - 1, 1);
+                        _cursorPosition--;
+                    }
                     _lastKeyRepeatTime = tickCount;
                 }
                 return true;
@@ -247,6 +306,50 @@ namespace HaCreator.MapSimulator
             else if (_lastHeldKey == Keys.Back)
             {
                 ResetKeyRepeat();
+            }
+
+            // Handle Delete key - delete at cursor position (with key repeat)
+            if (newKeyboardState.IsKeyDown(Keys.Delete))
+            {
+                if (oldKeyboardState.IsKeyUp(Keys.Delete))
+                {
+                    // First press - delete character at cursor
+                    if (_cursorPosition < _inputText.Length)
+                    {
+                        _inputText.Remove(_cursorPosition, 1);
+                    }
+                    _lastHeldKey = Keys.Delete;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
+                else if (ShouldRepeatKey(Keys.Delete, tickCount))
+                {
+                    // Key repeat
+                    if (_cursorPosition < _inputText.Length)
+                    {
+                        _inputText.Remove(_cursorPosition, 1);
+                    }
+                    _lastKeyRepeatTime = tickCount;
+                }
+                return true;
+            }
+            else if (_lastHeldKey == Keys.Delete)
+            {
+                ResetKeyRepeat();
+            }
+
+            // Handle Home key - move cursor to start
+            if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
+            {
+                _cursorPosition = 0;
+                return true;
+            }
+
+            // Handle End key - move cursor to end
+            if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
+            {
+                _cursorPosition = _inputText.Length;
+                return true;
             }
 
             // Handle character input
@@ -260,7 +363,8 @@ namespace HaCreator.MapSimulator
                     key == Keys.LeftControl || key == Keys.RightControl ||
                     key == Keys.LeftAlt || key == Keys.RightAlt ||
                     key == Keys.Back || key == Keys.Enter || key == Keys.Escape ||
-                    key == Keys.Up || key == Keys.Down)
+                    key == Keys.Up || key == Keys.Down || key == Keys.Left || key == Keys.Right ||
+                    key == Keys.Home || key == Keys.End || key == Keys.Delete)
                     continue;
 
                 // Process only newly pressed keys
@@ -269,7 +373,8 @@ namespace HaCreator.MapSimulator
                     char? c = KeyToChar(key, shift);
                     if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
                     {
-                        _inputText.Append(c.Value);
+                        _inputText.Insert(_cursorPosition, c.Value);
+                        _cursorPosition++;
                         // Track this key for potential repeat
                         _lastHeldKey = key;
                         _keyHoldStartTime = tickCount;
@@ -285,7 +390,8 @@ namespace HaCreator.MapSimulator
                 char? c = KeyToChar(_lastHeldKey, shift);
                 if (c.HasValue && _inputText.Length < CHAT_MAX_INPUT_LENGTH)
                 {
-                    _inputText.Append(c.Value);
+                    _inputText.Insert(_cursorPosition, c.Value);
+                    _cursorPosition++;
                     _lastKeyRepeatTime = tickCount;
                 }
             }
@@ -423,6 +529,7 @@ namespace HaCreator.MapSimulator
         {
             _isActive = false;
             _inputText.Clear();
+            _cursorPosition = 0;
         }
 
         /// <summary>
@@ -498,12 +605,23 @@ namespace HaCreator.MapSimulator
                         new Color(0, 0, 0, 180));
                 }
 
-                // Draw input text with cursor
+                // Draw input text
                 string inputText = _inputText.ToString();
-                bool showCursor = ((tickCount - _cursorBlinkTimer) / CHAT_CURSOR_BLINK_RATE) % 2 == 0;
-                string displayText = inputText + (showCursor ? "|" : "");
+                spriteBatch.DrawString(_font, inputText, new Vector2(CHAT_INPUT_X, chatBoxY), Color.White);
 
-                spriteBatch.DrawString(_font, displayText, new Vector2(CHAT_INPUT_X, chatBoxY), Color.White);
+                // Draw cursor as separate overlay (doesn't shift text)
+                bool showCursor = ((tickCount - _cursorBlinkTimer) / CHAT_CURSOR_BLINK_RATE) % 2 == 0;
+                if (showCursor && _backgroundTexture != null)
+                {
+                    // Calculate cursor X position based on text before cursor
+                    string textBeforeCursor = inputText.Substring(0, _cursorPosition);
+                    float cursorX = CHAT_INPUT_X + _font.MeasureString(textBeforeCursor).X;
+
+                    // Draw cursor line
+                    spriteBatch.Draw(_backgroundTexture,
+                        new Rectangle((int)cursorX, chatBoxY, 1, CHAT_INPUT_HEIGHT),
+                        Color.White);
+                }
             }
         }
         #endregion
