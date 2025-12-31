@@ -36,6 +36,7 @@ using HaSharedLibrary.Util;
 using MapleLib.WzLib.Serializer;
 using static HaSharedLibrary.Util.AssemblyBitnessDetector;
 using MapleLib.Img;
+using MapleLib.Helpers;
 
 namespace HaRepacker.GUI
 {
@@ -875,6 +876,10 @@ namespace HaRepacker.GUI
 
                         Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory, bIsStandAloneWzFile);
                         Program.WzFileManager.BuildWzFileList();
+
+                        // Set image format detection flag for pre-Big Bang compatibility
+                        // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                        ImageFormatDetector.UsePreBigBangImageFormats = Program.WzFileManager.IsPreBBDataWzFormat;
                     }
 
                     // Data.wz hotfix file
@@ -1112,6 +1117,11 @@ namespace HaRepacker.GUI
             // Initialize ImgFileSystemManager
             var manager = new ImgFileSystemManager(versionPath);
             manager.Initialize();
+
+            // Set image format detection flag for pre-Big Bang compatibility
+            // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+            // Read from manifest.json's IsPreBB flag
+            ImageFormatDetector.UsePreBigBangImageFormats = manager.VersionInfo?.IsPreBB ?? false;
 
             // Get version name
             string versionName = manager.VersionInfo?.DisplayName ?? Path.GetFileName(versionPath);
