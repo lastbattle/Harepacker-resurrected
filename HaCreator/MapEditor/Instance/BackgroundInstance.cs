@@ -82,14 +82,14 @@ namespace HaCreator.MapEditor.Instance
                 return;
 
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
-            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, 
-                null, 
-                color, 
-                0f, 
-                new XNA.Vector2(0f, 0f), 
-                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 
+            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle,
+                null,
+                color,
+                0f,
+                new XNA.Vector2(0f, 0f),
+                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
                 1);
-            
+
             base.Draw(sprite, color, xShift, yShift);
         }
 

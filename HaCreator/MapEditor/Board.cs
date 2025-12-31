@@ -218,6 +218,53 @@ namespace HaCreator.MapEditor
         }
 
         /// <summary>
+        /// Renders backgrounds separately. This should be called with a sprite batch
+        /// that does NOT have the zoom transform applied, so backgrounds stay at a fixed
+        /// screen position regardless of viewport zoom level.
+        /// </summary>
+        public void RenderBackgrounds(SpriteBatch sprite)
+        {
+            if (mapInfo == null)
+                return;
+
+            int xShift = centerPoint.X - hScroll;
+            int yShift = centerPoint.Y - vScroll;
+            SelectionInfo sel = GetUserSelectionInfo();
+
+            // Render back backgrounds
+            if ((sel.visibleTypes & ItemTypes.Backgrounds) != 0)
+            {
+                foreach (BackgroundInstance bg in boardItems.BackBackgrounds)
+                {
+                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Renders front backgrounds separately. This should be called after other items
+        /// but without the zoom transform.
+        /// </summary>
+        public void RenderFrontBackgrounds(SpriteBatch sprite)
+        {
+            if (mapInfo == null)
+                return;
+
+            int xShift = centerPoint.X - hScroll;
+            int yShift = centerPoint.Y - vScroll;
+            SelectionInfo sel = GetUserSelectionInfo();
+
+            // Render front backgrounds
+            if ((sel.visibleTypes & ItemTypes.Backgrounds) != 0)
+            {
+                foreach (BackgroundInstance bg in boardItems.FrontBackgrounds)
+                {
+                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                }
+            }
+        }
+
+        /// <summary>
         /// Renders the minimap overlay. This should be called with a separate sprite batch
         /// that does NOT have the zoom transform applied, so the minimap stays at a fixed
         /// screen size regardless of viewport zoom level.
@@ -260,6 +307,10 @@ namespace HaCreator.MapEditor
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
         {
+            // Skip backgrounds - they are rendered separately without zoom transform
+            if (list.ListType == ItemTypes.Backgrounds)
+                return;
+
             if (list.ListType == ItemTypes.None)
             {
                 foreach (BoardItem item in list)

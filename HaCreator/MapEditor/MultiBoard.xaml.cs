@@ -300,10 +300,26 @@ namespace HaCreator.MapEditor
                 ResetDevice();
             }
             DxDevice.Clear(ClearOptions.Target, Color.White, 1.0f, 0); // Clear the window to black
+
+            float zoom = selectedBoard?.Zoom ?? 1.0f;
+
+            // Render backgrounds first without zoom transform so they stay at fixed screen position
+            if (selectedBoard != null)
+            {
+                sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
+                lock (this)
+                {
+                    if (selectedBoard != null)
+                    {
+                        selectedBoard.RenderBackgrounds(sprite);
+                    }
+                }
+                sprite.End();
+            }
+
 #if UseXNAZorder
             sprite.Begin(SpriteBlendMode.AlphaBlend, SpriteSortMode.FrontToBack, SaveStateMode.None);
 #else
-            float zoom = selectedBoard?.Zoom ?? 1.0f;
             sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied, null, null, null, null, Matrix.CreateScale(zoom));
 #endif
 
@@ -329,6 +345,20 @@ namespace HaCreator.MapEditor
             fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
 #endif
             sprite.End();
+
+            // Render front backgrounds without zoom transform (after other items but before minimap)
+            if (selectedBoard != null)
+            {
+                sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
+                lock (this)
+                {
+                    if (selectedBoard != null)
+                    {
+                        selectedBoard.RenderFrontBackgrounds(sprite);
+                    }
+                }
+                sprite.End();
+            }
 
             // Render minimap as a UI overlay (without zoom transform so it stays at fixed screen size)
             if (selectedBoard != null)
