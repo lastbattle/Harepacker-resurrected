@@ -206,6 +206,10 @@ namespace HaCreator.GUI
 
                 extractor.ExtractAll();
 
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
+
                 UpdateUI_CurrentLoadingWzFile("Initialization complete.", false);
                 return true;
             }
@@ -281,6 +285,10 @@ namespace HaCreator.GUI
                 ExtractMapBackgroundSets();
 
                 ExtractMaps();
+
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = true;
             }
             else // for versions beyond v30x
             {
@@ -460,6 +468,10 @@ namespace HaCreator.GUI
                 ExtractMapObjSets();
                 ExtractMapBackgroundSets();
                 ExtractMaps();
+
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
 
                 // UI.wz
                 const string UI_WZ_PATH = "ui";
