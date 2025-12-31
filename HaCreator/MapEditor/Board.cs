@@ -210,31 +210,51 @@ namespace HaCreator.MapEditor
                 MinimapRectangle.Draw(sprite, xShift, yShift, sel);
             }
 
-            // Render the minimap itself
-            if (miniMap != null && UserSettings.useMiniMap)
-            {
-                // Area for the image itself
-                Rectangle minimapImageArea = new Rectangle((miniMapPos.X + centerPoint.X) / _mag, (miniMapPos.Y + centerPoint.Y) / _mag, miniMap.Width, miniMap.Height);
-
-                // Render gray area
-                parent.FillRectangle(sprite, minimapArea, Color.Gray);
-                // Render minimap
-                if (miniMapTexture == null) 
-                    miniMapTexture = miniMap.ToTexture2D(parent.GraphicsDevice);
-
-                sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
-                // Render current location on minimap
-                parent.DrawRectangle(sprite, new Rectangle(hScroll / _mag, vScroll / _mag, parent.CurrentDXWindowSize.Width / _mag, (int)parent.CurrentDXWindowSize.Height / _mag), Color.Blue);
-                
-                // Render minimap borders
-                parent.DrawRectangle(sprite, minimapImageArea, Color.Black);
-            }
-            
             // Render center point if InfoMode on
             if (ApplicationSettings.InfoMode)
             {
                 parent.FillRectangle(sprite, new Rectangle(MultiBoard.VirtualToPhysical(-5, centerPoint.X, hScroll, 0), MultiBoard.VirtualToPhysical(-5 , centerPoint.Y, vScroll, 0), 10, 10), Color.DarkRed);
             }
+        }
+
+        /// <summary>
+        /// Renders the minimap overlay. This should be called with a separate sprite batch
+        /// that does NOT have the zoom transform applied, so the minimap stays at a fixed
+        /// screen size regardless of viewport zoom level.
+        /// </summary>
+        public void RenderMinimap(SpriteBatch sprite)
+        {
+            if (miniMap == null || !UserSettings.useMiniMap)
+                return;
+
+            // Area for the image itself
+            Rectangle minimapImageArea = new Rectangle(
+                (miniMapPos.X + centerPoint.X) / _mag,
+                (miniMapPos.Y + centerPoint.Y) / _mag,
+                miniMap.Width,
+                miniMap.Height);
+
+            // Render gray area
+            parent.FillRectangle(sprite, minimapArea, Color.Gray);
+
+            // Render minimap
+            if (miniMapTexture == null)
+                miniMapTexture = miniMap.ToTexture2D(parent.GraphicsDevice);
+
+            sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
+
+            // Render current location on minimap
+            // Account for zoom: when zoomed in, viewport shows less virtual space
+            int viewportWidth = (int)(parent.CurrentDXWindowSize.Width / _zoom);
+            int viewportHeight = (int)(parent.CurrentDXWindowSize.Height / _zoom);
+            parent.DrawRectangle(sprite, new Rectangle(
+                hScroll / _mag,
+                vScroll / _mag,
+                viewportWidth / _mag,
+                viewportHeight / _mag), Color.Blue);
+
+            // Render minimap borders
+            parent.DrawRectangle(sprite, minimapImageArea, Color.Black);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

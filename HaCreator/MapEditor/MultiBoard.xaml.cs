@@ -329,6 +329,20 @@ namespace HaCreator.MapEditor
             fontEngine.DrawString(sprite, new System.Drawing.Point(), Color.Black, fpsCounter.Frames.ToString(), 1000);
 #endif
             sprite.End();
+
+            // Render minimap as a UI overlay (without zoom transform so it stays at fixed screen size)
+            if (selectedBoard != null)
+            {
+                sprite.Begin(SpriteSortMode.Immediate, BlendState.NonPremultiplied);
+                lock (this)
+                {
+                    if (selectedBoard != null)
+                    {
+                        selectedBoard.RenderMinimap(sprite);
+                    }
+                }
+                sprite.End();
+            }
             try
             {
                 DxDevice.Present();
