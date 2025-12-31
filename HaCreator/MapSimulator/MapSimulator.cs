@@ -150,6 +150,9 @@ namespace HaCreator.MapSimulator
         // Chat system
         private readonly MapSimulatorChat _chat = new MapSimulatorChat();
 
+        // Screen effects (tremble, fade, flash) - based on CAnimationDisplayer
+        private readonly ScreenEffects _screenEffects = new ScreenEffects();
+
         // Debug
         private Texture2D texture_debugBoundaryRect;
         private bool bShowDebugMode = false;
@@ -362,8 +365,8 @@ namespace HaCreator.MapSimulator
             font_DebugValues = Content.Load<SpriteFont>("XnaDefaultFont");//("XnaFont_Debug");
 
             // Pre-cache navigation help text strings to avoid string.Format allocations in Draw()
-            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (ON)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
-            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug mode | [F6] Mob movement (OFF)\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
+            _navHelpTextMobOn = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug | [F6] Mob movement (ON) | [F7] Screen shake\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
+            _navHelpTextMobOff = "[Left] [Right] [Up] [Down] [Shift] for navigation.\n[F5] Debug | [F6] Mob movement (OFF) | [F7] Screen shake\n[Alt+Enter] Full screen | [PrintSc] Screenshot\n[H] Hide UI | [Double-click] Portal to teleport\n[Enter] Chat | /help for commands";
 
             base.Initialize();
         }
@@ -1325,6 +1328,15 @@ namespace HaCreator.MapSimulator
                 this.bMobMovementEnabled = !this.bMobMovementEnabled;
             }
 
+            // Test screen tremble with F7 (for debugging effects)
+            if (newKeyboardState.IsKeyUp(Keys.F7) && oldKeyboardState.IsKeyDown(Keys.F7))
+            {
+                _screenEffects.TriggerTremble(15, false, 0, 0, true, currTickCount);
+            }
+
+            // Update screen effects (tremble, fade, flash)
+            _screenEffects.Update(currTickCount);
+
             // Update mob movement
             UpdateMobMovement(gameTime);
 
@@ -1838,15 +1850,22 @@ namespace HaCreator.MapSimulator
             //GraphicsDevice.Clear(ClearOptions.Target, Color.Black, 1.0f, 0); // Clear the window to black
             GraphicsDevice.Clear(Color.Black);
 
+            // Apply screen effects (tremble offset) to the transformation matrix
+            Matrix effectMatrix = this.matrixScale;
+            if (_screenEffects.IsTrembleActive)
+            {
+                effectMatrix = Matrix.CreateTranslation(_screenEffects.TrembleOffsetX, _screenEffects.TrembleOffsetY, 0) * this.matrixScale;
+            }
+
             spriteBatch.Begin(
                 SpriteSortMode.Immediate, // spine :( needs to be drawn immediately to maintain the layer orders
                                           //SpriteSortMode.Deferred,
-                BlendState.NonPremultiplied, 
+                BlendState.NonPremultiplied,
                 Microsoft.Xna.Framework.Graphics.SamplerState.LinearClamp, // Add proper sampling
-                DepthStencilState.None, 
-                RasterizerState.CullCounterClockwise, 
-                null, 
-                this.matrixScale);
+                DepthStencilState.None,
+                RasterizerState.CullCounterClockwise,
+                null,
+                effectMatrix);
             //skeletonMeshRenderer.Begin();
 
             DrawLayer(_backgroundsBackArray, gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, TickCount); // back background
