@@ -32,9 +32,6 @@ namespace HaCreator.GUI
             button_browseWz = new System.Windows.Forms.Button();
             textBox_wzPath = new System.Windows.Forms.TextBox();
             label_wzPath = new System.Windows.Forms.Label();
-            button_browseImg = new System.Windows.Forms.Button();
-            textBox_imgPath = new System.Windows.Forms.TextBox();
-            label_imgPath = new System.Windows.Forms.Label();
             groupBox_cache = new System.Windows.Forms.GroupBox();
             checkBox_memoryMappedFiles = new System.Windows.Forms.CheckBox();
             numericUpDown_maxImages = new System.Windows.Forms.NumericUpDown();
@@ -124,67 +121,38 @@ namespace HaCreator.GUI
             groupBox_paths.Controls.Add(button_browseWz);
             groupBox_paths.Controls.Add(textBox_wzPath);
             groupBox_paths.Controls.Add(label_wzPath);
-            groupBox_paths.Controls.Add(button_browseImg);
-            groupBox_paths.Controls.Add(textBox_imgPath);
-            groupBox_paths.Controls.Add(label_imgPath);
             groupBox_paths.Location = new System.Drawing.Point(12, 133);
             groupBox_paths.Name = "groupBox_paths";
-            groupBox_paths.Size = new System.Drawing.Size(460, 95);
+            groupBox_paths.Size = new System.Drawing.Size(460, 60);
             groupBox_paths.TabIndex = 1;
             groupBox_paths.TabStop = false;
             groupBox_paths.Text = "Paths";
             //
             // button_browseWz
             //
-            button_browseWz.Location = new System.Drawing.Point(379, 59);
+            button_browseWz.Location = new System.Drawing.Point(379, 26);
             button_browseWz.Name = "button_browseWz";
             button_browseWz.Size = new System.Drawing.Size(75, 23);
-            button_browseWz.TabIndex = 5;
+            button_browseWz.TabIndex = 2;
             button_browseWz.Text = "Browse...";
             button_browseWz.UseVisualStyleBackColor = true;
             button_browseWz.Click += button_browseWz_Click;
             //
             // textBox_wzPath
             //
-            textBox_wzPath.Location = new System.Drawing.Point(110, 59);
+            textBox_wzPath.Location = new System.Drawing.Point(110, 26);
             textBox_wzPath.Name = "textBox_wzPath";
             textBox_wzPath.Size = new System.Drawing.Size(263, 23);
-            textBox_wzPath.TabIndex = 4;
+            textBox_wzPath.TabIndex = 1;
             //
             // label_wzPath
             //
             label_wzPath.AutoSize = true;
-            label_wzPath.Location = new System.Drawing.Point(15, 62);
+            label_wzPath.Location = new System.Drawing.Point(15, 29);
             label_wzPath.Name = "label_wzPath";
             label_wzPath.Size = new System.Drawing.Size(89, 15);
-            label_wzPath.TabIndex = 3;
+            label_wzPath.TabIndex = 0;
             label_wzPath.Text = "WZ Files Path:";
-            //
-            // button_browseImg
-            //
-            button_browseImg.Location = new System.Drawing.Point(379, 26);
-            button_browseImg.Name = "button_browseImg";
-            button_browseImg.Size = new System.Drawing.Size(75, 23);
-            button_browseImg.TabIndex = 2;
-            button_browseImg.Text = "Browse...";
-            button_browseImg.UseVisualStyleBackColor = true;
-            button_browseImg.Click += button_browseImg_Click;
-            //
-            // textBox_imgPath
-            //
-            textBox_imgPath.Location = new System.Drawing.Point(110, 26);
-            textBox_imgPath.Name = "textBox_imgPath";
-            textBox_imgPath.Size = new System.Drawing.Size(263, 23);
-            textBox_imgPath.TabIndex = 1;
-            //
-            // label_imgPath
-            //
-            label_imgPath.AutoSize = true;
-            label_imgPath.Location = new System.Drawing.Point(15, 29);
-            label_imgPath.Name = "label_imgPath";
-            label_imgPath.Size = new System.Drawing.Size(90, 15);
-            label_imgPath.TabIndex = 0;
-            label_imgPath.Text = "IMG Data Path:";
             //
             // groupBox_cache
             //
@@ -193,7 +161,7 @@ namespace HaCreator.GUI
             groupBox_cache.Controls.Add(label_maxImages);
             groupBox_cache.Controls.Add(numericUpDown_maxMemory);
             groupBox_cache.Controls.Add(label_maxMemory);
-            groupBox_cache.Location = new System.Drawing.Point(12, 234);
+            groupBox_cache.Location = new System.Drawing.Point(12, 199);
             groupBox_cache.Name = "groupBox_cache";
             groupBox_cache.Size = new System.Drawing.Size(225, 100);
             groupBox_cache.TabIndex = 2;
@@ -252,7 +220,7 @@ namespace HaCreator.GUI
             //
             groupBox_legacy.Controls.Add(checkBox_autoConvert);
             groupBox_legacy.Controls.Add(checkBox_allowWzFallback);
-            groupBox_legacy.Location = new System.Drawing.Point(247, 234);
+            groupBox_legacy.Location = new System.Drawing.Point(247, 199);
             groupBox_legacy.Name = "groupBox_legacy";
             groupBox_legacy.Size = new System.Drawing.Size(225, 72);
             groupBox_legacy.TabIndex = 3;
@@ -285,7 +253,7 @@ namespace HaCreator.GUI
             groupBox_extraction.Controls.Add(checkBox_generateIndex);
             groupBox_extraction.Controls.Add(numericUpDown_parallelThreads);
             groupBox_extraction.Controls.Add(label_parallelThreads);
-            groupBox_extraction.Location = new System.Drawing.Point(247, 312);
+            groupBox_extraction.Location = new System.Drawing.Point(247, 277);
             groupBox_extraction.Name = "groupBox_extraction";
             groupBox_extraction.Size = new System.Drawing.Size(225, 100);
             groupBox_extraction.TabIndex = 4;
@@ -334,7 +302,7 @@ namespace HaCreator.GUI
             // button_ok
             //
             button_ok.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
-            button_ok.Location = new System.Drawing.Point(290, 425);
+            button_ok.Location = new System.Drawing.Point(290, 390);
             button_ok.Name = "button_ok";
             button_ok.Size = new System.Drawing.Size(90, 28);
             button_ok.TabIndex = 5;
@@ -344,7 +312,7 @@ namespace HaCreator.GUI
             //
             // button_cancel
             //
-            button_cancel.Location = new System.Drawing.Point(386, 425);
+            button_cancel.Location = new System.Drawing.Point(386, 390);
             button_cancel.Name = "button_cancel";
             button_cancel.Size = new System.Drawing.Size(90, 28);
             button_cancel.TabIndex = 6;
@@ -354,7 +322,7 @@ namespace HaCreator.GUI
             //
             // button_resetDefaults
             //
-            button_resetDefaults.Location = new System.Drawing.Point(12, 425);
+            button_resetDefaults.Location = new System.Drawing.Point(12, 390);
             button_resetDefaults.Name = "button_resetDefaults";
             button_resetDefaults.Size = new System.Drawing.Size(100, 28);
             button_resetDefaults.TabIndex = 7;
@@ -368,7 +336,7 @@ namespace HaCreator.GUI
             AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
             AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             CancelButton = button_cancel;
-            ClientSize = new System.Drawing.Size(484, 465);
+            ClientSize = new System.Drawing.Size(484, 430);
             Controls.Add(groupBox_mode);
             Controls.Add(groupBox_paths);
             Controls.Add(groupBox_cache);
@@ -412,9 +380,6 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Button button_browseWz;
         private System.Windows.Forms.TextBox textBox_wzPath;
         private System.Windows.Forms.Label label_wzPath;
-        private System.Windows.Forms.Button button_browseImg;
-        private System.Windows.Forms.TextBox textBox_imgPath;
-        private System.Windows.Forms.Label label_imgPath;
         private System.Windows.Forms.GroupBox groupBox_cache;
         private System.Windows.Forms.CheckBox checkBox_memoryMappedFiles;
         private System.Windows.Forms.NumericUpDown numericUpDown_maxImages;

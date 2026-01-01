@@ -48,7 +48,6 @@ namespace HaCreator.GUI
             }
 
             // Paths
-            textBox_imgPath.Text = _config.ImgRootPath;
             textBox_wzPath.Text = _config.Legacy.WzFilePath ?? "";
 
             // Cache settings
@@ -74,10 +73,6 @@ namespace HaCreator.GUI
             bool isImgMode = radioButton_imgMode.Checked;
             bool isWzMode = radioButton_wzMode.Checked;
             bool isHybridMode = radioButton_hybridMode.Checked;
-
-            // IMG path controls
-            textBox_imgPath.Enabled = isImgMode || isHybridMode;
-            button_browseImg.Enabled = isImgMode || isHybridMode;
 
             // WZ path controls
             textBox_wzPath.Enabled = isWzMode || isHybridMode;
@@ -116,20 +111,6 @@ namespace HaCreator.GUI
             UpdateUIState();
         }
 
-        private void button_browseImg_Click(object sender, EventArgs e)
-        {
-            using (var dialog = new FolderBrowserDialog())
-            {
-                dialog.Description = "Select IMG data root directory";
-                dialog.SelectedPath = textBox_imgPath.Text;
-
-                if (dialog.ShowDialog() == DialogResult.OK)
-                {
-                    textBox_imgPath.Text = dialog.SelectedPath;
-                }
-            }
-        }
-
         private void button_browseWz_Click(object sender, EventArgs e)
         {
             using (var dialog = new FolderBrowserDialog())
@@ -159,16 +140,6 @@ namespace HaCreator.GUI
         private void button_ok_Click(object sender, EventArgs e)
         {
             // Validate inputs
-            if (radioButton_imgMode.Checked || radioButton_hybridMode.Checked)
-            {
-                if (string.IsNullOrWhiteSpace(textBox_imgPath.Text))
-                {
-                    MessageBox.Show("Please specify an IMG data root directory.",
-                        "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return;
-                }
-            }
-
             if (radioButton_wzMode.Checked || radioButton_hybridMode.Checked)
             {
                 if (radioButton_wzMode.Checked && string.IsNullOrWhiteSpace(textBox_wzPath.Text))
@@ -198,7 +169,6 @@ namespace HaCreator.GUI
                 _config.DataSourceMode = DataSourceMode.Hybrid;
 
             // Paths
-            _config.ImgRootPath = textBox_imgPath.Text;
             _config.Legacy.WzFilePath = textBox_wzPath.Text;
 
             // Cache settings
