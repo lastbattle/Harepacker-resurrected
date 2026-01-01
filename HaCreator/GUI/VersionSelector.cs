@@ -149,16 +149,8 @@ namespace HaCreator.GUI
                 label_imageCount.Text = $"Total Images: {totalImages:N0}";
                 label_categoryCount.Text = $"Categories: {v.Categories.Count}";
 
-                // Features
-                var features = new System.Collections.Generic.List<string>();
-                if (v.Features.HasPets) features.Add("Pets");
-                if (v.Features.HasMount) features.Add("Mounts");
-                if (v.Features.HasAndroid) features.Add("Androids");
-                if (v.Features.HasV5thJob) features.Add("5th Job");
-
-                label_features.Text = features.Count > 0
-                    ? $"Features: {string.Join(", ", features)}"
-                    : "Features: Basic";
+                // Features (reserved for future use)
+                label_features.Text = "Features: -";
 
                 // Validation status
                 if (!v.IsValid && v.ValidationErrors.Count > 0)
