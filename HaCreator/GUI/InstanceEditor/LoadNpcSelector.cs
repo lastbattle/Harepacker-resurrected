@@ -1,25 +1,4 @@
-/*Copyright(c) 2024, LastBattle https://github.com/lastbattle/Harepacker-resurrected
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-
-using MapleLib.WzLib.WzStructure;
+﻿using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib;
 using SharpDX.Direct3D9;
 using System;
@@ -165,17 +144,39 @@ namespace HaCreator.GUI.InstanceEditor
                     npcFuncs = val.Item2;
                 }
 
-                // npc image
-                if (Program.InfoManager.NpcNameCache.ContainsKey(npcId) && Program.InfoManager.NpcPropertyCache.ContainsKey(npcId))
+                // npc image - load on demand to reduce memory usage
+                pictureBox_IconPreview.Image = null;
+                if (Program.InfoManager.NpcNameCache.ContainsKey(npcId))
                 {
-                    WzCanvasProperty standCanvas = Program.InfoManager.NpcPropertyCache[npcId]?["stand"]?["0"] as WzCanvasProperty;
-                    if (standCanvas != null)
-                        pictureBox_IconPreview.Image = standCanvas.GetLinkedWzCanvasBitmap();
-                    else
-                        pictureBox_IconPreview.Image = null;
+                    // Try to get from cache first, or load on demand
+                    WzImage npcImage = null;
+                    if (Program.InfoManager.NpcPropertyCache.TryGetValue(npcId, out npcImage) && npcImage != null)
+                    {
+                        // Use cached image
+                    }
+                    else if (Program.DataSource != null)
+                    {
+                        // Load on demand from data source
+                        npcImage = Program.DataSource.GetImage("Npc", $"{npcId}.img");
+                        if (npcImage != null)
+                        {
+                            npcImage.ParseImage();
+                            // Cache for future use
+                            lock (Program.InfoManager.NpcPropertyCache)
+                            {
+                                if (!Program.InfoManager.NpcPropertyCache.ContainsKey(npcId))
+                                    Program.InfoManager.NpcPropertyCache[npcId] = npcImage;
+                            }
+                        }
+                    }
+
+                    if (npcImage != null)
+                    {
+                        WzCanvasProperty standCanvas = npcImage["stand"]?["0"] as WzCanvasProperty;
+                        if (standCanvas != null)
+                            pictureBox_IconPreview.Image = standCanvas.GetLinkedWzCanvasBitmap();
+                    }
                 }
-                else
-                    pictureBox_IconPreview.Image = null;
 
                 // label desc
                 label_npcName.Text = npcName;

@@ -10,9 +10,9 @@
              xmlns:local="clr-namespace:HaRepacker"
              xmlns:converter="clr-namespace:HaRepacker.Converter"
              xmlns:sharedLib="clr-namespace:HaSharedLibrary.GUI;assembly=HaSharedLibrary"
-              xmlns:sharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
+             xmlns:sharedLibConverter="clr-namespace:HaSharedLibrary.Converter;assembly=HaSharedLibrary"
              xmlns:guiControls="clr-namespace:HaRepacker.GUI.Controls"
-              xmlns:localgui ="clr-namespace:HaRepacker.GUI"
+             xmlns:localgui ="clr-namespace:HaRepacker.GUI"
              xmlns:localSubPanels ="clr-namespace:HaRepacker.GUI.Panels.SubPanels"
              
              xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
@@ -412,7 +412,7 @@
                     <sharedLib:FieldTypePanel x:Name="fieldTypePanel" Visibility="Collapsed"/>
 
                     <sharedLib:SoundPlayer x:Name="mp3Player" Visibility="Collapsed"/>
-
+                    
                     <!-- Lua script editor-->
                     <localSubPanels:AvalonTextEditor x:Name="textEditor" Visibility="Collapsed"/>
 

@@ -1,16 +1,12 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.GUI;
+﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using System.Drawing;
 
 namespace HaCreator.MapEditor.Info
@@ -21,6 +17,7 @@ namespace HaCreator.MapEditor.Info
         private readonly string name;
 
         private WzImage _LinkedWzImage;
+        private MobData _mobData;
 
         /// <summary>
         /// Constructor
@@ -69,14 +66,24 @@ namespace HaCreator.MapEditor.Info
         {
             string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
 
-            WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
+            WzImage mobImage = null;
+
+            // Try IDataSource first
+            if (Program.DataSource != null)
+            {
+                mobImage = Program.DataSource.GetImage("Mob", imgName);
+            }
+            // Fall back to WzManager
+            if (mobImage == null && Program.WzManager != null)
+            {
+                mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
+            }
+
             if (mobImage == null)
                 return null;
 
             if (!mobImage.Parsed)
-            {
                 mobImage.ParseImage();
-            }
             if (mobImage.HCTag == null)
             {
                 mobImage.HCTag = MobInfo.Load(mobImage);
@@ -132,12 +139,12 @@ namespace HaCreator.MapEditor.Info
                 if (_LinkedWzImage == null) {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
 
-                    WzImage mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName); // default;
+                    WzImage mobImage = Program.FindImage("Mob", imgName); // default;
 
                     WzStringProperty link = (WzStringProperty)mobImage?["info"]?["link"];
                     if (link != null) {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        WzImage linkedImage = (WzImage)Program.WzManager.FindWzImageByName("mob", linkImgName);
+                        WzImage linkedImage = Program.FindImage("Mob", linkImgName);
 
                         _LinkedWzImage = linkedImage ?? mobImage; // fallback to mobImage if linkedimage isnt available
                     }
@@ -148,6 +155,27 @@ namespace HaCreator.MapEditor.Info
                 return _LinkedWzImage;
             }
             set { this._LinkedWzImage = value; }
+        }
+
+        /// <summary>
+        /// Parsed mob data (lazy loaded, cached for all instances of same mob ID)
+        /// Contains stats, flags, attack data, skill data, etc.
+        /// </summary>
+        public MobData MobData
+        {
+            get
+            {
+                if (_mobData == null)
+                {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzImage mobImage = Program.FindImage("Mob", imgName);
+                    if (mobImage != null && !mobImage.Parsed)
+                        mobImage.ParseImage();
+                    int mobId = int.TryParse(id, out int parsedId) ? parsedId : 0;
+                    _mobData = MobData.Parse(mobImage, mobId);
+                }
+                return _mobData;
+            }
         }
     }
 }

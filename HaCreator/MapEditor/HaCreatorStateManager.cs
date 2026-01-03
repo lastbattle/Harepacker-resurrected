@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.CustomControls;
+﻿using HaCreator.CustomControls;
 using HaCreator.Exceptions;
 using HaCreator.GUI;
 using HaCreator.GUI.EditorPanels;
@@ -54,9 +48,15 @@ namespace HaCreator.MapEditor
         private readonly InputHandler input;
         private TilePanel tilePanel;
         private ObjPanel objPanel;
+        private BackgroundPanel backgroundPanel;
+        private LifePanel lifePanel;
         private BlackBorderPanel blackBorderPanel;
         private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
+
+        // Hot swap
+        private HotSwapRefreshService _hotSwapService;
+        private AssetUsageTracker _assetUsageTracker;
 
         public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input, System.Windows.Controls.ScrollViewer editorPanel,
             SystemWinCtl.TextBlock textblock_CursorX, SystemWinCtl.TextBlock textblock_CursorY, SystemWinCtl.TextBlock textblock_RCursorX, SystemWinCtl.TextBlock textblock_RCursorY, SystemWinCtl.TextBlock textblock_selectedItem)
@@ -704,9 +704,154 @@ namespace HaCreator.MapEditor
             System.Windows.Controls.TabItem tab = (System.Windows.Controls.TabItem) tabs.SelectedItem;
             if (selectedBoard == null || tab == null)
                 return;
-            MapSimulator.MapSimulator mapSimulator = MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header);
 
-            multiBoard.DeviceReady = true;
+            // Create callback for portal teleportation
+            Func<int, Tuple<Board, string>> loadMapCallback = (mapId) =>
+            {
+                return LoadMapForSimulator(mapId);
+            };
+
+            // Create callback for when simulator exits - restore DeviceReady on UI thread
+            Action onComplete = () =>
+            {
+                tabs.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    multiBoard.DeviceReady = true;
+                }));
+            };
+
+            MapSimulator.MapSimulatorLoader.CreateAndShowMapSimulator(selectedBoard, (string) tab.Header, loadMapCallback, onComplete);
+        }
+
+        /// <summary>
+        /// Loads a map image on-demand from the data source.
+        /// This is used when WzImage was not stored in MapsCache to save memory.
+        /// </summary>
+        /// <param name="mapId">The 9-digit map ID</param>
+        /// <returns>The loaded WzImage or null if not found</returns>
+        private WzImage LoadMapImageOnDemand(string mapId)
+        {
+            if (Program.DataSource == null)
+                return null;
+
+            string paddedId = mapId.PadLeft(9, '0');
+            string folderNum = paddedId[0].ToString();
+
+            // Try to load from Map/Map/MapX/mapid.img
+            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
+            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
+
+            if (mapImage == null)
+            {
+                // Try without extra Map/ prefix
+                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
+            }
+
+            if (mapImage != null)
+                mapImage.ParseImage();
+
+            return mapImage;
+        }
+
+        /// <summary>
+        /// Loads a map by ID for the simulator (portal teleportation).
+        /// This loads the map into a new tab in the editor and returns the Board for simulation.
+        /// If the map is already loaded in MultiBoard, it switches to that existing tab instead.
+        /// Must be called from the game thread - marshals UI operations to the UI thread.
+        /// </summary>
+        /// <param name="mapId">The map ID to load</param>
+        /// <returns>Tuple of (Board, titleName) or null if map not found</returns>
+        private Tuple<Board, string> LoadMapForSimulator(int mapId)
+        {
+            // Format map ID as 9-digit string
+            string mapIdStr = mapId.ToString().PadLeft(9, '0');
+
+            // First, check if the map is already loaded in MultiBoard
+            Tuple<Board, string> existingResult = null;
+            tabs.Dispatcher.Invoke(() =>
+            {
+                foreach (Board board in multiBoard.Boards)
+                {
+                    if (board.MapInfo != null && board.MapInfo.id == mapId)
+                    {
+                        // Map is already loaded - switch to it
+                        multiBoard.SelectedBoard = board;
+                        if (board.TabPage != null)
+                        {
+                            tabs.SelectedItem = board.TabPage;
+                            string titleName = (string)board.TabPage.Header;
+                            existingResult = new Tuple<Board, string>(board, titleName);
+                        }
+                        break;
+                    }
+                }
+            });
+
+            if (existingResult != null)
+            {
+                return existingResult;
+            }
+
+            // Check if map exists in cache
+            if (!Program.InfoManager.MapsCache.ContainsKey(mapIdStr))
+            {
+                return null;
+            }
+
+            try
+            {
+                // Get map data from cache
+                Tuple<WzImage, string, string, string, MapInfo> loadedMap = Program.InfoManager.MapsCache[mapIdStr];
+
+                WzImage mapImage = loadedMap.Item1;
+                string mapName = loadedMap.Item2;
+                string streetName = loadedMap.Item3;
+                string categoryName = loadedMap.Item4;
+                MapInfo info = loadedMap.Item5;
+
+                // Load WzImage on-demand if null (memory optimization)
+                if (mapImage == null)
+                {
+                    mapImage = LoadMapImageOnDemand(mapIdStr);
+                }
+                if (mapImage == null)
+                {
+                    return null;
+                }
+
+                // Create MapInfo on-demand if null (memory optimization)
+                if (info == null)
+                {
+                    info = new MapInfo(mapImage, streetName, mapName, categoryName);
+                }
+
+                // Use Dispatcher.Invoke to run UI operations on the UI thread
+                // Use the tabs control's Dispatcher since this is a WinForms app with WPF elements
+                Tuple<Board, string> result = null;
+                tabs.Dispatcher.Invoke(() =>
+                {
+                    // Load the map into a new tab
+                    MapLoader.CreateMapFromImage(mapId, mapImage, info, mapName, streetName, categoryName, tabs, multiBoard, MakeRightClickHandler());
+
+                    // Get the newly created board (it becomes the selected board)
+                    Board newBoard = multiBoard.SelectedBoard;
+                    System.Windows.Controls.TabItem newTab = (System.Windows.Controls.TabItem)tabs.SelectedItem;
+
+                    if (newBoard != null && newTab != null)
+                    {
+                        string titleName = (string)newTab.Header;
+                        result = new Tuple<Board, string>(newBoard, titleName);
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading map {mapId}: {ex.Message}");
+            }
+
+            return null;
         }
 
         void Ribbon_ParallaxToggled(bool pressed)
@@ -798,6 +943,44 @@ namespace HaCreator.MapEditor
 
         void Ribbon_RepackClicked()
         {
+            // Check if we're using IMG filesystem mode (no WzManager)
+            if (Program.WzManager == null)
+            {
+                // Show Pack to WZ dialog for IMG filesystem mode
+                if (Program.DataSource != null)
+                {
+                    // Get the version path from DataSource
+                    string versionPath = null;
+                    if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDs)
+                    {
+                        versionPath = imgDs.Manager?.VersionPath;
+                    }
+                    else if (Program.DataSource is MapleLib.Img.HybridDataSource hybridDs)
+                    {
+                        // Try to get from hybrid's img source
+                        versionPath = hybridDs.ImgSource?.Manager?.VersionPath;
+                    }
+
+                    if (!string.IsNullOrEmpty(versionPath))
+                    {
+                        lock (multiBoard)
+                        {
+                            PackToWz packDialog = new PackToWz(versionPath);
+                            packDialog.ShowDialog();
+                        }
+                        return;
+                    }
+                }
+
+                MessageBox.Show(
+                    "Unable to determine the IMG filesystem path.\n\n" +
+                    "Please use HaRepacker to pack IMG files to WZ.",
+                    "IMG Filesystem Mode",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             lock (multiBoard)
             {
                 Repack r = new Repack();
@@ -1082,6 +1265,88 @@ namespace HaCreator.MapEditor
         {
             this.blackBorderPanel = op;
         }
+
+        /// <summary>
+        /// Sets the background panel
+        /// </summary>
+        /// <param name="bp"></param>
+        public void SetBackgroundPanel(BackgroundPanel bp)
+        {
+            this.backgroundPanel = bp;
+        }
+
+        /// <summary>
+        /// Sets the life panel
+        /// </summary>
+        /// <param name="lp"></param>
+        public void SetLifePanel(LifePanel lp)
+        {
+            this.lifePanel = lp;
+        }
+
+        #region Hot Swap
+        /// <summary>
+        /// Gets the HotSwapRefreshService
+        /// </summary>
+        public HotSwapRefreshService HotSwapService => _hotSwapService;
+
+        /// <summary>
+        /// Gets the AssetUsageTracker
+        /// </summary>
+        public AssetUsageTracker AssetUsageTracker => _assetUsageTracker;
+
+        /// <summary>
+        /// Initializes hot swap functionality and subscribes all panels
+        /// </summary>
+        public void InitializeHotSwap()
+        {
+            if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDataSource)
+            {
+                _assetUsageTracker = new AssetUsageTracker();
+                _hotSwapService = new HotSwapRefreshService(
+                    Program.InfoManager,
+                    System.Threading.SynchronizationContext.Current);
+
+                _hotSwapService.SubscribeToDataSource(imgDataSource);
+
+                // Subscribe panels
+                tilePanel?.SubscribeToHotSwap(_hotSwapService);
+                objPanel?.SubscribeToHotSwap(_hotSwapService);
+                backgroundPanel?.SubscribeToHotSwap(_hotSwapService);
+                lifePanel?.SubscribeToHotSwap(_hotSwapService);
+
+                System.Diagnostics.Debug.WriteLine("HaCreatorStateManager: Hot swap initialized");
+            }
+        }
+
+        /// <summary>
+        /// Registers all assets used by a board with the usage tracker
+        /// </summary>
+        /// <param name="board">The board to register</param>
+        public void RegisterBoardAssets(Board board)
+        {
+            _assetUsageTracker?.RegisterBoardAssets(board);
+        }
+
+        /// <summary>
+        /// Unregisters all assets used by a board
+        /// </summary>
+        /// <param name="board">The board to unregister</param>
+        public void UnregisterBoardAssets(Board board)
+        {
+            _assetUsageTracker?.UnregisterBoardAssets(board);
+        }
+
+        /// <summary>
+        /// Disposes hot swap resources
+        /// </summary>
+        public void DisposeHotSwap()
+        {
+            _hotSwapService?.Dispose();
+            _hotSwapService = null;
+            _assetUsageTracker = null;
+        }
+        #endregion
 
         public void EnterEditMode(ItemTypes type)
         {

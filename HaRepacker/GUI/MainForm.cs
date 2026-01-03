@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -29,6 +23,7 @@ using static MapleLib.Configuration.UserSettings;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Interaction;
 using HaRepacker.GUI.Input;
+using HaRepacker.GUI.HotSwap;
 using HaRepacker.Comparer;
 
 using HaSharedLibrary;
@@ -41,6 +36,8 @@ using System.Runtime.CompilerServices;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib.Serializer;
 using static HaSharedLibrary.Util.AssemblyBitnessDetector;
+using MapleLib.Img;
+using MapleLib.Helpers;
 
 namespace HaRepacker.GUI
 {
@@ -49,6 +46,11 @@ namespace HaRepacker.GUI
         private readonly bool mainFormLoaded = false;
 
         private MainPanel MainPanel = null;
+
+        /// <summary>
+        /// Hot-swap manager for detecting external file modifications
+        /// </summary>
+        private HotSwapManager _hotSwapManager;
 
         /// <summary>
         /// Constructor
@@ -135,9 +137,67 @@ namespace HaRepacker.GUI
             // Focus on the tab control
             tabControl_MainPanels.Focus();
 
+            // Initialize hot-swap manager
+            InitializeHotSwap();
+
             // flag. loaded
             mainFormLoaded = true;
         }
+
+        #region Hot-Swap
+        /// <summary>
+        /// Initializes the hot-swap functionality
+        /// </summary>
+        private void InitializeHotSwap()
+        {
+            _hotSwapManager = new HotSwapManager(this);
+
+            // Add notification bar to the form (below the menu bar)
+            _hotSwapManager.NotificationBar.Dock = System.Windows.Forms.DockStyle.Top;
+            this.Controls.Add(_hotSwapManager.NotificationBar);
+            _hotSwapManager.NotificationBar.BringToFront();
+
+            // Subscribe to events
+            _hotSwapManager.ImgFileReloaded += OnImgFileReloaded;
+            _hotSwapManager.ImgFileAddedToTree += OnImgFileAddedToTree;
+
+            // Enable hot-swap if configured
+            if (HotSwapConstants.EnableImgFileWatching)
+            {
+                _hotSwapManager.Enable();
+            }
+        }
+
+        /// <summary>
+        /// Called when an IMG file is reloaded from disk
+        /// </summary>
+        private void OnImgFileReloaded(object sender, ImgFileReloadedEventArgs e)
+        {
+            // Refresh the selected node if it matches
+            if (MainPanel.DataTree.SelectedNode == e.Node)
+            {
+                MainPanel.DataTree.SelectedNode = null;
+                MainPanel.DataTree.SelectedNode = e.Node;
+            }
+        }
+
+        /// <summary>
+        /// Called when a new IMG file is added to the tree
+        /// </summary>
+        private void OnImgFileAddedToTree(object sender, ImgFileAddedEventArgs e)
+        {
+            // Sort the parent node if sorting is enabled
+            if (Program.ConfigurationManager.UserSettings.Sort && e.Node?.Parent != null)
+            {
+                SortNodesRecursively((WzNode)e.Node.Parent, true);
+            }
+        }
+
+        /// <summary>
+        /// Gets the hot-swap manager
+        /// </summary>
+        public HotSwapManager HotSwapManager => _hotSwapManager;
+        #endregion
 
         #region Load, unload WZ files + Panels & TreeView management
         /// <summary>
@@ -880,6 +940,10 @@ namespace HaRepacker.GUI
 
                         Program.WzFileManager = new WzFileManager(maplestoryBaseDirectory, bIsStandAloneWzFile);
                         Program.WzFileManager.BuildWzFileList();
+
+                        // Set image format detection flag for pre-Big Bang compatibility
+                        // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                        ImageFormatDetector.UsePreBigBangImageFormats = Program.WzFileManager.IsPreBBDataWzFormat;
                     }
 
                     // Data.wz hotfix file
@@ -908,7 +972,7 @@ namespace HaRepacker.GUI
                         AddLoadedWzObjectToMainPanel(img);
                     }
 
-                    else if (filePathLowerCase.EndsWith(".ms"))
+                    else if (filePathLowerCase.EndsWith(".ms") || filePathLowerCase.EndsWith(".mn"))
                     {
                         // Raw .ms file before being packed into .wz
 
@@ -1032,7 +1096,7 @@ namespace HaRepacker.GUI
             using (OpenFileDialog dialog = new OpenFileDialog()
             {
                 Title = HaRepacker.Properties.Resources.SelectWz,
-                Filter = string.Format("{0}|*.wz;*.img;*.ms;ZLZ.dll;ZLZ64.dll", HaRepacker.Properties.Resources.WzFilter),
+                Filter = string.Format("{0}|*.wz;*.img;*.ms;*.mn;ZLZ.dll;ZLZ64.dll", HaRepacker.Properties.Resources.WzFilter),
                 Multiselect = true,
             })
             {
@@ -1045,7 +1109,116 @@ namespace HaRepacker.GUI
         }
 
         /// <summary>
-        /// Open new WZ file (KMST) 
+        /// Open extracted IMG version directory
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private async void openVersionDirectoryToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Dispatcher currentDispatcher = Dispatcher.CurrentDispatcher;
+
+            using (FolderBrowserDialog fbd = new FolderBrowserDialog()
+            {
+                Description = "Select a version directory containing extracted IMG files",
+                ShowNewFolderButton = false,
+            })
+            {
+                DialogResult result = fbd.ShowDialog();
+                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                    return;
+
+                // Validate directory has IMG files or manifest.json
+                string selectedPath = fbd.SelectedPath;
+                bool hasManifest = File.Exists(Path.Combine(selectedPath, "manifest.json"));
+                bool hasImgFiles = Directory.GetFiles(selectedPath, "*.img", SearchOption.AllDirectories).Length > 0;
+                bool hasCategories = ImgFileSystemManager.STANDARD_CATEGORIES.Any(cat =>
+                    Directory.Exists(Path.Combine(selectedPath, cat)));
+
+                if (!hasManifest && !hasImgFiles && !hasCategories)
+                {
+                    MessageBox.Show(
+                        "The selected directory does not appear to be a valid version directory.\n\n" +
+                        "A valid version directory should contain:\n" +
+                        "- A manifest.json file, OR\n" +
+                        "- Standard category folders (String, Map, Mob, etc.), OR\n" +
+                        "- IMG files",
+                        "Invalid Directory",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Show splash screen
+                MainPanel.OnSetPanelLoading();
+
+                try
+                {
+                    await Task.Run(() =>
+                    {
+                        LoadVersionDirectory(selectedPath, currentDispatcher);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Error loading version directory:\n{ex.Message}",
+                        "Load Error",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    MainPanel.OnSetPanelLoadingCompleted();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads a version directory and adds its structure to the tree
+        /// </summary>
+        private void LoadVersionDirectory(string versionPath, Dispatcher currentDispatcher)
+        {
+            // Initialize ImgFileSystemManager
+            var manager = new ImgFileSystemManager(versionPath);
+            manager.Initialize();
+
+            // Set image format detection flag for pre-Big Bang compatibility
+            // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+            // Read from manifest.json's IsPreBB flag
+            ImageFormatDetector.UsePreBigBangImageFormats = manager.VersionInfo?.IsPreBB ?? false;
+
+            // Get version name
+            string versionName = manager.VersionInfo?.DisplayName ?? Path.GetFileName(versionPath);
+
+            // Create virtual WzDirectory structure for each category
+            foreach (string category in manager.GetCategories())
+            {
+                var virtualDir = manager.GetDirectory(category);
+                if (virtualDir != null)
+                {
+                    currentDispatcher.Invoke(() =>
+                    {
+                        WzNode node = new WzNode(virtualDir);
+                        node.Text = $"{versionName}/{category}";
+
+                        MainPanel.DataTree.BeginUpdate();
+                        MainPanel.DataTree.Nodes.Add(node);
+                        if (Program.ConfigurationManager.UserSettings.Sort)
+                        {
+                            SortNodesRecursively(node);
+                        }
+                        MainPanel.DataTree.EndUpdate();
+
+                        // Enable hot-swap watching for this directory
+                        string categoryPath = Path.Combine(versionPath, category);
+                        _hotSwapManager?.WatchDirectory(categoryPath, node);
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Open new WZ file (KMST)
         /// with the split format
         /// </summary>
         /// <param name="sender"></param>
@@ -1134,25 +1307,42 @@ namespace HaRepacker.GUI
             if (Warning.Warn(HaRepacker.Properties.Resources.MainUnloadAll))
             {
                 Dispatcher currentThread = Dispatcher.CurrentDispatcher;
-                
-                var wzFiles = Program.WzFileManager.WzFileList;
-                /*foreach (WzFile wzFile in wzFiles)
-                {
-                    UnloadWzFile(wzFile);
-                };*/
-                Parallel.ForEach(wzFiles, wzFile =>
-                {
-                    UnloadWzFile(wzFile, currentThread);
-                });
 
-                var wzImages = Program.WzFileManager.WzImagesList;
-                /*foreach (WzFile wzFile in wzFiles)
+                // Unload WZ files if WzFileManager is initialized
+                if (Program.WzFileManager != null)
                 {
-                    UnloadWzFile(wzFile);
-                };*/
-                Parallel.ForEach(wzImages, wzImage =>
+                    var wzFiles = Program.WzFileManager.WzFileList;
+                    Parallel.ForEach(wzFiles, wzFile =>
+                    {
+                        UnloadWzFile(wzFile, currentThread);
+                    });
+
+                    var wzImages = Program.WzFileManager.WzImagesList;
+                    Parallel.ForEach(wzImages, wzImage =>
+                    {
+                        UnloadWzImageFile(wzImage, currentThread);
+                    });
+                }
+
+                // Unload VirtualWzDirectory nodes (IMG filesystem)
+                currentThread.Invoke(() =>
                 {
-                    UnloadWzImageFile(wzImage, currentThread);
+                    var nodesToRemove = new System.Collections.Generic.List<WzNode>();
+                    foreach (WzNode node in MainPanel.DataTree.Nodes)
+                    {
+                        if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
+                        {
+                            // Stop hot-swap watching for this directory
+                            _hotSwapManager?.UnwatchDirectory(virtualDir.FilesystemPath);
+
+                            virtualDir.Dispose();
+                            nodesToRemove.Add(node);
+                        }
+                    }
+                    foreach (var node in nodesToRemove)
+                    {
+                        node.Remove();
+                    }
                 });
             }
         }
@@ -1168,14 +1358,32 @@ namespace HaRepacker.GUI
             {
                 Dispatcher currentThread = Dispatcher.CurrentDispatcher;
 
-                var wzFiles = Program.WzFileManager.WzFileList;
-                /*foreach (WzFile wzFile in wzFiles)
+                // Reload WZ files if WzFileManager is initialized
+                if (Program.WzFileManager != null)
                 {
-                    ReloadLoadedWzFile(wzFile);
-                };*/
-                Parallel.ForEach(wzFiles, wzFile =>
+                    var wzFiles = Program.WzFileManager.WzFileList;
+                    Parallel.ForEach(wzFiles, wzFile =>
+                    {
+                        ReloadWzFile(wzFile, currentThread);
+                    });
+                }
+
+                // Reload VirtualWzDirectory nodes (IMG filesystem) - refresh from disk
+                currentThread.Invoke(() =>
                 {
-                    ReloadWzFile(wzFile, currentThread);
+                    foreach (WzNode node in MainPanel.DataTree.Nodes)
+                    {
+                        if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
+                        {
+                            virtualDir.Refresh();
+                            node.Nodes.Clear();
+                            // Re-populate children
+                            foreach (WzDirectory dir in virtualDir.WzDirectories)
+                                node.Nodes.Add(new WzNode(dir));
+                            foreach (WzImage img in virtualDir.WzImages)
+                                node.Nodes.Add(new WzNode(img));
+                        }
+                    }
                 });
             }
         }
@@ -1293,13 +1501,39 @@ namespace HaRepacker.GUI
             }
             else
             {
-                if (MainPanel.DataTree.SelectedNode.Tag is WzFile)
+                if (MainPanel.DataTree.SelectedNode.Tag is WzFile ||
+                    MainPanel.DataTree.SelectedNode.Tag is MapleLib.Img.VirtualWzDirectory)
                     node = (WzNode)MainPanel.DataTree.SelectedNode;
                 else
                     node = ((WzNode)MainPanel.DataTree.SelectedNode).TopLevelNode;
             }
 
-            // Save to file.
+            // Handle VirtualWzDirectory (IMG filesystem)
+            if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
+            {
+                // Temporarily ignore file changes during save to prevent watcher from triggering reload
+                _hotSwapManager?.BeginDirectorySaveOperation(virtualDir.FilesystemPath);
+
+                try
+                {
+                    int savedCount = virtualDir.SaveAllChangedImages();
+                    if (savedCount > 0)
+                    {
+                        MessageBox.Show($"Saved {savedCount} changed image(s).", "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show("No changes to save.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                finally
+                {
+                    _hotSwapManager?.EndDirectorySaveOperation(virtualDir.FilesystemPath);
+                }
+                return;
+            }
+
+            // Save to file (WZ files)
             if (node.Tag is WzFile || node.Tag is WzImage)
             {
                 new SaveForm(MainPanel, node).ShowDialog();
@@ -1319,6 +1553,9 @@ namespace HaRepacker.GUI
             // Save app settings quickly
             if (!e.Cancel)
             {
+                // Dispose hot-swap manager
+                _hotSwapManager?.Dispose();
+
                 Program.ConfigurationManager.Save();
             }
         }
@@ -1921,6 +2158,45 @@ namespace HaRepacker.GUI
         private void searchToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //MainPanel.findStrip.Visible = true;
+        }
+
+        /// <summary>
+        /// Pack IMG files to WZ
+        /// </summary>
+        private void packImgToWzToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var folderDialog = new FolderBrowserDialog())
+            {
+                folderDialog.Description = "Select the IMG filesystem version directory to pack";
+
+                if (folderDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string versionPath = folderDialog.SelectedPath;
+
+                    // Check if this looks like an IMG filesystem directory
+                    string manifestPath = Path.Combine(versionPath, "manifest.json");
+                    if (!File.Exists(manifestPath))
+                    {
+                        // Check if any standard category folders exist
+                        bool hasCategories = MapleLib.Img.WzPackingService.STANDARD_CATEGORIES
+                            .Any(cat => Directory.Exists(Path.Combine(versionPath, cat)));
+
+                        if (!hasCategories)
+                        {
+                            Warning.Error("The selected directory does not appear to be a valid IMG filesystem.\n\n" +
+                                "Please select a directory containing extracted IMG files with category folders like:\n" +
+                                "String, Map, Mob, Npc, etc.");
+                            return;
+                        }
+                    }
+
+                    // Show the Pack to WZ dialog
+                    using (var packDialog = new PackToWzForm(versionPath))
+                    {
+                        packDialog.ShowDialog();
+                    }
+                }
+            }
         }
 
         private static readonly string HelpFile = "Help.htm";

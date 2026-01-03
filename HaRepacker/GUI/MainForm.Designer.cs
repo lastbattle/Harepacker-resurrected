@@ -35,6 +35,7 @@ namespace HaRepacker.GUI
             fileToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             newToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             openToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            openVersionDirectoryToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             toolStripMenuItem_newWzFormat = new System.Windows.Forms.ToolStripMenuItem();
             saveToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             toolStripSeparator5 = new System.Windows.Forms.ToolStripSeparator();
@@ -106,6 +107,7 @@ namespace HaRepacker.GUI
             tabControl_MainPanels = new System.Windows.Forms.TabControl();
             button_addTab = new System.Windows.Forms.Button();
             toolsToolStripMenuItem1 = new System.Windows.Forms.ToolStripMenuItem();
+            packImgToWzToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             mainMenu.SuspendLayout();
             SuspendLayout();
             // 
@@ -118,7 +120,7 @@ namespace HaRepacker.GUI
             // 
             // fileToolStripMenuItem
             // 
-            fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { newToolStripMenuItem, openToolStripMenuItem, toolStripMenuItem_newWzFormat, saveToolStripMenuItem, toolStripSeparator5, copyToolStripMenuItem, pasteToolStripMenuItem, toolStripSeparator4, reloadAllToolStripMenuItem, unloadAllToolStripMenuItem });
+            fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { newToolStripMenuItem, openToolStripMenuItem, openVersionDirectoryToolStripMenuItem, toolStripMenuItem_newWzFormat, saveToolStripMenuItem, toolStripSeparator5, copyToolStripMenuItem, pasteToolStripMenuItem, toolStripSeparator4, reloadAllToolStripMenuItem, unloadAllToolStripMenuItem });
             fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             resources.ApplyResources(fileToolStripMenuItem, "fileToolStripMenuItem");
             // 
@@ -135,7 +137,15 @@ namespace HaRepacker.GUI
             openToolStripMenuItem.Name = "openToolStripMenuItem";
             resources.ApplyResources(openToolStripMenuItem, "openToolStripMenuItem");
             openToolStripMenuItem.Click += openToolStripMenuItem_Click;
-            // 
+            //
+            // openVersionDirectoryToolStripMenuItem
+            //
+            openVersionDirectoryToolStripMenuItem.Image = Properties.Resources.folder;
+            openVersionDirectoryToolStripMenuItem.Name = "openVersionDirectoryToolStripMenuItem";
+            openVersionDirectoryToolStripMenuItem.Size = new System.Drawing.Size(246, 30);
+            openVersionDirectoryToolStripMenuItem.Text = "Open &Version Directory...";
+            openVersionDirectoryToolStripMenuItem.Click += openVersionDirectoryToolStripMenuItem_Click;
+            //
             // toolStripMenuItem_newWzFormat
             // 
             toolStripMenuItem_newWzFormat.Image = Properties.Resources.folder;
@@ -353,7 +363,7 @@ namespace HaRepacker.GUI
             // 
             // toolsToolStripMenuItem
             // 
-            toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { exportFilesToXMLToolStripMenuItem, exportDataToolStripMenuItem, importToolStripMenuItem, toolStripSeparator9, optionsToolStripMenuItem, toolStripSeparator8, searchToolStripMenuItem, fHMappingToolStripMenuItem, toolStripMenuItem_searchWzStrings, toolsToolStripMenuItem1 });
+            toolsToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] { exportFilesToXMLToolStripMenuItem, exportDataToolStripMenuItem, importToolStripMenuItem, toolStripSeparator9, packImgToWzToolStripMenuItem, optionsToolStripMenuItem, toolStripSeparator8, searchToolStripMenuItem, fHMappingToolStripMenuItem, toolStripMenuItem_searchWzStrings, toolsToolStripMenuItem1 });
             toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
             resources.ApplyResources(toolsToolStripMenuItem, "toolsToolStripMenuItem");
             // 
@@ -557,8 +567,15 @@ namespace HaRepacker.GUI
             button_addTab.UseVisualStyleBackColor = true;
             button_addTab.Click += Button_addTab_Click;
             // 
+            // packImgToWzToolStripMenuItem
+            //
+            packImgToWzToolStripMenuItem.Name = "packImgToWzToolStripMenuItem";
+            packImgToWzToolStripMenuItem.Size = new System.Drawing.Size(200, 22);
+            packImgToWzToolStripMenuItem.Text = "Pack IMG to WZ...";
+            packImgToWzToolStripMenuItem.Click += packImgToWzToolStripMenuItem_Click;
+            //
             // toolsToolStripMenuItem1
-            // 
+            //
             toolsToolStripMenuItem1.Name = "toolsToolStripMenuItem1";
             resources.ApplyResources(toolsToolStripMenuItem1, "toolsToolStripMenuItem1");
             // 
@@ -588,6 +605,7 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripMenuItem fileToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem newToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem openToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem openVersionDirectoryToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem saveToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem toolsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem exportFilesToXMLToolStripMenuItem;
@@ -659,6 +677,7 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.ToolStripTextBox zoomTextBox;
         private System.Windows.Forms.ToolStripMenuItem toolStripMenuItem_searchWzStrings;
         private System.Windows.Forms.ToolStripMenuItem toolsToolStripMenuItem1;
+        private System.Windows.Forms.ToolStripMenuItem packImgToWzToolStripMenuItem;
     }
 }
 

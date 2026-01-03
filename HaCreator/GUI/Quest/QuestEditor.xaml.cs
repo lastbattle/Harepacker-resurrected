@@ -1,25 +1,4 @@
-﻿/*Copyright(c) 2024, LastBattle https://github.com/lastbattle/Harepacker-resurrected
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-
-using HaCreator.GUI.Input;
+﻿using HaCreator.GUI.Input;
 using HaCreator.GUI.InstanceEditor;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
@@ -393,7 +372,7 @@ namespace HaCreator.GUI.Quest
                             // if this property is an int, its prob for beta maplestory.
                             // maybe a bitfield here or something
 
-                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
+                            if (!Program.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
                                 if (checkTypeProp.WzProperties != null) // taiwanms v135 (devs left an empty WzSubProperty with nothing)
                                 {
@@ -1781,7 +1760,7 @@ namespace HaCreator.GUI.Quest
                                 // select any questInfo from the list, to get the CheckInfo parent directory
                                 WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
                                 // Set file updated
-                                Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                                Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
                             }
                         }
                     }
@@ -1802,7 +1781,7 @@ namespace HaCreator.GUI.Quest
                             // select any questInfo from the list, to get the CheckInfo parent directory
                             WzImage anyQuestInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                            Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
 
                             // Remove old entry
                             anyQuestInfoParentImg.RemoveProperty(questId);
@@ -1822,7 +1801,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Say" from the list, to get the QuestSays parent directory
                             WzImage anyQuestSay = Program.InfoManager.QuestSays.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestSay.GetTopMostWzDirectory().Name /* "map" */, anyQuestSay);
+                            Program.MarkImageUpdated("Quest", anyQuestSay);
 
                             // Remove old entry
                             anyQuestSay.RemoveProperty(questId);
@@ -1842,7 +1821,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Act" from the list, to get the QuestActs parent directory
                             WzImage anyQuestAct = Program.InfoManager.QuestActs.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestAct.GetTopMostWzDirectory().Name /* "map" */, anyQuestAct);
+                            Program.MarkImageUpdated("Quest", anyQuestAct);
 
                             // Remove old entry
                             anyQuestAct.RemoveProperty(questId);
@@ -1862,7 +1841,7 @@ namespace HaCreator.GUI.Quest
                             // select any "Act" from the list, to get the QuestActs parent directory
                             WzImage anyQuestCheck = Program.InfoManager.QuestChecks.FirstOrDefault().Value.Parent as WzImage;
                             // Set file updated
-                            Program.WzManager.SetWzFileUpdated(anyQuestCheck.GetTopMostWzDirectory().Name /* "map" */, anyQuestCheck);
+                            Program.MarkImageUpdated("Quest", anyQuestCheck);
 
                             // Remove old entry
                             anyQuestCheck.RemoveProperty(questId);
@@ -1947,7 +1926,7 @@ namespace HaCreator.GUI.Quest
 
                         // flag unsaved changes bool
                         _unsavedChanges = true;
-                        Program.WzManager.SetWzFileUpdated(anyQuestInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, anyQuestInfoParentImg);
+                        Program.MarkImageUpdated("Quest", anyQuestInfoParentImg);
 
 
                         // Navigate to this quest on the scrollviewer
@@ -3334,7 +3313,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag unsaved changes bool
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                Program.MarkImageUpdated("Quest", questInfoParentImg);
             }
 
             // Say.img
@@ -3362,7 +3341,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                Program.MarkImageUpdated("Quest", questSayParentImg);
             }
 
             // Act.img
@@ -3388,7 +3367,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                Program.MarkImageUpdated("Quest", questActParentImg);
             }
 
             // Check.img
@@ -3414,7 +3393,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag wz file unsaved
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                Program.MarkImageUpdated("Quest", questCheckParentImg);
             }
 
             // flag unsaved changes bool
@@ -3607,7 +3586,7 @@ namespace HaCreator.GUI.Quest
                         }
                     case QuestEditorCheckType.Job:
                         {
-                            if (!Program.WzManager.IsPreBBDataWzFormat) // pre-bb, post-bb++
+                            if (!Program.IsPreBBDataWzFormat) // pre-bb, post-bb++
                             {
                                 WzSubProperty jobSubProperty = new WzSubProperty(originalCheckTypeName);
                                 act01Property.AddProperty(jobSubProperty);
@@ -4370,7 +4349,7 @@ namespace HaCreator.GUI.Quest
 
                 // flag unsaved changes bool
                 _unsavedChanges = true;
-                Program.WzManager.SetWzFileUpdated(questInfoParentImg.GetTopMostWzDirectory().Name /* "map" */, questInfoParentImg);
+                Program.MarkImageUpdated("Quest", questInfoParentImg);
             }
 
             //////////////////
@@ -4386,7 +4365,7 @@ namespace HaCreator.GUI.Quest
                     if (oldSayWzProp != null)
                         oldSayWzProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questSayParentImg.GetTopMostWzDirectory().Name /* "map" */, questSayParentImg);
+                    Program.MarkImageUpdated("Quest", questSayParentImg);
                 }
             }
 
@@ -4403,7 +4382,7 @@ namespace HaCreator.GUI.Quest
                     if (oldActImgProp != null)
                         oldActImgProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questActParentImg.GetTopMostWzDirectory().Name /* "map" */, questActParentImg);
+                    Program.MarkImageUpdated("Quest", questActParentImg);
                 }
             }
 
@@ -4420,7 +4399,7 @@ namespace HaCreator.GUI.Quest
                     if (oldCheckImgProp != null)
                         oldCheckImgProp.Remove();
 
-                    Program.WzManager.SetWzFileUpdated(questCheckParentImg.GetTopMostWzDirectory().Name /* "map" */, questCheckParentImg);
+                    Program.MarkImageUpdated("Quest", questCheckParentImg);
                 }
             }
 
@@ -4554,6 +4533,92 @@ namespace HaCreator.GUI.Quest
         protected virtual void OnPropertyChanged(string propertyName)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+        #endregion
+
+        #region Hot Swap
+        private Wz.HotSwapRefreshService _hotSwapService;
+
+        /// <summary>
+        /// Subscribes to hot swap events from the HotSwapRefreshService
+        /// </summary>
+        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public void SubscribeToHotSwap(Wz.HotSwapRefreshService refreshService)
+        {
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.QuestDataChanged -= OnQuestDataChanged;
+            }
+
+            _hotSwapService = refreshService;
+
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.QuestDataChanged += OnQuestDataChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles quest data change events
+        /// </summary>
+        private void OnQuestDataChanged(object sender, Wz.QuestDataChangedEventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => HandleQuestDataChange(e)));
+                return;
+            }
+            HandleQuestDataChange(e);
+        }
+
+        /// <summary>
+        /// Handles the quest data change on the UI thread
+        /// </summary>
+        private void HandleQuestDataChange(Wz.QuestDataChangedEventArgs e)
+        {
+            // Store current selection
+            int? selectedQuestId = SelectedQuest?.Id;
+
+            // Reload all quest data
+            RefreshQuestList();
+
+            // Restore selection if possible
+            if (selectedQuestId.HasValue)
+            {
+                var previouslySelected = _quests.FirstOrDefault(q => q.Id == selectedQuestId.Value);
+                if (previouslySelected != null)
+                {
+                    SelectedQuest = previouslySelected;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the quest list from InfoManager
+        /// </summary>
+        public void RefreshQuestList()
+        {
+            _isLoading = true;
+            try
+            {
+                _quests.Clear();
+
+                foreach (KeyValuePair<string, WzSubProperty> kvp in Program.InfoManager.QuestInfos)
+                {
+                    string questId = kvp.Key;
+                    WzSubProperty questProp = kvp.Value;
+
+                    QuestEditorModel quest = loadQuestImage(questProp, questId);
+                    _quests.Add(quest);
+                }
+
+                // Re-apply filter using existing method
+                UpdateSortedQuestList();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
         }
         #endregion
     }

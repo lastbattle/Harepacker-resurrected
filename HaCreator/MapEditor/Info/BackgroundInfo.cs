@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance;
+﻿using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
@@ -60,10 +54,9 @@ namespace HaCreator.MapEditor.Info
         /// <returns></returns>
         public static BackgroundInfo Get(GraphicsDevice graphicsDevice, string bS, BackgroundInfoType type, string no)
         {
-            if (!Program.InfoManager.BackgroundSets.ContainsKey(bS))
+            WzImage bsImg = Program.InfoManager.GetBackgroundSet(bS);
+            if (bsImg == null)
                 return null;
-
-            WzImage bsImg = Program.InfoManager.BackgroundSets[bS];
             WzImageProperty bgInfoProp = bsImg[type.ToPropertyString()]?[no];
 
             if (bgInfoProp == null)

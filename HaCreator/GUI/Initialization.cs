@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Linq;
 using System.Windows.Forms;
 using System.Collections.Generic;
@@ -24,6 +18,7 @@ using MapleLib;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.Img;
 
 namespace HaCreator.GUI
 {
@@ -107,7 +102,7 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// Initialise the IMG files with the provided folder path
+        /// Initialize from IMG filesystem - shows version selector
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
@@ -121,36 +116,108 @@ namespace HaCreator.GUI
 
             try
             {
-                ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
-                ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
-                ApplicationSettings.MapleStoryClientLocalisation = (int)comboBox_localisation.SelectedValue;
-
-                string wzPath = pathBox.Text;
-
-                // MapleStoryDataFolder
-                if (wzPath == "Select MapleStory Folder")
+                // Show version selector
+                using (var selector = new VersionSelector(Program.StartupManager.VersionManager))
                 {
-                    MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
-                {
-                    ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
-                }
-                WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-                if (InitializeWzFiles(wzPath, fileVersion, true))
-                {
-                    Hide();
-                    Application.DoEvents();
-                    editor = new HaEditor();
-                    editor.ShowDialog();
+                    var result = selector.ShowDialog(this);
 
-                    Application.Exit();
+                    if (result == DialogResult.OK && selector.SelectedVersion != null)
+                    {
+                        // User selected a version - initialize from IMG filesystem
+                        if (InitializeFromImgFileSystem(selector.SelectedVersion))
+                        {
+                            Hide();
+                            Application.DoEvents();
+                            try
+                            {
+                                editor = new HaEditor();
+                                editor.ShowDialog();
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"Error showing editor:\n{ex.Message}\n\n{ex.StackTrace}",
+                                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                            Application.Exit();
+                        }
+                    }
+                    else if (selector.ExtractNewVersion)
+                    {
+                        // User wants to extract a new version
+                        button_unpack_Click(sender, e);
+                        // After extraction, refresh and try again
+                        Program.StartupManager.ScanVersions();
+                    }
+                    else if (selector.UseWzFilesInstead)
+                    {
+                        // User wants to use WZ files - fall through to normal initialization
+                        // This is handled by the regular Initialize button
+                    }
                 }
             }
             finally
             {
                 _bIsInitialising = false;
+            }
+        }
+
+        /// <summary>
+        /// Initialize from an IMG filesystem version
+        /// </summary>
+        private bool InitializeFromImgFileSystem(VersionInfo version)
+        {
+            try
+            {
+                UpdateUI_CurrentLoadingWzFile("Creating data source...", false);
+
+                // Dispose old managers
+                if (Program.WzManager != null)
+                {
+                    Program.WzManager.Dispose();
+                    Program.WzManager = null;
+                }
+                if (Program.DataSource != null)
+                {
+                    Program.DataSource.Dispose();
+                    Program.DataSource = null;
+                }
+                if (Program.InfoManager != null)
+                {
+                    Program.InfoManager.Clear();
+                }
+
+                // Create data source from version
+                Program.DataSource = Program.StartupManager.CreateDataSource(version);
+
+                // Parse encryption from version info
+                if (Enum.TryParse<WzMapleVersion>(version.Encryption, out var mapleVersion))
+                {
+                    _wzMapleVersion = mapleVersion;
+                }
+
+                UpdateUI_CurrentLoadingWzFile("Extracting game data...", false);
+
+                // Use ImgDataExtractor to populate InfoManager
+                var extractor = new ImgDataExtractor(Program.DataSource, Program.InfoManager);
+                extractor.ProgressChanged += (s, args) =>
+                {
+                    UpdateUI_CurrentLoadingWzFile(args.Message, false);
+                };
+
+                extractor.ExtractAll();
+
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
+
+                UpdateUI_CurrentLoadingWzFile("Initialization complete.", false);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error initializing from IMG filesystem:\n{ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -218,6 +285,10 @@ namespace HaCreator.GUI
                 ExtractMapBackgroundSets();
 
                 ExtractMaps();
+
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = true;
             }
             else // for versions beyond v30x
             {
@@ -397,6 +468,10 @@ namespace HaCreator.GUI
                 ExtractMapObjSets();
                 ExtractMapBackgroundSets();
                 ExtractMaps();
+
+                // Set image format detection flag for pre-Big Bang compatibility
+                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
+                ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
 
                 // UI.wz
                 const string UI_WZ_PATH = "ui";
@@ -1083,9 +1158,13 @@ namespace HaCreator.GUI
             }
 
             // Finally
-            // Sort order in advance
-            Program.InfoManager.TileSets = Program.InfoManager.TileSets.OrderBy(kvp => kvp.Key)
-                   .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            // Sort order in advance (only if using regular Dictionary, not LazyWzImageDictionary)
+            if (Program.InfoManager.TileSets is Dictionary<string, WzImage> regularDict)
+            {
+                Program.InfoManager.TileSets = regularDict.OrderBy(kvp => kvp.Key)
+                       .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            }
+            // LazyWzImageDictionary already handles ordering during registration
         }
 
         /// <summary>
@@ -1625,6 +1704,29 @@ namespace HaCreator.GUI
             UnpackWzToImg unpacker = new UnpackWzToImg();
             unpacker.ShowDialog(this);
             unpacker.Close();
+        }
+
+        /// <summary>
+        /// Opens the data source settings dialog
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_settings_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new DataSourceSettings())
+            {
+                if (settingsForm.ShowDialog(this) == DialogResult.OK)
+                {
+                    // Reload configuration if settings were changed
+                    if (settingsForm.ConfigChanged)
+                    {
+                        Program.StartupManager.ReloadConfig();
+
+                        // Refresh the version list if in IMG mode
+                        Program.StartupManager.ScanVersions();
+                    }
+                }
+            }
         }
     }
 }

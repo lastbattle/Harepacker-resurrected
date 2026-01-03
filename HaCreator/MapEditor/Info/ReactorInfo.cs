@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.GUI;
+﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -101,17 +95,17 @@ namespace HaCreator.MapEditor.Info
             get {
                 if (_LinkedWzImage == null) {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                    WzObject reactorObject = Program.WzManager.FindWzImageByName("reactor", imgName);
+                    WzImage reactorImage = Program.FindImage("Reactor", imgName);
 
-                    WzStringProperty link = (WzStringProperty)reactorObject?["info"]?["link"];
+                    WzStringProperty link = (WzStringProperty)reactorImage?["info"]?["link"];
                     if (link != null) {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        WzImage findLinkedImg = (WzImage)Program.WzManager.FindWzImageByName("reactor", linkImgName);
+                        WzImage findLinkedImg = Program.FindImage("Reactor", linkImgName);
 
-                        _LinkedWzImage = findLinkedImg ?? (WzImage) reactorObject; // fallback if link is null
+                        _LinkedWzImage = findLinkedImg ?? reactorImage; // fallback if link is null
                     }
                     else
-                        _LinkedWzImage = (WzImage)reactorObject;
+                        _LinkedWzImage = reactorImage;
                 }
                 return _LinkedWzImage;
             }

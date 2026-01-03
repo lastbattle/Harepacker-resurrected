@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance;
+﻿using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -42,7 +36,7 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo Get(string tS, string u, string no)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 
@@ -52,7 +46,7 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo GetWithDefaultNo(string tS, string u, string no, string defaultNo)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 
@@ -77,7 +71,7 @@ namespace HaCreator.MapEditor.Info
         // Optimized version, for cases where you already know the mag (e.g. mass loading tiles of the same tileSet)
         public static TileInfo Get(string tS, string u, string no, int? mag)
         {
-            WzImage tileSet = Program.InfoManager.TileSets[tS];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
             if (tileSet == null)
                 return null;
 

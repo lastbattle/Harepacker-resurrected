@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-//uncomment the line below to create a space-time tradeoff (saving RAM by wasting more CPU cycles)
+﻿//uncomment the line below to create a space-time tradeoff (saving RAM by wasting more CPU cycles)
 #define SPACETIME
 
 using System;
@@ -51,6 +45,36 @@ namespace HaCreator.GUI
             this.defaultMapNameFilter = defaultMapNameFilter;
 
             this.searchBox.TextChanged += this.mapBrowser.Search.TextChanged;
+        }
+
+        /// <summary>
+        /// Loads a map image on-demand from the data source.
+        /// This is used when WzImage was not stored in MapsCache to save memory.
+        /// </summary>
+        /// <param name="mapId">The 9-digit map ID</param>
+        /// <returns>The loaded WzImage or null if not found</returns>
+        private WzImage LoadMapImageOnDemand(string mapId)
+        {
+            if (Program.DataSource == null)
+                return null;
+
+            string paddedId = mapId.PadLeft(9, '0');
+            string folderNum = paddedId[0].ToString();
+
+            // Try to load from Map/Map/MapX/mapid.img
+            string relativePath = $"Map/Map{folderNum}/{paddedId}.img";
+            var mapImage = Program.DataSource.GetImageByPath($"Map/{relativePath}");
+
+            if (mapImage == null)
+            {
+                // Try without extra Map/ prefix
+                mapImage = Program.DataSource.GetImage("Map", $"Map/Map{folderNum}/{paddedId}.img");
+            }
+
+            if (mapImage != null)
+                mapImage.ParseImage();
+
+            return mapImage;
         }
 
         /// <summary>
@@ -110,6 +134,18 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void button_clearHistory_Click(object sender, EventArgs e) {
             this.mapBrowser_history.ClearLoadedMapHistory();
+            button_deleteSelected.Enabled = false;
+        }
+
+        /// <summary>
+        /// Delete the selected map from history
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_deleteSelected_Click(object sender, EventArgs e) {
+            this.mapBrowser_history.RemoveSelectedMapFromHistory();
+            button_deleteSelected.Enabled = mapBrowser_history.LoadMapEnabled;
+            button_loadHistory.Enabled = mapBrowser_history.LoadMapEnabled;
         }
 
         private void SelectionChanged(object sender, EventArgs e)
@@ -280,6 +316,23 @@ namespace HaCreator.GUI
                         streetName = loadedMap.Item3;
                         categoryName = loadedMap.Item4;
                         info = loadedMap.Item5;
+
+                        // Load WzImage on-demand if null (memory optimization)
+                        if (mapImage == null)
+                        {
+                            mapImage = LoadMapImageOnDemand(mapid_str);
+                        }
+                        if (mapImage == null)
+                        {
+                            MessageBox.Show("Failed to load map image.", "Error");
+                            return;
+                        }
+
+                        // Create MapInfo on-demand if null (memory optimization)
+                        if (info == null)
+                        {
+                            info = new MapInfo(mapImage, streetName, mapName, categoryName);
+                        }
                     }
                     else
                     {
@@ -317,6 +370,7 @@ namespace HaCreator.GUI
         /// </summary>
         private void mapBrowserHistory_OnSelectionChanged() {
             button_loadHistory.Enabled = mapBrowser_history.LoadMapEnabled;
+            button_deleteSelected.Enabled = mapBrowser_history.SelectedItem != null;
         }
 
         private void Load_KeyDown(object sender, KeyEventArgs e)

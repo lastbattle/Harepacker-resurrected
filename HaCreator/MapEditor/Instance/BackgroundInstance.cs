@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure.Data;
 using XNA = Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -88,14 +82,14 @@ namespace HaCreator.MapEditor.Instance
                 return;
 
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
-            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, 
-                null, 
-                color, 
-                0f, 
-                new XNA.Vector2(0f, 0f), 
-                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 
+            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle,
+                null,
+                color,
+                0f,
+                new XNA.Vector2(0f, 0f),
+                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None,
                 1);
-            
+
             base.Draw(sprite, color, xShift, yShift);
         }
 

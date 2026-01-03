@@ -62,13 +62,21 @@ namespace HaCreator.GUI
         /// <param name="e"></param>
         private void MapPhysicsEditor_Load(object sender, EventArgs e)
         {
-            if (Program.WzManager.IsPreBBDataWzFormat) {
+            if (Program.IsPreBBDataWzFormat) {
                 MessageBox.Show(string.Format("Editing of {0}/{1} is not available in beta MapleStory.", WZ_FILE_NAME, WZ_FILE_IMAGE));
                 Close();
                 return;
             }
 
-            mapPhysicsImage = (WzImage)Program.WzManager.FindWzImageByName(WZ_FILE_NAME, WZ_FILE_IMAGE);
+            // Check if we have a valid data source
+            if (Program.DataSource == null && Program.WzManager == null)
+            {
+                MessageBox.Show("No data source available. Please load WZ files first.");
+                Close();
+                return;
+            }
+
+            mapPhysicsImage = Program.FindImage(WZ_FILE_NAME, WZ_FILE_IMAGE);
             if (!LoadWzValues())
             {
                 Close();
@@ -157,7 +165,7 @@ namespace HaCreator.GUI
                     mapPhysicsImage["swimSpeedDec"].SetValue(numericUpDown_swimSpeedDec.Value);
                     mapPhysicsImage["flyJumpDec"].SetValue(numericUpDown_flyJumpDec.Value);
 
-                    Program.WzManager.SetWzFileUpdated(WZ_FILE_NAME, mapPhysicsImage); // flag as changed 
+                    Program.MarkImageUpdated(WZ_FILE_NAME, mapPhysicsImage); // flag as changed
                 }
                 else
                 {

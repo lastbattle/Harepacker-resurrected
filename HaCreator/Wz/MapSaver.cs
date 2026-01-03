@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -59,6 +53,14 @@ namespace HaCreator.Wz
 
         private void InsertImage()
         {
+            // Check if we're using IMG filesystem mode
+            if (Program.DataSource != null && Program.WzManager == null)
+            {
+                InsertImageToImgFileSystem();
+                return;
+            }
+
+            // Legacy WZ file mode
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
                 string mapId = image.Name.Replace(".img", string.Empty);
@@ -98,44 +100,73 @@ namespace HaCreator.Wz
             }
         }
 
-        private void SaveMapInfo()
+        /// <summary>
+        /// Inserts the map image into the IMG filesystem
+        /// </summary>
+        private void InsertImageToImgFileSystem()
         {
-            board.MapInfo.Save(image, 
-                board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
-            
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                WzImage strMapImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Map.img");
+                // Determine the folder based on map ID
+                string mapId = image.Name.Replace(".img", string.Empty);
+                string folderNum = WzInfoTools.AddLeadingZeros(mapId, 9)[0].ToString();
+                string relativePath = $"Map/Map{folderNum}/{image.Name}";
+
+                // Save the image using the DataSource
+                if (!Program.DataSource.SaveImage("Map", image, relativePath))
+                {
+                    throw new Exception($"Failed to save map image to IMG filesystem: {relativePath}");
+                }
+            }
+            else
+            {
+                // UI map (login, cash shop preview, etc.)
+                if (!Program.DataSource.SaveImage("UI", image, image.Name))
+                {
+                    throw new Exception($"Failed to save UI map image to IMG filesystem: {image.Name}");
+                }
+            }
+        }
+
+        private void SaveMapInfo()
+        {
+            board.MapInfo.Save(image,
+                board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+
+            if (board.MapInfo.mapType == MapType.RegularMap)
+            {
+                // Use Program.FindImage for dual-mode support (IMG filesystem and WZ files)
+                WzImage strMapImg = Program.FindImage("String", "Map.img");
                 if (strMapImg == null)
-                    throw new Exception("Map.img not found in string.wz");
+                    throw new Exception("Map.img not found in String data");
 
                 WzSubProperty strCatProp = (WzSubProperty)strMapImg[board.MapInfo.strCategoryName];
                 if (strCatProp == null)
                 {
                     strCatProp = new WzSubProperty();
                     strMapImg[board.MapInfo.strCategoryName] = strCatProp;
-                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzSubProperty strMapProp = (WzSubProperty)strCatProp[board.MapInfo.id.ToString()];
                 if (strMapProp == null)
                 {
                     strMapProp = new WzSubProperty();
                     strCatProp[board.MapInfo.id.ToString()] = strMapProp;
-                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzStringProperty strMapName = (WzStringProperty)strMapProp["mapName"];
                 if (strMapName == null)
                 {
                     strMapName = new WzStringProperty();
                     strMapProp["mapName"] = strMapName;
-                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzStringProperty strStreetName = (WzStringProperty)strMapProp["streetName"];
                 if (strStreetName == null)
                 {
                     strStreetName = new WzStringProperty();
                     strMapProp["streetName"] = strStreetName;
-                    Program.WzManager.SetWzFileUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 UpdateString(strMapName, board.MapInfo.strMapName, strMapImg);
                 UpdateString(strStreetName, board.MapInfo.strStreetName, strMapImg);
@@ -147,7 +178,7 @@ namespace HaCreator.Wz
             if (strProp.Value != val)
             {
                 strProp.Value = val;
-                Program.WzManager.SetWzFileUpdated("string", img);
+                Program.MarkImageUpdated("String", img);
             }
         }
 
@@ -365,8 +396,8 @@ namespace HaCreator.Wz
 
             WzImage strTooltipImg = null;
 
-            // Find the string.wz file
-            List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
+            // Find the ToolTipHelp.img using dual-mode support
+            List<WzDirectory> stringWzDirs = Program.GetDirectories("string");
             foreach (WzDirectory stringWzDir in stringWzDirs)
             {
                 strTooltipImg = (WzImage)stringWzDir?["ToolTipHelp.img"];
@@ -374,8 +405,14 @@ namespace HaCreator.Wz
                     break;// found
             }
 
+            // If not found via directories, try direct image lookup
             if (strTooltipImg == null)
-                throw new Exception("Unable to find ToolTipHelp.img in String.wz");
+            {
+                strTooltipImg = Program.FindImage("String", "ToolTipHelp.img");
+            }
+
+            if (strTooltipImg == null)
+                throw new Exception("Unable to find ToolTipHelp.img in String data");
 
             WzSubProperty strTooltipCat = (WzSubProperty)strTooltipImg["Mapobject"];
             WzSubProperty strTooltipParent = (WzSubProperty)strTooltipCat[board.MapInfo.id.ToString()];
@@ -383,7 +420,7 @@ namespace HaCreator.Wz
             {
                 strTooltipParent = new WzSubProperty();
                 strTooltipCat[board.MapInfo.id.ToString()] = strTooltipParent;
-                Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
+                Program.MarkImageUpdated("String", strTooltipImg);
                 retainTooltipStrings = false;
             }
 
@@ -402,10 +439,10 @@ namespace HaCreator.Wz
                 }
             }
 
-            // If they do not, we need to update string.wz and rebuild the string tooltip props
+            // If they do not, we need to update string data and rebuild the string tooltip props
             if (!retainTooltipStrings)
             {
-                Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
+                Program.MarkImageUpdated("String", strTooltipImg);
                 strTooltipParent.ClearProperties();
             }
 
@@ -430,7 +467,7 @@ namespace HaCreator.Wz
                         if (titleProp == null)
                         {
                             titleProp = new WzStringProperty();
-                            Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
+                            Program.MarkImageUpdated("String", strTooltipImg);
                         }
                         UpdateString(titleProp, ttInst.Title, strTooltipImg);
                     }
@@ -440,7 +477,7 @@ namespace HaCreator.Wz
                         if (descProp == null)
                         {
                             descProp = new WzStringProperty();
-                            Program.WzManager.SetWzFileUpdated("string", strTooltipImg);
+                            Program.MarkImageUpdated("String", strTooltipImg);
                         }
                         UpdateString(descProp, ttInst.Desc, strTooltipImg);
                     }

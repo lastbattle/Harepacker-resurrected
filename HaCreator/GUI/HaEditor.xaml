@@ -135,6 +135,17 @@
                         <TextBlock Text="|" Margin="20,0,20,0"/>
                         <TextBlock Text="Selected item: " />
                         <TextBlock x:Name="textblock_selectedItem" Text="" />
+
+                        <TextBlock Text="|" Margin="20,0,10,0"/>
+                        <TextBlock Text="Zoom: " VerticalAlignment="Center"/>
+                        <Button x:Name="btnZoomOut" Content="-" Width="20" Height="18"
+                                Click="BtnZoomOut_Click" ToolTip="Zoom Out" Padding="0,-2,0,0"/>
+                        <TextBlock x:Name="txtZoomLevel" Text="100%" Width="40" TextAlignment="Center"
+                                   VerticalAlignment="Center" Margin="2,0"/>
+                        <Button x:Name="btnZoomIn" Content="+" Width="20" Height="18"
+                                Click="BtnZoomIn_Click" ToolTip="Zoom In" Padding="0,-2,0,0"/>
+                        <Button x:Name="btnZoomReset" Content="1:1" Width="28" Height="18"
+                                Click="BtnZoomReset_Click" ToolTip="Reset Zoom" Margin="4,0,0,0" Padding="0,-2,0,0"/>
                     </StackPanel>
                 </Grid>
                

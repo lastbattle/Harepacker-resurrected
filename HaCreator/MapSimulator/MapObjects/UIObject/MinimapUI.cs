@@ -152,7 +152,7 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
-        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor) {
+        public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight) {
             foreach (MapObjects.UIObject.UIObject uiBtn in uiButtons) {
                 bool bHandled = uiBtn.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState);
                 if (bHandled) {
@@ -179,9 +179,21 @@ namespace HaCreator.MapSimulator.Objects.UIObject
 
                 // Calculate the mouse position relative to the minimap
                 // and move the minimap Position
-                this.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                int newX = mouseState.X - mouseOffsetOnDragStart.Value.X;
+                int newY = mouseState.Y - mouseOffsetOnDragStart.Value.Y;
+
+                // Get the current frame dimensions for boundary checking
+                int frameWidth = _bIsCollapsedState ? frame_collapsedState.LastFrameDrawn.Width : this.LastFrameDrawn.Width;
+                int frameHeight = _bIsCollapsedState ? frame_collapsedState.LastFrameDrawn.Height : this.LastFrameDrawn.Height;
+
+                // Enforce screen boundary constraints
+                // Ensure the UI doesn't move outside the window
+                newX = Math.Max(0, Math.Min(newX, renderWidth - frameWidth));
+                newY = Math.Max(0, Math.Min(newY, renderHeight - frameHeight));
+
+                this.Position = new Point(newX, newY);
                 if (_bIsCollapsedState) {
-                    this.frame_collapsedState.Position = new Point(mouseState.X - mouseOffsetOnDragStart.Value.X, mouseState.Y - mouseOffsetOnDragStart.Value.Y);
+                    this.frame_collapsedState.Position = new Point(newX, newY);
                 }
                 //System.Diagnostics.Debug.WriteLine("Button rect: " + rect.ToString());
                 //System.Diagnostics.Debug.WriteLine("Mouse X: " + mouseState.X + ", Y: " + mouseState.Y);
@@ -189,9 +201,6 @@ namespace HaCreator.MapSimulator.Objects.UIObject
             else {
                 // if the mouse button is not pressed, reset the initial drag offset
                 mouseOffsetOnDragStart = null;
-
-                // If the window is outside at the end of mouse click + move
-                // move it slightly back to the nearest X and Y coordinate
             }
             return false;
         }

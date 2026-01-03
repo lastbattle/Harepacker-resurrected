@@ -5,6 +5,7 @@
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 using MapleLib;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -150,10 +151,10 @@ namespace HaSharedLibrary.Wz
         /// Finds a map image from the list of Map.wzs
         /// On pre-bb client (BETA)
         /// Data.wz/Map/Map/Map1/10000000.img
-        /// 
+        ///
         /// On pre 64-bit client:
         /// Map.wz/Map/Map1/10000000.img
-        /// 
+        ///
         /// On post 64-bit client:
         /// Map/Map/Map1/Map1_000.wz/10000000.img
         /// </summary>
@@ -162,7 +163,7 @@ namespace HaSharedLibrary.Wz
         public static WzImage FindMapImage(string mapid, WzFileManager fileManager)
         {
             WzObject mapParent = FindMapDirectoryParent(mapid, fileManager);
-            if (mapParent == null) 
+            if (mapParent == null)
                 return null;
 
             string mapIdNamePadded = AddLeadingZeros(mapid, 9) + ".img";
@@ -172,6 +173,34 @@ namespace HaSharedLibrary.Wz
             }
             // is WzDirectory
             return (WzImage)mapParent?[mapIdNamePadded];
+        }
+
+        /// <summary>
+        /// Finds a map image using IDataSource (for IMG filesystem support)
+        /// </summary>
+        /// <param name="mapid">The map ID</param>
+        /// <param name="dataSource">The IDataSource to search in</param>
+        /// <returns>The WzImage or null if not found</returns>
+        public static WzImage FindMapImage(string mapid, IDataSource dataSource)
+        {
+            if (dataSource == null)
+                return null;
+
+            string mapIdNamePadded = AddLeadingZeros(mapid, 9);
+            string folderNum = mapIdNamePadded[0].ToString();
+
+            // Try exact path: Map/Map/Map0/000000000.img
+            string relativePath = $"Map/Map{folderNum}/{mapIdNamePadded}.img";
+            var img = dataSource.GetImageByPath(relativePath);
+
+            if (img == null)
+            {
+                // Try without extra Map prefix
+                relativePath = $"Map{folderNum}/{mapIdNamePadded}.img";
+                img = dataSource.GetImage("Map", relativePath);
+            }
+
+            return img;
         }
 
         /// <summary>

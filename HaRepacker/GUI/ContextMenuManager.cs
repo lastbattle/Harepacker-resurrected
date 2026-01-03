@@ -1,17 +1,13 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaRepacker.GUI;
+﻿using HaRepacker.GUI;
 using HaRepacker.GUI.Input;
 using HaRepacker.GUI.Panels;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Windows.Forms;
 
 namespace HaRepacker
@@ -21,6 +17,9 @@ namespace HaRepacker
         private MainPanel parentPanel;
 
         private ToolStripMenuItem SaveFile;
+        private ToolStripMenuItem SaveImg;
+        private ToolStripMenuItem CreateNewImgFile;
+        private ToolStripMenuItem DeleteImgFile;
         private ToolStripMenuItem Remove;
         private ToolStripMenuItem Unload;
         private ToolStripMenuItem Reload;
@@ -80,6 +79,36 @@ namespace HaRepacker
                         new SaveForm(parentPanel, node).ShowDialog();
                     }
                 }));
+            SaveImg = new ToolStripMenuItem("Save to IMG", Properties.Resources.disk, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    foreach (WzNode node in GetNodes(sender))
+                    {
+                        SaveImgNode(node);
+                    }
+                }));
+            CreateNewImgFile = new ToolStripMenuItem("Create New IMG File", Properties.Resources.add, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    WzNode[] nodes = GetNodes(sender);
+                    if (nodes.Length != 1)
+                    {
+                        MessageBox.Show("Please select only ONE node");
+                        return;
+                    }
+                    CreateNewImgFileInDirectory(nodes[0]);
+                }));
+            DeleteImgFile = new ToolStripMenuItem("Delete IMG File", Properties.Resources.delete, new EventHandler(
+                delegate (object sender, EventArgs e)
+                {
+                    WzNode[] nodes = GetNodes(sender);
+                    if (nodes.Length != 1)
+                    {
+                        MessageBox.Show("Please select only ONE node");
+                        return;
+                    }
+                    DeleteImgFileFromDirectory(nodes[0]);
+                }));
             Rename = new ToolStripMenuItem("Rename", Properties.Resources.rename, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
@@ -96,16 +125,23 @@ namespace HaRepacker
             Unload = new ToolStripMenuItem("Unload", Properties.Resources.delete, new EventHandler(
                 delegate (object sender, EventArgs e)
                 {
-                    if (!Warning.Warn("Are you sure you want to unload this file?"))
+                    if (!Warning.Warn("Are you sure you want to unload this?"))
                         return;
 
                     var nodesSelected = GetNodes(sender);
                     foreach (WzNode node in nodesSelected)
                     {
-                        if (node.Tag is WzFile)
+                        if (node.Tag is VirtualWzDirectory virtualDir)
+                        {
+                            // For VirtualWzDirectory, just remove from tree and dispose
+                            virtualDir.Dispose();
+                            node.Remove();
+                        }
+                        else if (node.Tag is WzFile)
                         {
                             parentPanel.MainForm.UnloadWzFile(node.Tag as WzFile);
-                        } else if (node.Tag is WzImage)
+                        }
+                        else if (node.Tag is WzImage)
                         {
                             parentPanel.MainForm.UnloadWzImageFile(node.Tag as WzImage);
                         }
@@ -413,13 +449,38 @@ namespace HaRepacker
             {
                 toolStripmenuItems.Add(AddPropsSubMenu);
                 toolStripmenuItems.Add(Rename);
-                // export, import
-                toolStripmenuItems.Add(Remove);
+                // Add SaveImg and DeleteImgFile options if from VirtualWzDirectory
+                if (IsFromVirtualWzDirectory(Tag))
+                {
+                    toolStripmenuItems.Add(SaveImg);
+                    if (Tag is WzImage)
+                    {
+                        toolStripmenuItems.Add(DeleteImgFile);
+                    }
+                }
+                else
+                {
+                    // export, import
+                    toolStripmenuItems.Add(Remove);
+                }
             }
             else if (Tag is WzImageProperty)
             {
                 toolStripmenuItems.Add(Rename);
+                // Add SaveImg option if from VirtualWzDirectory
+                if (IsFromVirtualWzDirectory(Tag))
+                {
+                    toolStripmenuItems.Add(SaveImg);
+                }
                 toolStripmenuItems.Add(Remove);
+            }
+            else if (Tag is VirtualWzDirectory)
+            {
+                toolStripmenuItems.Add(CreateNewImgFile);
+                toolStripmenuItems.Add(AddDirsSubMenu);
+                toolStripmenuItems.Add(Rename);
+                toolStripmenuItems.Add(SaveImg);
+                toolStripmenuItems.Add(Unload);
             }
             else if (Tag is WzDirectory)
             {
@@ -468,6 +529,258 @@ namespace HaRepacker
         private WzNode[] GetNodes(object sender)
         {
             return new WzNode[] { currNode };
+        }
+
+        /// <summary>
+        /// Saves a node from a VirtualWzDirectory to the IMG filesystem
+        /// </summary>
+        private void SaveImgNode(WzNode node)
+        {
+            WzObject tag = (WzObject)node.Tag;
+
+            // Find the parent VirtualWzDirectory
+            WzObject current = tag;
+            VirtualWzDirectory virtualDir = null;
+
+            while (current != null)
+            {
+                if (current.Parent is VirtualWzDirectory vDir)
+                {
+                    virtualDir = vDir;
+                    break;
+                }
+                current = current.Parent;
+            }
+
+            if (virtualDir == null)
+            {
+                // Check if tag itself is the VirtualWzDirectory
+                if (tag is VirtualWzDirectory vd)
+                {
+                    virtualDir = vd;
+                }
+            }
+
+            if (virtualDir == null)
+            {
+                MessageBox.Show("This item is not from an IMG filesystem directory.",
+                    "Cannot Save", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                if (tag is WzImage image)
+                {
+                    // Save single image
+                    if (virtualDir.SaveImage(image))
+                    {
+                        MessageBox.Show($"Saved {image.Name} successfully.",
+                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        node.ForeColor = System.Drawing.Color.Black; // Reset color
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Failed to save {image.Name}.",
+                            "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                else if (tag is VirtualWzDirectory vDir)
+                {
+                    // Save all changed images in directory
+                    int savedCount = vDir.SaveAllChangedImages();
+                    if (savedCount > 0)
+                    {
+                        MessageBox.Show($"Saved {savedCount} changed image(s) successfully.",
+                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show("No changed images to save.",
+                            "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+                else if (tag is WzImageProperty prop)
+                {
+                    // Save the parent image
+                    if (prop.ParentImage != null)
+                    {
+                        if (virtualDir.SaveImage(prop.ParentImage))
+                        {
+                            MessageBox.Show($"Saved {prop.ParentImage.Name} successfully.",
+                                "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show($"Failed to save {prop.ParentImage.Name}.",
+                                "Save Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error saving: {ex.Message}",
+                    "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Checks if a WzObject is from a VirtualWzDirectory
+        /// </summary>
+        private bool IsFromVirtualWzDirectory(WzObject obj)
+        {
+            if (obj is VirtualWzDirectory)
+                return true;
+
+            WzObject current = obj;
+            while (current != null)
+            {
+                if (current.Parent is VirtualWzDirectory)
+                    return true;
+                current = current.Parent;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Creates a new IMG file in a VirtualWzDirectory
+        /// </summary>
+        private void CreateNewImgFileInDirectory(WzNode node)
+        {
+            WzObject tag = (WzObject)node.Tag;
+
+            VirtualWzDirectory virtualDir = tag as VirtualWzDirectory;
+            if (virtualDir == null)
+            {
+                MessageBox.Show("Please select a directory from an IMG filesystem.",
+                    "Cannot Create File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Prompt for new file name
+            string name;
+            if (!NameInputBox.Show("Create New IMG File", 0, out name))
+                return;
+
+            // Ensure .img extension
+            if (!name.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                name += ".img";
+
+            // Check if file already exists
+            if (virtualDir.ImageExists(name))
+            {
+                MessageBox.Show($"A file named '{name}' already exists in this directory.",
+                    "File Exists", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                // Create the new IMG file
+                string relativePath = name;
+                if (!string.IsNullOrEmpty(virtualDir.RelativePath))
+                {
+                    relativePath = Path.Combine(virtualDir.RelativePath, name);
+                }
+
+                WzImage newImage = virtualDir.Manager.CreateImage(virtualDir.CategoryName, relativePath);
+                if (newImage != null)
+                {
+                    // Add to tree
+                    WzNode newNode = new WzNode(newImage, true);
+                    node.Nodes.Add(newNode);
+                    newNode.EnsureVisible();
+
+                    MessageBox.Show($"Created '{name}' successfully.",
+                        "File Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show($"Failed to create '{name}'.",
+                        "Creation Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error creating file: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Deletes an IMG file from the filesystem
+        /// </summary>
+        private void DeleteImgFileFromDirectory(WzNode node)
+        {
+            WzObject tag = (WzObject)node.Tag;
+
+            if (tag is not WzImage image)
+            {
+                MessageBox.Show("Please select an IMG file to delete.",
+                    "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Find parent VirtualWzDirectory
+            VirtualWzDirectory virtualDir = null;
+            WzObject current = tag;
+            while (current != null)
+            {
+                if (current.Parent is VirtualWzDirectory vDir)
+                {
+                    virtualDir = vDir;
+                    break;
+                }
+                current = current.Parent;
+            }
+
+            if (virtualDir == null)
+            {
+                MessageBox.Show("This file is not from an IMG filesystem directory.",
+                    "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Confirm deletion
+            DialogResult result = MessageBox.Show(
+                $"Are you sure you want to delete '{image.Name}'?\n\n" +
+                "This will permanently delete the file from disk.",
+                "Confirm Delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (result != DialogResult.Yes)
+                return;
+
+            try
+            {
+                // Build relative path
+                string relativePath = image.Name;
+                if (!string.IsNullOrEmpty(virtualDir.RelativePath))
+                {
+                    relativePath = Path.Combine(virtualDir.RelativePath, image.Name);
+                }
+
+                if (virtualDir.Manager.DeleteImage(virtualDir.CategoryName, relativePath))
+                {
+                    // Remove from tree
+                    node.Remove();
+
+                    MessageBox.Show($"Deleted '{image.Name}' successfully.",
+                        "File Deleted", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show($"Failed to delete '{image.Name}'.",
+                        "Deletion Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error deleting file: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }

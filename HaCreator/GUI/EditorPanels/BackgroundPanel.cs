@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.CustomControls;
+﻿using HaCreator.CustomControls;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaSharedLibrary.GUI;
@@ -27,12 +21,14 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using WeifenLuo.WinFormsUI.Docking;
 using Xceed.Wpf.AvalonDock.Controls;
+using HaCreator.Wz;
 
 namespace HaCreator.GUI.EditorPanels
 {
     public partial class BackgroundPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
+        private HotSwapRefreshService _hotSwapService;
 
         // ContextMenuStrip
         private readonly ContextMenuStrip contextMenu = new ContextMenuStrip();
@@ -75,13 +71,9 @@ namespace HaCreator.GUI.EditorPanels
         public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
+            hcsm.SetBackgroundPanel(this);
 
-            List<string> sortedBgSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> bS in Program.InfoManager.BackgroundSets)
-            {
-                sortedBgSets.Add(bS.Key);
-            }
-            sortedBgSets.Sort();
+            List<string> sortedBgSets = Program.InfoManager.BackgroundSets.Keys.OrderBy(k => k).ToList();
             foreach (string bS in sortedBgSets)
             {
                 bgSetListBox.Items.Add(bS);
@@ -119,7 +111,10 @@ namespace HaCreator.GUI.EditorPanels
 
             BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
 
-            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem][infoType.ToPropertyString()];
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+            if (bgSetImage == null)
+                return;
+            WzImageProperty parentProp = bgSetImage[infoType.ToPropertyString()];
             if (parentProp == null || parentProp.WzProperties == null)
                 return;
 
@@ -192,7 +187,9 @@ namespace HaCreator.GUI.EditorPanels
                         string bgSetName = (string)bgSetListBox.SelectedItem;
                         BackgroundInfoType infoType = BackgroundInfoType.Background;// GetBackGroundInfoTypeByCheckbox();
 
-                        WzImage bgSetImage = Program.InfoManager.BackgroundSets[bgSetName];
+                        WzImage bgSetImage = Program.InfoManager.GetBackgroundSet(bgSetName);
+                        if (bgSetImage == null)
+                            return;
                         WzSubProperty parentProp = (WzSubProperty)bgSetImage[infoType.ToPropertyString()]; // "back" WzSubProperty
 
                         // Generate a new unique name for the background
@@ -255,7 +252,10 @@ namespace HaCreator.GUI.EditorPanels
         private string GenerateUniqueBgName(string objSetName, string infoTypeName)
         {
             int counter = 1;
-            WzImageProperty l1Prop = Program.InfoManager.BackgroundSets[objSetName][infoTypeName];
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet(objSetName);
+            if (bgSetImage == null)
+                return counter.ToString();
+            WzImageProperty l1Prop = bgSetImage[infoTypeName];
             while (l1Prop.WzProperties.Any(p => p.Name == counter.ToString()))
             {
                 counter++;
@@ -298,7 +298,8 @@ namespace HaCreator.GUI.EditorPanels
 
             BackgroundInfoType infoType = GetBackGroundInfoTypeByCheckbox();
 
-            WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem]?[infoType.ToPropertyString()]; // i,e syarenian.img  dragonDream.img > "back"
+            WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+            WzImageProperty parentProp = bgSetImage?[infoType.ToPropertyString()]; // i,e syarenian.img  dragonDream.img > "back"
             if (parentProp != null)
             {
                 WzSubProperty parentSubProp = (WzSubProperty)parentProp;
@@ -426,7 +427,8 @@ namespace HaCreator.GUI.EditorPanels
                     // delete off cached obj
                     BackgroundInfo objInfo = (BackgroundInfo)selectedItem.Tag;
 
-                    WzImageProperty parentProp = Program.InfoManager.BackgroundSets[(string)bgSetListBox.SelectedItem]?[infoType.ToPropertyString()];
+                    WzImage bgSetImage = Program.InfoManager.GetBackgroundSet((string)bgSetListBox.SelectedItem);
+                    WzImageProperty parentProp = bgSetImage?[infoType.ToPropertyString()];
                     if (parentProp != null)
                     {
                         WzImageProperty removeL2Prop = parentProp[objInfo.no];
@@ -447,6 +449,128 @@ namespace HaCreator.GUI.EditorPanels
                         }
                     }
                 }
+            }
+        }
+        #endregion
+
+        #region Hot Swap
+        /// <summary>
+        /// Subscribes to hot swap events from the HotSwapRefreshService
+        /// </summary>
+        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
+        {
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.BackgroundSetChanged -= OnBackgroundSetChanged;
+            }
+
+            _hotSwapService = refreshService;
+
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.BackgroundSetChanged += OnBackgroundSetChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles background set change events
+        /// </summary>
+        private void OnBackgroundSetChanged(object sender, BackgroundSetChangedEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => HandleBackgroundSetChange(e)));
+                return;
+            }
+            HandleBackgroundSetChange(e);
+        }
+
+        /// <summary>
+        /// Handles the background set change on the UI thread
+        /// </summary>
+        private void HandleBackgroundSetChange(BackgroundSetChangedEventArgs e)
+        {
+            switch (e.ChangeType)
+            {
+                case AssetChangeType.Added:
+                    if (!bgSetListBox.Items.Contains(e.SetName))
+                    {
+                        bgSetListBox.Items.Add(e.SetName);
+                        SortBackgroundSetList();
+                    }
+                    break;
+
+                case AssetChangeType.Removed:
+                    bgSetListBox.Items.Remove(e.SetName);
+                    if (bgSetListBox.SelectedItem?.ToString() == e.SetName)
+                    {
+                        ClearBackgroundDisplay();
+                        if (bgSetListBox.Items.Count > 0)
+                        {
+                            bgSetListBox.SelectedIndex = 0;
+                        }
+                    }
+                    break;
+
+                case AssetChangeType.Modified:
+                    // If set doesn't exist in list, add it (Windows sometimes reports new files as Changed)
+                    if (!bgSetListBox.Items.Contains(e.SetName))
+                    {
+                        bgSetListBox.Items.Add(e.SetName);
+                        SortBackgroundSetList();
+                    }
+                    else if (bgSetListBox.SelectedItem?.ToString() == e.SetName)
+                    {
+                        RefreshCurrentBackgroundSet();
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the currently displayed background set
+        /// </summary>
+        public void RefreshCurrentBackgroundSet()
+        {
+            if (bgSetListBox.SelectedItem == null)
+                return;
+
+            string selectedSet = bgSetListBox.SelectedItem.ToString();
+
+            // Clear and reload
+            bgImageContainer.Controls.Clear();
+
+            // Force reload from disk
+            Program.InfoManager.RefreshBackgroundSet(selectedSet);
+
+            // Trigger selection changed to reload
+            bgSetListBox_SelectedIndexChanged(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Clears the background display
+        /// </summary>
+        private void ClearBackgroundDisplay()
+        {
+            bgImageContainer.Controls.Clear();
+        }
+
+        /// <summary>
+        /// Sorts the background set list alphabetically
+        /// </summary>
+        private void SortBackgroundSetList()
+        {
+            var items = bgSetListBox.Items.Cast<string>().OrderBy(s => s).ToList();
+            var selected = bgSetListBox.SelectedItem;
+            bgSetListBox.Items.Clear();
+            foreach (var item in items)
+            {
+                bgSetListBox.Items.Add(item);
+            }
+            if (selected != null && bgSetListBox.Items.Contains(selected))
+            {
+                bgSetListBox.SelectedItem = selected;
             }
         }
         #endregion

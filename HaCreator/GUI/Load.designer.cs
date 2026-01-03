@@ -42,6 +42,7 @@ namespace HaCreator.GUI
             this.checkBox_townOnly = new System.Windows.Forms.CheckBox();
             this.tabPage2 = new System.Windows.Forms.TabPage();
             this.button_clearHistory = new System.Windows.Forms.Button();
+            this.button_deleteSelected = new System.Windows.Forms.Button();
             this.button_loadHistory = new System.Windows.Forms.Button();
             this.mapBrowser = new HaCreator.CustomControls.MapBrowser();
             this.mapBrowser_history = new HaCreator.CustomControls.MapBrowser();
@@ -151,11 +152,12 @@ namespace HaCreator.GUI
             this.checkBox_townOnly.Text = "Town only";
             this.checkBox_townOnly.UseVisualStyleBackColor = true;
             this.checkBox_townOnly.CheckedChanged += new System.EventHandler(this.checkBox_townOnly_CheckedChanged);
-            // 
+            //
             // tabPage2
-            // 
+            //
             this.tabPage2.Controls.Add(this.button_loadHistory);
             this.tabPage2.Controls.Add(this.mapBrowser_history);
+            this.tabPage2.Controls.Add(this.button_deleteSelected);
             this.tabPage2.Controls.Add(this.button_clearHistory);
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Margin = new System.Windows.Forms.Padding(2);
@@ -165,9 +167,9 @@ namespace HaCreator.GUI
             this.tabPage2.TabIndex = 1;
             this.tabPage2.Text = "History";
             this.tabPage2.UseVisualStyleBackColor = true;
-            // 
+            //
             // button_clearHistory
-            // 
+            //
             this.button_clearHistory.Location = new System.Drawing.Point(6, 484);
             this.button_clearHistory.Name = "button_clearHistory";
             this.button_clearHistory.Size = new System.Drawing.Size(89, 23);
@@ -175,7 +177,18 @@ namespace HaCreator.GUI
             this.button_clearHistory.Text = "Clear history";
             this.button_clearHistory.UseVisualStyleBackColor = true;
             this.button_clearHistory.Click += new System.EventHandler(this.button_clearHistory_Click);
-            // 
+            //
+            // button_deleteSelected
+            //
+            this.button_deleteSelected.Enabled = false;
+            this.button_deleteSelected.Location = new System.Drawing.Point(101, 484);
+            this.button_deleteSelected.Name = "button_deleteSelected";
+            this.button_deleteSelected.Size = new System.Drawing.Size(100, 23);
+            this.button_deleteSelected.TabIndex = 11;
+            this.button_deleteSelected.Text = "Delete Selected";
+            this.button_deleteSelected.UseVisualStyleBackColor = true;
+            this.button_deleteSelected.Click += new System.EventHandler(this.button_deleteSelected_Click);
+            //
             // button_loadHistory
             // 
             this.button_loadHistory.AccessibleRole = System.Windows.Forms.AccessibleRole.PushButton;
@@ -267,6 +280,7 @@ namespace HaCreator.GUI
         private System.Windows.Forms.TabPage tabPage2;
         private System.Windows.Forms.CheckBox checkBox_townOnly;
         private System.Windows.Forms.Button button_clearHistory;
+        private System.Windows.Forms.Button button_deleteSelected;
         private MapBrowser mapBrowser_history;
         private System.Windows.Forms.Button button_loadHistory;
     }

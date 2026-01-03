@@ -332,10 +332,14 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int npcX = CurrentX;
             int npcY = CurrentY;
 
-            int dx = Math.Abs(npcX - _lastMirrorCheckX);
-            int dy = Math.Abs(npcY - _lastMirrorCheckY);
-            if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
-                return;
+            // Skip threshold check on first call to avoid int.MinValue overflow
+            if (_lastMirrorCheckX != int.MinValue)
+            {
+                int dx = Math.Abs(npcX - _lastMirrorCheckX);
+                int dy = Math.Abs(npcY - _lastMirrorCheckY);
+                if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
+                    return;
+            }
 
             _lastMirrorCheckX = npcX;
             _lastMirrorCheckY = npcY;

@@ -224,6 +224,9 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         // Flip state
         public bool FlipX { get; set; } = false;
 
+        // NoFlip - when true, mob cannot change facing direction (from info/noFlip WZ property)
+        public bool NoFlip { get; set; } = false;
+
         // Random movement timing
         private Random _random = new Random();
         private int _nextDirectionChangeTime = 0;
@@ -269,7 +272,8 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         /// <param name="yShift">Y shift from foothold (cy - y). Foothold Y = y - yShift</param>
         /// <param name="isFlyingMob">Whether this mob can fly</param>
         /// <param name="isJumpingMob">Whether this mob can jump</param>
-        public void Initialize(int x, int y, int rx0Shift, int rx1Shift, int yShift, bool isFlyingMob, bool isJumpingMob = false)
+        /// <param name="noFlip">Whether this mob cannot change facing direction (info/noFlip = 1)</param>
+        public void Initialize(int x, int y, int rx0Shift, int rx1Shift, int yShift, bool isFlyingMob, bool isJumpingMob = false, bool noFlip = false)
         {
             _spawnX = x;
             _spawnY = y;
@@ -279,6 +283,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             SrcY = y;
             _isFlyingMob = isFlyingMob;
             _isJumpingMob = isJumpingMob;
+            NoFlip = noFlip;
 
             // Calculate RX0 and RX1 from shifts
             // From MapLoader: rx0Shift = x - rx0, rx1Shift = rx1 - x
@@ -313,9 +318,18 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             else
                 MoveType = MobMoveType.Move;
 
-            // Random initial direction
-            MoveDirection = _random.Next(2) == 0 ? MobMoveDirection.Left : MobMoveDirection.Right;
-            FlipX = MoveDirection == MobMoveDirection.Right;
+            // Random initial direction (only if noFlip is false)
+            if (!noFlip)
+            {
+                MoveDirection = _random.Next(2) == 0 ? MobMoveDirection.Left : MobMoveDirection.Right;
+                FlipX = MoveDirection == MobMoveDirection.Right;
+            }
+            else
+            {
+                // NoFlip mobs keep their initial facing direction
+                MoveDirection = MobMoveDirection.Left;  // Default direction
+                // FlipX remains at initial value (set by caller if needed)
+            }
 
             // Set initial direction change time
             _nextDirectionChangeTime = _random.Next(2000, 5000);
@@ -399,27 +413,27 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             if (MoveDirection == MobMoveDirection.Left)
             {
                 X -= flyMoveAmount;
-                FlipX = false;
+                if (!NoFlip) FlipX = false;
 
                 // Check left boundary
                 if (X <= effectiveLeft)
                 {
                     X = effectiveLeft;
                     MoveDirection = MobMoveDirection.Right;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
             }
             else if (MoveDirection == MobMoveDirection.Right)
             {
                 X += flyMoveAmount;
-                FlipX = true;
+                if (!NoFlip) FlipX = true;
 
                 // Check right boundary
                 if (X >= effectiveRight)
                 {
                     X = effectiveRight;
                     MoveDirection = MobMoveDirection.Left;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
             }
 
@@ -475,12 +489,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 if (MoveDirection == MobMoveDirection.Left)
                 {
                     newX = X - airMoveAmount;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
                 else if (MoveDirection == MobMoveDirection.Right)
                 {
                     newX = X + airMoveAmount;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
 
                 // Check if there's a foothold below at the new X position
@@ -541,13 +555,13 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             {
                 X = effectiveLeft;
                 MoveDirection = MobMoveDirection.Right;
-                FlipX = true;
+                if (!NoFlip) FlipX = true;
             }
             else if (X > effectiveRight)
             {
                 X = effectiveRight;
                 MoveDirection = MobMoveDirection.Left;
-                FlipX = false;
+                if (!NoFlip) FlipX = false;
             }
         }
 
@@ -576,7 +590,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                     MoveDirection = MoveDirection == MobMoveDirection.Left
                         ? MobMoveDirection.Right
                         : MobMoveDirection.Left;
-                    FlipX = MoveDirection == MobMoveDirection.Right;
+                    if (!NoFlip) FlipX = MoveDirection == MobMoveDirection.Right;
                     _directionChangeCooldown = 500;  // 500ms cooldown
                 }
                 _nextDirectionChangeTime = _random.Next(800, 2000);
@@ -609,7 +623,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                             MoveDirection = MoveDirection == MobMoveDirection.Left
                                 ? MobMoveDirection.Right
                                 : MobMoveDirection.Left;
-                            FlipX = MoveDirection == MobMoveDirection.Right;
+                            if (!NoFlip) FlipX = MoveDirection == MobMoveDirection.Right;
                             _directionChangeCooldown = 500;
                             return;
                         }
@@ -636,7 +650,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                     else
                     {
                         MoveDirection = MobMoveDirection.Right;
-                        FlipX = true;
+                        if (!NoFlip) FlipX = true;
                         _directionChangeCooldown = 500;
                     }
                     return;
@@ -655,7 +669,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                     else
                     {
                         MoveDirection = MobMoveDirection.Left;
-                        FlipX = false;
+                        if (!NoFlip) FlipX = false;
                         _directionChangeCooldown = 500;
                     }
                     return;
@@ -679,7 +693,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                         direction = GetAngle256(x1, y1, x2, y2);
                     else
                         direction = GetAngle256(x2, y2, x1, y1);
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
                 else
                 {
@@ -687,7 +701,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                         direction = GetAngle256(x1, y1, x2, y2);
                     else
                         direction = GetAngle256(x2, y2, x1, y1);
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
 
                 // Move along the slope
@@ -716,12 +730,12 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 if (MoveDirection == MobMoveDirection.Left)
                 {
                     X -= moveAmount;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
                 else
                 {
                     X += moveAmount;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
                 hasFoothold = UpdateYPosition();
             }
@@ -755,7 +769,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                     MoveDirection = MoveDirection == MobMoveDirection.Left
                         ? MobMoveDirection.Right
                         : MobMoveDirection.Left;
-                    FlipX = MoveDirection == MobMoveDirection.Right;
+                    if (!NoFlip) FlipX = MoveDirection == MobMoveDirection.Right;
                     _directionChangeCooldown = 500;
                 }
             }
@@ -784,7 +798,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             {
                 // Turn around instead of jumping off map
                 MoveDirection = MoveDirection == MobMoveDirection.Left ? MobMoveDirection.Right : MobMoveDirection.Left;
-                FlipX = MoveDirection == MobMoveDirection.Right;
+                if (!NoFlip) FlipX = MoveDirection == MobMoveDirection.Right;
                 _jumpCooldown = _random.Next(500, 1500);
                 return;
             }
@@ -878,7 +892,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                     MoveDirection = MoveDirection == MobMoveDirection.Left
                         ? MobMoveDirection.Right
                         : MobMoveDirection.Left;
-                    FlipX = MoveDirection == MobMoveDirection.Right;
+                    if (!NoFlip) FlipX = MoveDirection == MobMoveDirection.Right;
                     CurrentAction = MobAction.Move;
                 }
                 else if (randomAction < 40)
@@ -932,7 +946,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 {
                     X = wallL.FirstDot.X + 1;
                     MoveDirection = MobMoveDirection.Right;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                     return;
                 }
             }
@@ -943,7 +957,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 {
                     X = wallR.FirstDot.X - 1;
                     MoveDirection = MobMoveDirection.Left;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                     return;
                 }
             }
@@ -966,7 +980,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                         direction = GetAngle256(x1, y1, x2, y2);
                     else
                         direction = GetAngle256(x2, y2, x1, y1);
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
                 else
                 {
@@ -975,7 +989,7 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                         direction = GetAngle256(x1, y1, x2, y2);
                     else
                         direction = GetAngle256(x2, y2, x1, y1);
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
 
                 // Move along the slope using angle decomposition
@@ -990,13 +1004,13 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 {
                     X = effectiveLeft;
                     MoveDirection = MobMoveDirection.Right;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                 }
                 else if (X >= effectiveRight)
                 {
                     X = effectiveRight;
                     MoveDirection = MobMoveDirection.Left;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                 }
 
                 // Check if we walked off the foothold edge
@@ -1019,13 +1033,13 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                         {
                             X = fhMinX + 2;
                             MoveDirection = MobMoveDirection.Right;
-                            FlipX = true;
+                            if (!NoFlip) FlipX = true;
                         }
                         else
                         {
                             X = fhMaxX - 2;
                             MoveDirection = MobMoveDirection.Left;
-                            FlipX = false;
+                            if (!NoFlip) FlipX = false;
                         }
                         Y = CalculateYOnFoothold(CurrentFoothold, X);
                     }
@@ -1037,23 +1051,23 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 if (MoveDirection == MobMoveDirection.Left)
                 {
                     X -= moveAmount;
-                    FlipX = false;
+                    if (!NoFlip) FlipX = false;
                     if (X <= effectiveLeft)
                     {
                         X = effectiveLeft;
                         MoveDirection = MobMoveDirection.Right;
-                        FlipX = true;
+                        if (!NoFlip) FlipX = true;
                     }
                 }
                 else
                 {
                     X += moveAmount;
-                    FlipX = true;
+                    if (!NoFlip) FlipX = true;
                     if (X >= effectiveRight)
                     {
                         X = effectiveRight;
                         MoveDirection = MobMoveDirection.Left;
-                        FlipX = false;
+                        if (!NoFlip) FlipX = false;
                     }
                 }
 

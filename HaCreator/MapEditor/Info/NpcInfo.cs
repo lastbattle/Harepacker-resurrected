@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.GUI;
+﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
@@ -72,7 +66,7 @@ namespace HaCreator.MapEditor.Info
         public static NpcInfo Get(string id)
         {
             string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-            WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName);
+            WzImage npcImage = Program.FindImage("Npc", imgName);
             if (npcImage == null)
                 return null;
 
@@ -138,13 +132,13 @@ namespace HaCreator.MapEditor.Info
                 if (_LinkedWzImage == null)
                 {
                     string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
-                    WzImage npcImage = (WzImage)Program.WzManager.FindWzImageByName("npc", imgName);
+                    WzImage npcImage = Program.FindImage("Npc", imgName);
 
                     WzStringProperty link = (WzStringProperty)npcImage?["info"]?["link"];
                     if (link != null)
                     {
                         string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
-                        WzImage linkedImage = (WzImage)Program.WzManager.FindWzImageByName("npc", linkImgName);
+                        WzImage linkedImage = Program.FindImage("Npc", linkImgName);
 
                         _LinkedWzImage = linkedImage ?? npcImage; // fallback to npcImage if null
                     }
@@ -156,8 +150,8 @@ namespace HaCreator.MapEditor.Info
                 return _LinkedWzImage;
             }
 
-            set { 
-                this._LinkedWzImage = value; 
+            set {
+                this._LinkedWzImage = value;
             }
         }
     }

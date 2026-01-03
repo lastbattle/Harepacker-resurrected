@@ -190,7 +190,7 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         public bool IsPreBBDataWzFormat
         {
-            get { return Program.WzManager.IsPreBBDataWzFormat; }
+            get { return Program.IsPreBBDataWzFormat; }
             private set { }
         }
         /// <summary>
@@ -198,7 +198,7 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         public bool IsPostBBDataWzFormat
         {
-            get { return !Program.WzManager.IsPreBBDataWzFormat; }
+            get { return !Program.IsPreBBDataWzFormat; }
             private set { }
         }
         #endregion

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaSharedLibrary.Util;
+﻿using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -48,10 +42,26 @@ namespace HaCreator.MapEditor.Info
         {
             if (texture == null)
             {
-                if (image != null && image.Width == 1 && image.Height == 1)
+                if (image == null)
+                {
+                    // Use placeholder for null images
                     texture = global::HaCreator.Properties.Resources.placeholder.ToTexture2D(sprite.GraphicsDevice);
+                }
                 else
-                    texture = image.ToTexture2D(sprite.GraphicsDevice);
+                {
+                    try
+                    {
+                        if (image.Width == 1 && image.Height == 1)
+                            texture = global::HaCreator.Properties.Resources.placeholder.ToTexture2D(sprite.GraphicsDevice);
+                        else
+                            texture = image.ToTexture2D(sprite.GraphicsDevice);
+                    }
+                    catch
+                    {
+                        // Use placeholder if image conversion fails
+                        texture = global::HaCreator.Properties.Resources.placeholder.ToTexture2D(sprite.GraphicsDevice);
+                    }
+                }
             }
             return texture;
         }

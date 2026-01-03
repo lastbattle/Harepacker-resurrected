@@ -88,6 +88,9 @@ namespace HaCreator.GUI
             bgBlackBorderPanel.Initialize(hcsm);
             commonPanel.Initialize(hcsm);
 
+            // Initialize hot swap after all panels are registered
+            hcsm.InitializeHotSwap();
+
             if (!hcsm.backupMan.AttemptRestore())
             {
                 FieldSelector selector = new FieldSelector(multiBoard, tabControl1, hcsm.MakeRightClickHandler(), true); // first load of a map, get the user to select a map first.
@@ -104,6 +107,8 @@ namespace HaCreator.GUI
         {
             if (multiBoard.SelectedBoard == null)
                 return;
+
+            UpdateZoomLabel();
         }
 
         /// <summary>
@@ -204,5 +209,60 @@ namespace HaCreator.GUI
 
             AIMapEditWindow.ShowForBoard(board, this);
         }
+
+        #region Zoom Controls
+        /// <summary>
+        /// Zoom in button click
+        /// </summary>
+        private void BtnZoomIn_Click(object sender, RoutedEventArgs e)
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board == null) return;
+
+            board.ZoomIn();
+            UpdateZoomLabel();
+        }
+
+        /// <summary>
+        /// Zoom out button click
+        /// </summary>
+        private void BtnZoomOut_Click(object sender, RoutedEventArgs e)
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board == null) return;
+
+            board.ZoomOut();
+            UpdateZoomLabel();
+        }
+
+        /// <summary>
+        /// Reset zoom to 100%
+        /// </summary>
+        private void BtnZoomReset_Click(object sender, RoutedEventArgs e)
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board == null) return;
+
+            board.ResetZoom();
+            UpdateZoomLabel();
+        }
+
+        /// <summary>
+        /// Updates the zoom level display in the status bar
+        /// </summary>
+        public void UpdateZoomLabel()
+        {
+            var board = multiBoard?.SelectedBoard;
+            if (board != null)
+            {
+                int zoomPercent = (int)(board.Zoom * 100);
+                txtZoomLevel.Text = $"{zoomPercent}%";
+            }
+            else
+            {
+                txtZoomLevel.Text = "100%";
+            }
+        }
+        #endregion
     }
 }

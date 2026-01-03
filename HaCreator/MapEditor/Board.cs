@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Threading;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
@@ -49,6 +43,12 @@ namespace HaCreator.MapEditor
         private int _hScroll = 0;
         private int _vScroll = 0;
         private int _mag = 16;
+        private float _zoom = 1.0f;
+
+        // Zoom limits
+        public const float MinZoom = 0.1f;
+        public const float MaxZoom = 4.0f;
+        public const float ZoomStep = 0.1f;
         private readonly UndoRedoManager undoRedoMan;
         private ItemTypes visibleTypes;
         private ItemTypes editedTypes;
@@ -210,26 +210,6 @@ namespace HaCreator.MapEditor
                 MinimapRectangle.Draw(sprite, xShift, yShift, sel);
             }
 
-            // Render the minimap itself
-            if (miniMap != null && UserSettings.useMiniMap)
-            {
-                // Area for the image itself
-                Rectangle minimapImageArea = new Rectangle((miniMapPos.X + centerPoint.X) / _mag, (miniMapPos.Y + centerPoint.Y) / _mag, miniMap.Width, miniMap.Height);
-
-                // Render gray area
-                parent.FillRectangle(sprite, minimapArea, Color.Gray);
-                // Render minimap
-                if (miniMapTexture == null) 
-                    miniMapTexture = miniMap.ToTexture2D(parent.GraphicsDevice);
-
-                sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
-                // Render current location on minimap
-                parent.DrawRectangle(sprite, new Rectangle(hScroll / _mag, vScroll / _mag, parent.CurrentDXWindowSize.Width / _mag, (int)parent.CurrentDXWindowSize.Height / _mag), Color.Blue);
-                
-                // Render minimap borders
-                parent.DrawRectangle(sprite, minimapImageArea, Color.Black);
-            }
-            
             // Render center point if InfoMode on
             if (ApplicationSettings.InfoMode)
             {
@@ -237,9 +217,100 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Renders backgrounds separately. This should be called with a sprite batch
+        /// that does NOT have the zoom transform applied, so backgrounds stay at a fixed
+        /// screen position regardless of viewport zoom level.
+        /// </summary>
+        public void RenderBackgrounds(SpriteBatch sprite)
+        {
+            if (mapInfo == null)
+                return;
+
+            int xShift = centerPoint.X - hScroll;
+            int yShift = centerPoint.Y - vScroll;
+            SelectionInfo sel = GetUserSelectionInfo();
+
+            // Render back backgrounds
+            if ((sel.visibleTypes & ItemTypes.Backgrounds) != 0)
+            {
+                foreach (BackgroundInstance bg in boardItems.BackBackgrounds)
+                {
+                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Renders front backgrounds separately. This should be called after other items
+        /// but without the zoom transform.
+        /// </summary>
+        public void RenderFrontBackgrounds(SpriteBatch sprite)
+        {
+            if (mapInfo == null)
+                return;
+
+            int xShift = centerPoint.X - hScroll;
+            int yShift = centerPoint.Y - vScroll;
+            SelectionInfo sel = GetUserSelectionInfo();
+
+            // Render front backgrounds
+            if ((sel.visibleTypes & ItemTypes.Backgrounds) != 0)
+            {
+                foreach (BackgroundInstance bg in boardItems.FrontBackgrounds)
+                {
+                    bg.Draw(sprite, bg.GetColor(sel, bg.Selected), xShift, yShift);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Renders the minimap overlay. This should be called with a separate sprite batch
+        /// that does NOT have the zoom transform applied, so the minimap stays at a fixed
+        /// screen size regardless of viewport zoom level.
+        /// </summary>
+        public void RenderMinimap(SpriteBatch sprite)
+        {
+            if (miniMap == null || !UserSettings.useMiniMap)
+                return;
+
+            // Area for the image itself
+            Rectangle minimapImageArea = new Rectangle(
+                (miniMapPos.X + centerPoint.X) / _mag,
+                (miniMapPos.Y + centerPoint.Y) / _mag,
+                miniMap.Width,
+                miniMap.Height);
+
+            // Render gray area
+            parent.FillRectangle(sprite, minimapArea, Color.Gray);
+
+            // Render minimap
+            if (miniMapTexture == null)
+                miniMapTexture = miniMap.ToTexture2D(parent.GraphicsDevice);
+
+            sprite.Draw(miniMapTexture, minimapImageArea, null, Color.White, 0, new Vector2(0, 0), SpriteEffects.None, 0.99999f);
+
+            // Render current location on minimap
+            // Account for zoom: when zoomed in, viewport shows less virtual space
+            int viewportWidth = (int)(parent.CurrentDXWindowSize.Width / _zoom);
+            int viewportHeight = (int)(parent.CurrentDXWindowSize.Height / _zoom);
+            parent.DrawRectangle(sprite, new Rectangle(
+                hScroll / _mag,
+                vScroll / _mag,
+                viewportWidth / _mag,
+                viewportHeight / _mag), Color.Blue);
+
+            // Render minimap borders
+            parent.DrawRectangle(sprite, minimapImageArea, Color.Black);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void RenderList(IMapleList list, SpriteBatch sprite, int xShift, int yShift, SelectionInfo sel)
         {
+            // Skip backgrounds - they are rendered separately without zoom transform
+            if (list.ListType == ItemTypes.Backgrounds)
+                return;
+
             if (list.ListType == ItemTypes.None)
             {
                 foreach (BoardItem item in list)
@@ -394,6 +465,46 @@ namespace HaCreator.MapEditor
         {
             get { return _mag; }
             set { lock (parent) { _mag = value; } }
+        }
+
+        /// <summary>
+        /// Zoom level for the main viewport (1.0 = 100%, 0.5 = 50%, 2.0 = 200%)
+        /// </summary>
+        public float Zoom
+        {
+            get { return _zoom; }
+            set
+            {
+                lock (parent)
+                {
+                    _zoom = Math.Max(MinZoom, Math.Min(MaxZoom, value));
+                    parent.AdjustScrollBars();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Zoom in by one step
+        /// </summary>
+        public void ZoomIn()
+        {
+            Zoom = _zoom + ZoomStep;
+        }
+
+        /// <summary>
+        /// Zoom out by one step
+        /// </summary>
+        public void ZoomOut()
+        {
+            Zoom = _zoom - ZoomStep;
+        }
+
+        /// <summary>
+        /// Reset zoom to 100%
+        /// </summary>
+        public void ResetZoom()
+        {
+            Zoom = 1.0f;
         }
 
         public MapInfo MapInfo

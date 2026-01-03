@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.CustomControls;
+﻿using HaCreator.CustomControls;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure.Data;
@@ -36,16 +30,23 @@ namespace HaCreator.GUI.EditorPanels
 
             foreach (PortalType pt in Program.InfoManager.PortalEditor_TypeById)
             {
-                PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
                 try
                 {
+                    PortalInfo pInfo = PortalInfo.GetPortalInfoByType(pt);
+                    if (pInfo == null || pInfo.Image == null)
+                        continue;
+
                     ImageViewer item = portalImageContainer.Add(pInfo.Image, PortalTypeExtensions.GetFriendlyName(pt), true);
                     item.Tag = pInfo;
                     item.MouseDown += new MouseEventHandler(portal_MouseDown);
                     item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);
                 }
-                catch (KeyNotFoundException) 
-                { 
+                catch (KeyNotFoundException)
+                {
+                }
+                catch (Exception)
+                {
+                    // Skip portals that fail to load
                 }
             }
         }

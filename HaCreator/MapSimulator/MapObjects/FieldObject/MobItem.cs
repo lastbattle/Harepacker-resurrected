@@ -1,4 +1,5 @@
 using HaCreator.MapEditor.Instance;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using HaCreator.MapSimulator.MapObjects.FieldObject;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -118,24 +119,20 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
         {
             MovementInfo = new MobMovementInfo();
 
-            // Check if mob can fly based on animation set
-            bool isFlyingMob = _animationSet?.CanFly ?? false;
+            // Get parsed mob data (cached per mob ID)
+            var mobData = mobInstance.MobInfo?.MobData;
 
-            // Also check WZ data for flying
-            if (!isFlyingMob && mobInstance.MobInfo != null)
-            {
-                isFlyingMob = mobInstance.MobInfo.LinkedWzImage?["fly"] != null ||
-                              mobInstance.MobInfo.LinkedWzImage?["info"]?["flySpeed"] != null;
-            }
+            // Use MobData if available, fallback to animation set
+            bool isFlyingMob = mobData?.CanFly ?? _animationSet?.CanFly ?? false;
+            bool isMobile = mobData?.IsMobile ?? false;
+            bool isJumpingMob = mobData?.CanJump ?? _animationSet?.CanJump ?? false;
+            bool noFlip = mobData?.NoFlip ?? false;
 
-            // Check if mob can jump based on animation set
-            bool isJumpingMob = _animationSet?.CanJump ?? false;
-
-            // Also check WZ data for jumping
-            if (!isJumpingMob && mobInstance.MobInfo != null)
-            {
-                isJumpingMob = mobInstance.MobInfo.LinkedWzImage?["jump"] != null;
-            }
+            // Also check animation set for movement capabilities (fallback)
+            if (!isFlyingMob && _animationSet?.CanFly == true)
+                isFlyingMob = true;
+            if (!isJumpingMob && _animationSet?.CanJump == true)
+                isJumpingMob = true;
 
             MovementInfo.Initialize(
                 mobInstance.X,
@@ -144,8 +141,21 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 mobInstance.rx1Shift,
                 mobInstance.yShift,  // Pass yShift for correct foothold positioning
                 isFlyingMob,
-                isJumpingMob
+                isJumpingMob,
+                noFlip
             );
+
+            // For noFlip mobs, set initial flip based on mob instance flip property
+            if (noFlip)
+            {
+                MovementInfo.FlipX = mobInstance.Flip;
+            }
+
+            // If mob is not mobile (no fly/move/jump animations), set to Stand type
+            if (!isMobile && !isFlyingMob && !isJumpingMob)
+            {
+                MovementInfo.MoveType = MobMoveType.Stand;
+            }
 
             // Set default action based on movement type
             if (isFlyingMob)
@@ -164,23 +174,18 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
                 SetAction("stand");
             }
 
-            // Get movement speed from mob info (formula from MapleNecrocer)
+            // Get movement speed from mob data (formula from MapleNecrocer)
             // MoveSpeed = (1 + speed/100) * 2, default 2
-            var infoNode = mobInstance.MobInfo?.LinkedWzImage?["info"];
-            if (infoNode != null)
+            if (mobData != null)
             {
-                var speedNode = infoNode["speed"];
-                if (speedNode != null)
+                if (mobData.Speed != 0)
                 {
-                    int speed = MapleLib.WzLib.WzStructure.InfoTool.GetInt(speedNode);
-                    MovementInfo.MoveSpeed = (1 + (float)speed / 100) * 2;
+                    MovementInfo.MoveSpeed = (1 + (float)mobData.Speed / 100) * 2;
                 }
 
-                var flySpeedNode = infoNode["flySpeed"];
-                if (flySpeedNode != null)
+                if (mobData.FlySpeed != 0)
                 {
-                    int flySpeed = MapleLib.WzLib.WzStructure.InfoTool.GetInt(flySpeedNode);
-                    MovementInfo.FlySpeed = (1 + (float)flySpeed / 100) * 2;
+                    MovementInfo.FlySpeed = (1 + (float)mobData.FlySpeed / 100) * 2;
                 }
             }
         }
@@ -443,11 +448,14 @@ namespace HaCreator.MapSimulator.Objects.FieldObject
             int mobX = CurrentX;
             int mobY = CurrentY;
 
-            // Only recalculate if mob has moved significantly
-            int dx = Math.Abs(mobX - _lastMirrorCheckX);
-            int dy = Math.Abs(mobY - _lastMirrorCheckY);
-            if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
-                return;
+            // Only recalculate if mob has moved significantly (skip check on first call to avoid int.MinValue overflow)
+            if (_lastMirrorCheckX != int.MinValue)
+            {
+                int dx = Math.Abs(mobX - _lastMirrorCheckX);
+                int dy = Math.Abs(mobY - _lastMirrorCheckY);
+                if (dx < MIRROR_CHECK_THRESHOLD && dy < MIRROR_CHECK_THRESHOLD)
+                    return;
+            }
 
             _lastMirrorCheckX = mobX;
             _lastMirrorCheckY = mobY;
