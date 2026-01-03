@@ -23,6 +23,7 @@ using static MapleLib.Configuration.UserSettings;
 using HaRepacker.GUI.Panels;
 using HaRepacker.GUI.Interaction;
 using HaRepacker.GUI.Input;
+using HaRepacker.GUI.HotSwap;
 using HaRepacker.Comparer;
 
 using HaSharedLibrary;
@@ -45,6 +46,11 @@ namespace HaRepacker.GUI
         private readonly bool mainFormLoaded = false;
 
         private MainPanel MainPanel = null;
+
+        /// <summary>
+        /// Hot-swap manager for detecting external file modifications
+        /// </summary>
+        private HotSwapManager _hotSwapManager;
 
         /// <summary>
         /// Constructor
@@ -131,9 +137,67 @@ namespace HaRepacker.GUI
             // Focus on the tab control
             tabControl_MainPanels.Focus();
 
+            // Initialize hot-swap manager
+            InitializeHotSwap();
+
             // flag. loaded
             mainFormLoaded = true;
         }
+
+        #region Hot-Swap
+        /// <summary>
+        /// Initializes the hot-swap functionality
+        /// </summary>
+        private void InitializeHotSwap()
+        {
+            _hotSwapManager = new HotSwapManager(this);
+
+            // Add notification bar to the form (below the menu bar)
+            _hotSwapManager.NotificationBar.Dock = System.Windows.Forms.DockStyle.Top;
+            this.Controls.Add(_hotSwapManager.NotificationBar);
+            _hotSwapManager.NotificationBar.BringToFront();
+
+            // Subscribe to events
+            _hotSwapManager.ImgFileReloaded += OnImgFileReloaded;
+            _hotSwapManager.ImgFileAddedToTree += OnImgFileAddedToTree;
+
+            // Enable hot-swap if configured
+            if (HotSwapConstants.EnableImgFileWatching)
+            {
+                _hotSwapManager.Enable();
+            }
+        }
+
+        /// <summary>
+        /// Called when an IMG file is reloaded from disk
+        /// </summary>
+        private void OnImgFileReloaded(object sender, ImgFileReloadedEventArgs e)
+        {
+            // Refresh the selected node if it matches
+            if (MainPanel.DataTree.SelectedNode == e.Node)
+            {
+                MainPanel.DataTree.SelectedNode = null;
+                MainPanel.DataTree.SelectedNode = e.Node;
+            }
+        }
+
+        /// <summary>
+        /// Called when a new IMG file is added to the tree
+        /// </summary>
+        private void OnImgFileAddedToTree(object sender, ImgFileAddedEventArgs e)
+        {
+            // Sort the parent node if sorting is enabled
+            if (Program.ConfigurationManager.UserSettings.Sort && e.Node?.Parent != null)
+            {
+                SortNodesRecursively((WzNode)e.Node.Parent, true);
+            }
+        }
+
+        /// <summary>
+        /// Gets the hot-swap manager
+        /// </summary>
+        public HotSwapManager HotSwapManager => _hotSwapManager;
+        #endregion
 
         #region Load, unload WZ files + Panels & TreeView management
         /// <summary>
@@ -1144,6 +1208,10 @@ namespace HaRepacker.GUI
                             SortNodesRecursively(node);
                         }
                         MainPanel.DataTree.EndUpdate();
+
+                        // Enable hot-swap watching for this directory
+                        string categoryPath = Path.Combine(versionPath, category);
+                        _hotSwapManager?.WatchDirectory(categoryPath, node);
                     });
                 }
             }
@@ -1264,6 +1332,9 @@ namespace HaRepacker.GUI
                     {
                         if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
                         {
+                            // Stop hot-swap watching for this directory
+                            _hotSwapManager?.UnwatchDirectory(virtualDir.FilesystemPath);
+
                             virtualDir.Dispose();
                             nodesToRemove.Add(node);
                         }
@@ -1440,14 +1511,24 @@ namespace HaRepacker.GUI
             // Handle VirtualWzDirectory (IMG filesystem)
             if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
             {
-                int savedCount = virtualDir.SaveAllChangedImages();
-                if (savedCount > 0)
+                // Temporarily ignore file changes during save to prevent watcher from triggering reload
+                _hotSwapManager?.BeginDirectorySaveOperation(virtualDir.FilesystemPath);
+
+                try
                 {
-                    MessageBox.Show($"Saved {savedCount} changed image(s).", "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    int savedCount = virtualDir.SaveAllChangedImages();
+                    if (savedCount > 0)
+                    {
+                        MessageBox.Show($"Saved {savedCount} changed image(s).", "Save Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        MessageBox.Show("No changes to save.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
                 }
-                else
+                finally
                 {
-                    MessageBox.Show("No changes to save.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    _hotSwapManager?.EndDirectorySaveOperation(virtualDir.FilesystemPath);
                 }
                 return;
             }
@@ -1472,6 +1553,9 @@ namespace HaRepacker.GUI
             // Save app settings quickly
             if (!e.Cancel)
             {
+                // Dispose hot-swap manager
+                _hotSwapManager?.Dispose();
+
                 Program.ConfigurationManager.Save();
             }
         }

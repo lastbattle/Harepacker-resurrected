@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows.Forms;
 using HaRepacker.GUI.Panels;
 using System.Diagnostics;
@@ -16,10 +16,10 @@ namespace HaRepacker.GUI
             loadRelated.Checked = Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles;
             apngIncompEnable.Checked = Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame;
             autoAssociateBox.Checked = Program.ConfigurationManager.UserSettings.AutoAssociate;
-            if (Program.ConfigurationManager.UserSettings.DefaultXmlFolder != "") 
-            { 
-                defXmlFolderEnable.Checked = true; 
-                defXmlFolderBox.Text = Program.ConfigurationManager.UserSettings.DefaultXmlFolder; 
+            if (Program.ConfigurationManager.UserSettings.DefaultXmlFolder != "")
+            {
+                defXmlFolderEnable.Checked = true;
+                defXmlFolderBox.Text = Program.ConfigurationManager.UserSettings.DefaultXmlFolder;
             }
             indentBox.Value = Program.ConfigurationManager.UserSettings.Indentation;
             lineBreakBox.SelectedIndex = (int)Program.ConfigurationManager.UserSettings.LineBreakType;
@@ -58,7 +58,7 @@ namespace HaRepacker.GUI
                 Warning.Error(HaRepacker.Properties.Resources.OptionsIndentError);
                 return;
             }
-            
+
             Program.ConfigurationManager.UserSettings.Sort = sortBox.Checked;
             Program.ConfigurationManager.UserSettings.AutoloadRelatedWzFiles = loadRelated.Checked;
             Program.ConfigurationManager.UserSettings.UseApngIncompatibilityFrame = apngIncompEnable.Checked;
