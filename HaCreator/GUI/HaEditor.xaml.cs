@@ -88,6 +88,9 @@ namespace HaCreator.GUI
             bgBlackBorderPanel.Initialize(hcsm);
             commonPanel.Initialize(hcsm);
 
+            // Initialize hot swap after all panels are registered
+            hcsm.InitializeHotSwap();
+
             if (!hcsm.backupMan.AttemptRestore())
             {
                 FieldSelector selector = new FieldSelector(multiBoard, tabControl1, hcsm.MakeRightClickHandler(), true); // first load of a map, get the user to select a map first.

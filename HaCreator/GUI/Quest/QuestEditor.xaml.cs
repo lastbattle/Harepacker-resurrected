@@ -4535,5 +4535,91 @@ namespace HaCreator.GUI.Quest
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
         #endregion
+
+        #region Hot Swap
+        private Wz.HotSwapRefreshService _hotSwapService;
+
+        /// <summary>
+        /// Subscribes to hot swap events from the HotSwapRefreshService
+        /// </summary>
+        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public void SubscribeToHotSwap(Wz.HotSwapRefreshService refreshService)
+        {
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.QuestDataChanged -= OnQuestDataChanged;
+            }
+
+            _hotSwapService = refreshService;
+
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.QuestDataChanged += OnQuestDataChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles quest data change events
+        /// </summary>
+        private void OnQuestDataChanged(object sender, Wz.QuestDataChangedEventArgs e)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(() => HandleQuestDataChange(e)));
+                return;
+            }
+            HandleQuestDataChange(e);
+        }
+
+        /// <summary>
+        /// Handles the quest data change on the UI thread
+        /// </summary>
+        private void HandleQuestDataChange(Wz.QuestDataChangedEventArgs e)
+        {
+            // Store current selection
+            int? selectedQuestId = SelectedQuest?.Id;
+
+            // Reload all quest data
+            RefreshQuestList();
+
+            // Restore selection if possible
+            if (selectedQuestId.HasValue)
+            {
+                var previouslySelected = _quests.FirstOrDefault(q => q.Id == selectedQuestId.Value);
+                if (previouslySelected != null)
+                {
+                    SelectedQuest = previouslySelected;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the quest list from InfoManager
+        /// </summary>
+        public void RefreshQuestList()
+        {
+            _isLoading = true;
+            try
+            {
+                _quests.Clear();
+
+                foreach (KeyValuePair<string, WzSubProperty> kvp in Program.InfoManager.QuestInfos)
+                {
+                    string questId = kvp.Key;
+                    WzSubProperty questProp = kvp.Value;
+
+                    QuestEditorModel quest = loadQuestImage(questProp, questId);
+                    _quests.Add(quest);
+                }
+
+                // Re-apply filter using existing method
+                UpdateSortedQuestList();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+        #endregion
     }
 }

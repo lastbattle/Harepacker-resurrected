@@ -36,6 +36,112 @@ namespace HaCreator.GUI
         {
             _versionManager = versionManager ?? throw new ArgumentNullException(nameof(versionManager));
             InitializeComponent();
+
+            // Subscribe to hot swap events
+            SubscribeToHotSwapEvents();
+        }
+
+        /// <summary>
+        /// Subscribes to hot swap events from the VersionManager
+        /// </summary>
+        private void SubscribeToHotSwapEvents()
+        {
+            _versionManager.VersionsChanged += OnVersionsChanged;
+        }
+
+        /// <summary>
+        /// Handles version list changes from hot swap
+        /// </summary>
+        private void OnVersionsChanged(object sender, VersionsChangedEventArgs e)
+        {
+            // Marshal to UI thread
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => HandleVersionChange(e)));
+            }
+            else
+            {
+                HandleVersionChange(e);
+            }
+        }
+
+        /// <summary>
+        /// Handles the version change on the UI thread
+        /// </summary>
+        private void HandleVersionChange(VersionsChangedEventArgs e)
+        {
+            switch (e.ChangeType)
+            {
+                case VersionChangeType.Added:
+                    if (e.AffectedVersion != null)
+                    {
+                        // Add new version to the list
+                        var newItem = new VersionListItem(e.AffectedVersion);
+                        listBox_versions.Items.Add(newItem);
+                        label_noVersions.Visible = false;
+
+                        // Sort the list
+                        SortVersionList();
+                    }
+                    break;
+
+                case VersionChangeType.Removed:
+                    if (e.AffectedVersion != null)
+                    {
+                        // Find and remove the version from the list
+                        for (int i = listBox_versions.Items.Count - 1; i >= 0; i--)
+                        {
+                            if (listBox_versions.Items[i] is VersionListItem item &&
+                                item.Version.DirectoryPath.Equals(e.AffectedVersion.DirectoryPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                bool wasSelected = listBox_versions.SelectedIndex == i;
+                                listBox_versions.Items.RemoveAt(i);
+
+                                if (wasSelected && listBox_versions.Items.Count > 0)
+                                {
+                                    listBox_versions.SelectedIndex = Math.Min(i, listBox_versions.Items.Count - 1);
+                                }
+                                break;
+                            }
+                        }
+
+                        if (listBox_versions.Items.Count == 0)
+                        {
+                            label_noVersions.Visible = true;
+                            panel_details.Visible = false;
+                        }
+                    }
+                    break;
+
+                case VersionChangeType.Refreshed:
+                    RefreshVersionList();
+                    break;
+            }
+
+            UpdateButtonStates();
+        }
+
+        /// <summary>
+        /// Sorts the version list alphabetically
+        /// </summary>
+        private void SortVersionList()
+        {
+            var items = listBox_versions.Items.Cast<VersionListItem>()
+                .OrderBy(i => i.Version.Version)
+                .ToList();
+
+            var selectedItem = listBox_versions.SelectedItem;
+            listBox_versions.Items.Clear();
+
+            foreach (var item in items)
+            {
+                listBox_versions.Items.Add(item);
+            }
+
+            if (selectedItem != null)
+            {
+                listBox_versions.SelectedItem = selectedItem;
+            }
         }
 
         private void VersionSelector_Load(object sender, EventArgs e)
@@ -185,13 +291,6 @@ namespace HaCreator.GUI
                 DialogResult = DialogResult.OK;
                 Close();
             }
-        }
-
-        private void button_useWz_Click(object sender, EventArgs e)
-        {
-            UseWzFilesInstead = true;
-            DialogResult = DialogResult.Cancel;
-            Close();
         }
 
         private void button_extract_Click(object sender, EventArgs e)

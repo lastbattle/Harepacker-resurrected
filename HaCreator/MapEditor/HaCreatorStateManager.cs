@@ -48,9 +48,15 @@ namespace HaCreator.MapEditor
         private readonly InputHandler input;
         private TilePanel tilePanel;
         private ObjPanel objPanel;
+        private BackgroundPanel backgroundPanel;
+        private LifePanel lifePanel;
         private BlackBorderPanel blackBorderPanel;
         private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
+
+        // Hot swap
+        private HotSwapRefreshService _hotSwapService;
+        private AssetUsageTracker _assetUsageTracker;
 
         public HaCreatorStateManager(MultiBoard multiBoard, HaRibbon ribbon, System.Windows.Controls.TabControl tabs, InputHandler input, System.Windows.Controls.ScrollViewer editorPanel,
             SystemWinCtl.TextBlock textblock_CursorX, SystemWinCtl.TextBlock textblock_CursorY, SystemWinCtl.TextBlock textblock_RCursorX, SystemWinCtl.TextBlock textblock_RCursorY, SystemWinCtl.TextBlock textblock_selectedItem)
@@ -1259,6 +1265,88 @@ namespace HaCreator.MapEditor
         {
             this.blackBorderPanel = op;
         }
+
+        /// <summary>
+        /// Sets the background panel
+        /// </summary>
+        /// <param name="bp"></param>
+        public void SetBackgroundPanel(BackgroundPanel bp)
+        {
+            this.backgroundPanel = bp;
+        }
+
+        /// <summary>
+        /// Sets the life panel
+        /// </summary>
+        /// <param name="lp"></param>
+        public void SetLifePanel(LifePanel lp)
+        {
+            this.lifePanel = lp;
+        }
+
+        #region Hot Swap
+        /// <summary>
+        /// Gets the HotSwapRefreshService
+        /// </summary>
+        public HotSwapRefreshService HotSwapService => _hotSwapService;
+
+        /// <summary>
+        /// Gets the AssetUsageTracker
+        /// </summary>
+        public AssetUsageTracker AssetUsageTracker => _assetUsageTracker;
+
+        /// <summary>
+        /// Initializes hot swap functionality and subscribes all panels
+        /// </summary>
+        public void InitializeHotSwap()
+        {
+            if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDataSource)
+            {
+                _assetUsageTracker = new AssetUsageTracker();
+                _hotSwapService = new HotSwapRefreshService(
+                    Program.InfoManager,
+                    System.Threading.SynchronizationContext.Current);
+
+                _hotSwapService.SubscribeToDataSource(imgDataSource);
+
+                // Subscribe panels
+                tilePanel?.SubscribeToHotSwap(_hotSwapService);
+                objPanel?.SubscribeToHotSwap(_hotSwapService);
+                backgroundPanel?.SubscribeToHotSwap(_hotSwapService);
+                lifePanel?.SubscribeToHotSwap(_hotSwapService);
+
+                System.Diagnostics.Debug.WriteLine("HaCreatorStateManager: Hot swap initialized");
+            }
+        }
+
+        /// <summary>
+        /// Registers all assets used by a board with the usage tracker
+        /// </summary>
+        /// <param name="board">The board to register</param>
+        public void RegisterBoardAssets(Board board)
+        {
+            _assetUsageTracker?.RegisterBoardAssets(board);
+        }
+
+        /// <summary>
+        /// Unregisters all assets used by a board
+        /// </summary>
+        /// <param name="board">The board to unregister</param>
+        public void UnregisterBoardAssets(Board board)
+        {
+            _assetUsageTracker?.UnregisterBoardAssets(board);
+        }
+
+        /// <summary>
+        /// Disposes hot swap resources
+        /// </summary>
+        public void DisposeHotSwap()
+        {
+            _hotSwapService?.Dispose();
+            _hotSwapService = null;
+            _assetUsageTracker = null;
+        }
+        #endregion
 
         public void EnterEditMode(ItemTypes type)
         {

@@ -15,6 +15,7 @@ namespace HaCreator.GUI
         private readonly string _versionPath;
         private readonly VersionInfo _versionInfo;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private GroupBox groupBox1;
         private bool _isPacking = false;
 
         /// <summary>
@@ -51,7 +52,7 @@ namespace HaCreator.GUI
             // Update UI based on version info
             if (_versionInfo != null)
             {
-                label_versionInfo.Text = $"Version: {_versionInfo.DisplayName ?? _versionInfo.Version}";
+                label_versionInfo.Text = $"{_versionInfo.DisplayName ?? _versionInfo.Version}";
                 checkBox_64bit.Checked = _versionInfo.Is64Bit;
 
                 // Auto-fill patch version from manifest
@@ -107,222 +108,219 @@ namespace HaCreator.GUI
 
         private void InitializeComponent()
         {
-            this.checkedListBox_categories = new System.Windows.Forms.CheckedListBox();
-            this.label_categories = new System.Windows.Forms.Label();
-            this.label_outputPath = new System.Windows.Forms.Label();
-            this.textBox_outputPath = new System.Windows.Forms.TextBox();
-            this.button_browse = new System.Windows.Forms.Button();
-            this.button_pack = new System.Windows.Forms.Button();
-            this.button_cancel = new System.Windows.Forms.Button();
-            this.progressBar = new System.Windows.Forms.ProgressBar();
-            this.label_status = new System.Windows.Forms.Label();
-            this.checkBox_64bit = new System.Windows.Forms.CheckBox();
-            this.checkBox_separateCanvas = new System.Windows.Forms.CheckBox();
-            this.label_versionInfo = new System.Windows.Forms.Label();
-            this.button_selectAll = new System.Windows.Forms.Button();
-            this.button_selectNone = new System.Windows.Forms.Button();
-            this.label_patchVersion = new System.Windows.Forms.Label();
-            this.numericUpDown_patchVersion = new System.Windows.Forms.NumericUpDown();
-            ((System.ComponentModel.ISupportInitialize)(this.numericUpDown_patchVersion)).BeginInit();
-            this.SuspendLayout();
-            //
-            // label_versionInfo
-            //
-            this.label_versionInfo.AutoSize = true;
-            this.label_versionInfo.Location = new System.Drawing.Point(12, 9);
-            this.label_versionInfo.Name = "label_versionInfo";
-            this.label_versionInfo.Size = new System.Drawing.Size(100, 15);
-            this.label_versionInfo.TabIndex = 0;
-            this.label_versionInfo.Text = "Version: Unknown";
-            //
-            // label_categories
-            //
-            this.label_categories.AutoSize = true;
-            this.label_categories.Location = new System.Drawing.Point(12, 35);
-            this.label_categories.Name = "label_categories";
-            this.label_categories.Size = new System.Drawing.Size(120, 15);
-            this.label_categories.TabIndex = 1;
-            this.label_categories.Text = "Categories to pack:";
-            //
+            checkedListBox_categories = new CheckedListBox();
+            label_outputPath = new Label();
+            textBox_outputPath = new TextBox();
+            button_browse = new Button();
+            button_pack = new Button();
+            button_cancel = new Button();
+            progressBar = new ProgressBar();
+            label_status = new Label();
+            checkBox_64bit = new CheckBox();
+            checkBox_separateCanvas = new CheckBox();
+            label_versionInfo = new Label();
+            button_selectAll = new Button();
+            button_selectNone = new Button();
+            label_patchVersion = new Label();
+            numericUpDown_patchVersion = new NumericUpDown();
+            groupBox1 = new GroupBox();
+            ((System.ComponentModel.ISupportInitialize)numericUpDown_patchVersion).BeginInit();
+            groupBox1.SuspendLayout();
+            SuspendLayout();
+            // 
             // checkedListBox_categories
-            //
-            this.checkedListBox_categories.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.checkedListBox_categories.CheckOnClick = true;
-            this.checkedListBox_categories.FormattingEnabled = true;
-            this.checkedListBox_categories.Location = new System.Drawing.Point(12, 53);
-            this.checkedListBox_categories.Name = "checkedListBox_categories";
-            this.checkedListBox_categories.Size = new System.Drawing.Size(360, 184);
-            this.checkedListBox_categories.TabIndex = 2;
-            //
-            // button_selectAll
-            //
-            this.button_selectAll.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_selectAll.Location = new System.Drawing.Point(216, 243);
-            this.button_selectAll.Name = "button_selectAll";
-            this.button_selectAll.Size = new System.Drawing.Size(75, 23);
-            this.button_selectAll.TabIndex = 3;
-            this.button_selectAll.Text = "Select All";
-            this.button_selectAll.UseVisualStyleBackColor = true;
-            this.button_selectAll.Click += new System.EventHandler(this.button_selectAll_Click);
-            //
-            // button_selectNone
-            //
-            this.button_selectNone.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_selectNone.Location = new System.Drawing.Point(297, 243);
-            this.button_selectNone.Name = "button_selectNone";
-            this.button_selectNone.Size = new System.Drawing.Size(75, 23);
-            this.button_selectNone.TabIndex = 4;
-            this.button_selectNone.Text = "Select None";
-            this.button_selectNone.UseVisualStyleBackColor = true;
-            this.button_selectNone.Click += new System.EventHandler(this.button_selectNone_Click);
-            //
+            // 
+            checkedListBox_categories.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            checkedListBox_categories.CheckOnClick = true;
+            checkedListBox_categories.FormattingEnabled = true;
+            checkedListBox_categories.Location = new System.Drawing.Point(14, 22);
+            checkedListBox_categories.Name = "checkedListBox_categories";
+            checkedListBox_categories.Size = new System.Drawing.Size(349, 220);
+            checkedListBox_categories.TabIndex = 2;
+            // 
             // label_outputPath
-            //
-            this.label_outputPath.AutoSize = true;
-            this.label_outputPath.Location = new System.Drawing.Point(12, 275);
-            this.label_outputPath.Name = "label_outputPath";
-            this.label_outputPath.Size = new System.Drawing.Size(75, 15);
-            this.label_outputPath.TabIndex = 5;
-            this.label_outputPath.Text = "Output path:";
-            //
+            // 
+            label_outputPath.AutoSize = true;
+            label_outputPath.Location = new System.Drawing.Point(12, 275);
+            label_outputPath.Name = "label_outputPath";
+            label_outputPath.Size = new System.Drawing.Size(75, 15);
+            label_outputPath.TabIndex = 5;
+            label_outputPath.Text = "Output path:";
+            // 
             // textBox_outputPath
-            //
-            this.textBox_outputPath.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left)
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.textBox_outputPath.Location = new System.Drawing.Point(12, 293);
-            this.textBox_outputPath.Name = "textBox_outputPath";
-            this.textBox_outputPath.Size = new System.Drawing.Size(279, 23);
-            this.textBox_outputPath.TabIndex = 6;
-            //
+            // 
+            textBox_outputPath.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            textBox_outputPath.Location = new System.Drawing.Point(12, 293);
+            textBox_outputPath.Name = "textBox_outputPath";
+            textBox_outputPath.Size = new System.Drawing.Size(279, 23);
+            textBox_outputPath.TabIndex = 6;
+            // 
             // button_browse
-            //
-            this.button_browse.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_browse.Location = new System.Drawing.Point(297, 293);
-            this.button_browse.Name = "button_browse";
-            this.button_browse.Size = new System.Drawing.Size(75, 23);
-            this.button_browse.TabIndex = 7;
-            this.button_browse.Text = "Browse...";
-            this.button_browse.UseVisualStyleBackColor = true;
-            this.button_browse.Click += new System.EventHandler(this.button_browse_Click);
-            //
-            // checkBox_64bit
-            //
-            this.checkBox_64bit.AutoSize = true;
-            this.checkBox_64bit.Location = new System.Drawing.Point(12, 322);
-            this.checkBox_64bit.Name = "checkBox_64bit";
-            this.checkBox_64bit.Size = new System.Drawing.Size(170, 19);
-            this.checkBox_64bit.TabIndex = 8;
-            this.checkBox_64bit.Text = "Save as 64-bit WZ format";
-            this.checkBox_64bit.UseVisualStyleBackColor = true;
-            this.checkBox_64bit.CheckedChanged += new System.EventHandler(this.checkBox_64bit_CheckedChanged);
-            //
-            // checkBox_separateCanvas
-            //
-            this.checkBox_separateCanvas.AutoSize = true;
-            this.checkBox_separateCanvas.Enabled = false;
-            this.checkBox_separateCanvas.Location = new System.Drawing.Point(30, 344);
-            this.checkBox_separateCanvas.Name = "checkBox_separateCanvas";
-            this.checkBox_separateCanvas.Size = new System.Drawing.Size(230, 19);
-            this.checkBox_separateCanvas.TabIndex = 15;
-            this.checkBox_separateCanvas.Text = "Save images in separate _Canvas folder";
-            this.checkBox_separateCanvas.UseVisualStyleBackColor = true;
-            //
-            // label_patchVersion
-            //
-            this.label_patchVersion.AutoSize = true;
-            this.label_patchVersion.Location = new System.Drawing.Point(12, 372);
-            this.label_patchVersion.Name = "label_patchVersion";
-            this.label_patchVersion.Size = new System.Drawing.Size(85, 15);
-            this.label_patchVersion.TabIndex = 13;
-            this.label_patchVersion.Text = "Patch Version:";
-            //
-            // numericUpDown_patchVersion
-            //
-            this.numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 370);
-            this.numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
-            this.numericUpDown_patchVersion.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
-            this.numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
-            this.numericUpDown_patchVersion.Size = new System.Drawing.Size(80, 23);
-            this.numericUpDown_patchVersion.TabIndex = 14;
-            this.numericUpDown_patchVersion.Value = new decimal(new int[] { 1, 0, 0, 0 });
-            //
-            // progressBar
-            //
-            this.progressBar.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.progressBar.Location = new System.Drawing.Point(12, 402);
-            this.progressBar.Name = "progressBar";
-            this.progressBar.Size = new System.Drawing.Size(360, 23);
-            this.progressBar.TabIndex = 9;
-            //
-            // label_status
-            //
-            this.label_status.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.label_status.Location = new System.Drawing.Point(12, 428);
-            this.label_status.Name = "label_status";
-            this.label_status.Size = new System.Drawing.Size(360, 15);
-            this.label_status.TabIndex = 10;
-            this.label_status.Text = "Ready";
-            //
+            // 
+            button_browse.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            button_browse.Location = new System.Drawing.Point(297, 293);
+            button_browse.Name = "button_browse";
+            button_browse.Size = new System.Drawing.Size(75, 23);
+            button_browse.TabIndex = 7;
+            button_browse.Text = "Browse...";
+            button_browse.UseVisualStyleBackColor = true;
+            button_browse.Click += button_browse_Click;
+            // 
             // button_pack
-            //
-            this.button_pack.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_pack.Location = new System.Drawing.Point(216, 452);
-            this.button_pack.Name = "button_pack";
-            this.button_pack.Size = new System.Drawing.Size(75, 23);
-            this.button_pack.TabIndex = 11;
-            this.button_pack.Text = "Pack";
-            this.button_pack.UseVisualStyleBackColor = true;
-            this.button_pack.Click += new System.EventHandler(this.button_pack_Click);
-            //
+            // 
+            button_pack.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            button_pack.Location = new System.Drawing.Point(216, 452);
+            button_pack.Name = "button_pack";
+            button_pack.Size = new System.Drawing.Size(75, 23);
+            button_pack.TabIndex = 11;
+            button_pack.Text = "Pack";
+            button_pack.UseVisualStyleBackColor = true;
+            button_pack.Click += button_pack_Click;
+            // 
             // button_cancel
-            //
-            this.button_cancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_cancel.Location = new System.Drawing.Point(297, 452);
-            this.button_cancel.Name = "button_cancel";
-            this.button_cancel.Size = new System.Drawing.Size(75, 23);
-            this.button_cancel.TabIndex = 12;
-            this.button_cancel.Text = "Close";
-            this.button_cancel.UseVisualStyleBackColor = true;
-            this.button_cancel.Click += new System.EventHandler(this.button_cancel_Click);
-            //
+            // 
+            button_cancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
+            button_cancel.Location = new System.Drawing.Point(297, 452);
+            button_cancel.Name = "button_cancel";
+            button_cancel.Size = new System.Drawing.Size(75, 23);
+            button_cancel.TabIndex = 12;
+            button_cancel.Text = "Close";
+            button_cancel.UseVisualStyleBackColor = true;
+            button_cancel.Click += button_cancel_Click;
+            // 
+            // progressBar
+            // 
+            progressBar.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            progressBar.Location = new System.Drawing.Point(12, 402);
+            progressBar.Name = "progressBar";
+            progressBar.Size = new System.Drawing.Size(360, 23);
+            progressBar.TabIndex = 9;
+            // 
+            // label_status
+            // 
+            label_status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            label_status.Location = new System.Drawing.Point(12, 428);
+            label_status.Name = "label_status";
+            label_status.Size = new System.Drawing.Size(360, 15);
+            label_status.TabIndex = 10;
+            label_status.Text = "Ready";
+            // 
+            // checkBox_64bit
+            // 
+            checkBox_64bit.AutoSize = true;
+            checkBox_64bit.Location = new System.Drawing.Point(12, 322);
+            checkBox_64bit.Name = "checkBox_64bit";
+            checkBox_64bit.Size = new System.Drawing.Size(158, 19);
+            checkBox_64bit.TabIndex = 8;
+            checkBox_64bit.Text = "Save as 64-bit WZ format";
+            checkBox_64bit.UseVisualStyleBackColor = true;
+            checkBox_64bit.CheckedChanged += checkBox_64bit_CheckedChanged;
+            // 
+            // checkBox_separateCanvas
+            // 
+            checkBox_separateCanvas.AutoSize = true;
+            checkBox_separateCanvas.Enabled = false;
+            checkBox_separateCanvas.Location = new System.Drawing.Point(30, 344);
+            checkBox_separateCanvas.Name = "checkBox_separateCanvas";
+            checkBox_separateCanvas.Size = new System.Drawing.Size(231, 19);
+            checkBox_separateCanvas.TabIndex = 15;
+            checkBox_separateCanvas.Text = "Save images in separate _Canvas folder";
+            checkBox_separateCanvas.UseVisualStyleBackColor = true;
+            // 
+            // label_versionInfo
+            // 
+            label_versionInfo.AutoSize = true;
+            label_versionInfo.Location = new System.Drawing.Point(189, 372);
+            label_versionInfo.Name = "label_versionInfo";
+            label_versionInfo.Size = new System.Drawing.Size(58, 15);
+            label_versionInfo.TabIndex = 0;
+            label_versionInfo.Text = "Unknown";
+            // 
+            // button_selectAll
+            // 
+            button_selectAll.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            button_selectAll.Location = new System.Drawing.Point(214, 242);
+            button_selectAll.Name = "button_selectAll";
+            button_selectAll.Size = new System.Drawing.Size(75, 23);
+            button_selectAll.TabIndex = 3;
+            button_selectAll.Text = "Select All";
+            button_selectAll.UseVisualStyleBackColor = true;
+            button_selectAll.Click += button_selectAll_Click;
+            // 
+            // button_selectNone
+            // 
+            button_selectNone.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            button_selectNone.Location = new System.Drawing.Point(288, 242);
+            button_selectNone.Name = "button_selectNone";
+            button_selectNone.Size = new System.Drawing.Size(75, 23);
+            button_selectNone.TabIndex = 4;
+            button_selectNone.Text = "Select None";
+            button_selectNone.UseVisualStyleBackColor = true;
+            button_selectNone.Click += button_selectNone_Click;
+            // 
+            // label_patchVersion
+            // 
+            label_patchVersion.AutoSize = true;
+            label_patchVersion.Location = new System.Drawing.Point(12, 372);
+            label_patchVersion.Name = "label_patchVersion";
+            label_patchVersion.Size = new System.Drawing.Size(81, 15);
+            label_patchVersion.TabIndex = 13;
+            label_patchVersion.Text = "Patch Version:";
+            // 
+            // numericUpDown_patchVersion
+            // 
+            numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 370);
+            numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
+            numericUpDown_patchVersion.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
+            numericUpDown_patchVersion.Size = new System.Drawing.Size(80, 23);
+            numericUpDown_patchVersion.TabIndex = 14;
+            numericUpDown_patchVersion.Value = new decimal(new int[] { 1, 0, 0, 0 });
+            // 
+            // groupBox1
+            // 
+            groupBox1.Controls.Add(checkedListBox_categories);
+            groupBox1.Controls.Add(button_selectAll);
+            groupBox1.Controls.Add(button_selectNone);
+            groupBox1.Location = new System.Drawing.Point(2, 1);
+            groupBox1.Name = "groupBox1";
+            groupBox1.Size = new System.Drawing.Size(378, 271);
+            groupBox1.TabIndex = 16;
+            groupBox1.TabStop = false;
+            groupBox1.Text = "Categories to pack:";
+            // 
             // PackToWz
-            //
-            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(384, 485);
-            this.Controls.Add(this.numericUpDown_patchVersion);
-            this.Controls.Add(this.label_patchVersion);
-            this.Controls.Add(this.button_cancel);
-            this.Controls.Add(this.button_pack);
-            this.Controls.Add(this.label_status);
-            this.Controls.Add(this.progressBar);
-            this.Controls.Add(this.checkBox_separateCanvas);
-            this.Controls.Add(this.checkBox_64bit);
-            this.Controls.Add(this.button_browse);
-            this.Controls.Add(this.textBox_outputPath);
-            this.Controls.Add(this.label_outputPath);
-            this.Controls.Add(this.button_selectNone);
-            this.Controls.Add(this.button_selectAll);
-            this.Controls.Add(this.checkedListBox_categories);
-            this.Controls.Add(this.label_categories);
-            this.Controls.Add(this.label_versionInfo);
-            this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.Name = "PackToWz";
-            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
-            this.Text = "Pack IMG Files to WZ";
-            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.PackToWz_FormClosing);
-            ((System.ComponentModel.ISupportInitialize)(this.numericUpDown_patchVersion)).EndInit();
-            this.ResumeLayout(false);
-            this.PerformLayout();
+            // 
+            AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+            AutoScaleMode = AutoScaleMode.Font;
+            ClientSize = new System.Drawing.Size(384, 485);
+            Controls.Add(groupBox1);
+            Controls.Add(numericUpDown_patchVersion);
+            Controls.Add(label_patchVersion);
+            Controls.Add(button_cancel);
+            Controls.Add(button_pack);
+            Controls.Add(label_status);
+            Controls.Add(progressBar);
+            Controls.Add(checkBox_separateCanvas);
+            Controls.Add(checkBox_64bit);
+            Controls.Add(button_browse);
+            Controls.Add(textBox_outputPath);
+            Controls.Add(label_outputPath);
+            Controls.Add(label_versionInfo);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            Name = "PackToWz";
+            StartPosition = FormStartPosition.CenterParent;
+            Text = "Pack IMG Files to WZ";
+            FormClosing += PackToWz_FormClosing;
+            ((System.ComponentModel.ISupportInitialize)numericUpDown_patchVersion).EndInit();
+            groupBox1.ResumeLayout(false);
+            ResumeLayout(false);
+            PerformLayout();
         }
 
         private System.Windows.Forms.CheckedListBox checkedListBox_categories;
-        private System.Windows.Forms.Label label_categories;
         private System.Windows.Forms.Label label_outputPath;
         private System.Windows.Forms.TextBox textBox_outputPath;
         private System.Windows.Forms.Button button_browse;

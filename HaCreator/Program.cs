@@ -91,8 +91,17 @@ namespace HaCreator
                 obj = DataSource.GetImage(category, name);
                 if (obj == null)
                 {
-                    // Try as directory
-                    obj = DataSource.GetDirectory(category);
+                    // Try as directory - get category root then navigate to subdirectory
+                    var categoryDir = DataSource.GetDirectory(category);
+                    if (categoryDir != null && !string.IsNullOrEmpty(name))
+                    {
+                        // Navigate to the subdirectory by name
+                        obj = categoryDir[name];
+                    }
+                    else
+                    {
+                        obj = categoryDir;
+                    }
                 }
             }
             // Fall back to WzManager

@@ -176,5 +176,147 @@ namespace HaCreator.Wz
             PortalIdByType.Clear();
             PortalGame.Clear();
         }
+
+        #region Hot Swap Refresh Methods
+        /// <summary>
+        /// Refreshes a specific tile set from the data source
+        /// </summary>
+        /// <param name="setName">The tile set name</param>
+        public void RefreshTileSet(string setName)
+        {
+            if (TileSets.ContainsKey(setName))
+            {
+                TileSets[setName] = null; // Clear cached value - will reload on next GetTileSet() call
+            }
+        }
+
+        /// <summary>
+        /// Refreshes a specific object set from the data source
+        /// </summary>
+        /// <param name="setName">The object set name</param>
+        public void RefreshObjectSet(string setName)
+        {
+            if (ObjectSets.ContainsKey(setName))
+            {
+                ObjectSets[setName] = null; // Clear cached value
+            }
+        }
+
+        /// <summary>
+        /// Refreshes a specific background set from the data source
+        /// </summary>
+        /// <param name="setName">The background set name</param>
+        public void RefreshBackgroundSet(string setName)
+        {
+            if (BackgroundSets.ContainsKey(setName))
+            {
+                BackgroundSets[setName] = null; // Clear cached value
+            }
+        }
+
+        /// <summary>
+        /// Adds a new tile set to the available sets list
+        /// </summary>
+        /// <param name="setName">The tile set name</param>
+        public void AddTileSet(string setName)
+        {
+            if (!TileSets.ContainsKey(setName))
+            {
+                TileSets[setName] = null; // Will be lazy-loaded
+            }
+        }
+
+        /// <summary>
+        /// Removes a tile set from the available sets list
+        /// </summary>
+        /// <param name="setName">The tile set name</param>
+        public void RemoveTileSet(string setName)
+        {
+            TileSets.Remove(setName);
+        }
+
+        /// <summary>
+        /// Adds a new object set to the available sets list
+        /// </summary>
+        /// <param name="setName">The object set name</param>
+        public void AddObjectSet(string setName)
+        {
+            if (!ObjectSets.ContainsKey(setName))
+            {
+                ObjectSets[setName] = null;
+            }
+        }
+
+        /// <summary>
+        /// Removes an object set from the available sets list
+        /// </summary>
+        /// <param name="setName">The object set name</param>
+        public void RemoveObjectSet(string setName)
+        {
+            ObjectSets.Remove(setName);
+        }
+
+        /// <summary>
+        /// Adds a new background set to the available sets list
+        /// </summary>
+        /// <param name="setName">The background set name</param>
+        public void AddBackgroundSet(string setName)
+        {
+            if (!BackgroundSets.ContainsKey(setName))
+            {
+                BackgroundSets[setName] = null;
+            }
+        }
+
+        /// <summary>
+        /// Removes a background set from the available sets list
+        /// </summary>
+        /// <param name="setName">The background set name</param>
+        public void RemoveBackgroundSet(string setName)
+        {
+            BackgroundSets.Remove(setName);
+        }
+
+        /// <summary>
+        /// Refreshes mob data for a specific mob ID
+        /// </summary>
+        /// <param name="mobId">The mob ID</param>
+        public void RefreshMob(string mobId)
+        {
+            MobNameCache.Remove(mobId);
+            MobIconCache.Remove(int.TryParse(mobId, out int id) ? id : 0);
+        }
+
+        /// <summary>
+        /// Refreshes NPC data for a specific NPC ID
+        /// </summary>
+        /// <param name="npcId">The NPC ID</param>
+        public void RefreshNpc(string npcId)
+        {
+            NpcNameCache.Remove(npcId);
+            NpcPropertyCache.Remove(npcId);
+        }
+
+        /// <summary>
+        /// Refreshes reactor data for a specific reactor ID
+        /// </summary>
+        /// <param name="reactorId">The reactor ID</param>
+        public void RefreshReactor(string reactorId)
+        {
+            Reactors.Remove(reactorId);
+        }
+
+        /// <summary>
+        /// Refreshes all quest data
+        /// </summary>
+        public void RefreshQuestData()
+        {
+            QuestInfos.Clear();
+            QuestActs.Clear();
+            QuestChecks.Clear();
+            QuestSays.Clear();
+            // Data will be reloaded when QuestEditor accesses it
+        }
+        #endregion
     }
 }

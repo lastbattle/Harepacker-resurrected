@@ -15,12 +15,14 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Xceed.Wpf.AvalonDock.Controls;
+using HaCreator.Wz;
 
 namespace HaCreator.GUI.EditorPanels
 {
     public partial class ObjPanel : UserControl
     {
         private HaCreatorStateManager hcsm;
+        private HotSwapRefreshService _hotSwapService;
 
         // ContextMenuStrip for the 'obj'
         private readonly ContextMenuStrip contextMenu = new ContextMenuStrip();
@@ -441,6 +443,145 @@ namespace HaCreator.GUI.EditorPanels
                         }
                     }
                 }
+            }
+        }
+        #endregion
+
+        #region Hot Swap
+        /// <summary>
+        /// Subscribes to hot swap events from the HotSwapRefreshService
+        /// </summary>
+        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
+        {
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.ObjectSetChanged -= OnObjectSetChanged;
+            }
+
+            _hotSwapService = refreshService;
+
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.ObjectSetChanged += OnObjectSetChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles object set change events
+        /// </summary>
+        private void OnObjectSetChanged(object sender, ObjectSetChangedEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => HandleObjectSetChange(e)));
+                return;
+            }
+            HandleObjectSetChange(e);
+        }
+
+        /// <summary>
+        /// Handles the object set change on the UI thread
+        /// </summary>
+        private void HandleObjectSetChange(ObjectSetChangedEventArgs e)
+        {
+            switch (e.ChangeType)
+            {
+                case AssetChangeType.Added:
+                    if (!objSetListBox.Items.Contains(e.SetName))
+                    {
+                        objSetListBox.Items.Add(e.SetName);
+                        SortObjectSetList();
+                    }
+                    break;
+
+                case AssetChangeType.Removed:
+                    objSetListBox.Items.Remove(e.SetName);
+                    if (objSetListBox.SelectedItem?.ToString() == e.SetName)
+                    {
+                        ClearObjectDisplay();
+                        if (objSetListBox.Items.Count > 0)
+                        {
+                            objSetListBox.SelectedIndex = 0;
+                        }
+                    }
+                    break;
+
+                case AssetChangeType.Modified:
+                    // If set doesn't exist in list, add it (Windows sometimes reports new files as Changed)
+                    if (!objSetListBox.Items.Contains(e.SetName))
+                    {
+                        objSetListBox.Items.Add(e.SetName);
+                        SortObjectSetList();
+                    }
+                    else if (objSetListBox.SelectedItem?.ToString() == e.SetName)
+                    {
+                        RefreshCurrentObjectSet();
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the currently displayed object set
+        /// </summary>
+        public void RefreshCurrentObjectSet()
+        {
+            if (objSetListBox.SelectedItem == null)
+                return;
+
+            string selectedSet = objSetListBox.SelectedItem.ToString();
+
+            // Clear current display
+            objL0ListBox.Items.Clear();
+            objL1ListBox.Items.Clear();
+            objImagesContainer.Controls.Clear();
+
+            // Force reload from disk
+            Program.InfoManager.RefreshObjectSet(selectedSet);
+
+            // Repopulate L0 list
+            WzImage oSImage = Program.InfoManager.GetObjectSet(selectedSet);
+            if (oSImage != null)
+            {
+                foreach (WzImageProperty l0Prop in oSImage.WzProperties)
+                {
+                    objL0ListBox.Items.Add(l0Prop.Name);
+                }
+                // Select first item
+                if (objL0ListBox.Items.Count > 0)
+                {
+                    objL0ListBox.SelectedIndex = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clears the object display
+        /// </summary>
+        private void ClearObjectDisplay()
+        {
+            objL0ListBox.Items.Clear();
+            objL1ListBox.Items.Clear();
+            objImagesContainer.Controls.Clear();
+            button_addImage.Enabled = false;
+        }
+
+        /// <summary>
+        /// Sorts the object set list alphabetically
+        /// </summary>
+        private void SortObjectSetList()
+        {
+            var items = objSetListBox.Items.Cast<string>().OrderBy(s => s).ToList();
+            var selected = objSetListBox.SelectedItem;
+            objSetListBox.Items.Clear();
+            foreach (var item in items)
+            {
+                objSetListBox.Items.Add(item);
+            }
+            if (selected != null && objSetListBox.Items.Contains(selected))
+            {
+                objSetListBox.SelectedItem = selected;
             }
         }
         #endregion

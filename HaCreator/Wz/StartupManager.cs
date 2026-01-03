@@ -103,6 +103,23 @@ namespace HaCreator.Wz
             _config.EnsureDirectoriesExist();
 
             _versionManager = new VersionManager(_config.VersionsPath);
+
+            // Enable hot swap if configured
+            EnableHotSwapIfConfigured();
+        }
+
+        /// <summary>
+        /// Enables hot swap for version manager if configured
+        /// </summary>
+        private void EnableHotSwapIfConfigured()
+        {
+            if (_config.HotSwap?.Enabled == true && _config.HotSwap.WatchVersions)
+            {
+                _versionManager.EnableHotSwap(
+                    true,
+                    _config.HotSwap.DebounceMs,
+                    _config.AdditionalVersionPaths);
+            }
         }
 
         /// <summary>
@@ -131,11 +148,27 @@ namespace HaCreator.Wz
         {
             _dataSource?.Dispose();
 
-            _dataSource = new ImgFileSystemDataSource(version.DirectoryPath, _config);
+            var imgDataSource = new ImgFileSystemDataSource(version.DirectoryPath, _config);
+            _dataSource = imgDataSource;
+
+            // Enable hot swap for categories if configured
+            EnableHotSwapForDataSource(imgDataSource);
+
             _config.LastUsedVersion = version.Version;
             _config.Save();
 
             return _dataSource;
+        }
+
+        /// <summary>
+        /// Enables hot swap for an ImgFileSystemDataSource if configured
+        /// </summary>
+        private void EnableHotSwapForDataSource(ImgFileSystemDataSource dataSource)
+        {
+            if (_config.HotSwap?.Enabled == true && _config.HotSwap.WatchCategories)
+            {
+                dataSource.EnableHotSwap(true, _config.HotSwap.DebounceMs);
+            }
         }
 
         /// <summary>
