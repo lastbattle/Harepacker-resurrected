@@ -54,7 +54,7 @@
                     <RibbonApplicationMenuItem x:Name="saveBtn" Header="Save to WZ" Command="ns:HaRibbon.Save" ImageSource="pack://application:,,,/HaCreator;component/Images/export-icon.png" Focusable="False"/>
                     <RibbonApplicationMenuItem x:Name="repackBtn" Header="Repack WZ Files" Command="ns:HaRibbon.Repack" ImageSource="pack://application:,,,/HaCreator;component/Images/wz.ico" Focusable="False"/>
                     <RibbonSeparator/>
-                    <RibbonApplicationMenuItem x:Name="hrBtn" Header="Open HaRepacker" Command="ns:HaRibbon.HaRepacker" ImageSource="pack://application:,,,/HaCreator;component/Images/HaLogo32.png" Focusable="False"
+                    <RibbonApplicationMenuItem x:Name="hrBtn" Header="Open HaRepacker" Command="ns:HaRibbon.HaRepacker" Focusable="False"
                                                IsEnabled="False"/>
                     <RibbonSeparator/>
                     <RibbonApplicationMenuItem x:Name="aboutBtn" Header="About" Command="ns:HaRibbon.About" ImageSource="pack://application:,,,/HaCreator;component/Images/About.png" Focusable="False"/>

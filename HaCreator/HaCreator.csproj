@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <ApplicationIcon>HaLogo.ico</ApplicationIcon>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
@@ -166,9 +165,6 @@
     <Resource Include="Images\ColorSwatchSquare2.png" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Images\HaLogo32.png" />
-  </ItemGroup>
-  <ItemGroup>
     <Resource Include="Images\Foothold.png" />
   </ItemGroup>
   <ItemGroup>
@@ -232,17 +228,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="HaLogo.ico" />
-    <Content Include="HaLogo\%24this.Icon.ico" />
-    <Content Include="HaLogo\HaLogo.ico" />
-    <Content Include="HaLogo\HaLogo.svg" />
-    <Content Include="HaLogo\HaLogo128.png" />
-    <Content Include="HaLogo\HaLogo16.png" />
-    <Content Include="HaLogo\HaLogo256.png" />
-    <Content Include="HaLogo\HaLogo32.png" />
-    <Content Include="HaLogo\HaLogo48.png" />
-    <Content Include="HaLogo\HaLogo512.png" />
-    <Content Include="HaLogo\HaLogo64.png" />
     <Resource Include="Images\Quest\2022240_buff_icon.png" />
     <Content Include="Images\Quest\BtMarkNpc.png" />
     <Resource Include="Images\Quest\shop.meso.png" />
