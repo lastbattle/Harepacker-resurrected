@@ -87,17 +87,23 @@ add_platform points=[{x: -100, y: 300}, {x: 100, y: 300}] forbid_fall_down=true
 ```
 
 ### Jump Distance Guidelines
-- Small jump: 50-80 pixels vertical gap
-- Normal jump: 80-120 pixels vertical gap
-- Large jump: 120-180 pixels vertical gap
-- Horizontal gap: 100-200 pixels is comfortable
-- Maximum reachable: ~200 pixels vertical, ~250 pixels horizontal
+MapleStory characters have specific jump capabilities. Design platforms with these constraints:
 
-### Platform Accessibility (BSC Spacing)
-- **CRITICAL**: When adding platforms, they should typically be within 40 pixels of each other
-- Platforms beyond 40 pixels apart become inaccessible to players without ropes/ladders
-- Always consider character reach when designing multi-platform layouts
-- **Use ropes/ladders**: If platforms exceed 40 pixels spacing, add ropes or ladders to connect them for vertical accessibility
+| Jump Type | Vertical Gap | Horizontal Gap | Use Case |
+|-----------|-------------|----------------|----------|
+| Small     | 50-80 px    | 80-120 px      | Easy traversal, town areas |
+| Normal    | 80-120 px   | 120-180 px     | Standard gameplay |
+| Large     | 120-160 px  | 180-220 px     | Challenging jumps |
+| Maximum   | ~180 px     | ~250 px        | Difficult/precise jumps |
+
+**Common Y-level spacing:** MapleStory maps typically use 60-pixel vertical intervals between platform levels (e.g., Y=274, 334, 394, 454). This creates comfortable small jumps.
+
+### Platform Accessibility
+- **Standard grid:** MapleStory uses a 90x60 pixel tile grid. Design platforms to align with this grid for visual consistency.
+- **Vertical gaps up to 80 pixels** are jumpable without assistance
+- **Gaps exceeding 100 pixels** require ropes, ladders, or intermediate platforms
+- **Use ropes/ladders:** For vertical connections beyond comfortable jump range, add climbing elements
+- Always consider the full jump arc - horizontal distance matters as much as vertical
 
 ## Wall Design (add_wall)
 
@@ -126,10 +132,14 @@ Parameters:
 - uf: Upper foothold - can climb out at top (default true)
 - layer: 0-7 (default 0)
 
-### Rope Length Guidelines
-- Short climb: 100-150 pixels
-- Medium climb: 150-250 pixels
-- Long climb: 250-400 pixels
+### Rope Placement Guidelines
+Position ropes to connect platform levels. The top should be at or slightly above the upper platform's Y coordinate, and the bottom at the lower platform's Y.
+
+| Climb Type | Length (pixels) | Typical Use |
+|------------|-----------------|-------------|
+| Short      | 100-150 px      | Single level, quick access |
+| Medium     | 150-250 px      | 2-3 level spans, common |
+| Long       | 250-400 px      | Multi-level towers, vertical maps |
 
 Example - Connecting platforms:
 ```
@@ -199,26 +209,40 @@ clear_elements type=ladder     // Removes ALL ladders
 
 ## Layout Patterns
 
-### Simple Training Ground
-- Main floor at y=300
-- 2-3 floating platforms at y=150-200
-- Walls at map boundaries
+Use 60-pixel vertical intervals to align with MapleStory's standard grid.
 
-### Multi-level Map
-- Ground at y=400
-- Mid platform at y=250
-- Upper platform at y=100
-- Ropes/ladders connecting levels
+### Simple Training Ground
+**Dimensions:** ~800x400 pixels (single screen width)
+- Main floor: X=-400 to X=400, Y=360 (800px wide)
+- Floating platform 1: X=-200 to X=0, Y=240 (200px wide)
+- Floating platform 2: X=100 to X=300, Y=180 (200px wide)
+- Walls at X=-400 and X=400, Y=0 to Y=400
+- Suitable for: Tutorial areas, beginner zones
+
+### Multi-level Town Map
+**Dimensions:** ~2000x600 pixels (scrolling horizontally)
+- Ground level: X=-1000 to X=1000, Y=450 (2000px wide)
+- Mid platform left: X=-800 to X=-400, Y=330 (400px wide)
+- Mid platform right: X=400 to X=800, Y=270 (400px wide)
+- Upper platforms: X=-300 to X=300, Y=150 (600px wide)
+- Ladders at X=-600 (Y=270 to Y=450) and X=600 (Y=150 to Y=330)
+- Suitable for: Towns like Henesys, Ellinia
 
 ### Combat Arena
-- Central platform
-- Side platforms
-- Easy horizontal movement
+**Dimensions:** ~1200x300 pixels (wide, shallow)
+- Central platform: X=-500 to X=500, Y=300 (1000px wide)
+- Left platform: X=-550 to X=-350, Y=240 (200px wide)
+- Right platform: X=350 to X=550, Y=240 (200px wide)
+- Walls at X=-600 and X=600, Y=100 to Y=350
+- Suitable for: Boss rooms, PvP areas
 
 ### Tower/Vertical Map
-- Multiple horizontal platforms stacked
-- Ropes or ladders between each level
-- Walls on sides
+**Dimensions:** ~400x800 pixels (narrow, tall)
+- Platform at each level: 300-400px wide, spaced 60-120px vertically
+- Example levels: Y=600, Y=480, Y=360, Y=240, Y=120
+- Walls at X=-200 and X=200, spanning full height
+- Ladders at X=0, connecting each pair of platforms
+- Suitable for: Eos Tower, Orbis Tower style
 
 ## Tips
 - Look at existing foothold Y coordinates in the map context to match ground levels

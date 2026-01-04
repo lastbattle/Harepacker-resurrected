@@ -143,53 +143,73 @@ add_tile tileset="grassySoil" u="edU" no="1" x=260 y=200
 
 ## Sizing Guidelines
 
-### Tile Dimensions
-- Standard tile: ~40x40 pixels
-- A 400px wide platform uses ~10 tiles horizontally
-- Height of 3 = 3 tile rows (~120 pixels)
+### Tile Grid Dimensions
+MapleStory uses a standardized tile grid:
+- **Tile width:** 90 pixels (horizontal spacing between tile columns)
+- **Tile height:** 60 pixels (vertical spacing between tile rows)
+- A 450px wide platform uses ~5 tiles horizontally (450 ÷ 90 = 5)
+- A 360px tall structure uses 6 tile rows (360 ÷ 60 = 6)
 
 ### Platform Width Recommendations
-- Small platform: 100-200px (2-5 tiles)
-- Medium platform: 200-400px (5-10 tiles)
-- Large platform: 400-800px (10-20 tiles)
-- Full ground: Match Content Bounds width
+| Platform Type | Width (pixels) | Approximate Tiles |
+|---------------|----------------|-------------------|
+| Small         | 180-270 px     | 2-3 tiles         |
+| Medium        | 360-540 px     | 4-6 tiles         |
+| Large         | 630-900 px     | 7-10 tiles        |
+| Full ground   | Match Content Bounds | Varies       |
 
 ### Height Recommendations
-- Thin/flat: height=1
-- Normal ground: height=2-3
-- Thick/deep: height=4-6
-- Pillar: height=5-10
+| Structure Type | Height Value | Actual Pixels | Use Case |
+|----------------|--------------|---------------|----------|
+| Thin/flat      | height=1     | ~60 px        | Floating platforms |
+| Normal ground  | height=2-3   | ~120-180 px   | Standard floors |
+| Thick/deep     | height=4-6   | ~240-360 px   | Deep ground, cliffs |
+| Pillar         | height=5-10  | ~300-600 px   | Vertical columns |
+
+### Alignment with Platforms
+- Tile Y coordinates should match foothold Y coordinates exactly
+- Common Y levels in MapleStory: multiples of 60 (e.g., Y=120, 180, 240, 300, 360, 420)
+- Town maps often use Y=274, 334, 394, 454 (60px intervals)
 
 ## Example Scenarios
 
-### Basic Ground Floor
+### Basic Ground Floor (Town Style)
 ```
-tile_structure tileset="grassySoil" structure_type="tall" start_x=-500 end_x=500 y=400 height=3
+// Wide ground floor - 1080px wide (12 tiles), 3 rows deep (180px)
+tile_structure tileset="grassySoil" structure_type="tall" start_x=-540 end_x=540 y=450 height=3
 ```
 
 ### Floating Platform
 ```
-tile_structure tileset="grassySoil" structure_type="flat" start_x=-100 end_x=100 y=200
+// Small floating platform - 270px wide (3 tiles), single row
+tile_structure tileset="grassySoil" structure_type="flat" start_x=-135 end_x=135 y=270
 ```
 
 ### Cave with Multiple Levels
 ```
-tile_structure tileset="deepMine" structure_type="tall" start_x=-400 end_x=400 y=400 height=4
-tile_structure tileset="deepMine" structure_type="flat" start_x=-200 end_x=-50 y=250
-tile_structure tileset="deepMine" structure_type="flat" start_x=50 end_x=200 y=250
-tile_structure tileset="deepMine" structure_type="flat" start_x=-100 end_x=100 y=100
+// Ground floor - 720px wide, 4 rows deep (240px)
+tile_structure tileset="deepMine" structure_type="tall" start_x=-360 end_x=360 y=420 height=4
+
+// Mid-level platforms at Y=300 (120px gap - normal jump)
+tile_structure tileset="deepMine" structure_type="flat" start_x=-270 end_x=-90 y=300
+tile_structure tileset="deepMine" structure_type="flat" start_x=90 end_x=270 y=300
+
+// Upper platform at Y=180 (120px gap)
+tile_structure tileset="deepMine" structure_type="flat" start_x=-135 end_x=135 y=180
 ```
 
 ### Staircase Tower
 ```
-tile_structure tileset="ludibrium" structure_type="staircase_right" start_x=-300 y=400 height=6
+// 6-step staircase, each step 60px high (360px total climb)
+tile_structure tileset="ludibrium" structure_type="staircase_right" start_x=-270 y=420 height=6
 ```
 
 ### Sloped Hill
 ```
-tile_structure tileset="grassySoil" structure_type="slope_up_right" start_x=-200 end_x=0 y=350
-tile_structure tileset="grassySoil" structure_type="flat" start_x=0 end_x=200 y=250
-tile_structure tileset="grassySoil" structure_type="slope_up_left" start_x=200 end_x=400 y=350
+// Left slope going up, flat top, right slope going down
+tile_structure tileset="grassySoil" structure_type="slope_up_right" start_x=-270 end_x=0 y=360
+tile_structure tileset="grassySoil" structure_type="flat" start_x=0 end_x=180 y=240
+tile_structure tileset="grassySoil" structure_type="slope_up_left" start_x=180 end_x=450 y=360
 ```
 
 ## Removing Elements

@@ -45,6 +45,7 @@ namespace HaCreator.MapEditor.AI
             WriteLine("# Map Summary for AI Editing");
             WriteLine($"Map: \"{board.MapInfo.strMapName}\" (ID: {board.MapInfo.id})");
             WriteLine($"Size: {board.MapSize.X}x{board.MapSize.Y}, Center: ({board.CenterPoint.X}, {board.CenterPoint.Y})");
+            WriteLine($"Grid: 90x60px tiles (90px horizontal spacing, 60px vertical spacing)");
 
             // Calculate actual content bounds from existing elements
             int minX = int.MaxValue, maxX = int.MinValue;
@@ -198,6 +199,7 @@ namespace HaCreator.MapEditor.AI
             if (board.BoardItems.FootholdLines.Count > 0)
             {
                 WriteLine("## Platforms (Footholds)");
+                WriteLine("Note: Standard tile grid is 90px wide x 60px tall");
                 var fhByLayer = board.BoardItems.FootholdLines.GroupBy(fh => fh.LayerNumber);
                 foreach (var layerGroup in fhByLayer.OrderBy(g => g.Key))
                 {
@@ -205,7 +207,10 @@ namespace HaCreator.MapEditor.AI
                     var byPlatform = layerGroup.GroupBy(fh => fh.PlatformNumber);
                     foreach (var platGroup in byPlatform.OrderBy(g => g.Key))
                     {
-                        WriteLine($"### Layer {layerGroup.Key}, Platform {platGroup.Key} ({platGroup.Count()} segments)");
+                        // Calculate platform stats
+                        int totalWidth = platGroup.Where(f => !f.IsWall).Sum(f => Math.Abs(f.SecondDot.X - f.FirstDot.X));
+                        int tileCount = totalWidth / 90;
+                        WriteLine($"### Layer {layerGroup.Key}, Platform {platGroup.Key} ({platGroup.Count()} segments, ~{totalWidth}px wide, ~{tileCount} tiles)");
                         foreach (var fh in platGroup.OrderBy(f => Math.Min(f.FirstDot.X, f.SecondDot.X)))
                         {
                             var props = new List<string>();
@@ -310,7 +315,9 @@ namespace HaCreator.MapEditor.AI
                 foreach (var rope in board.BoardItems.Ropes.OrderBy(r => r.FirstAnchor.X))
                 {
                     var type = rope.ladder ? "Ladder" : "Rope";
-                    WriteLine($"- {type}: ({rope.FirstAnchor.X}, {rope.FirstAnchor.Y}) to ({rope.SecondAnchor.X}, {rope.SecondAnchor.Y})");
+                    int climbHeight = Math.Abs(rope.SecondAnchor.Y - rope.FirstAnchor.Y);
+                    int levels = climbHeight / 60; // Approximate levels spanned (60px per tile row)
+                    WriteLine($"- {type}: ({rope.FirstAnchor.X}, {rope.FirstAnchor.Y}) to ({rope.SecondAnchor.X}, {rope.SecondAnchor.Y}), height={climbHeight}px (~{levels} levels)");
                 }
                 WriteLine();
             }
@@ -405,19 +412,24 @@ namespace HaCreator.MapEditor.AI
             }
 
             // Platform height analysis
+            // Note: MapleStory uses a 90x60 pixel tile grid (90px horizontal, 60px vertical spacing)
             if (board.BoardItems.FootholdLines.Count > 0)
             {
                 WriteLine("### Platform Levels");
+                WriteLine("(MapleStory tile grid: 90px wide x 60px tall)");
+
+                // Group by 60-pixel intervals to match the standard tile grid
                 var platformsByY = board.BoardItems.FootholdLines
                     .Where(f => !f.IsWall)
-                    .GroupBy(f => (int)(Math.Min(f.FirstDot.Y, f.SecondDot.Y) / 50) * 50);
+                    .GroupBy(f => (int)(Math.Min(f.FirstDot.Y, f.SecondDot.Y) / 60) * 60);
 
                 foreach (var group in platformsByY.OrderBy(g => g.Key).Take(10))
                 {
                     int totalWidth = group.Sum(f => Math.Abs(f.SecondDot.X - f.FirstDot.X));
                     int minX = group.Min(f => Math.Min(f.FirstDot.X, f.SecondDot.X));
                     int maxX = group.Max(f => Math.Max(f.FirstDot.X, f.SecondDot.X));
-                    WriteLine($"- Y ~{group.Key}: {group.Count()} segment(s), total width ~{totalWidth}px, X range [{minX} to {maxX}]");
+                    int tileColumns = totalWidth / 90; // Approximate tile count
+                    WriteLine($"- Y ~{group.Key}: {group.Count()} segment(s), ~{totalWidth}px wide (~{tileColumns} tiles), X range [{minX} to {maxX}]");
                 }
             }
 
