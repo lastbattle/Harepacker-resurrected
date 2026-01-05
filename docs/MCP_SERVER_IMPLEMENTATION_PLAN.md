@@ -88,7 +88,7 @@ dotnet run --project HaMCP -- --http --port 8080
   "mcpServers": {
     "harepacker": {
       "type": "http",
-      "url": "http://127.0.0.1:13338/mcp",
+      "url": "http://127.0.0.1:13339/mcp",
       "env": {
         "HAMCP_DATA_PATH": "D:\\Extract\\v83"
       }
@@ -111,12 +111,12 @@ dotnet run --project HaMCP -- --http --port 8080
 
 ```bash
 # Initialize connection (returns session ID)
-curl -X POST http://127.0.0.1:13338/mcp \
+curl -X POST http://127.0.0.1:13339/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"initialize","params":{"capabilities":{}},"id":1}'
 
 # Call a tool
-curl -X POST http://127.0.0.1:13338/mcp \
+curl -X POST http://127.0.0.1:13339/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_categories","arguments":{}},"id":2}'
 ```
@@ -128,7 +128,7 @@ curl -X POST http://127.0.0.1:13338/mcp \
 | Variable | Description |
 |----------|-------------|
 | `HAMCP_DATA_PATH` | Path to IMG filesystem extracted by HaCreator (must contain `manifest.json`) |
-| `HAMCP_PORT` | Server port for HTTP mode (default: 13338) |
+| `HAMCP_PORT` | Server port for HTTP mode (default: 13339) |
 | `HAMCP_TRANSPORT` | Transport mode: `stdio` (default) or `http` |
 
 ### Command Line Arguments
@@ -136,7 +136,7 @@ curl -X POST http://127.0.0.1:13338/mcp \
 | Argument | Description |
 |----------|-------------|
 | `--http` | Run in HTTP mode instead of stdio |
-| `--port <port>` | Set HTTP server port (default: 13338) |
+| `--port <port>` | Set HTTP server port (default: 13339) |
 | `--data-path <path>` | Set data source path |
 
 ---
@@ -193,7 +193,7 @@ D:\Extract\v83\
 │  │  ┌─────────────────────┐      ┌──────────────────────────────────┐ │ │
 │  │  │   Stdio Transport   │      │       HTTP Transport             │ │ │
 │  │  │   (stdin/stdout)    │      │   (Streamable HTTP + SSE)        │ │ │
-│  │  │                     │      │   Port: 13338 (default)          │ │ │
+│  │  │                     │      │   Port: 13339 (default)          │ │ │
 │  │  └──────────┬──────────┘      └────────────────┬─────────────────┘ │ │
 │  └─────────────┼──────────────────────────────────┼───────────────────┘ │
 │                │                                  │                     │
