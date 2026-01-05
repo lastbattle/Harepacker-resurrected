@@ -241,37 +241,49 @@ Elements render in this order:
 1. Connect platforms vertically:
    - top_y should be at or slightly above the upper platform's Y
    - bottom_y should be at the lower platform's Y
+   - Position the X coordinate near the center or edge of the platforms being connected
 
-2. Typical rope/ladder length:
-   - Short: 100-150 pixels (quick climb)
-   - Medium: 150-250 pixels (standard climb)
-   - Long: 250-400 pixels (tall climb)
+2. Rope/Ladder length guidelines:
+
+   | Climb Type | Length (px) | Levels Spanned | Use Case |
+   |------------|-------------|----------------|----------|
+   | Short      | 100-150 px  | 1-2 levels     | Quick access, adjacent platforms |
+   | Medium     | 150-250 px  | 2-4 levels     | Standard vertical traversal |
+   | Long       | 250-400 px  | 4-6 levels     | Tower maps, long climbs |
 
 3. Upper foothold (uf) setting:
    - uf=true (default): Player can climb onto the platform at the top
    - uf=false: Player cannot exit at the top (used for ropes that end at a ceiling)
 
 ### Platform Design Tips
+
+**Grid alignment:** MapleStory uses a 90x60 pixel tile grid. Align platforms to 60-pixel Y intervals for visual consistency.
+
 1. Simple flat platform: 2 points at same Y
-   Example: add_platform with points [{x: -200, y: 300}, {x: 200, y: 300}]
+   Example: add_platform with points [{x: -270, y: 300}, {x: 270, y: 300}]  // 540px wide
 
 2. Sloped platform: 2+ points at different Y values
-   Example: add_platform with points [{x: 0, y: 300}, {x: 200, y: 250}]
+   Example: add_platform with points [{x: 0, y: 360}, {x: 180, y: 300}]  // 60px rise over 180px
 
-3. Staircase: Multiple points stepping up/down
+3. Staircase: Multiple points stepping up/down (use 60px vertical steps)
    Example: add_platform with points [
-     {x: 0, y: 400},
-     {x: 100, y: 400},
-     {x: 100, y: 350},
-     {x: 200, y: 350},
-     {x: 200, y: 300}
+     {x: 0, y: 420},
+     {x: 90, y: 420},
+     {x: 90, y: 360},
+     {x: 180, y: 360},
+     {x: 180, y: 300}
    ]
 
-4. Standard platform spacing:
-   - Small jump: 50-80 pixels vertical gap
-   - Normal jump: 80-120 pixels vertical gap
-   - Large jump: 120-180 pixels vertical gap
-   - Horizontal gap: 100-200 pixels is comfortable
+4. Jump distance guidelines:
+
+   | Jump Type | Vertical Gap | Horizontal Gap | Notes |
+   |-----------|-------------|----------------|-------|
+   | Small     | 50-80 px    | 80-120 px      | Easy, suitable for towns |
+   | Normal    | 80-120 px   | 120-180 px     | Standard gameplay |
+   | Large     | 120-160 px  | 180-220 px     | Challenging |
+   | Maximum   | ~180 px     | ~250 px        | Requires precise timing |
+
+   **Common Y-level spacing:** 60 pixels between platform levels (e.g., Y=274, 334, 394, 454)
 
 ## Available Assets
 
@@ -282,7 +294,7 @@ The "Available Tilesets" section lists all tileset names you can use with tile c
 - Choose tilesets that match the map theme (e.g., "grassySoil" for forest, "deepMine" for cave)
 - Common tilesets: grassySoil, snowyRoad, deepMine, elNath, ludibrium, aquariumUnder
 
-### Tile Categories
+### Tile Categories and Grid
 Each tileset contains these tile types:
 - `bsc` = Basic fill tile (interior/surface)
 - `enH0` = Horizontal top edge (top surface)
@@ -292,6 +304,11 @@ Each tileset contains these tile types:
 - `edU` = Upper corner tiles
 - `edD` = Lower corner tiles
 - `slLU/slRU/slLD/slRD` = Slope tiles (Left-Up, Right-Up, Left-Down, Right-Down)
+
+**Tile Grid:** MapleStory tiles are arranged on a 90x60 pixel grid:
+- Tile columns are spaced 90 pixels apart horizontally
+- Tile rows are spaced 60 pixels apart vertically
+- A 450px platform = 5 tile columns; a 180px tall structure = 3 tile rows
 
 ### Object Sets
 The "Object Sets" section lists available object set NAMES only.
@@ -548,13 +565,22 @@ Parameters:
 - `height`: Number of tile rows for tall/pillar, or number of steps for staircase (default 3)
 - `layer`: Layer number 0-7 (default 0)
 
-Examples:
+Examples (using 90x60 grid alignment):
 ```
-tile_structure tileset="grassySoil" structure_type="flat" start_x=100 width=400 y=300
-tile_structure tileset="grassySoil" structure_type="flat" start_x=100 end_x=500 y=300 height=5
-tile_structure tileset="deepMine" structure_type="tall" start_x=200 width=400 y=200 height=4
-tile_structure tileset="snowyRord" structure_type="pillar" start_x=300 y=100 height=5
-tile_structure tileset="elNath" structure_type="staircase_right" start_x=100 y=400 height=4
+// Flat platform: 450px wide (5 tiles), at Y=300
+tile_structure tileset="grassySoil" structure_type="flat" start_x=0 width=450 y=300
+
+// Tall ground: 540px wide, 5 rows deep (300px)
+tile_structure tileset="grassySoil" structure_type="flat" start_x=-270 end_x=270 y=360 height=5
+
+// Cave floor: 360px wide, 4 rows deep (240px)
+tile_structure tileset="deepMine" structure_type="tall" start_x=-180 width=360 y=420 height=4
+
+// Decorative pillar: 5 rows tall (300px)
+tile_structure tileset="snowyRord" structure_type="pillar" start_x=0 y=120 height=5
+
+// Staircase: 4 steps (240px climb)
+tile_structure tileset="elNath" structure_type="staircase_right" start_x=-180 y=420 height=4
 ```
 
 ### tile_platform (Simple Flat Only)
@@ -666,10 +692,10 @@ User: "Move the spawn point to the center"
 -> Call move_element with element_type="portal", name="sp", to_x=0, to_y=(appropriate ground Y)
 
 User: "Add a platform in the center of the map"
--> Call add_platform with points [{x: -200, y: 300}, {x: 200, y: 300}]
+-> Call add_platform with points [{x: -270, y: 300}, {x: 270, y: 300}]  // 540px wide, aligned to grid
 
 User: "Create a floating platform above the main floor"
--> Call add_platform with points at higher elevation (smaller Y), e.g., [{x: -100, y: 150}, {x: 100, y: 150}]
+-> Call add_platform with points at higher elevation (60px or 120px above), e.g., [{x: -135, y: 180}, {x: 135, y: 180}]
 
 User: "Add walls on both sides of the map"
 -> Call add_wall twice: once for left side (negative X), once for right side (positive X)
@@ -681,32 +707,32 @@ User: "Add a solid platform that players can't fall through"
 -> Call add_platform with forbid_fall_down=true
 
 User: "Create a platform with deepMine tiles in the middle"
--> First create foothold, then add tiles:
-   - add_platform with points=[{x: -200, y: 300}, {x: 200, y: 300}]
-   - tile_structure with tileset="deepMine", structure_type="flat", start_x=-200, end_x=200, y=300
+-> First create foothold, then add tiles (using 90x60 grid):
+   - add_platform with points=[{x: -270, y: 300}, {x: 270, y: 300}]  // 540px wide
+   - tile_structure with tileset="deepMine", structure_type="flat", start_x=-270, end_x=270, y=300
 
 User: "Make a beautiful platform with tiles"
 -> Create foothold first, then tiles:
    - add_platform with points (defines collision)
    - tile_structure with matching coordinates (visual decoration)
 
-User: "Add a platform with snowyRord tiles from x=100 to x=500"
--> Two steps required:
-   - add_platform with points=[{x: 100, y: 300}, {x: 500, y: 300}]
-   - tile_structure with tileset="snowyRord", structure_type="flat", start_x=100, end_x=500, y=300
+User: "Add a platform with snowyRord tiles from x=100 to x=550"
+-> Two steps required (align to grid):
+   - add_platform with points=[{x: 90, y: 300}, {x: 540, y: 300}]  // 450px, aligned to 90px grid
+   - tile_structure with tileset="snowyRord", structure_type="flat", start_x=90, end_x=540, y=300
 
 User: "Create a tall platform with elNath tiles"
 -> First foothold, then tiles:
-   - add_platform with points
-   - tile_structure with tileset="elNath", structure_type="tall", start_x=..., end_x=..., y=..., height=4
+   - add_platform with points (at desired Y, e.g., Y=360)
+   - tile_structure with tileset="elNath", structure_type="tall", start_x=..., end_x=..., y=360, height=4  // 240px deep
 
 User: "Add a pillar in the center"
 -> For visual-only pillars (no collision needed):
-   - tile_structure with structure_type="pillar", start_x=(center X), y=(top Y), height=5
+   - tile_structure with structure_type="pillar", start_x=0, y=180, height=5  // 300px tall
 
 User: "Make a staircase going up to the right"
 -> Create staircase foothold, then tiles:
-   - add_platform with multiple points stepping up
+   - add_platform with points stepping up (60px vertical per step)
    - tile_structure with structure_type="staircase_right" for visual
 
 User: "Change the background music to something peaceful"
@@ -717,12 +743,14 @@ User: "Set the BGM to GoPicnic"
 
 User: "Add a rope connecting the two platforms"
 -> Call add_rope with x=(between platforms), top_y=(upper platform Y), bottom_y=(lower platform Y)
+   Example: Platforms at Y=180 and Y=360 -> add_rope x=0 top_y=180 bottom_y=360  // 180px climb
 
 User: "Put a ladder on the left side"
 -> Call add_ladder with x=(left side X), top_y=(top Y), bottom_y=(bottom Y)
+   Example: add_ladder x=-300 top_y=120 bottom_y=360  // 240px climb (4 levels at 60px each)
 
-User: "Add a rope that goes from y=100 to y=300 at x=500"
--> Call add_rope with x=500, top_y=100, bottom_y=300
+User: "Add a rope that goes from y=120 to y=360 at x=450"
+-> Call add_rope with x=450, top_y=120, bottom_y=360  // 240px medium climb
 
 User: "Create a ladder where players can't climb out at the top"
 -> Call add_ladder with uf=false to prevent exiting at the top
