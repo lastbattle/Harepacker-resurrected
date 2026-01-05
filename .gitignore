@@ -332,3 +332,4 @@ ASALocalRun/
 
 # Claude Code settings
 .claude/
+.mcp.json
