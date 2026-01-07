@@ -87,11 +87,14 @@ public class ImageTools : ToolBase
         });
     }
 
-    [McpServerTool(Name = "get_animation_frames"), Description("Get all animation frames with metadata")]
+    [McpServerTool(Name = "get_animation_frames"), Description("Get animation frames with metadata. Use metadataOnly=true to skip image data and reduce response size. Use offset/limit for pagination.")]
     public Result<AnimationData> GetAnimationFrames(
         [Description("Category name")] string category,
         [Description("Image name")] string image,
-        [Description("Property path to the animation container")] string path)
+        [Description("Property path to the animation container")] string path,
+        [Description("Only return metadata without Base64 image data (default: true for smaller responses)")] bool metadataOnly = true,
+        [Description("Frame offset for pagination (default: 0)")] int offset = 0,
+        [Description("Maximum frames to return (default: 10, max: 50)")] int limit = 10)
     {
         return Execute(() =>
         {
@@ -99,10 +102,22 @@ public class ImageTools : ToolBase
             var prop = img.GetFromPath(path)
                 ?? throw new InvalidOperationException($"Property not found: {path}");
 
-            var frames = new List<FrameData>();
-            int totalDuration = 0;
+            // Clamp limit to prevent huge responses
+            limit = Math.Clamp(limit, 1, 50);
 
+            // First pass: count total frames and calculate duration
+            int totalFrames = 0;
+            int totalDuration = 0;
             for (int i = 0; ; i++)
+            {
+                if (prop[i.ToString()] is not WzCanvasProperty frameProp) break;
+                totalFrames++;
+                totalDuration += WzDataConverter.GetCanvasDelay(frameProp);
+            }
+
+            // Second pass: get requested page of frames
+            var frames = new List<FrameData>();
+            for (int i = offset; i < totalFrames && frames.Count < limit; i++)
             {
                 if (prop[i.ToString()] is not WzCanvasProperty frameProp) break;
 
@@ -116,16 +131,17 @@ public class ImageTools : ToolBase
                     Height = frameProp.PngProperty?.Height ?? 0,
                     Origin = origin,
                     Delay = delay,
-                    Base64Png = WzDataConverter.GetCanvasBase64(frameProp)
+                    Base64Png = metadataOnly ? null : WzDataConverter.GetCanvasBase64(frameProp)
                 });
-
-                totalDuration += delay;
             }
 
             return new AnimationData
             {
-                FrameCount = frames.Count,
+                FrameCount = totalFrames,
                 TotalDuration = totalDuration,
+                Offset = offset,
+                Limit = limit,
+                HasMore = offset + frames.Count < totalFrames,
                 Frames = frames
             };
         });
@@ -304,6 +320,9 @@ public class AnimationData
 {
     public int FrameCount { get; init; }
     public int TotalDuration { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
+    public bool HasMore { get; init; }
     public required List<FrameData> Frames { get; init; }
 }
 

@@ -1,7 +1,7 @@
 # HaMCP Server Documentation
 
-**Version**: 1.0.0
-**Last Updated**: 2026-01-05
+**Version**: 1.1.0
+**Last Updated**: 2026-01-07
 
 ## Overview
 
@@ -255,6 +255,52 @@ On failure:
 
 ---
 
+## Response Size Optimization
+
+To minimize context window usage, many tools support compact modes and pagination. These optimizations are enabled by default.
+
+### Pagination
+
+Tools that return lists support `offset` and `limit` parameters with `hasMore` flag:
+
+```json
+{
+  "offset": 0,
+  "limit": 50,
+  "totalCount": 150,
+  "hasMore": true,
+  "items": [...]
+}
+```
+
+### Compact Mode
+
+Many tools support `compact=true` (default) to return minimal data:
+- Search results: Only `category`, `image`, `path` (no `name`, `type`, `value`)
+- Property lists: Only `name`, `type`, `childCount` (no `value`, `hasChildren`)
+- Children: Excludes `fullPath` and `childNames`
+
+### Configuration
+
+Response limits are configurable in `appsettings.json`:
+
+```json
+{
+  "HaMCP": {
+    "ResponseLimits": {
+      "MaxJsonResponseKB": 512,
+      "MaxBase64ImageKB": 256,
+      "DefaultAnimationPageSize": 5,
+      "DefaultSearchResults": 50,
+      "DefaultPropertyPageSize": 100,
+      "IncludeChildNamesDefault": false
+    }
+  }
+}
+```
+
+---
+
 ## Tool Reference
 
 ### File Operations (`FileTools`)
@@ -287,17 +333,26 @@ Tools for exploring and searching WZ data structures.
 | Tool | Description |
 |------|-------------|
 | `get_subdirectories` | List subdirectories in category |
-| `list_properties` | List child properties of a node |
-| `get_tree_structure` | Get hierarchical property tree |
-| `search_by_name` | Search properties by name pattern |
-| `search_by_value` | Search by property value |
+| `list_properties` | List child properties of a node (paginated, compact) |
+| `get_tree_structure` | Get hierarchical property tree (depth-limited) |
+| `search_by_name` | Search properties by name pattern (paginated, compact) |
+| `search_by_value` | Search by property value (paginated, compact) |
 | `get_property_path` | Get full path of a property |
+
+**Optimization Parameters:**
+
+| Tool | Parameters |
+|------|------------|
+| `list_properties` | `compact=true`, `offset=0`, `limit=100` (max 500) |
+| `get_tree_structure` | `depth=2` (max 5), `maxChildrenPerNode=50` (max 200) |
+| `search_by_name` | `compact=true`, `maxResults=50` (max 200) |
+| `search_by_value` | `compact=true`, `maxResults=50` (max 200) |
 
 **Example:**
 ```
 Tool: search_by_name
-Parameters: { "pattern": "*attack*", "category": "Mob" }
-Response: { "success": true, "data": { "matches": [...], "totalFound": 42 } }
+Parameters: { "pattern": "*attack*", "category": "Mob", "compact": true, "maxResults": 20 }
+Response: { "success": true, "data": { "matches": [{"category": "Mob", "image": "100100.img", "path": "attack1/0"}], "totalFound": 20, "truncated": false } }
 ```
 
 ---
@@ -315,10 +370,17 @@ Tools for reading property values with type support.
 | `get_float` | Get float property value |
 | `get_vector` | Get vector property (X, Y) |
 | `resolve_uol` | Resolve UOL link to target |
-| `get_children` | Get all child properties |
+| `get_children` | Get child properties (paginated, compact) |
 | `get_property_count` | Count child properties |
 | `iterate_properties` | Iterate with pagination |
 | `get_properties_batch` | Get multiple properties at once |
+
+**Optimization Parameters:**
+
+| Tool | Parameters |
+|------|------------|
+| `get_children` | `compact=true`, `offset=0`, `limit=100` (max 500) |
+| `iterate_properties` | `offset=0`, `limit=50` |
 
 **Property Types:**
 - `Null`, `Short`, `Int`, `Long`, `Float`, `Double`, `String`
@@ -334,22 +396,45 @@ Tools for working with images and animations.
 | Tool | Description |
 |------|-------------|
 | `get_canvas_bitmap` | Get image as base64 PNG |
-| `get_canvas_info` | Get canvas metadata |
+| `get_canvas_info` | Get canvas metadata (no image data) |
 | `get_canvas_origin` | Get draw offset point |
 | `get_canvas_head` | Get head position |
 | `get_canvas_bounds` | Get lt/rb bounds |
 | `get_canvas_delay` | Get animation frame delay |
-| `get_animation_frames` | Get all frames with metadata |
+| `get_animation_frames` | Get frames with metadata (paginated, metadata-only default) |
 | `list_canvas_in_image` | List all canvases in image |
 | `resolve_canvas_link` | Resolve _inlink/_outlink |
 
-**Animation Frame Structure:**
+**Optimization Parameters:**
+
+| Tool | Parameters |
+|------|------------|
+| `get_animation_frames` | `metadataOnly=true`, `offset=0`, `limit=10` (max 50) |
+
+**Animation Frame Structure (metadataOnly=true, default):**
 ```json
 {
   "frameCount": 4,
   "totalDuration": 480,
+  "offset": 0,
+  "limit": 10,
+  "hasMore": false,
   "frames": [
-    { "index": 0, "width": 100, "height": 120, "origin": {"x": 50, "y": 100}, "delay": 120 }
+    { "index": 0, "width": 100, "height": 120, "origin": {"x": 50, "y": 100}, "delay": 120, "base64Png": null }
+  ]
+}
+```
+
+**Animation Frame Structure (metadataOnly=false):**
+```json
+{
+  "frameCount": 4,
+  "totalDuration": 480,
+  "offset": 0,
+  "limit": 10,
+  "hasMore": false,
+  "frames": [
+    { "index": 0, "width": 100, "height": 120, "origin": {"x": 50, "y": 100}, "delay": 120, "base64Png": "iVBORw0KGgo..." }
   ]
 }
 ```
@@ -375,12 +460,20 @@ Tools for exporting data to various formats.
 
 | Tool | Description |
 |------|-------------|
-| `export_to_json` | Export property tree to JSON |
+| `export_to_json` | Export property tree to JSON (size-limited) |
 | `export_to_xml` | Export property tree to XML |
 | `export_png` | Export canvas to PNG file |
 | `export_mp3` | Export sound to MP3 file |
 | `export_all_images` | Batch export all canvases |
 | `export_all_sounds` | Batch export all sounds |
+
+**Optimization Parameters:**
+
+| Tool | Parameters |
+|------|------------|
+| `export_to_json` | `maxDepth=5` (max 10), `outputPath` required for >100KB |
+
+> **Note:** `export_to_json` returns an error if inline response exceeds 100KB. Use `outputPath` for large exports.
 
 ---
 

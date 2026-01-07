@@ -171,33 +171,48 @@ public class PropertyTools : ToolBase
         });
     }
 
-    [McpServerTool(Name = "get_children"), Description("Get all child properties of a node")]
+    [McpServerTool(Name = "get_children"), Description("Get child properties of a node with pagination. Use compact=true for smaller responses.")]
     public Result<ChildrenData> GetChildren(
         [Description("Category name")] string category,
         [Description("Image name")] string image,
-        [Description("Property path (empty for root)")] string? path = null)
+        [Description("Property path (empty for root)")] string? path = null,
+        [Description("Return compact format (default: true)")] bool compact = true,
+        [Description("Offset for pagination (default: 0)")] int offset = 0,
+        [Description("Maximum children to return (default: 100, max: 500)")] int limit = 100)
     {
         return Execute(() =>
         {
             var img = GetImage(category, image);
-            IEnumerable<WzImageProperty>? children;
+            IEnumerable<WzImageProperty>? allChildren;
 
             if (string.IsNullOrEmpty(path))
             {
-                children = img.WzProperties;
+                allChildren = img.WzProperties;
             }
             else
             {
                 var prop = img.GetFromPath(path)
                     ?? throw new InvalidOperationException($"Property not found: {path}");
-                children = prop.WzProperties;
+                allChildren = prop.WzProperties;
             }
+
+            // Clamp limit
+            limit = Math.Clamp(limit, 1, 500);
+
+            var childList = allChildren?.ToList() ?? new List<WzImageProperty>();
+            var totalCount = childList.Count;
+            var pageChildren = childList.Skip(offset).Take(limit);
 
             return new ChildrenData
             {
                 Path = path ?? "",
-                Children = children?.Select(c => WzDataConverter.GetPropertyData(c)).ToList()
-                    ?? new List<PropertyData>()
+                TotalCount = totalCount,
+                Offset = offset,
+                Limit = limit,
+                HasMore = offset + limit < totalCount,
+                Children = pageChildren.Select(c => compact
+                    ? WzDataConverter.GetPropertyData(c, includeChildNames: false, includeFullPath: false)
+                    : WzDataConverter.GetPropertyData(c, includeChildNames: false, includeFullPath: true)).ToList()
             };
         });
     }
@@ -375,6 +390,10 @@ public class ResolveUolData
 public class ChildrenData
 {
     public string? Path { get; init; }
+    public int TotalCount { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
+    public bool HasMore { get; init; }
     public required List<PropertyData> Children { get; init; }
 }
 

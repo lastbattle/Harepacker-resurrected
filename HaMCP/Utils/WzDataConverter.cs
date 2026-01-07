@@ -46,13 +46,16 @@ public static class WzDataConverter
     /// <summary>
     /// Gets detailed property information
     /// </summary>
-    public static PropertyData GetPropertyData(WzImageProperty prop)
+    /// <param name="prop">The property to convert</param>
+    /// <param name="includeChildNames">Whether to include child names list (can be large, default: false)</param>
+    /// <param name="includeFullPath">Whether to include full path (default: true)</param>
+    public static PropertyData GetPropertyData(WzImageProperty prop, bool includeChildNames = false, bool includeFullPath = true)
     {
         var data = new PropertyData
         {
             Name = prop.Name,
             Type = prop.PropertyType.ToString(),
-            FullPath = prop.FullPath
+            FullPath = includeFullPath ? prop.FullPath : null
         };
 
         switch (prop)
@@ -117,7 +120,11 @@ public static class WzDataConverter
             case WzSubProperty subProp:
                 data.HasChildren = true;
                 data.ChildCount = subProp.WzProperties?.Count ?? 0;
-                data.ChildNames = subProp.WzProperties?.Select(p => p.Name).ToList();
+                // Only include child names if explicitly requested (can be very large)
+                if (includeChildNames)
+                {
+                    data.ChildNames = subProp.WzProperties?.Select(p => p.Name).ToList();
+                }
                 break;
 
             case WzConvexProperty convexProp:
@@ -129,6 +136,41 @@ public static class WzDataConverter
                 data.Value = "[Lua Script]";
                 break;
         }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Gets compact property information (name, type, and minimal metadata only)
+    /// </summary>
+    public static CompactPropertyData GetCompactPropertyData(WzImageProperty prop)
+    {
+        var data = new CompactPropertyData
+        {
+            Name = prop.Name,
+            Type = prop.PropertyType.ToString()
+        };
+
+        switch (prop)
+        {
+            case WzSubProperty subProp:
+            case WzConvexProperty:
+            case WzCanvasProperty canvasProp when canvasProp.WzProperties?.Count > 0:
+                data.ChildCount = prop.WzProperties?.Count ?? 0;
+                break;
+        }
+
+        // Include simple scalar values inline
+        data.Value = prop switch
+        {
+            WzShortProperty s => s.Value,
+            WzIntProperty i => i.Value,
+            WzLongProperty l => l.Value,
+            WzFloatProperty f => f.Value,
+            WzDoubleProperty d => d.Value,
+            WzStringProperty s => s.Value,
+            _ => null
+        };
 
         return data;
     }
@@ -224,10 +266,21 @@ public class PropertyData
 {
     public required string Name { get; set; }
     public required string Type { get; set; }
-    public required string FullPath { get; set; }
+    public string? FullPath { get; set; }
     public object? Value { get; set; }
     public bool HasChildren { get; set; }
     public int ChildCount { get; set; }
     public List<string>? ChildNames { get; set; }
     public string? UolPath { get; set; }
+}
+
+/// <summary>
+/// Compact property data with minimal metadata for reduced response size
+/// </summary>
+public class CompactPropertyData
+{
+    public required string Name { get; set; }
+    public required string Type { get; set; }
+    public object? Value { get; set; }
+    public int? ChildCount { get; set; }
 }
