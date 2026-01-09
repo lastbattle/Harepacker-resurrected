@@ -2,10 +2,10 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
-using HaCreator.MapSimulator.MapObjects.UIObject;
-using HaCreator.MapSimulator.Objects;
-using HaCreator.MapSimulator.Objects.FieldObject;
-using HaCreator.MapSimulator.Objects.UIObject;
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.UI;
 using HaCreator.Wz;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -26,9 +26,8 @@ using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
 using SharpDX.Direct2D1.Effects;
 using System.Drawing.Printing;
-using HaCreator.MapSimulator.MapObjects.UIObject.Controls;
+using HaCreator.MapSimulator.UI.Controls;
 using System.Windows.Forms;
-using HaCreator.MapSimulator.MapObjects.FieldObject;
 using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Render;
 
@@ -320,7 +319,7 @@ namespace HaCreator.MapSimulator {
                     }
                     else {
                         int i = 0;
-                        foreach (Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations) {
+                        foreach (Spine.Animation animation in spineObject.spineAnimationItem.SkeletonData.Animations) {
                             spineObject.state.SetAnimation(i++, animation.Name, true);
                         }
                     }

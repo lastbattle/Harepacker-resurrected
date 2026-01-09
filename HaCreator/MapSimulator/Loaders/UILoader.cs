@@ -1,8 +1,8 @@
 using HaCreator.MapEditor;
-using HaCreator.MapSimulator.MapObjects.UIObject;
-using HaCreator.MapSimulator.Objects;
-using HaCreator.MapSimulator.Objects.FieldObject;
-using HaCreator.MapSimulator.Objects.UIObject;
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -14,7 +14,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
-using HaCreator.MapSimulator.MapObjects.UIObject.Controls;
+using HaCreator.MapSimulator.UI.Controls;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -81,6 +81,60 @@ namespace HaCreator.MapSimulator.Loaders
                     HaUIGrid grid_hpMpExp = new HaUIGrid(1, 1);
                     grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeCover }));
                     grid_hpMpExp.AddRenderable(0, 0, new HaUIImage(new HaUIInfo() { Bitmap = bitmap_gaugeBackgrd }));
+
+                    // Load gauge fill images for HP, MP, EXP bars
+                    // WZ structure: mainBar/gauge/hp/0, mainBar/gauge/mp/0, mainBar/gauge/exp/0
+                    // Each gauge has frames 0, 1, 2 - we use frame 0 for the fill image
+                    WzSubProperty gaugeProperty = mainBarProperties?["gauge"] as WzSubProperty;
+                    Texture2D hpGaugeTexture = null, mpGaugeTexture = null, expGaugeTexture = null;
+
+                    if (gaugeProperty != null)
+                    {
+                        // HP gauge: gauge/hp/0
+                        WzSubProperty hpGaugeProp = gaugeProperty["hp"] as WzSubProperty;
+                        if (hpGaugeProp != null)
+                        {
+                            WzCanvasProperty hpCanvas = hpGaugeProp["0"] as WzCanvasProperty;
+                            if (hpCanvas != null)
+                            {
+                                var hpBitmap = hpCanvas.GetLinkedWzCanvasBitmap();
+                                if (hpBitmap != null)
+                                {
+                                    hpGaugeTexture = hpBitmap.ToTexture2D(device);
+                                }
+                            }
+                        }
+
+                        // MP gauge: gauge/mp/0
+                        WzSubProperty mpGaugeProp = gaugeProperty["mp"] as WzSubProperty;
+                        if (mpGaugeProp != null)
+                        {
+                            WzCanvasProperty mpCanvas = mpGaugeProp["0"] as WzCanvasProperty;
+                            if (mpCanvas != null)
+                            {
+                                var mpBitmap = mpCanvas.GetLinkedWzCanvasBitmap();
+                                if (mpBitmap != null)
+                                {
+                                    mpGaugeTexture = mpBitmap.ToTexture2D(device);
+                                }
+                            }
+                        }
+
+                        // EXP gauge: gauge/exp/0
+                        WzSubProperty expGaugeProp = gaugeProperty["exp"] as WzSubProperty;
+                        if (expGaugeProp != null)
+                        {
+                            WzCanvasProperty expCanvas = expGaugeProp["0"] as WzCanvasProperty;
+                            if (expCanvas != null)
+                            {
+                                var expBitmap = expCanvas.GetLinkedWzCanvasBitmap();
+                                if (expBitmap != null)
+                                {
+                                    expGaugeTexture = expBitmap.ToTexture2D(device);
+                                }
+                            }
+                        }
+                    }
 
                     // add HP, MP, EXP area to the [level, name, job area stackpanel]
                     stackPanel_charStats.AddRenderable(grid_hpMpExp);
@@ -325,6 +379,116 @@ namespace HaCreator.MapSimulator.Loaders
                         new List<UIObject> { });
                     statusBar.InitializeButtons();
 
+                    // Set gauge textures if loaded from WZ files
+                    if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null) {
+                        statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    }
+
+                    // Load bitmap font digit textures from StatusBar2.img/mainBar/gauge/number
+                    // This is the correct source for HP/MP/EXP display with proper origin alignment
+                    // The origin.Y values are critical for vertical alignment:
+                    //   - Brackets [ ] have origin Y=1 (taller than digits, shift up 1px)
+                    //   - Slash \ has origin Y=1 (shift up 1px)
+                    //   - Dot . has origin Y=-6 (small, sits at bottom of line)
+                    //   - Digits 0-9 have origin Y=0 (baseline)
+                    WzSubProperty gaugeNumberProp = gaugeProperty?["number"] as WzSubProperty;
+                    if (gaugeNumberProp != null) {
+                        Texture2D[] digitTextures = new Texture2D[10];
+                        Point[] digitOrigins = new Point[10];
+                        bool hasDigits = false;
+
+                        // Helper to get origin from canvas
+                        Point GetCanvasOrigin(WzCanvasProperty canvas) {
+                            if (canvas == null) return Point.Zero;
+                            var origin = canvas["origin"] as WzVectorProperty;
+                            if (origin != null) {
+                                return new Point(origin.X.Value, origin.Y.Value);
+                            }
+                            return Point.Zero;
+                        }
+
+                        // Load digits 0-9 with origins
+                        for (int i = 0; i < 10; i++) {
+                            WzCanvasProperty digitCanvas = gaugeNumberProp[i.ToString()] as WzCanvasProperty;
+                            if (digitCanvas != null) {
+                                var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    digitTextures[i] = bitmap.ToTexture2D(device);
+                                    digitOrigins[i] = GetCanvasOrigin(digitCanvas);
+                                    hasDigits = true;
+                                }
+                            }
+                        }
+
+                        if (hasDigits) {
+                            // Load special characters with origins from gauge/number
+                            // These have proper origin.Y values for alignment
+                            Texture2D slashTexture = null, percentTexture = null;
+                            Texture2D bracketLeftTexture = null, bracketRightTexture = null;
+                            Texture2D dotTexture = null;
+                            Point slashOrigin = Point.Zero, percentOrigin = Point.Zero;
+                            Point bracketLeftOrigin = Point.Zero, bracketRightOrigin = Point.Zero;
+                            Point dotOrigin = Point.Zero;
+
+                            // Left bracket [ - origin Y=1 for proper alignment
+                            WzCanvasProperty lbCanvas = gaugeNumberProp["["] as WzCanvasProperty;
+                            if (lbCanvas != null) {
+                                var bitmap = lbCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    bracketLeftTexture = bitmap.ToTexture2D(device);
+                                    bracketLeftOrigin = GetCanvasOrigin(lbCanvas);
+                                }
+                            }
+
+                            // Right bracket ] - origin Y=1 for proper alignment
+                            WzCanvasProperty rbCanvas = gaugeNumberProp["]"] as WzCanvasProperty;
+                            if (rbCanvas != null) {
+                                var bitmap = rbCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    bracketRightTexture = bitmap.ToTexture2D(device);
+                                    bracketRightOrigin = GetCanvasOrigin(rbCanvas);
+                                }
+                            }
+
+                            // Slash \ (backslash used as divider) - origin Y=1 for proper alignment
+                            WzCanvasProperty slashCanvas = gaugeNumberProp["\\"] as WzCanvasProperty;
+                            if (slashCanvas != null) {
+                                var bitmap = slashCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    slashTexture = bitmap.ToTexture2D(device);
+                                    slashOrigin = GetCanvasOrigin(slashCanvas);
+                                }
+                            }
+
+                            // Percent % - origin Y=0
+                            WzCanvasProperty percentCanvas = gaugeNumberProp["%"] as WzCanvasProperty;
+                            if (percentCanvas != null) {
+                                var bitmap = percentCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    percentTexture = bitmap.ToTexture2D(device);
+                                    percentOrigin = GetCanvasOrigin(percentCanvas);
+                                }
+                            }
+
+                            // Dot . - origin Y=-6 (sits at bottom of line)
+                            WzCanvasProperty dotCanvas = gaugeNumberProp["."] as WzCanvasProperty;
+                            if (dotCanvas != null) {
+                                var bitmap = dotCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null) {
+                                    dotTexture = bitmap.ToTexture2D(device);
+                                    dotOrigin = GetCanvasOrigin(dotCanvas);
+                                }
+                            }
+
+                            statusBar.SetDigitTextures(digitTextures, digitOrigins,
+                                slashTexture, slashOrigin,
+                                percentTexture, percentOrigin,
+                                bracketLeftTexture, bracketLeftOrigin,
+                                bracketRightTexture, bracketRightOrigin,
+                                dotTexture, dotOrigin);
+                        }
+                    }
+
                     StatusBarChatUI chatUI = new StatusBarChatUI(dxObj_chatUI, new Point(dxObj_chatUI.X, dxObj_chatUI.Y),
                          new List<UIObject> {
                              obj_Ui_chatOpen,
@@ -340,6 +504,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
             return null;
         }
+
         #endregion
 
         #region Minimap
@@ -619,7 +784,11 @@ namespace HaCreator.MapSimulator.Loaders
             // Mouse clicked item state
             BaseDXDrawableItem clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
 
-            return new MouseCursorItem(frames, holdState, clickableButtonState);
+            // NPC hover cursor state (uses style 4 - alternate clickable, or fallback to style 1)
+            WzSubProperty npcHoverSource = cursorClickable2 ?? cursorClickable;
+            BaseDXDrawableItem npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, npcHoverSource, 0, 0, new Point(0, 0), device, ref usedProps, false);
+
+            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState);
         }
         #endregion
     }

@@ -51,18 +51,20 @@ namespace HaSharedLibrary
                 {
                     this.byteStream = new MemoryStream(sound.GetBytes(false));
                     mpegStream = new Mp3FileReader(byteStream);
-                    
+
                     wavePlayer.Init(mpegStream);
-                } 
+                }
                 else if (sound.WavFormat.Encoding == WaveFormatEncoding.Pcm)
                 {
+                    // PCM playback not yet implemented
+                    bPlaybackLoadedSuccess = false;
                     /*byte[] wavSoundBytes = sound.GetBytesForWAVPlayback();
 
                     this.byteStream = new MemoryStream(wavSoundBytes);
                     Debug.WriteLine(HexTool.ByteArrayToString(wavSoundBytes));
 
                     waveFileStream = new WaveFileReader(byteStream);
-                    
+
                     wavePlayer.Init(waveFileStream);*/
                 }
                 else
@@ -128,9 +130,32 @@ namespace HaSharedLibrary
 
         public void Play()
         {
+            Debug.WriteLine($"[WzSoundResourceStreamer] Play() called, bPlaybackLoadedSuccess={bPlaybackLoadedSuccess}");
             if (!bPlaybackLoadedSuccess)
+            {
+                Debug.WriteLine("[WzSoundResourceStreamer] Play() aborted - playback not loaded");
                 return;
+            }
 
+            // Check if we have a valid stream to play
+            if (mpegStream == null && waveFileStream == null)
+            {
+                Debug.WriteLine("[WzSoundResourceStreamer] Play() aborted - no audio stream initialized");
+                return;
+            }
+
+            // Stop and reset stream position before playing (for non-repeat sounds that finished)
+            // This ensures the player is in a proper state to restart
+            if (wavePlayer.PlaybackState != PlaybackState.Playing)
+            {
+                wavePlayer.Stop();
+                if (mpegStream != null)
+                    mpegStream.Seek(0, SeekOrigin.Begin);
+                else if (waveFileStream != null)
+                    waveFileStream.Seek(0, SeekOrigin.Begin);
+            }
+
+            Debug.WriteLine("[WzSoundResourceStreamer] Calling wavePlayer.Play()");
             wavePlayer.Play();
         }
 

@@ -107,8 +107,10 @@ namespace HaCreator.MapEditor.Info
         public string StringName
         {
             get {
-                string npcName = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id].Item1 : "NO NAME";
-                return npcName; 
+                // NpcNameCache keys are without leading zeros (from String.wz), but id has leading zeros (from Npc/*.img)
+                string normalizedId = int.TryParse(id, out int npcIdInt) ? npcIdInt.ToString() : id;
+                string npcName = Program.InfoManager.NpcNameCache.ContainsKey(normalizedId) ? Program.InfoManager.NpcNameCache[normalizedId].Item1 : "NO NAME";
+                return npcName;
             }
             private set { }
         }
@@ -117,7 +119,9 @@ namespace HaCreator.MapEditor.Info
         {
             get
             {
-                string npcDesc = Program.InfoManager.NpcNameCache.ContainsKey(id) ? Program.InfoManager.NpcNameCache[id].Item2 : string.Empty; // dont use "NO FUNC" for desc
+                // NpcNameCache keys are without leading zeros (from String.wz), but id has leading zeros (from Npc/*.img)
+                string normalizedId = int.TryParse(id, out int npcIdInt) ? npcIdInt.ToString() : id;
+                string npcDesc = Program.InfoManager.NpcNameCache.ContainsKey(normalizedId) ? Program.InfoManager.NpcNameCache[normalizedId].Item2 : string.Empty; // dont use "NO FUNC" for desc
                 return npcDesc;
             }
             private set { }

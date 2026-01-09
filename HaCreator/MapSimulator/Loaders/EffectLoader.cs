@@ -1,6 +1,7 @@
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.Wz;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -9,6 +10,7 @@ using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Pools;
 
 namespace HaCreator.MapSimulator.Loaders
 {

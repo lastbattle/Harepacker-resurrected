@@ -20,6 +20,14 @@ namespace HaSharedLibrary.Render.DX
         private int lastFrameSwitchTime = 0;
 
         // 1 frame
+        /// <summary>
+        /// Horizontal flip state for sprite rendering.
+        /// - flip = false: Sprite faces RIGHT (default orientation from WZ data)
+        /// - flip = true:  Sprite faces LEFT (horizontally mirrored)
+        ///
+        /// MapleStory sprites are typically drawn facing right in WZ files.
+        /// When flip is true, SpriteEffects.FlipHorizontally is applied during drawing.
+        /// </summary>
         protected bool flip;
         protected readonly bool notAnimated;
         private readonly IDXObject? frame0;
