@@ -113,6 +113,42 @@ public class PropertyToolsTests : IClassFixture<TestFixture>
     }
 
     [Fact]
+    public void GetChildren_Pagination_ReturnsCorrectPage()
+    {
+        var result = _tools.GetChildren("Character", "Test.img", "info", compact: true, offset: 0, limit: 1);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data?.Children);
+        Assert.Single(result.Data.Children);
+        Assert.True(result.Data.TotalCount >= 2);
+        Assert.Equal(0, result.Data.Offset);
+        Assert.Equal(1, result.Data.Limit);
+        Assert.True(result.Data.HasMore);
+    }
+
+    [Fact]
+    public void GetChildren_CompactMode_ExcludesFullPath()
+    {
+        var result = _tools.GetChildren("Character", "Test.img", "info", compact: true);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data?.Children);
+        // Compact mode excludes FullPath
+        Assert.All(result.Data.Children, c => Assert.Null(c.FullPath));
+    }
+
+    [Fact]
+    public void GetChildren_NonCompactMode_IncludesFullPath()
+    {
+        var result = _tools.GetChildren("Character", "Test.img", "info", compact: false);
+
+        Assert.True(result.Success);
+        Assert.NotNull(result.Data?.Children);
+        // Non-compact includes FullPath
+        Assert.All(result.Data.Children, c => Assert.NotNull(c.FullPath));
+    }
+
+    [Fact]
     public void GetPropertyCount_ReturnsCount()
     {
         var result = _tools.GetPropertyCount("Character", "Test.img", "info");

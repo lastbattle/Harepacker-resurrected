@@ -22,13 +22,13 @@ public class ExportTools
         _session = session;
     }
 
-    [McpServerTool(Name = "export_to_json"), Description("Export a property tree to JSON format")]
+    [McpServerTool(Name = "export_to_json"), Description("Export a property tree to JSON format. For large exports, outputPath is required. Max inline response is 100KB.")]
     public ExportJsonResult ExportToJson(
         [Description("Category name")] string category,
         [Description("Image name")] string image,
         [Description("Property path (empty for entire image)")] string? path = null,
-        [Description("Maximum depth to export")] int maxDepth = 10,
-        [Description("Output file path (optional - returns JSON if not specified)")] string? outputPath = null)
+        [Description("Maximum depth to export (default: 5, max: 10)")] int maxDepth = 5,
+        [Description("Output file path (REQUIRED for exports > 100KB)")] string? outputPath = null)
     {
         if (!_session.IsInitialized)
         {
@@ -37,6 +37,9 @@ public class ExportTools
 
         try
         {
+            // Clamp maxDepth
+            maxDepth = Math.Clamp(maxDepth, 1, 10);
+
             var img = _session.GetImage(category, image);
             WzObject target;
 
@@ -54,8 +57,12 @@ public class ExportTools
                 target = prop;
             }
 
-            var json = ConvertToJson(target, 0, maxDepth);
+            int nodeCount = 0;
+            const int maxNodes = 5000;
+            var json = ConvertToJson(target, 0, maxDepth, ref nodeCount, maxNodes);
             var jsonString = JsonSerializer.Serialize(json, new JsonSerializerOptions { WriteIndented = true });
+
+            const int maxInlineBytes = 100 * 1024; // 100KB max inline
 
             if (!string.IsNullOrEmpty(outputPath))
             {
@@ -70,7 +77,21 @@ public class ExportTools
                 {
                     Success = true,
                     OutputPath = outputPath,
-                    Size = jsonString.Length
+                    Size = jsonString.Length,
+                    NodeCount = nodeCount,
+                    Truncated = nodeCount >= maxNodes
+                };
+            }
+
+            // Check size for inline response
+            if (jsonString.Length > maxInlineBytes)
+            {
+                return new ExportJsonResult
+                {
+                    Success = false,
+                    Error = $"Response too large ({jsonString.Length / 1024}KB). Please provide outputPath for exports > 100KB.",
+                    Size = jsonString.Length,
+                    NodeCount = nodeCount
                 };
             }
 
@@ -78,7 +99,9 @@ public class ExportTools
             {
                 Success = true,
                 JsonData = jsonString,
-                Size = jsonString.Length
+                Size = jsonString.Length,
+                NodeCount = nodeCount,
+                Truncated = nodeCount >= maxNodes
             };
         }
         catch (Exception ex)
@@ -464,8 +487,10 @@ public class ExportTools
         }
     }
 
-    private Dictionary<string, object?> ConvertToJson(WzObject obj, int depth, int maxDepth)
+    private Dictionary<string, object?> ConvertToJson(WzObject obj, int depth, int maxDepth, ref int nodeCount, int maxNodes)
     {
+        nodeCount++;
+
         var result = new Dictionary<string, object?>
         {
             ["_name"] = obj.Name,
@@ -481,7 +506,7 @@ public class ExportTools
             }
         }
 
-        if (depth < maxDepth)
+        if (depth < maxDepth && nodeCount < maxNodes)
         {
             IEnumerable<WzImageProperty>? children = null;
 
@@ -499,7 +524,8 @@ public class ExportTools
                 var childDict = new Dictionary<string, object?>();
                 foreach (var child in children)
                 {
-                    childDict[child.Name] = ConvertToJson(child, depth + 1, maxDepth);
+                    if (nodeCount >= maxNodes) break;
+                    childDict[child.Name] = ConvertToJson(child, depth + 1, maxDepth, ref nodeCount, maxNodes);
                 }
                 result["_children"] = childDict;
             }
@@ -563,6 +589,8 @@ public class ExportJsonResult
     public string? OutputPath { get; set; }
     public string? JsonData { get; set; }
     public long Size { get; set; }
+    public int NodeCount { get; set; }
+    public bool Truncated { get; set; }
 }
 
 public class ExportXmlResult

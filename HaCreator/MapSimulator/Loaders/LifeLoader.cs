@@ -1,12 +1,15 @@
+using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
-using HaCreator.MapSimulator.MapObjects.FieldObject;
-using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Entities;
+using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Pools;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -57,8 +60,10 @@ namespace HaCreator.MapSimulator.Loaders
                         case "die2":
                         case "attack1":
                         case "attack2":
+                        case "attack3":
                         case "skill1":
                         case "skill2":
+                        case "skill3":
                         case "chase":
                         case "regen":
                             {
@@ -67,6 +72,22 @@ namespace HaCreator.MapSimulator.Loaders
                                 if (actionFrames.Count > 0)
                                 {
                                     animationSet.AddAnimation(actionName, actionFrames);
+                                }
+
+                                // Load hit effect frames for attack actions (attack1/info/hit, attack2/info/hit, etc.)
+                                if (actionName.StartsWith("attack"))
+                                {
+                                    WzSubProperty infoNode = mobStateProperty["info"] as WzSubProperty;
+                                    WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
+                                    if (hitNode != null)
+                                    {
+                                        List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, ref usedProps);
+                                        if (hitFrames.Count > 0)
+                                        {
+                                            animationSet.AddAttackHitEffect(actionName, hitFrames);
+                                            System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
+                                        }
+                                    }
                                 }
                                 break;
                             }
@@ -90,7 +111,90 @@ namespace HaCreator.MapSimulator.Loaders
                 mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, color_foreGround,
                 texturePool, UserScreenScaleFactor, device);
 
-            return new MobItem(mobInstance, animationSet, nameTooltip);
+            var mobItem = new MobItem(mobInstance, animationSet, nameTooltip);
+
+            // Load mob-specific sounds from Sound.wz/Mob.img/{mobId}/
+            LoadMobSounds(mobItem, mobInfo.ID);
+
+            return mobItem;
+        }
+
+        /// <summary>
+        /// Loads mob-specific sounds from Sound.wz/Mob.img/{mobId}/
+        /// </summary>
+        private static void LoadMobSounds(MobItem mobItem, string mobId)
+        {
+            if (string.IsNullOrEmpty(mobId))
+            {
+                System.Diagnostics.Debug.WriteLine($"[LifeLoader] LoadMobSounds: mobId is null or empty");
+                return;
+            }
+            WzImage mobSoundImage = Program.FindImage("Sound", "Mob");
+            if (mobSoundImage == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LifeLoader] LoadMobSounds: Sound/Mob.img not found!");
+                return;
+            }
+
+            // Look for the mob's sound directory (e.g., "0100100")
+            WzSubProperty mobSounds = mobSoundImage[mobId.PadLeft(7, '0')] as WzSubProperty;
+            if (mobSounds == null)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LifeLoader] LoadMobSounds: Mob '{mobId}' not found in Mob.img. Available: {string.Join(", ", mobSoundImage.WzProperties?.Take(10).Select(p => p.Name) ?? new string[0])}...");
+                return;
+            }
+
+            // Load Damage sound
+            WzSoundResourceStreamer damageSE = LoadSoundFromProperty(mobSounds["Damage"]);
+
+            // Load Die sound
+            WzSoundResourceStreamer dieSE = LoadSoundFromProperty(mobSounds["Die"]);
+
+            // Load Attack1 sound
+            WzSoundResourceStreamer attack1SE = LoadSoundFromProperty(mobSounds["Attack1"]);
+
+            // Load Attack2 sound
+            WzSoundResourceStreamer attack2SE = LoadSoundFromProperty(mobSounds["Attack2"]);
+
+            // Load CharDam1 sound (character damage when mob hits player)
+            WzSoundResourceStreamer charDam1SE = LoadSoundFromProperty(mobSounds["CharDam1"]);
+
+            // Load CharDam2 sound
+            WzSoundResourceStreamer charDam2SE = LoadSoundFromProperty(mobSounds["CharDam2"]);
+
+            // Set sounds on mob item
+            if (damageSE != null || dieSE != null)
+            {
+                mobItem.SetSounds(damageSE, dieSE);
+            }
+
+            if (attack1SE != null || attack2SE != null)
+            {
+                mobItem.SetAttackSounds(attack1SE, attack2SE);
+            }
+
+            if (charDam1SE != null || charDam2SE != null)
+            {
+                mobItem.SetCharDamSounds(charDam1SE, charDam2SE);
+            }
+        }
+
+        /// <summary>
+        /// Helper method to load a sound from a WZ property (handles UOL links)
+        /// </summary>
+        private static WzSoundResourceStreamer LoadSoundFromProperty(WzImageProperty prop)
+        {
+            if (prop == null)
+                return null;
+
+            WzBinaryProperty soundProp = prop as WzBinaryProperty
+                ?? (prop as WzUOLProperty)?.LinkValue as WzBinaryProperty;
+
+            if (soundProp != null)
+            {
+                return new WzSoundResourceStreamer(soundProp, false);
+            }
+            return null;
         }
         #endregion
 

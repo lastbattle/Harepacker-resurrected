@@ -266,13 +266,7 @@ namespace MapleLib.Tests.Img
                     ["String"] = new { fileCount = 8, lastModified = DateTime.UtcNow.ToString("o") },
                     ["Map"] = new { fileCount = 100, lastModified = DateTime.UtcNow.ToString("o") }
                 },
-                features = new
-                {
-                    hasPets = true,
-                    hasMount = true,
-                    hasAndroid = false,
-                    hasV5thJob = false
-                }
+                features = new { }
             };
 
             string json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
