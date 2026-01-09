@@ -127,9 +127,19 @@ namespace MapleLib.Tests.Img
             Directory.CreateDirectory(Path.Combine(_testPath, "Map"));
             Directory.CreateDirectory(Path.Combine(_testPath, "Mob"));
 
+            // Create mock .img files (required for category detection)
+            CreateMockImgFile(Path.Combine(_testPath, "String", "Test.img"));
+            CreateMockImgFile(Path.Combine(_testPath, "Map", "Test.img"));
+            CreateMockImgFile(Path.Combine(_testPath, "Mob", "Test.img"));
+
             CreateTestManifest();
 
             _config = new HaCreatorConfig { ImgRootPath = _testPath };
+        }
+
+        private void CreateMockImgFile(string path)
+        {
+            File.WriteAllBytes(path, Array.Empty<byte>());
         }
 
         public void Dispose()
@@ -206,10 +216,10 @@ namespace MapleLib.Tests.Img
             // Act
             var categories = dataSource.GetCategories().ToList();
 
-            // Assert
-            Assert.Contains("String", categories);
-            Assert.Contains("Map", categories);
-            Assert.Contains("Mob", categories);
+            // Assert - categories are stored in lowercase
+            Assert.Contains(categories, c => c.Equals("string", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(categories, c => c.Equals("map", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(categories, c => c.Equals("mob", StringComparison.OrdinalIgnoreCase));
         }
 
         [Fact]
@@ -327,6 +337,9 @@ namespace MapleLib.Tests.Img
             Directory.CreateDirectory(_testPath);
             Directory.CreateDirectory(Path.Combine(_testPath, "String"));
 
+            // Create mock .img file (required for category detection)
+            File.WriteAllBytes(Path.Combine(_testPath, "String", "Test.img"), Array.Empty<byte>());
+
             CreateTestManifest();
 
             _config = new HaCreatorConfig { ImgRootPath = _testPath };
@@ -392,8 +405,8 @@ namespace MapleLib.Tests.Img
             // Act
             var categories = dataSource.GetCategories().ToList();
 
-            // Assert
-            Assert.Contains("String", categories);
+            // Assert - categories are stored in lowercase
+            Assert.Contains(categories, c => c.Equals("string", StringComparison.OrdinalIgnoreCase));
         }
 
         [Fact]

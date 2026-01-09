@@ -58,8 +58,20 @@ namespace MapleLib.Tests.Img
             Directory.CreateDirectory(Path.Combine(_testVersionPath, "Map", "Map", "Map0"));
             Directory.CreateDirectory(Path.Combine(_testVersionPath, "Mob"));
 
+            // Create mock .img files (required for category detection)
+            // The manager only recognizes categories that contain .img files
+            CreateMockImgFile(Path.Combine(_testVersionPath, "String", "Test.img"));
+            CreateMockImgFile(Path.Combine(_testVersionPath, "Map", "Test.img"));
+            CreateMockImgFile(Path.Combine(_testVersionPath, "Mob", "Test.img"));
+
             // Create manifest
             CreateTestManifest();
+        }
+
+        private void CreateMockImgFile(string path)
+        {
+            // Create a minimal mock .img file (just needs to exist for directory scanning)
+            File.WriteAllBytes(path, Array.Empty<byte>());
         }
 
         private void CreateTestManifest()
@@ -78,13 +90,7 @@ namespace MapleLib.Tests.Img
                     ["Map"] = new { fileCount = 5, lastModified = DateTime.UtcNow.ToString("o") },
                     ["Mob"] = new { fileCount = 3, lastModified = DateTime.UtcNow.ToString("o") }
                 },
-                features = new
-                {
-                    hasPets = true,
-                    hasMount = true,
-                    hasAndroid = false,
-                    hasV5thJob = false
-                }
+                features = new { }
             };
 
             string json = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
@@ -124,10 +130,10 @@ namespace MapleLib.Tests.Img
             // Act
             var categories = manager.GetCategories().ToList();
 
-            // Assert
-            Assert.Contains("String", categories);
-            Assert.Contains("Map", categories);
-            Assert.Contains("Mob", categories);
+            // Assert - categories are stored in lowercase
+            Assert.Contains(categories, c => c.Equals("string", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(categories, c => c.Equals("map", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(categories, c => c.Equals("mob", StringComparison.OrdinalIgnoreCase));
         }
 
         [Fact]
