@@ -123,7 +123,9 @@ namespace HaCreator.MapSimulator.Character
         }
 
         /// <summary>
-        /// Get a single frame at a specific time
+        /// Get a single frame at a specific time using ping-pong animation.
+        /// Animation plays forward (0,1,2,3) then backward (2,1) and repeats.
+        /// This matches MapleStory's character animation behavior.
         /// </summary>
         public AssembledFrame GetFrameAtTime(CharacterAction action, int timeMs)
         {
@@ -131,22 +133,59 @@ namespace HaCreator.MapSimulator.Character
             if (frames == null || frames.Length == 0)
                 return null;
 
-            // Calculate which frame based on time
-            int totalDuration = frames.Sum(f => f.Duration);
-            if (totalDuration == 0)
+            // Single frame - no animation needed
+            if (frames.Length == 1)
                 return frames[0];
 
-            int time = timeMs % totalDuration;
-            int elapsed = 0;
+            // Calculate forward duration (all frames)
+            int forwardDuration = frames.Sum(f => f.Duration);
+            if (forwardDuration == 0)
+                return frames[0];
 
-            foreach (var frame in frames)
+            // For ping-pong: 0 1 2 3 2 1 0 1 2 3 2 1 ...
+            // Forward phase plays frames 0 to N-1
+            // Backward phase plays frames N-2 to 1 (skipping first and last)
+            // Calculate backward duration (frames 1 to N-2, i.e., middle frames only)
+            int backwardDuration = 0;
+            for (int i = frames.Length - 2; i >= 1; i--)
             {
-                elapsed += frame.Duration;
-                if (time < elapsed)
-                    return frame;
+                backwardDuration += frames[i].Duration;
             }
 
-            return frames[^1];
+            int pingPongCycleDuration = forwardDuration + backwardDuration;
+            if (pingPongCycleDuration == 0)
+                return frames[0];
+
+            int time = timeMs % pingPongCycleDuration;
+
+            // Determine if we're in forward or backward phase
+            if (time < forwardDuration)
+            {
+                // Forward phase: find frame normally
+                int elapsed = 0;
+                foreach (var frame in frames)
+                {
+                    elapsed += frame.Duration;
+                    if (time < elapsed)
+                        return frame;
+                }
+                return frames[^1];
+            }
+            else
+            {
+                // Backward phase: find frame in reverse (excluding first and last frame)
+                int backwardTime = time - forwardDuration;
+                int elapsed = 0;
+
+                // Iterate from frame N-2 down to frame 1
+                for (int i = frames.Length - 2; i >= 1; i--)
+                {
+                    elapsed += frames[i].Duration;
+                    if (backwardTime < elapsed)
+                        return frames[i];
+                }
+                return frames[1]; // Fallback to frame 1
+            }
         }
 
         #region Assembly
