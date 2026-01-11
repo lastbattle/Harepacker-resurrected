@@ -304,10 +304,20 @@ namespace HaCreator.MapSimulator.Character
                 // Could trigger death effect, etc.
             };
 
-            // Set up damage received callback
+            // Set up damage received callback - show violet damage number above player
             Player.OnDamaged = (player, damage) =>
             {
-                // Could show damage number above player
+                if (_combatEffects != null && damage > 0)
+                {
+                    int currentTime = Environment.TickCount;
+                    // Show violet damage number above player's head (NoViolet)
+                    _combatEffects.AddReceivedDamage(
+                        damage,
+                        player.X,
+                        player.Y - 50, // Above player head
+                        false, // Not critical (mobs don't crit in basic implementation)
+                        currentTime);
+                }
             };
 
             // Set spawn position and snap to foothold
