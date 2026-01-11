@@ -905,6 +905,14 @@ namespace HaCreator.MapSimulator
                 _combatEffects.LoadBossHPBarFromWz(uiWindow1Image);
             }
 
+            // Load damage number sprites from Effect.wz/BasicEff.img
+            // This enables authentic MapleStory digit sprites for damage numbers
+            var basicEffImage = Program.FindImage("Effect", "BasicEff.img");
+            if (basicEffImage != null)
+            {
+                _combatEffects.LoadDamageNumbersFromWz(basicEffImage);
+            }
+
             // Initialize status bar character stats display
             // Positions derived from IDA Pro analysis of CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue
             if (statusBarUi != null)
