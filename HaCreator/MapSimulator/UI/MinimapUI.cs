@@ -31,6 +31,26 @@ namespace HaCreator.MapSimulator.UI
         private int _lastMinimapToggleTime = 0;
         private const int MINIMAP_TOGGLE_COOLDOWN_MS = 200; // Cooldown in milliseconds
 
+        // Player position on minimap (in minimap coordinates, not world coordinates)
+        private int _playerMinimapX = 0;
+        private int _playerMinimapY = 0;
+
+        /// <summary>
+        /// Sets the player's position on the minimap.
+        /// Call this before Draw() to update the yellow dot position.
+        /// </summary>
+        /// <param name="playerWorldX">Player X position in world coordinates</param>
+        /// <param name="playerWorldY">Player Y position in world coordinates</param>
+        /// <param name="minimapOriginX">World X coordinate that corresponds to minimap position 0</param>
+        /// <param name="minimapOriginY">World Y coordinate that corresponds to minimap position 0</param>
+        public void SetPlayerPosition(float playerWorldX, float playerWorldY, int minimapOriginX, int minimapOriginY)
+        {
+            // Convert world coordinates to minimap coordinates
+            // Minimap is scaled 1:16 from world coordinates
+            _playerMinimapX = (int)(playerWorldX - minimapOriginX) / 16;
+            _playerMinimapY = (int)(playerWorldY - minimapOriginY) / 16;
+        }
+
         /// <summary>
         /// Constructor for the minimap window
         /// </summary>
@@ -98,10 +118,12 @@ namespace HaCreator.MapSimulator.UI
                    renderParameters,
                    TickCount);
 
-                int minimapPosX = (mapShiftX + (renderParameters.RenderWidth / 2)) / 16;
-                int minimapPosY = (mapShiftY + (renderParameters.RenderHeight / 2)) / 16;
+                // Use stored player position (set via SetPlayerPosition) for accurate dot placement
+                // This ensures the dot follows the actual character position, not the viewport center
+                int minimapPosX = _playerMinimapX;
+                int minimapPosY = _playerMinimapY;
 
-                // Draw the minimap pixel dor
+                // Draw the minimap pixel dot
                 _pixelDot.Draw(sprite, skeletonMeshRenderer, gameTime,
                     -Position.X, -Position.Y, minimapPosX, minimapPosY,
                     drawReflectionInfo,

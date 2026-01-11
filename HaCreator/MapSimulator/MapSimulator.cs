@@ -4427,6 +4427,14 @@ namespace HaCreator.MapSimulator
             // Minimap
             if (miniMapUi != null)
             {
+                // Update player position on minimap (uses actual character position, not viewport center)
+                // MinimapPosition is the world coordinate that corresponds to minimap (0,0)
+                if (_playerManager?.Player != null)
+                {
+                    miniMapUi.SetPlayerPosition(_playerManager.Player.X, _playerManager.Player.Y,
+                        _mapBoard.MinimapPosition.X, _mapBoard.MinimapPosition.Y);
+                }
+
                 miniMapUi.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
                         mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
                         null,
