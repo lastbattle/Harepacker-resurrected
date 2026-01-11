@@ -1245,6 +1245,27 @@ namespace HaCreator.MapSimulator.Character
             Physics.SetPosition(x, y);
         }
 
+        /// <summary>
+        /// Force the player to standing state and clear all movement.
+        /// Used when entering portals, interacting with objects, etc.
+        /// </summary>
+        public void ForceStand()
+        {
+            if (State == PlayerState.Dead)
+                return;
+
+            State = PlayerState.Standing;
+            CurrentAction = CharacterAction.Stand1;
+            Physics.VelocityX = 0;
+
+            // Clear input states to prevent resuming movement
+            _inputLeft = false;
+            _inputRight = false;
+            _inputUp = false;
+            _inputDown = false;
+            _inputJump = false;
+        }
+
         #endregion
 
         #region Draw

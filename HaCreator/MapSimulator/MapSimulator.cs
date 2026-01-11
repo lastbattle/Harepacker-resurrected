@@ -2943,6 +2943,7 @@ namespace HaCreator.MapSimulator
                     if (targetMapId != MapConstants.MaxMap && targetMapId > 0)
                     {
                         PlayPortalSE();
+                        _playerManager?.ForceStand();
                         _gameState.PendingMapChange = true;
                         _gameState.PendingMapId = targetMapId;
                         _gameState.PendingPortalName = clickedPortal.PortalInstance.tn;
@@ -2986,6 +2987,7 @@ namespace HaCreator.MapSimulator
                 {
                     // Double-click detected on hidden portal
                     PlayPortalSE();
+                    _playerManager?.ForceStand();
                     _gameState.PendingMapChange = true;
                     _gameState.PendingMapId = clickedHiddenPortal.tm;
                     _gameState.PendingPortalName = clickedHiddenPortal.tn;
@@ -3384,6 +3386,7 @@ namespace HaCreator.MapSimulator
             if (nearestPortal != null)
             {
                 PlayPortalSE();
+                _playerManager?.ForceStand();
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
                 _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
@@ -3422,6 +3425,7 @@ namespace HaCreator.MapSimulator
             if (nearestHiddenPortal != null)
             {
                 PlayPortalSE();
+                _playerManager?.ForceStand();
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestHiddenPortal.tm;
                 _gameState.PendingPortalName = nearestHiddenPortal.tn;
