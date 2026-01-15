@@ -149,10 +149,15 @@ namespace HaCreator.GUI
             // Load and validate additional version paths from config
             LoadAdditionalVersionPaths();
 
+            // Load recent version paths from history
+            LoadRecentVersionPaths();
+
             RefreshVersionList();
 
-            // Select last used version if available
+            // Select last used version if available, otherwise select first item
             var config = HaCreatorConfig.Load();
+            bool foundLastUsed = false;
+
             if (!string.IsNullOrEmpty(config.LastUsedVersion))
             {
                 for (int i = 0; i < listBox_versions.Items.Count; i++)
@@ -161,11 +166,14 @@ namespace HaCreator.GUI
                         item.Version.Version == config.LastUsedVersion)
                     {
                         listBox_versions.SelectedIndex = i;
+                        foundLastUsed = true;
                         break;
                     }
                 }
             }
-            else if (listBox_versions.Items.Count > 0)
+
+            // Always select first item if nothing was selected
+            if (!foundLastUsed && listBox_versions.Items.Count > 0)
             {
                 listBox_versions.SelectedIndex = 0;
             }
@@ -204,6 +212,42 @@ namespace HaCreator.GUI
                 foreach (var path in pathsToRemove)
                 {
                     config.AdditionalVersionPaths.Remove(path);
+                }
+                config.Save();
+            }
+        }
+
+        /// <summary>
+        /// Loads recent version paths from history and validates they still exist
+        /// </summary>
+        private void LoadRecentVersionPaths()
+        {
+            var config = HaCreatorConfig.Load();
+            bool configChanged = false;
+
+            // Validate each path and remove missing ones
+            var pathsToRemove = new System.Collections.Generic.List<string>();
+            foreach (var path in config.RecentVersionPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    // Try to add the version (won't duplicate if already added)
+                    _versionManager.AddExternalVersion(path);
+                }
+                else
+                {
+                    // Mark for removal
+                    pathsToRemove.Add(path);
+                    configChanged = true;
+                }
+            }
+
+            // Remove missing paths from config
+            if (configChanged)
+            {
+                foreach (var path in pathsToRemove)
+                {
+                    config.RecentVersionPaths.Remove(path);
                 }
                 config.Save();
             }
@@ -288,6 +332,13 @@ namespace HaCreator.GUI
             if (listBox_versions.SelectedItem is VersionListItem item)
             {
                 SelectedVersion = item.Version;
+
+                // Save to config for next time
+                var config = HaCreatorConfig.Load();
+                config.LastUsedVersion = item.Version.Version;
+                config.AddToRecentVersionPaths(item.Version.DirectoryPath);
+                config.Save();
+
                 DialogResult = DialogResult.OK;
                 Close();
             }
@@ -312,16 +363,13 @@ namespace HaCreator.GUI
 
                 if (result == DialogResult.Yes)
                 {
-                    // Remember if this was an external version
-                    string externalPath = item.Version.IsExternal ? item.Version.DirectoryPath : null;
+                    // Remember the path for cleanup
+                    string versionPath = item.Version.DirectoryPath;
 
                     if (_versionManager.DeleteVersion(item.Version.Version))
                     {
-                        // Also remove from additional paths if it was external
-                        if (!string.IsNullOrEmpty(externalPath))
-                        {
-                            RemoveAdditionalVersionPath(externalPath);
-                        }
+                        // Remove from config lists
+                        RemoveVersionPathFromConfig(versionPath);
 
                         RefreshVersionList();
                     }
@@ -372,8 +420,20 @@ namespace HaCreator.GUI
                     var version = _versionManager.AddExternalVersion(selectedPath);
                     if (version != null)
                     {
-                        // Save the path to config for persistence
-                        SaveAdditionalVersionPath(selectedPath);
+                        // Save to config: add to both additional paths and recent history
+                        var config = HaCreatorConfig.Load();
+
+                        // Add to additional paths (for Browse-added folders)
+                        string normalizedPath = Path.GetFullPath(selectedPath);
+                        if (!config.AdditionalVersionPaths.Any(p =>
+                            Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            config.AdditionalVersionPaths.Add(selectedPath);
+                        }
+
+                        // Add to recent history
+                        config.AddToRecentVersionPaths(selectedPath);
+                        config.Save();
 
                         // Add to listbox directly
                         var newItem = new VersionListItem(version);
@@ -407,38 +467,34 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// Saves an additional version path to config for persistence
+        /// Removes a version path from all config lists (additional paths and recent history)
         /// </summary>
-        private void SaveAdditionalVersionPath(string path)
-        {
-            var config = HaCreatorConfig.Load();
-
-            // Normalize path for comparison
-            string normalizedPath = Path.GetFullPath(path);
-
-            // Don't add if already in list
-            if (!config.AdditionalVersionPaths.Any(p =>
-                Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)))
-            {
-                config.AdditionalVersionPaths.Add(path);
-                config.Save();
-            }
-        }
-
-        /// <summary>
-        /// Removes an additional version path from config
-        /// </summary>
-        private void RemoveAdditionalVersionPath(string path)
+        private void RemoveVersionPathFromConfig(string path)
         {
             var config = HaCreatorConfig.Load();
             string normalizedPath = Path.GetFullPath(path);
+            bool changed = false;
 
-            var toRemove = config.AdditionalVersionPaths
+            // Remove from additional paths
+            var toRemoveAdditional = config.AdditionalVersionPaths
                 .FirstOrDefault(p => Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
-
-            if (toRemove != null)
+            if (toRemoveAdditional != null)
             {
-                config.AdditionalVersionPaths.Remove(toRemove);
+                config.AdditionalVersionPaths.Remove(toRemoveAdditional);
+                changed = true;
+            }
+
+            // Remove from recent paths
+            var toRemoveRecent = config.RecentVersionPaths
+                .FirstOrDefault(p => Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+            if (toRemoveRecent != null)
+            {
+                config.RecentVersionPaths.Remove(toRemoveRecent);
+                changed = true;
+            }
+
+            if (changed)
+            {
                 config.Save();
             }
         }
