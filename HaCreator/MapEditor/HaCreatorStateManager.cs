@@ -51,6 +51,7 @@ namespace HaCreator.MapEditor
         private BackgroundPanel backgroundPanel;
         private LifePanel lifePanel;
         private BlackBorderPanel blackBorderPanel;
+        private ObjectViewerPanel objectViewerPanel;
         private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
 
@@ -516,6 +517,9 @@ namespace HaCreator.MapEditor
 
                     // LBTop LBBottom LBSide
                     blackBorderPanel.UpdateBoardData();
+
+                    // Notify object viewer of board change
+                    objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
 
                     ParseVisibleEditedTypes();
                 } else
@@ -1073,6 +1077,10 @@ namespace HaCreator.MapEditor
                     multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
                     multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
                     ParseVisibleEditedTypes();
+
+                    // Notify object viewer of new board
+                    objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
+
                     multiBoard.Focus();
                 }
             }
@@ -1282,6 +1290,15 @@ namespace HaCreator.MapEditor
         public void SetLifePanel(LifePanel lp)
         {
             this.lifePanel = lp;
+        }
+
+        /// <summary>
+        /// Sets the object viewer panel
+        /// </summary>
+        /// <param name="ovp"></param>
+        public void SetObjectViewerPanel(ObjectViewerPanel ovp)
+        {
+            this.objectViewerPanel = ovp;
         }
 
         #region Hot Swap

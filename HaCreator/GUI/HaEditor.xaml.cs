@@ -134,6 +134,16 @@ namespace HaCreator.GUI
         void Hcsm_FirstMapLoaded()
         {
             WindowState = WindowState.Maximized;
+
+            // Auto-show Object Viewer if setting is enabled
+            if (ApplicationSettings.ShowObjectViewerOnLoad)
+            {
+                // Use Dispatcher to ensure window is fully loaded before showing Object Viewer
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    ObjectViewerWindow.ShowWindow(hcsm, this, isManualOpen: false);
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
         }
 
         /// <summary>
@@ -164,7 +174,25 @@ namespace HaCreator.GUI
             // Close all AI Map Editor popups
             AIMapEditWindow.CloseAll();
 
+            // Close Object Viewer window
+            ObjectViewerWindow.ForceClose();
+
             multiBoard.Stop();
+        }
+
+        /// <summary>
+        /// Opens the Object Viewer floating window
+        /// </summary>
+        private void BtnObjectViewer_Click(object sender, RoutedEventArgs e)
+        {
+            if (multiBoard?.SelectedBoard == null)
+            {
+                System.Windows.MessageBox.Show("No map is currently loaded.", "Object Viewer",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            ObjectViewerWindow.ShowWindow(hcsm, this);
         }
 
         private void Expander_Expanded(object sender, RoutedEventArgs e)

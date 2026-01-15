@@ -103,6 +103,13 @@
                     </WindowsFormsHost>
                 </Expander>
 
+                <Button x:Name="btnObjectViewer"
+                        Content="Object Viewer"
+                        Click="BtnObjectViewer_Click"
+                        Margin="5"
+                        Padding="10,5"
+                        ToolTip="Open Object Viewer window"/>
+
                 <Expander x:Name="expanderAIMapEditor"
                           Header="AI Map Editor"
                           Expanded="ExpanderAIMapEditor_Expanded"
