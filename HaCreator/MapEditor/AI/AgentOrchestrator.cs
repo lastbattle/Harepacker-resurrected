@@ -131,6 +131,120 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
+        /// Process user instructions using conversation history for multi-turn chat support.
+        /// This method considers previous messages in the conversation to provide context-aware responses.
+        /// </summary>
+        /// <param name="mapContext">Current map state in AI-readable format</param>
+        /// <param name="conversationHistory">Previous conversation messages (JArray)</param>
+        /// <param name="latestUserMessage">The most recent user message to process</param>
+        /// <returns>Combined explanation text and commands</returns>
+        public async Task<string> ProcessWithConversationAsync(string mapContext, JArray conversationHistory, string latestUserMessage)
+        {
+            // Build context that includes conversation history
+            var contextWithHistory = BuildContextWithHistory(mapContext, conversationHistory, latestUserMessage);
+
+            // Phase 1: Plan - Determine which agents are needed based on latest request
+            ReportProgress("Analyzing request...");
+            var plan = await PlanExecutionAsync(latestUserMessage);
+
+            if (plan.Agents.Count == 0)
+            {
+                return "I understand. Let me know if you'd like to make any changes to the map.";
+            }
+
+            ReportProgress($"Plan: {plan.Reasoning}");
+            ReportProgress($"Agents to run: {string.Join(", ", plan.Agents.Select(a => a.Agent))}");
+
+            // Phase 2: Execute agents in priority order
+            var allCommands = new List<string>();
+            var groupedByPriority = plan.Agents.GroupBy(a => a.Priority).OrderBy(g => g.Key);
+
+            foreach (var priorityGroup in groupedByPriority)
+            {
+                ReportProgress($"Executing priority {priorityGroup.Key} agents...");
+
+                // Run agents with same priority in parallel
+                var tasks = priorityGroup.Select(agentTask =>
+                    ExecuteAgentAsync(agentTask.Agent, agentTask.Task, mapContext));
+
+                var results = await Task.WhenAll(tasks);
+
+                foreach (var result in results)
+                {
+                    if (result.Success)
+                    {
+                        allCommands.AddRange(result.Commands);
+                        ReportProgress($"  {result.AgentType}: {result.Commands.Count} command(s)");
+                    }
+                    else
+                    {
+                        allCommands.Add($"# {result.AgentType} agent error: {result.Error}");
+                        ReportProgress($"  {result.AgentType}: Error - {result.Error}");
+                    }
+                }
+            }
+
+            // Build response with explanation
+            var response = new StringBuilder();
+            response.AppendLine($"I'll help you with that. {plan.Reasoning}");
+            response.AppendLine();
+
+            if (allCommands.Count > 0)
+            {
+                response.AppendLine(string.Join(Environment.NewLine, allCommands));
+            }
+            else
+            {
+                response.AppendLine("# No commands generated");
+            }
+
+            return response.ToString();
+        }
+
+        /// <summary>
+        /// Build context string that includes relevant conversation history
+        /// </summary>
+        private string BuildContextWithHistory(string mapContext, JArray conversationHistory, string latestMessage)
+        {
+            var context = new StringBuilder();
+            context.AppendLine("## Previous Conversation Context");
+
+            // Include relevant previous exchanges (limit to last 3 for context)
+            int exchangeCount = 0;
+            foreach (var msg in conversationHistory)
+            {
+                var role = msg["role"]?.ToString();
+                var content = msg["content"]?.ToString();
+
+                if (role == "user" || role == "assistant")
+                {
+                    // Truncate long messages
+                    if (content?.Length > 500)
+                    {
+                        content = content.Substring(0, 500) + "...";
+                    }
+
+                    context.AppendLine($"[{role}]: {content}");
+                    context.AppendLine();
+
+                    if (role == "assistant")
+                    {
+                        exchangeCount++;
+                        if (exchangeCount >= 3) break;
+                    }
+                }
+            }
+
+            context.AppendLine("## Current Map State");
+            context.AppendLine(mapContext);
+            context.AppendLine();
+            context.AppendLine("## Current Request");
+            context.AppendLine(latestMessage);
+
+            return context.ToString();
+        }
+
+        /// <summary>
         /// Use the orchestrator to plan which agents should run
         /// </summary>
         private async Task<OrchestrationPlan> PlanExecutionAsync(string userInstructions)

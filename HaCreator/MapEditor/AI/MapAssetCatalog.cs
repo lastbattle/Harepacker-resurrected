@@ -239,7 +239,7 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         private static string GetObjectSetHierarchy(string oS)
         {
-            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage))
+            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage) || wzImage == null)
                 return null;
 
             var sb = new StringBuilder();
@@ -268,7 +268,7 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         private static string GetBackgroundSetItems(string bS)
         {
-            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage))
+            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage) || wzImage == null)
                 return null;
 
             var sb = new StringBuilder();
@@ -290,8 +290,8 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetObjectSetDetails(string oS)
         {
-            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage))
-                return $"Object set '{oS}' not found. Use one of the available object sets listed in the map context.";
+            if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage) || wzImage == null)
+                return $"Object set '{oS}' not found or not loaded. Use one of the available object sets listed in the map context.";
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Object Set: {oS}");
@@ -408,8 +408,8 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public static string GetBackgroundSetDetails(string bS)
         {
-            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage))
-                return $"Background set '{bS}' not found. Use one of the available background sets listed in the map context.";
+            if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage) || wzImage == null)
+                return $"Background set '{bS}' not found or not loaded. Use one of the available background sets listed in the map context.";
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Background Set: {bS}");

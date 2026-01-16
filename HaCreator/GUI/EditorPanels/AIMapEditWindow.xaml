@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:ai="clr-namespace:HaCreator.MapEditor.AI"
         mc:Ignorable="d"
         Title="AI Map Editor"
         Width="1200" Height="700"
@@ -11,6 +12,9 @@
         Closing="Window_Closing">
 
     <Window.Resources>
+        <!-- Bool to Visibility Converters -->
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+
         <!-- Button Styles -->
         <Style x:Key="ToolbarButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="28"/>
@@ -88,6 +92,181 @@
             <Setter Property="Foreground" Value="#646464"/>
             <Setter Property="Margin" Value="0,0,0,3"/>
         </Style>
+
+        <!-- User Message Bubble Style -->
+        <Style x:Key="UserMessageBubbleStyle" TargetType="Border">
+            <Setter Property="Background" Value="#DCF8C6"/>
+            <Setter Property="CornerRadius" Value="12,12,0,12"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="60,4,8,4"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="MaxWidth" Value="450"/>
+        </Style>
+
+        <!-- Assistant Message Bubble Style -->
+        <Style x:Key="AssistantMessageBubbleStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F1F0F0"/>
+            <Setter Property="CornerRadius" Value="12,12,12,0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="8,4,60,4"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="MaxWidth" Value="450"/>
+        </Style>
+
+        <!-- Commands Box Style -->
+        <Style x:Key="CommandsBoxStyle" TargetType="Border">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,8,0,0"/>
+        </Style>
+
+        <!-- Chat Message Data Template -->
+        <DataTemplate x:Key="ChatMessageTemplate" DataType="{x:Type ai:ChatMessage}">
+            <Grid Margin="0,2">
+                <!-- User Message -->
+                <Border Style="{StaticResource UserMessageBubbleStyle}">
+                    <Border.Visibility>
+                        <Binding Path="IsUser" Converter="{StaticResource BoolToVisibilityConverter}"/>
+                    </Border.Visibility>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Content}"
+                                   TextWrapping="Wrap"
+                                   Foreground="#000000"
+                                   FontSize="13"/>
+                        <TextBlock Text="{Binding TimestampDisplay}"
+                                   FontSize="9"
+                                   Foreground="#666666"
+                                   HorizontalAlignment="Right"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Assistant Message -->
+                <Border Style="{StaticResource AssistantMessageBubbleStyle}">
+                    <Border.Visibility>
+                        <Binding Path="IsAssistant" Converter="{StaticResource BoolToVisibilityConverter}"/>
+                    </Border.Visibility>
+                    <StackPanel>
+                        <!-- Processing indicator with animation -->
+                        <StackPanel Orientation="Horizontal">
+                            <StackPanel.Visibility>
+                                <Binding Path="IsProcessing" Converter="{StaticResource BoolToVisibilityConverter}"/>
+                            </StackPanel.Visibility>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard Name="ThinkingAnimation">
+                                                    <Storyboard>
+                                                        <DoubleAnimation
+                                                            Storyboard.TargetProperty="Opacity"
+                                                            From="1.0" To="0.4"
+                                                            Duration="0:0:0.6"
+                                                            AutoReverse="True"
+                                                            RepeatBehavior="Forever"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <StopStoryboard BeginStoryboardName="ThinkingAnimation"/>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBlock Text="Thinking" FontStyle="Italic" Foreground="#666666" FontSize="13"/>
+                            <TextBlock Text=" . . ." FontStyle="Italic" Foreground="#666666" FontSize="13"/>
+                        </StackPanel>
+
+                        <!-- Message content (hidden while processing) -->
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+
+                            <!-- Error display -->
+                            <TextBlock TextWrapping="Wrap"
+                                       Foreground="#D32F2F"
+                                       FontSize="13">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Setter Property="Text" Value="{Binding ErrorMessage}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- Normal content -->
+                            <TextBlock Text="{Binding Content}"
+                                       TextWrapping="Wrap"
+                                       Foreground="#000000"
+                                       FontSize="13">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- Commands section (collapsible) -->
+                            <Expander Header="Generated Commands"
+                                      IsExpanded="True"
+                                      Margin="0,8,0,0"
+                                      FontSize="11">
+                                <Expander.Style>
+                                    <Style TargetType="Expander">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasCommands}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Expander.Style>
+                                <Border Style="{StaticResource CommandsBoxStyle}">
+                                    <TextBox Text="{Binding CommandsContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             IsReadOnly="False"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             FontFamily="Consolas"
+                                             FontSize="11"
+                                             Foreground="#FFFFFF"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             MaxHeight="200"
+                                             VerticalScrollBarVisibility="Auto"/>
+                                </Border>
+                            </Expander>
+
+                            <TextBlock Text="{Binding TimestampDisplay}"
+                                       FontSize="9"
+                                       Foreground="#666666"
+                                       HorizontalAlignment="Left"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -102,7 +281,7 @@
                       ToolTip="Configure OpenRouter API key and model"/>
         </Menu>
 
-        <!-- Main Content: Left (Map Context) | Right (Workflow) -->
+        <!-- Main Content: Left (Map Context) | Right (Chat) -->
         <Grid Grid.Row="1" Margin="5,0,5,5">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" MinWidth="150"/>
@@ -144,115 +323,82 @@
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center"
                           VerticalAlignment="Stretch" Background="Transparent" Cursor="SizeWE"/>
 
-            <!-- Right Panel: Instructions, Commands, Log -->
+            <!-- Right Panel: Chat Interface -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="80"/>
-                    <RowDefinition Height="5"/>
-                    <RowDefinition Height="*" MinHeight="80"/>
-                    <RowDefinition Height="5"/>
-                    <RowDefinition Height="120"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Instructions Panel -->
-                <Grid Grid.Row="0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+                <!-- Toolbar -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="btnClearChat" Content="New Chat"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Click="BtnClearChat_Click"
+                            ToolTip="Start a new conversation"/>
+                    <Button x:Name="btnRunTests" Content="Run Tests"
+                            Style="{StaticResource ToolbarButtonStyle}"
+                            Click="BtnRunTests_Click"
+                            ToolTip="Run automated tests to verify AI agent capabilities"/>
+                </StackPanel>
 
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="1. Enter Instructions:"
-                                   Style="{StaticResource SectionLabelStyle}"/>
-                        <Button x:Name="btnRunTests" Grid.Column="1" Content="Run Tests"
-                                Style="{StaticResource ToolbarButtonStyle}"
-                                Height="22" Padding="8,2" Margin="0"
-                                Click="BtnRunTests_Click"
-                                ToolTip="Run automated tests to verify AI agent capabilities"/>
-                    </Grid>
-                    <TextBox x:Name="txtInstructions" Grid.Row="1"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto"
-                             FontFamily="Segoe UI"
-                             FontSize="12"
-                             TextChanged="TxtInstructions_TextChanged"
-                             Text="Add a maze like platform in the middle of the map, any tile you like, and maybe 10 orange mushroom and snails all around the map."/>
-                    <Button x:Name="btnProcessAI" Grid.Row="2"
-                            Content="Process with AI"
+                <!-- Chat Messages Area -->
+                <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Background="White">
+                    <ScrollViewer x:Name="chatScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="chatItemsControl"
+                                      ItemTemplate="{StaticResource ChatMessageTemplate}"
+                                      VirtualizingPanel.IsVirtualizing="False"
+                                      Padding="4">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Message Input Area -->
+                <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="White">
+                        <TextBox x:Name="txtMessageInput"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 MaxHeight="100"
+                                 MinHeight="40"
+                                 FontSize="13"
+                                 Padding="8"
+                                 BorderThickness="0"
+                                 PreviewKeyDown="TxtMessageInput_PreviewKeyDown"
+                                 TextChanged="TxtMessageInput_TextChanged"/>
+                    </Border>
+
+                    <Button x:Name="btnSend" Grid.Column="1"
+                            Content="Send"
                             Style="{StaticResource PrimaryButtonStyle}"
-                            Margin="0,5,0,0"
-                            Click="BtnProcessAI_Click"
-                            ToolTip="Send instructions to AI and generate commands"/>
+                            Width="70"
+                            Margin="8,0,0,0"
+                            Click="BtnSend_Click"
+                            ToolTip="Send message (Enter)"/>
                 </Grid>
 
-                <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch"
-                              Background="Transparent" Cursor="SizeNS"/>
-
-                <!-- Commands Panel -->
-                <Grid Grid.Row="2">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="2. Review &amp; Execute:"
-                               Style="{StaticResource SectionLabelStyle}"/>
-                    <TextBox x:Name="txtCommands" Grid.Row="1"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             HorizontalScrollBarVisibility="Auto"
-                             VerticalScrollBarVisibility="Auto"
-                             FontFamily="Consolas"
-                             FontSize="11"
-                             Text="# Commands will appear here after processing"/>
-                    <Button x:Name="btnExecute" Grid.Row="2"
-                            Content="Execute Commands"
-                            Style="{StaticResource SuccessButtonStyle}"
-                            Margin="0,5,0,0"
-                            Click="BtnExecute_Click"
-                            ToolTip="Apply the commands to the map"/>
-                </Grid>
-
-                <GridSplitter Grid.Row="3" Height="5" HorizontalAlignment="Stretch"
-                              Background="Transparent" Cursor="SizeNS"/>
-
-                <!-- Execution Log Section -->
-                <Grid Grid.Row="4">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Log:"
-                                   Style="{StaticResource SubLabelStyle}"/>
-                        <Button x:Name="btnClearLog" Grid.Column="1" Content="Clear Log"
-                                Style="{StaticResource ToolbarButtonStyle}"
-                                Height="22" Padding="8,2" Margin="0"
-                                Click="BtnClearLog_Click"
-                                ToolTip="Clear the execution log"/>
-                    </Grid>
-                    <TextBox x:Name="txtLog" Grid.Row="1"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             HorizontalScrollBarVisibility="Auto"
-                             VerticalScrollBarVisibility="Auto"
-                             FontFamily="Consolas"
-                             FontSize="10"
-                             Background="#F8F8F8"/>
-                </Grid>
+                <!-- Execute Commands Button -->
+                <Button x:Name="btnExecute" Grid.Row="3"
+                        Content="Execute Latest Commands"
+                        Style="{StaticResource SuccessButtonStyle}"
+                        Margin="0,8,0,0"
+                        Click="BtnExecute_Click"
+                        ToolTip="Apply the commands from the last AI response"/>
             </Grid>
         </Grid>
     </Grid>

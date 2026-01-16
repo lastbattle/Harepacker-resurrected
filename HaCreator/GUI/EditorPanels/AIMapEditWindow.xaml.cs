@@ -1,14 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.AI;
 
 namespace HaCreator.GUI.EditorPanels
 {
     /// <summary>
-    /// WPF Window for AI-based map editing.
+    /// WPF Window for AI-based map editing with chat-style interface.
     /// One instance is created per map/board.
     /// </summary>
     public partial class AIMapEditWindow : Window
@@ -16,17 +20,23 @@ namespace HaCreator.GUI.EditorPanels
         private static readonly Dictionary<Board, AIMapEditWindow> instances = new Dictionary<Board, AIMapEditWindow>();
 
         private readonly Board board;
+        private readonly ChatSession _chatSession;
         private bool isProcessing = false;
-        private bool instructionsModified = false;
 
         private AIMapEditWindow(Board board)
         {
             this.board = board;
 
+            // Initialize chat session
+            _chatSession = new ChatSession();
+
             InitializeComponent();
 
-            // Reset flag after InitializeComponent (default text triggers TextChanged)
-            instructionsModified = false;
+            // Bind chat messages to ItemsControl
+            chatItemsControl.ItemsSource = _chatSession.Messages;
+
+            // Subscribe to collection changes for auto-scroll
+            _chatSession.Messages.CollectionChanged += Messages_CollectionChanged;
 
             // Update title with map info
             UpdateTitle();
@@ -176,106 +186,229 @@ namespace HaCreator.GUI.EditorPanels
                 var serializer = new MapAISerializer(board);
                 var text = serializer.GenerateAISummary();
                 txtMapContext.Text = text;
-                LogMessage($"Loaded map context ({text.Length} characters)");
+
+                // Update chat session with current map context
+                _chatSession.CurrentMapContext = text;
             }
             catch (Exception ex)
             {
-                LogMessage($"Error loading map context: {ex.Message}");
                 txtMapContext.Text = $"# Error loading map: {ex.Message}";
             }
         }
 
         #endregion
 
-        #region Event Handlers
+        #region Chat Event Handlers
 
-        private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        private void Messages_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
         {
-            LoadMapContext();
+            // Auto-scroll to bottom when new messages added
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+            {
+                chatScrollViewer.ScrollToEnd();
+            }));
         }
 
-        private async void BtnProcessAI_Click(object sender, RoutedEventArgs e)
+        private async void BtnSend_Click(object sender, RoutedEventArgs e)
+        {
+            await SendMessageAsync();
+        }
+
+        private void TxtMessageInput_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            // Enter sends message, Shift+Enter adds new line
+            if (e.Key == Key.Enter && !Keyboard.IsKeyDown(Key.LeftShift) && !Keyboard.IsKeyDown(Key.RightShift))
+            {
+                e.Handled = true;
+                _ = SendMessageAsync(); // Fire and forget for UI responsiveness
+            }
+        }
+
+        private void TxtMessageInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            // Enable/disable send button based on input
+            btnSend.IsEnabled = !string.IsNullOrWhiteSpace(txtMessageInput.Text) && !isProcessing;
+        }
+
+        private async Task SendMessageAsync()
         {
             if (isProcessing)
             {
-                LogMessage("Already processing, please wait...");
                 return;
             }
 
+            var userInput = txtMessageInput.Text?.Trim();
+            if (string.IsNullOrEmpty(userInput))
+            {
+                return;
+            }
+
+            // Check API configuration
             if (!AISettings.IsConfigured)
             {
                 var dialog = new AISettingsDialog();
                 dialog.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
                 dialog.ShowDialog();
 
-                // Check again after dialog closes
                 if (!AISettings.IsConfigured)
                 {
-                    LogMessage("API key not configured. Please set up your OpenRouter API key in Settings.");
                     return;
                 }
             }
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Process with AI", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var instructions = txtInstructions.Text;
-            if (string.IsNullOrWhiteSpace(instructions) || !instructionsModified)
-            {
-                MessageBox.Show("Please enter your instructions in natural language.", "Process with AI", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("No map is currently loaded.", "AI Map Editor",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
             try
             {
                 isProcessing = true;
-                btnProcessAI.IsEnabled = false;
-                btnProcessAI.Content = "Processing...";
+                btnSend.IsEnabled = false;
+                btnExecute.IsEnabled = false;
 
-                // Get map context
+                // Clear input
+                txtMessageInput.Clear();
+
+                // Add user message to chat
+                _chatSession.AddUserMessage(userInput);
+
+                // Add placeholder assistant message (shows "Thinking...")
+                var assistantMessage = _chatSession.AddAssistantMessage();
+
+                // Update map context
                 var serializer = new MapAISerializer(board);
-                var mapContext = serializer.GenerateAISummary();
+                _chatSession.CurrentMapContext = serializer.GenerateAISummary();
 
-                // Use multi-agent orchestrator for layer-by-layer editing
-                LogMessage("Analyzing request...");
+                // Process with AI using conversation history
                 var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
-                orchestrator.OnProgress += (msg) => Dispatcher.Invoke(() => LogMessage(msg));
 
-                string result = await orchestrator.ProcessWithAgentsAsync(mapContext, instructions);
+                // Use conversation-aware processing
+                string result = await orchestrator.ProcessWithConversationAsync(
+                    _chatSession.CurrentMapContext,
+                    _chatSession.ToConversationHistory(),
+                    userInput);
 
-                txtCommands.Text = result;
-                LogMessage($"AI generated {result.Split('\n').Length} command(s)");
-                LogMessage("Review the commands and click 'Execute Commands' to apply them.");
+                // Parse response to separate explanation from commands
+                var (explanation, commands) = ParseAIResponse(result);
+
+                // Update assistant message
+                assistantMessage.Content = explanation;
+                assistantMessage.CommandsContent = commands;
+                assistantMessage.IsProcessing = false;
             }
             catch (Exception ex)
             {
-                LogMessage($"AI processing error: {ex.Message}");
-                MessageBox.Show($"Error processing with AI: {ex.Message}", "AI Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (_chatSession.LastAssistantMessage != null)
+                {
+                    _chatSession.LastAssistantMessage.IsProcessing = false;
+                    _chatSession.LastAssistantMessage.HasError = true;
+                    _chatSession.LastAssistantMessage.ErrorMessage = $"Error: {ex.Message}";
+                }
             }
             finally
             {
                 isProcessing = false;
-                btnProcessAI.IsEnabled = true;
-                btnProcessAI.Content = "Process with AI";
+                btnSend.IsEnabled = true;
+                btnExecute.IsEnabled = _chatSession.HasCommands;
+                txtMessageInput.Focus();
             }
+        }
+
+        /// <summary>
+        /// Parse AI response to separate explanation text from commands
+        /// </summary>
+        private (string explanation, string commands) ParseAIResponse(string response)
+        {
+            // Commands are lines starting with these prefixes
+            var commandPrefixes = new[] {
+                "ADD ", "SET ", "DELETE ", "MOVE ", "TILE ", "CLEAR ", "FLIP ",
+                "# QUERY:", "# WARNING:", "# "
+            };
+
+            var explanationLines = new List<string>();
+            var commandLines = new List<string>();
+
+            var lines = response.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                bool isCommand = false;
+
+                foreach (var prefix in commandPrefixes)
+                {
+                    if (trimmed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        isCommand = true;
+                        break;
+                    }
+                }
+
+                if (isCommand)
+                {
+                    commandLines.Add(trimmed);
+                }
+                else if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    explanationLines.Add(trimmed);
+                }
+            }
+
+            // If no explanation, provide a default
+            string explanation = explanationLines.Count > 0
+                ? string.Join(Environment.NewLine, explanationLines)
+                : "Here are the commands to accomplish your request:";
+
+            string commands = commandLines.Count > 0
+                ? string.Join(Environment.NewLine, commandLines)
+                : string.Empty;
+
+            return (explanation, commands);
+        }
+
+        private void BtnClearChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (_chatSession.HasMessages)
+            {
+                var result = MessageBox.Show(
+                    "Start a new conversation? Current chat history will be cleared.",
+                    "New Chat",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    _chatSession.Clear();
+                    btnExecute.IsEnabled = false;
+                }
+            }
+        }
+
+        #endregion
+
+        #region Other Event Handlers
+
+        private void BtnRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            LoadMapContext();
         }
 
         private void BtnExecute_Click(object sender, RoutedEventArgs e)
         {
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("No map is currently loaded.", "Execute Commands",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            var commandText = txtCommands.Text;
-            if (string.IsNullOrWhiteSpace(commandText) ||
-                commandText.StartsWith("# Commands will appear"))
+            var commandText = _chatSession.GetLatestCommands();
+            if (string.IsNullOrWhiteSpace(commandText))
             {
-                MessageBox.Show("No commands to execute. Use 'Process with AI' first or enter commands manually.",
+                MessageBox.Show("No commands to execute. Send a message to generate commands first.",
                     "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -287,35 +420,42 @@ namespace HaCreator.GUI.EditorPanels
 
                 if (commands.Count == 0)
                 {
-                    LogMessage("No valid commands found in input");
+                    MessageBox.Show("No valid commands found in the generated output.",
+                        "Execute Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
-
-                LogMessage($"Parsed {commands.Count} command(s)");
 
                 var executor = new MapAIExecutor(board);
                 var result = executor.ExecuteCommands(commands);
 
-                // Log execution results
-                foreach (var logEntry in result.Log)
+                // Show execution summary
+                string summary = $"Execution complete: {result.SuccessCount} succeeded, {result.FailCount} failed";
+
+                if (result.FailCount > 0 && result.Log.Count > 0)
                 {
-                    LogMessage(logEntry);
+                    var failedLogs = result.Log.Where(l =>
+                        l.Contains("failed", StringComparison.OrdinalIgnoreCase) ||
+                        l.Contains("error", StringComparison.OrdinalIgnoreCase)).Take(5);
+                    if (failedLogs.Any())
+                    {
+                        summary += "\n\nIssues:\n" + string.Join("\n", failedLogs);
+                    }
                 }
 
-                LogMessage($"Execution complete: {result.SuccessCount} succeeded, {result.FailCount} failed");
+                MessageBox.Show(summary, "Execution Result",
+                    MessageBoxButton.OK,
+                    result.FailCount > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
                 if (result.SuccessCount > 0)
                 {
                     board.Dirty = true;
-
-                    // Auto-refresh map context to show updated state
-                    LoadMapContext();
+                    LoadMapContext(); // Refresh context
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"Error executing commands: {ex.Message}");
-                MessageBox.Show($"Error executing commands: {ex.Message}", "Execution Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error executing commands: {ex.Message}", "Execution Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -325,16 +465,10 @@ namespace HaCreator.GUI.EditorPanels
             dialog.ShowDialog();
         }
 
-        private void BtnClearLog_Click(object sender, RoutedEventArgs e)
-        {
-            txtLog.Clear();
-        }
-
         private async void BtnRunTests_Click(object sender, RoutedEventArgs e)
         {
             if (isProcessing)
             {
-                LogMessage("Already processing, please wait...");
                 return;
             }
 
@@ -346,14 +480,14 @@ namespace HaCreator.GUI.EditorPanels
 
                 if (!AISettings.IsConfigured)
                 {
-                    LogMessage("API key not configured. Please set up your OpenRouter API key in Settings.");
                     return;
                 }
             }
 
             if (board == null)
             {
-                MessageBox.Show("No map is currently loaded.", "Run Tests", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("No map is currently loaded.", "Run Tests",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -361,43 +495,60 @@ namespace HaCreator.GUI.EditorPanels
             {
                 isProcessing = true;
                 btnRunTests.IsEnabled = false;
-                btnProcessAI.IsEnabled = false;
-                btnRunTests.Content = "Running...";
+                btnSend.IsEnabled = false;
 
                 // Load test prompt
                 var testPrompt = MapEditorPromptBuilder.LoadPromptFile("ComprehensiveTestPrompt.txt");
-                txtInstructions.Text = testPrompt;
-                LogMessage("=== RUNNING AUTOMATED TESTS ===");
+
+                // Clear chat and add test prompt as user message
+                _chatSession.Clear();
+                _chatSession.AddUserMessage("=== RUNNING AUTOMATED TESTS ===\n\n" + testPrompt);
+
+                // Add placeholder assistant message
+                var assistantMessage = _chatSession.AddAssistantMessage();
 
                 // Get map context
                 var serializer = new MapAISerializer(board);
-                var mapContext = serializer.GenerateAISummary();
+                _chatSession.CurrentMapContext = serializer.GenerateAISummary();
 
                 // Run AI processing
-                LogMessage("Processing test prompt with AI...");
                 var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
-                orchestrator.OnProgress += (msg) => Dispatcher.Invoke(() => LogMessage(msg));
+                string result = await orchestrator.ProcessWithConversationAsync(
+                    _chatSession.CurrentMapContext,
+                    _chatSession.ToConversationHistory(),
+                    testPrompt);
 
-                string result = await orchestrator.ProcessWithAgentsAsync(mapContext, testPrompt);
-                txtCommands.Text = result;
+                // Parse and update assistant message
+                var (explanation, commands) = ParseAIResponse(result);
+                assistantMessage.Content = explanation;
+                assistantMessage.CommandsContent = commands;
+                assistantMessage.IsProcessing = false;
 
                 // Calculate and display test score
-                var testResults = CalculateTestScore(result);
+                var testResults = CalculateTestScore(commands);
                 DisplayTestResults(testResults);
             }
             catch (Exception ex)
             {
-                LogMessage($"Test error: {ex.Message}");
-                MessageBox.Show($"Error running tests: {ex.Message}", "Test Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                if (_chatSession.LastAssistantMessage != null)
+                {
+                    _chatSession.LastAssistantMessage.IsProcessing = false;
+                    _chatSession.LastAssistantMessage.HasError = true;
+                    _chatSession.LastAssistantMessage.ErrorMessage = $"Test error: {ex.Message}";
+                }
             }
             finally
             {
                 isProcessing = false;
                 btnRunTests.IsEnabled = true;
-                btnProcessAI.IsEnabled = true;
-                btnRunTests.Content = "Run Tests";
+                btnSend.IsEnabled = true;
+                btnExecute.IsEnabled = _chatSession.HasCommands;
             }
         }
+
+        #endregion
+
+        #region Test Scoring
 
         private TestResults CalculateTestScore(string output)
         {
@@ -463,61 +614,40 @@ namespace HaCreator.GUI.EditorPanels
 
         private void DisplayTestResults(TestResults results)
         {
-            LogMessage("");
-            LogMessage("=== TEST RESULTS ===");
-            LogMessage("");
-
             int passed = 0;
             int total = 0;
 
-            // Query-first tests
-            LogMessage("QUERY-FIRST WORKFLOW:");
-            passed += LogTest("  get_mob_list called", results.QueryMobList, ref total);
-            passed += LogTest("  get_npc_list called", results.QueryNpcList, ref total);
-            passed += LogTest("  get_object_info called", results.QueryObjectInfo, ref total);
-            passed += LogTest("  get_background_info called", results.QueryBackgroundInfo, ref total);
-            passed += LogTest("  get_bgm_list called", results.QueryBgmList, ref total);
-            passed += LogTest("  No query violations", results.QueryViolations == 0, ref total);
+            // Count passed tests
+            passed += (results.QueryMobList ? 1 : 0); total++;
+            passed += (results.QueryNpcList ? 1 : 0); total++;
+            passed += (results.QueryObjectInfo ? 1 : 0); total++;
+            passed += (results.QueryBackgroundInfo ? 1 : 0); total++;
+            passed += (results.QueryBgmList ? 1 : 0); total++;
+            passed += (results.QueryViolations == 0 ? 1 : 0); total++;
+            passed += (results.PlatformsCreated >= 3 ? 1 : 0); total++;
+            passed += (results.TilesCreated >= 1 ? 1 : 0); total++;
+            passed += (results.WallsCreated >= 2 ? 1 : 0); total++;
+            passed += (results.RopesCreated >= 1 ? 1 : 0); total++;
+            passed += (results.LaddersCreated >= 1 ? 1 : 0); total++;
+            passed += (results.MobsWithPatrol >= 5 ? 1 : 0); total++;
+            passed += (results.MobsWithoutPatrol == 0 ? 1 : 0); total++;
+            passed += (results.NpcsCreated >= 2 ? 1 : 0); total++;
+            passed += (results.ObjectsCreated >= 3 ? 1 : 0); total++;
+            passed += (results.BackgroundsCreated >= 2 ? 1 : 0); total++;
+            passed += (results.PortalsCreated >= 3 ? 1 : 0); total++;
+            passed += (results.MapSizeSet ? 1 : 0); total++;
+            passed += (results.VRSet ? 1 : 0); total++;
+            passed += (results.SnowEnabled ? 1 : 0); total++;
+            passed += (results.TownSet ? 1 : 0); total++;
+            passed += (results.MobRateSet ? 1 : 0); total++;
+            passed += (results.ReturnMapSet ? 1 : 0); total++;
+            passed += (results.LevelLimitSet ? 1 : 0); total++;
+            passed += (results.FieldLimitSet ? 1 : 0); total++;
+            passed += (results.MapDescSet ? 1 : 0); total++;
+            passed += (results.HelpSet ? 1 : 0); total++;
+            passed += (results.TooltipAdded ? 1 : 0); total++;
+            passed += (results.BgmSet ? 1 : 0); total++;
 
-            LogMessage("");
-            LogMessage("STRUCTURE:");
-            passed += LogTest("  Platforms created", results.PlatformsCreated >= 3, ref total);
-            passed += LogTest("  Tiles created", results.TilesCreated >= 1, ref total);
-            passed += LogTest("  Walls created", results.WallsCreated >= 2, ref total);
-            passed += LogTest("  Ropes created", results.RopesCreated >= 1, ref total);
-            passed += LogTest("  Ladders created", results.LaddersCreated >= 1, ref total);
-
-            LogMessage("");
-            LogMessage("LIFE:");
-            passed += LogTest("  Mobs created with patrol ranges", results.MobsWithPatrol >= 5, ref total);
-            passed += LogTest("  No mobs without patrol ranges", results.MobsWithoutPatrol == 0, ref total);
-            passed += LogTest("  NPCs created", results.NpcsCreated >= 2, ref total);
-
-            LogMessage("");
-            LogMessage("DECORATION:");
-            passed += LogTest("  Objects created", results.ObjectsCreated >= 3, ref total);
-            passed += LogTest("  Backgrounds created", results.BackgroundsCreated >= 2, ref total);
-
-            LogMessage("");
-            LogMessage("PORTALS:");
-            passed += LogTest("  Portals created", results.PortalsCreated >= 3, ref total);
-
-            LogMessage("");
-            LogMessage("MAP SETTINGS:");
-            passed += LogTest("  Map size set", results.MapSizeSet, ref total);
-            passed += LogTest("  VR (camera bounds) set", results.VRSet, ref total);
-            passed += LogTest("  Snow weather enabled", results.SnowEnabled, ref total);
-            passed += LogTest("  Town flag set", results.TownSet, ref total);
-            passed += LogTest("  Mob rate set", results.MobRateSet, ref total);
-            passed += LogTest("  Return map set", results.ReturnMapSet, ref total);
-            passed += LogTest("  Level limit set", results.LevelLimitSet, ref total);
-            passed += LogTest("  Field limit set", results.FieldLimitSet, ref total);
-            passed += LogTest("  Map description set", results.MapDescSet, ref total);
-            passed += LogTest("  Help text set", results.HelpSet, ref total);
-            passed += LogTest("  Tooltip added", results.TooltipAdded, ref total);
-            passed += LogTest("  BGM set", results.BgmSet, ref total);
-
-            // Calculate percentage
             double percentage = total > 0 ? (double)passed / total * 100 : 0;
             string grade = percentage >= 95 ? "A+" :
                           percentage >= 90 ? "A" :
@@ -526,12 +656,6 @@ namespace HaCreator.GUI.EditorPanels
                           percentage >= 70 ? "C" :
                           percentage >= 60 ? "D" : "F";
 
-            LogMessage("");
-            LogMessage("===========================================");
-            LogMessage($"  SCORE: {passed}/{total} ({percentage:F1}%) - Grade: {grade}");
-            LogMessage("===========================================");
-
-            // Show message box with summary
             MessageBox.Show(
                 $"Test Results: {passed}/{total} passed ({percentage:F1}%)\n\nGrade: {grade}\n\n" +
                 $"Query Functions: {(results.QueryMobList && results.QueryNpcList && results.QueryObjectInfo && results.QueryBackgroundInfo && results.QueryBgmList ? "All called" : "Some missing")}\n" +
@@ -541,14 +665,6 @@ namespace HaCreator.GUI.EditorPanels
                 "Test Results",
                 MessageBoxButton.OK,
                 percentage >= 90 ? MessageBoxImage.Information : MessageBoxImage.Warning);
-        }
-
-        private int LogTest(string testName, bool passed, ref int total)
-        {
-            total++;
-            string status = passed ? "[PASS]" : "[FAIL]";
-            LogMessage($"{status} {testName}");
-            return passed ? 1 : 0;
         }
 
         private int CountSettings(TestResults results)
@@ -611,27 +727,6 @@ namespace HaCreator.GUI.EditorPanels
             public bool HelpSet { get; set; }
             public bool TooltipAdded { get; set; }
             public bool BgmSet { get; set; }
-        }
-
-        private void TxtInstructions_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-        {
-            instructionsModified = true;
-        }
-
-        #endregion
-
-        #region Logging
-
-        private void LogMessage(string message)
-        {
-            var timestamp = DateTime.Now.ToString("HH:mm:ss");
-            txtLog.AppendText($"[{timestamp}] {message}{Environment.NewLine}");
-
-            // Scroll after layout is updated
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
-            {
-                txtLog.ScrollToEnd();
-            }));
         }
 
         #endregion
