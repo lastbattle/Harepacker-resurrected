@@ -17,6 +17,10 @@ namespace HaCreator.GUI
         {
             InitializeComponent();
             this.Closing += ObjectViewerWindow_Closing;
+
+            // Restore saved dimensions
+            this.Width = ApplicationSettings.ObjectViewerWidth;
+            this.Height = ApplicationSettings.ObjectViewerHeight;
         }
 
         /// <summary>
@@ -92,9 +96,21 @@ namespace HaCreator.GUI
             // Remember that user closed it - don't auto-show next time
             ApplicationSettings.ShowObjectViewerOnLoad = false;
 
+            // Save current dimensions
+            SaveWindowDimensions();
+
             // Hide instead of close to preserve state
             e.Cancel = true;
             this.Hide();
+        }
+
+        /// <summary>
+        /// Saves the current window dimensions to settings.
+        /// </summary>
+        private void SaveWindowDimensions()
+        {
+            ApplicationSettings.ObjectViewerWidth = this.Width;
+            ApplicationSettings.ObjectViewerHeight = this.Height;
         }
 
         /// <summary>
@@ -104,6 +120,9 @@ namespace HaCreator.GUI
         {
             if (_instance != null)
             {
+                // Save dimensions before closing
+                _instance.SaveWindowDimensions();
+
                 _instance.Closing -= _instance.ObjectViewerWindow_Closing;
                 _instance.Close();
                 _instance = null;

@@ -89,5 +89,7 @@ namespace HaCreator
 
         // Object Viewer settings
         public static bool ShowObjectViewerOnLoad = true;
+        public static double ObjectViewerWidth = 350;
+        public static double ObjectViewerHeight = 600;
     }
 }
