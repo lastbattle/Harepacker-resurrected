@@ -12,7 +12,7 @@ namespace HaCreator.MapEditor.AI
     /// Client for OpenRouter API to process natural language map editing instructions.
     /// Uses function calling for structured output.
     /// </summary>
-    public class OpenRouterClient
+    public class OpenRouterClient : IAIClient
     {
         private static readonly HttpClient httpClient = new HttpClient();
         private const string API_URL = "https://openrouter.ai/api/v1/chat/completions";

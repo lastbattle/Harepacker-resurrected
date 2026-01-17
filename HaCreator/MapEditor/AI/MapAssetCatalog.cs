@@ -67,7 +67,7 @@ namespace HaCreator.MapEditor.AI
             var tilesets = Program.InfoManager.TileSets.Keys.OrderBy(k => k).ToList();
             if (tilesets.Count == 0)
             {
-                sb.AppendLine("No tilesets loaded.");
+                sb.AppendLine("[HaCreator Connected] No tilesets loaded. Load Map.wz to access tilesets.");
                 return sb.ToString();
             }
 
@@ -103,7 +103,7 @@ namespace HaCreator.MapEditor.AI
             var objectSets = Program.InfoManager.ObjectSets;
             if (objectSets.Count == 0)
             {
-                sb.AppendLine("No object sets loaded.");
+                sb.AppendLine("[HaCreator Connected] No object sets loaded. Load Map.wz to access objects.");
                 return sb.ToString();
             }
 
@@ -159,7 +159,7 @@ namespace HaCreator.MapEditor.AI
             var bgSets = Program.InfoManager.BackgroundSets;
             if (bgSets.Count == 0)
             {
-                sb.AppendLine("No background sets loaded.");
+                sb.AppendLine("[HaCreator Connected] No background sets loaded. Load Map.wz to access backgrounds.");
                 return sb.ToString();
             }
 
@@ -291,7 +291,17 @@ namespace HaCreator.MapEditor.AI
         public static string GetObjectSetDetails(string oS)
         {
             if (!Program.InfoManager.ObjectSets.TryGetValue(oS, out var wzImage) || wzImage == null)
-                return $"Object set '{oS}' not found or not loaded. Use one of the available object sets listed in the map context.";
+            {
+                // Check if it's actually a tileset (common mistake)
+                if (Program.InfoManager.TileSets.ContainsKey(oS))
+                {
+                    return $"'{oS}' is a TILESET, not an object set. " +
+                           $"For tilesets, use tile_platform() or tile_structure() directly with tileset=\"{oS}\". " +
+                           $"You don't need to query tileset info - just use the name directly.";
+                }
+                return $"Object set '{oS}' not found. Available object sets are listed in the map context. " +
+                       $"Note: This is for OBJECTS (Obj.wz), not tiles. For tiles, use tile_platform/tile_structure directly.";
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Object Set: {oS}");
@@ -409,7 +419,7 @@ namespace HaCreator.MapEditor.AI
         public static string GetBackgroundSetDetails(string bS)
         {
             if (!Program.InfoManager.BackgroundSets.TryGetValue(bS, out var wzImage) || wzImage == null)
-                return $"Background set '{bS}' not found or not loaded. Use one of the available background sets listed in the map context.";
+                return $"[HaCreator Connected] Background set '{bS}' not found. Available sets are listed in the map context.";
 
             var sb = new StringBuilder();
             sb.AppendLine($"## Background Set: {bS}");
@@ -518,7 +528,7 @@ namespace HaCreator.MapEditor.AI
 
             if (bgms.Count == 0)
             {
-                sb.AppendLine("No BGMs loaded.");
+                sb.AppendLine("[HaCreator Connected] No BGMs loaded. Load Sound.wz to access BGM tracks.");
                 return sb.ToString();
             }
 
@@ -552,7 +562,8 @@ namespace HaCreator.MapEditor.AI
             var mobCache = Program.InfoManager.MobNameCache;
             if (mobCache == null || mobCache.Count == 0)
             {
-                sb.AppendLine("No mobs loaded. Make sure Mob.wz is loaded.");
+                sb.AppendLine("[HaCreator Connected] No mobs loaded yet. The Mob.wz data may not be loaded.");
+                sb.AppendLine("To load mobs: File > Load Mob.wz or ensure it's in your data folder.");
                 return sb.ToString();
             }
 
@@ -610,7 +621,7 @@ namespace HaCreator.MapEditor.AI
             var npcCache = Program.InfoManager.NpcNameCache;
             if (npcCache == null || npcCache.Count == 0)
             {
-                sb.AppendLine("No NPCs loaded. Make sure NPC.wz is loaded.");
+                sb.AppendLine("[HaCreator Connected] No NPCs loaded. Load Npc.wz to access NPCs.");
                 return sb.ToString();
             }
 

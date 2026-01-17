@@ -134,7 +134,7 @@ namespace HaCreator.GUI.EditorPanels
         }
 
         /// <summary>
-        /// Close all AI Map Edit windows
+        /// Close all AI Map Edit windows and cleanup resources
         /// </summary>
         public static void CloseAll()
         {
@@ -144,6 +144,9 @@ namespace HaCreator.GUI.EditorPanels
                 window.Close();
             }
             instances.Clear();
+
+            // Cleanup any auto-started OpenCode server
+            AIClientFactory.Cleanup();
         }
 
         private static void CleanupClosedInstances()
@@ -282,8 +285,8 @@ namespace HaCreator.GUI.EditorPanels
                 var serializer = new MapAISerializer(board);
                 _chatSession.CurrentMapContext = serializer.GenerateAISummary();
 
-                // Process with AI using conversation history
-                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
+                // Process with AI using conversation history (uses configured provider)
+                var orchestrator = new AgentOrchestrator();
 
                 // Use conversation-aware processing
                 string result = await orchestrator.ProcessWithConversationAsync(
@@ -511,8 +514,8 @@ namespace HaCreator.GUI.EditorPanels
                 var serializer = new MapAISerializer(board);
                 _chatSession.CurrentMapContext = serializer.GenerateAISummary();
 
-                // Run AI processing
-                var orchestrator = new AgentOrchestrator(AISettings.ApiKey, AISettings.Model, AISettings.Model);
+                // Run AI processing (uses configured provider)
+                var orchestrator = new AgentOrchestrator();
                 string result = await orchestrator.ProcessWithConversationAsync(
                     _chatSession.CurrentMapContext,
                     _chatSession.ToConversationHistory(),

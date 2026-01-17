@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -26,6 +27,10 @@ namespace HaCreator.MapEditor.AI
     {
         public List<AgentTask> Agents { get; set; } = new List<AgentTask>();
         public string Reasoning { get; set; }
+        /// <summary>
+        /// If the AI returned a direct text response instead of a structured plan
+        /// </summary>
+        public string DirectResponse { get; set; }
     }
 
     /// <summary>
@@ -43,6 +48,7 @@ namespace HaCreator.MapEditor.AI
     /// <summary>
     /// Orchestrates multiple specialized AI agents for layer-by-layer map editing.
     /// Each agent handles a specific category of map elements.
+    /// Supports multiple AI providers through IAIClient abstraction.
     /// </summary>
     public class AgentOrchestrator
     {
@@ -52,6 +58,7 @@ namespace HaCreator.MapEditor.AI
         private readonly string apiKey;
         private readonly string orchestratorModel;
         private readonly string agentModel;
+        private readonly AIProvider _provider;
 
         // Available agent types
         public static readonly string[] AgentTypes = {
@@ -69,8 +76,42 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public event Action<string> OnProgress;
 
+        /// <summary>
+        /// Create an orchestrator using the currently configured AI provider
+        /// </summary>
+        public AgentOrchestrator()
+            : this(AISettings.Provider)
+        {
+        }
+
+        /// <summary>
+        /// Create an orchestrator for a specific AI provider
+        /// </summary>
+        public AgentOrchestrator(AIProvider provider)
+        {
+            _provider = provider;
+            switch (provider)
+            {
+                case AIProvider.OpenCode:
+                    this.apiKey = null; // OpenCode doesn't use API key
+                    this.orchestratorModel = AISettings.OpenCodeModel;
+                    this.agentModel = AISettings.OpenCodeModel;
+                    break;
+                case AIProvider.OpenRouter:
+                default:
+                    this.apiKey = AISettings.ApiKey;
+                    this.orchestratorModel = AISettings.Model;
+                    this.agentModel = AISettings.Model;
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Create an orchestrator with explicit OpenRouter configuration (legacy support)
+        /// </summary>
         public AgentOrchestrator(string apiKey, string orchestratorModel, string agentModel = null)
         {
+            _provider = AIProvider.OpenRouter;
             this.apiKey = apiKey;
             this.orchestratorModel = orchestratorModel;
             this.agentModel = agentModel ?? orchestratorModel;
@@ -87,6 +128,10 @@ namespace HaCreator.MapEditor.AI
 
             if (plan.Agents.Count == 0)
             {
+                if (!string.IsNullOrEmpty(plan.DirectResponse))
+                {
+                    return plan.DirectResponse;
+                }
                 return "# No agents selected for this request";
             }
 
@@ -140,6 +185,12 @@ namespace HaCreator.MapEditor.AI
         /// <returns>Combined explanation text and commands</returns>
         public async Task<string> ProcessWithConversationAsync(string mapContext, JArray conversationHistory, string latestUserMessage)
         {
+            // Clear collected commands before starting (for OpenCode provider)
+            if (_provider == AIProvider.OpenCode)
+            {
+                OpenCodeClient.ClearCollectedCommands();
+            }
+
             // Build context that includes conversation history
             var contextWithHistory = BuildContextWithHistory(mapContext, conversationHistory, latestUserMessage);
 
@@ -149,7 +200,22 @@ namespace HaCreator.MapEditor.AI
 
             if (plan.Agents.Count == 0)
             {
-                return "I understand. Let me know if you'd like to make any changes to the map.";
+                // If AI provided a direct response, return it
+                if (!string.IsNullOrEmpty(plan.DirectResponse))
+                {
+                    // For OpenCode, append any collected commands to the response
+                    if (_provider == AIProvider.OpenCode)
+                    {
+                        var collectedCommands = OpenCodeClient.GetCollectedCommands();
+                        if (collectedCommands.Count > 0)
+                        {
+                            var commandsText = string.Join(Environment.NewLine, collectedCommands);
+                            return plan.DirectResponse + Environment.NewLine + Environment.NewLine + commandsText;
+                        }
+                    }
+                    return plan.DirectResponse;
+                }
+                return "# Error: No agents were selected for this request. Please try rephrasing your instruction.";
             }
 
             ReportProgress($"Plan: {plan.Reasoning}");
@@ -251,24 +317,20 @@ namespace HaCreator.MapEditor.AI
         {
             var orchestratorPrompt = LoadPrompt("OrchestratorPrompt.txt");
 
-            var messages = new JArray
-            {
-                new JObject { ["role"] = "system", ["content"] = orchestratorPrompt },
-                new JObject { ["role"] = "user", ["content"] = userInstructions }
-            };
-
-            var requestBody = new JObject
-            {
-                ["model"] = orchestratorModel,
-                ["messages"] = messages,
-                ["temperature"] = 0.3, // Lower temperature for more consistent planning
-                ["max_tokens"] = 2000
-            };
-
             try
             {
-                var response = await SendRequestAsync(requestBody);
-                var content = response["choices"]?[0]?["message"]?["content"]?.ToString();
+                string content;
+
+                if (_provider == AIProvider.OpenCode)
+                {
+                    // Use OpenCode for planning
+                    content = await PlanWithOpenCodeAsync(orchestratorPrompt, userInstructions);
+                }
+                else
+                {
+                    // Use OpenRouter for planning (original implementation)
+                    content = await PlanWithOpenRouterAsync(orchestratorPrompt, userInstructions);
+                }
 
                 if (string.IsNullOrEmpty(content))
                 {
@@ -277,6 +339,20 @@ namespace HaCreator.MapEditor.AI
 
                 // Parse JSON from response (handle markdown code blocks)
                 content = ExtractJson(content);
+
+                // Check if content looks like JSON before parsing
+                var trimmed = content.TrimStart();
+                if (!trimmed.StartsWith("{"))
+                {
+                    // AI returned plain text instead of JSON - treat as direct response
+                    Debug.WriteLine($"[Orchestrator] AI returned text instead of JSON plan: {content.Substring(0, Math.Min(200, content.Length))}");
+                    return new OrchestrationPlan
+                    {
+                        Reasoning = "AI provided a direct response (no structured plan)",
+                        DirectResponse = content
+                    };
+                }
+
                 var planJson = JObject.Parse(content);
 
                 var plan = new OrchestrationPlan
@@ -307,6 +383,44 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
+        /// Execute planning using OpenRouter API
+        /// </summary>
+        private async Task<string> PlanWithOpenRouterAsync(string systemPrompt, string userInstructions)
+        {
+            var messages = new JArray
+            {
+                new JObject { ["role"] = "system", ["content"] = systemPrompt },
+                new JObject { ["role"] = "user", ["content"] = userInstructions }
+            };
+
+            var requestBody = new JObject
+            {
+                ["model"] = orchestratorModel,
+                ["messages"] = messages,
+                ["temperature"] = 0.3,
+                ["max_tokens"] = 2000
+            };
+
+            var response = await SendRequestAsync(requestBody);
+            return response["choices"]?[0]?["message"]?["content"]?.ToString();
+        }
+
+        /// <summary>
+        /// Execute planning using OpenCode API
+        /// </summary>
+        private async Task<string> PlanWithOpenCodeAsync(string systemPrompt, string userInstructions)
+        {
+            var openCodeClient = new OpenCodeClient(
+                AISettings.OpenCodeHost,
+                AISettings.OpenCodePort,
+                orchestratorModel);
+
+            // For planning, we use a simple prompt without function calling
+            // The orchestrator prompt asks for JSON output with agent assignments
+            return await openCodeClient.SendSimplePromptAsync(systemPrompt, userInstructions);
+        }
+
+        /// <summary>
         /// Execute a single specialized agent
         /// </summary>
         private async Task<AgentResult> ExecuteAgentAsync(string agentType, string task, string mapContext)
@@ -328,8 +442,9 @@ namespace HaCreator.MapEditor.AI
                     new JObject { ["role"] = "user", ["content"] = userMessage }
                 };
 
-                // Use the existing OpenRouterClient logic for function calling
-                var client = new OpenRouterClient(apiKey, agentModel);
+                // Use the IAIClient abstraction for function calling
+                // This supports both OpenRouter and OpenCode providers
+                IAIClient client = CreateClient();
                 var commands = await client.ProcessInstructionsAsync(
                     FilterMapContextForAgent(agentType, mapContext),
                     task);
@@ -346,6 +461,26 @@ namespace HaCreator.MapEditor.AI
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Create an AI client based on the configured provider
+        /// </summary>
+        private IAIClient CreateClient()
+        {
+            switch (_provider)
+            {
+                case AIProvider.OpenCode:
+                    return new OpenCodeClient(
+                        AISettings.OpenCodeHost,
+                        AISettings.OpenCodePort,
+                        agentModel,
+                        AISettings.OpenCodeAutoStart);
+
+                case AIProvider.OpenRouter:
+                default:
+                    return new OpenRouterClient(apiKey, agentModel);
+            }
         }
 
         /// <summary>
