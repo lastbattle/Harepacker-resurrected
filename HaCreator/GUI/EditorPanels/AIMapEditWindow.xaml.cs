@@ -497,7 +497,7 @@ namespace HaCreator.GUI.EditorPanels
             try
             {
                 isProcessing = true;
-                btnRunTests.IsEnabled = false;
+                menuRunTests.IsEnabled = false;
                 btnSend.IsEnabled = false;
 
                 // Load test prompt
@@ -543,7 +543,7 @@ namespace HaCreator.GUI.EditorPanels
             finally
             {
                 isProcessing = false;
-                btnRunTests.IsEnabled = true;
+                menuRunTests.IsEnabled = true;
                 btnSend.IsEnabled = true;
                 btnExecute.IsEnabled = _chatSession.HasCommands;
             }

@@ -130,10 +130,15 @@
                         <Binding Path="IsUser" Converter="{StaticResource BoolToVisibilityConverter}"/>
                     </Border.Visibility>
                     <StackPanel>
-                        <TextBlock Text="{Binding Content}"
-                                   TextWrapping="Wrap"
-                                   Foreground="#000000"
-                                   FontSize="13"/>
+                        <RichTextBox ai:MarkdownHelper.Markdown="{Binding Content}"
+                                     IsReadOnly="True"
+                                     IsDocumentEnabled="True"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     Foreground="#000000"
+                                     FontSize="13"
+                                     Padding="0"
+                                     Cursor="IBeam"/>
                         <TextBlock Text="{Binding TimestampDisplay}"
                                    FontSize="9"
                                    Foreground="#666666"
@@ -211,12 +216,17 @@
                             </TextBlock>
 
                             <!-- Normal content -->
-                            <TextBlock Text="{Binding Content}"
-                                       TextWrapping="Wrap"
-                                       Foreground="#000000"
-                                       FontSize="13">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
+                            <RichTextBox ai:MarkdownHelper.Markdown="{Binding Content}"
+                                         IsReadOnly="True"
+                                         IsDocumentEnabled="True"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Foreground="#000000"
+                                         FontSize="13"
+                                         Padding="0"
+                                         Cursor="IBeam">
+                                <RichTextBox.Style>
+                                    <Style TargetType="RichTextBox">
                                         <Setter Property="Visibility" Value="Visible"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding HasError}" Value="True">
@@ -224,8 +234,8 @@
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                                </RichTextBox.Style>
+                            </RichTextBox>
 
                             <!-- Commands section (collapsible) -->
                             <Expander Header="Generated Commands"
@@ -277,8 +287,13 @@
 
         <!-- Menu Bar -->
         <Menu Grid.Row="0" Background="White">
-            <MenuItem x:Name="menuSettings" Header="_Settings" Click="BtnSettings_Click"
-                      ToolTip="Configure OpenRouter API key and model"/>
+            <MenuItem Header="_Tools">
+                <MenuItem x:Name="menuSettings" Header="_Settings" Click="BtnSettings_Click"
+                          ToolTip="Configure OpenRouter API key and model"/>
+                <Separator/>
+                <MenuItem x:Name="menuRunTests" Header="_Run Tests" Click="BtnRunTests_Click"
+                          ToolTip="Run automated tests to verify AI agent capabilities"/>
+            </MenuItem>
         </Menu>
 
         <!-- Main Content: Left (Map Context) | Right (Chat) -->
@@ -338,10 +353,6 @@
                             Style="{StaticResource ToolbarButtonStyle}"
                             Click="BtnClearChat_Click"
                             ToolTip="Start a new conversation"/>
-                    <Button x:Name="btnRunTests" Content="Run Tests"
-                            Style="{StaticResource ToolbarButtonStyle}"
-                            Click="BtnRunTests_Click"
-                            ToolTip="Run automated tests to verify AI agent capabilities"/>
                 </StackPanel>
 
                 <!-- Chat Messages Area -->
