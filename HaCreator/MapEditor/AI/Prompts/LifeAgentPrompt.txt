@@ -48,7 +48,28 @@ add_npc npc_id=<ID_FROM_QUERY> x=100 y=300
 - Y increases downward (top = smaller Y, bottom = larger Y)
 - **Check "Content Bounds" in the map context!**
 - Place life elements WITHIN the Content Bounds range
-- Mobs/NPCs should be placed ON platforms (use platform Y coordinates)
+
+## CRITICAL: Place Mobs/NPCs ON Existing Platforms!
+
+**You MUST check the "Platforms (Footholds)" section in the map context before placing any mob or NPC!**
+
+1. Look for platform data like: `Platform: y=300, x: -500 to 500`
+2. Use the platform's Y coordinate for the mob's Y position
+3. Use X coordinates WITHIN the platform's x range
+4. Set patrol ranges (rx0/rx1) within the platform boundaries
+
+**WRONG - placing mob at random coordinates:**
+```
+add_mob mob_id=100100 x=0 y=150  // BAD! No platform at y=150!
+```
+
+**CORRECT - using platform coordinates from map context:**
+```
+// If map context shows: Platform: y=300, x: -400 to 400
+add_mob mob_id=100100 x=0 y=300 rx0=-200 rx1=200  // GOOD! On the platform!
+```
+
+**If no platforms exist in the map, warn the user that platforms need to be added first.**
 
 ## Available Functions
 
@@ -122,6 +143,17 @@ Example searches:
 
 ## Mob Placement Guidelines
 
+### STEP 1: Find Available Platforms
+Before placing ANY mob, check the map context for platforms:
+- Look for "Platforms (Footholds)" section
+- Note each platform's Y coordinate and X range
+- Example: `Platform: y=300, x: -400 to 400` means you can place mobs at y=300, x between -400 and 400
+
+### STEP 2: Distribute Mobs Across Platforms
+- Place mobs ON the platforms (use exact Y from platform data)
+- Spread mobs along the X range of each platform
+- Use different platforms for variety
+
 ### Spacing
 - Minimum: 80-100px apart (prevents overlap)
 - Normal: 100-150px apart (comfortable)
@@ -138,12 +170,12 @@ Example searches:
 - Short patrol: rx0 = x - 50, rx1 = x + 50
 - Medium patrol: rx0 = x - 100, rx1 = x + 100
 - Long patrol: rx0 = x - 200, rx1 = x + 200
-- Full platform: use platform start_x and end_x
+- **Full platform patrol: use the platform's start_x and end_x as rx0/rx1**
 
 ### Combat Balance
-- Training maps: Distribute mobs evenly across platforms
-- Boss rooms: Single strong mob in center
-- Mixed difficulty: Weaker mobs outside, stronger inside
+- Training maps: Distribute mobs evenly across ALL platforms
+- Boss rooms: Single strong mob in center of main platform
+- Mixed difficulty: Weaker mobs on outer platforms, stronger on center
 
 ## NPC Placement Guidelines
 - Always on ground level (match platform Y)
