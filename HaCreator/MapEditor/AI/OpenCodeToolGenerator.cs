@@ -318,22 +318,29 @@ export async function callHarepacker(toolName: string, args: Record<string, any>
         }
 
         /// <summary>
-        /// Find the project root by looking for .opencode folder.
+        /// Find the project root based on executable location.
         /// </summary>
         private static string FindProjectRoot()
         {
-            var dir = Directory.GetCurrentDirectory();
-            while (!string.IsNullOrEmpty(dir))
+            // Use the directory where HaCreator.exe is located
+            var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            var exeDir = Path.GetDirectoryName(exePath);
+
+            // If running from bin/Debug or bin/Release, go up to find the actual project
+            if (!string.IsNullOrEmpty(exeDir))
             {
-                if (Directory.Exists(Path.Combine(dir, ".opencode")))
+                // Check if .opencode exists here first
+                if (Directory.Exists(Path.Combine(exeDir, ".opencode")))
                 {
-                    return dir;
+                    return exeDir;
                 }
-                var parent = Directory.GetParent(dir);
-                if (parent == null) break;
-                dir = parent.FullName;
+
+                // Otherwise just use the exe directory (will create .opencode there)
+                return exeDir;
             }
-            return null;
+
+            // Fallback to current directory
+            return Directory.GetCurrentDirectory();
         }
 
         /// <summary>

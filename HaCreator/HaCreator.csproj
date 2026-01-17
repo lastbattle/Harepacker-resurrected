@@ -238,6 +238,46 @@
     <Content Include="HaLogo\HaLogo48.png" />
     <Content Include="HaLogo\HaLogo512.png" />
     <Content Include="HaLogo\HaLogo64.png" />
+    <Content Include="MapEditor\AI\Prompts\BackgroundAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\BackgroundAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\ComprehensiveTestPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\ComprehensiveTestPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\LifeAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\LifeAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\MapEditorSystemPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\MapEditorSystemPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\ObjectAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\ObjectAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\OrchestratorPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\OrchestratorPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\PlatformAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\PlatformAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\PortalAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\PortalAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\SettingsAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\SettingsAgentPrompt.txt</TargetPath>
+    </Content>
+    <Content Include="MapEditor\AI\Prompts\TileAgentPrompt.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>AI\Prompts\TileAgentPrompt.txt</TargetPath>
+    </Content>
     <Resource Include="Images\Quest\2022240_buff_icon.png" />
     <Content Include="Images\Quest\BtMarkNpc.png" />
     <Resource Include="Images\Quest\shop.meso.png" />
