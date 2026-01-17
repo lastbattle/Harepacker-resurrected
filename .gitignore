@@ -333,3 +333,7 @@ ASALocalRun/
 # Claude Code settings
 .claude/
 .mcp.json
+hacreator.db
+Errors_MapLoader.txt
+/.opencode
+nul
