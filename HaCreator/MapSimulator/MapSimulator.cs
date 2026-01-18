@@ -3790,54 +3790,10 @@ namespace HaCreator.MapSimulator
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
 
-            // Set up foothold lookup callback
-            var footholds = _mapBoard.BoardItems.FootholdLines;
+            // Set up foothold lookup callback using shared Board method
             _playerManager.SetFootholdLookup((x, y, searchRange) =>
             {
-                // Find foothold at position
-                if (footholds == null || footholds.Count == 0)
-                    return null;
-
-                FootholdLine bestFh = null;
-                float bestDist = float.MaxValue;
-
-                // Allow finding footholds slightly above player (for walking transitions)
-                // When walking between connected footholds, the next foothold might be
-                // at a slightly higher Y position
-                const float upwardTolerance = 10f;
-
-                foreach (var fh in footholds)
-                {
-                    // Check if X is within foothold range
-                    float fhMinX = Math.Min(fh.FirstDot.X, fh.SecondDot.X);
-                    float fhMaxX = Math.Max(fh.FirstDot.X, fh.SecondDot.X);
-
-                    if (x < fhMinX || x > fhMaxX)
-                        continue;
-
-                    // Calculate Y at X position on this foothold
-                    float dx = fh.SecondDot.X - fh.FirstDot.X;
-                    float dy = fh.SecondDot.Y - fh.FirstDot.Y;
-                    float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
-                    float fhY = fh.FirstDot.Y + t * dy;
-
-                    // Check if foothold is within range (below or slightly above player)
-                    // dist > 0 means foothold is below, dist < 0 means foothold is above
-                    float dist = fhY - y;
-                    float absDist = Math.Abs(dist);
-
-                    // Accept footholds below (within searchRange) or slightly above (within tolerance)
-                    if ((dist >= 0 && dist < searchRange) || (dist < 0 && -dist <= upwardTolerance))
-                    {
-                        if (absDist < bestDist)
-                        {
-                            bestDist = absDist;
-                            bestFh = fh;
-                        }
-                    }
-                }
-
-                return bestFh;
+                return _mapBoard.FindFootholdBelow(x, y, searchRange);
             });
 
             // Set up ladder lookup callback
@@ -3942,44 +3898,10 @@ namespace HaCreator.MapSimulator
             // Set spawn point for new map
             _playerManager.SetSpawnPoint(spawnX, spawnY);
 
-            // Set up foothold lookup callback for new map
-            var footholds = _mapBoard.BoardItems.FootholdLines;
+            // Set up foothold lookup callback for new map using shared Board method
             _playerManager.SetFootholdLookup((x, y, searchRange) =>
             {
-                if (footholds == null || footholds.Count == 0)
-                    return null;
-
-                FootholdLine bestFh = null;
-                float bestDist = float.MaxValue;
-                const float upwardTolerance = 10f;
-
-                foreach (var fh in footholds)
-                {
-                    float fhMinX = Math.Min(fh.FirstDot.X, fh.SecondDot.X);
-                    float fhMaxX = Math.Max(fh.FirstDot.X, fh.SecondDot.X);
-
-                    if (x < fhMinX || x > fhMaxX)
-                        continue;
-
-                    float dx = fh.SecondDot.X - fh.FirstDot.X;
-                    float dy = fh.SecondDot.Y - fh.FirstDot.Y;
-                    float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
-                    float fhY = fh.FirstDot.Y + t * dy;
-
-                    float dist = fhY - y;
-                    float absDist = Math.Abs(dist);
-
-                    if ((dist >= 0 && dist < searchRange) || (dist < 0 && -dist <= upwardTolerance))
-                    {
-                        if (absDist < bestDist)
-                        {
-                            bestDist = absDist;
-                            bestFh = fh;
-                        }
-                    }
-                }
-
-                return bestFh;
+                return _mapBoard.FindFootholdBelow(x, y, searchRange);
             });
 
             // Set up ladder lookup callback for new map

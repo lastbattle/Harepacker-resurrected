@@ -739,5 +739,74 @@ namespace HaCreator.MapEditor
             set { page = value; }
         }
         #endregion
+
+        #region Foothold Utilities
+        /// <summary>
+        /// Finds the foothold below the given position.
+        /// Used by MapSimulator and AI MapEditor for placing entities on platforms.
+        /// </summary>
+        /// <param name="x">X coordinate to check</param>
+        /// <param name="y">Y coordinate to check</param>
+        /// <param name="searchRange">Maximum distance below to search (default 500)</param>
+        /// <param name="upwardTolerance">Allow finding footholds slightly above (default 10)</param>
+        /// <returns>The foothold below, or null if none found</returns>
+        public FootholdLine FindFootholdBelow(float x, float y, float searchRange = 500f, float upwardTolerance = 10f)
+        {
+            var footholds = BoardItems.FootholdLines;
+            if (footholds == null || footholds.Count == 0)
+                return null;
+
+            FootholdLine bestFh = null;
+            float bestDist = float.MaxValue;
+
+            foreach (var fh in footholds)
+            {
+                // Skip walls (vertical footholds)
+                if (fh.IsWall)
+                    continue;
+
+                // Check if X is within foothold range
+                float fhMinX = Math.Min(fh.FirstDot.X, fh.SecondDot.X);
+                float fhMaxX = Math.Max(fh.FirstDot.X, fh.SecondDot.X);
+
+                if (x < fhMinX || x > fhMaxX)
+                    continue;
+
+                // Calculate Y at X position on this foothold (linear interpolation for slopes)
+                float dx = fh.SecondDot.X - fh.FirstDot.X;
+                float dy = fh.SecondDot.Y - fh.FirstDot.Y;
+                float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
+                float fhY = fh.FirstDot.Y + t * dy;
+
+                // Check if foothold is within range (below or slightly above)
+                // dist > 0 means foothold is below, dist < 0 means foothold is above
+                float dist = fhY - y;
+                float absDist = Math.Abs(dist);
+
+                // Accept footholds below (within searchRange) or slightly above (within tolerance)
+                if ((dist >= 0 && dist < searchRange) || (dist < 0 && -dist <= upwardTolerance))
+                {
+                    if (absDist < bestDist)
+                    {
+                        bestDist = absDist;
+                        bestFh = fh;
+                    }
+                }
+            }
+
+            return bestFh;
+        }
+
+        /// <summary>
+        /// Calculates the Y coordinate on a foothold at a given X position.
+        /// </summary>
+        public static float CalculateYOnFoothold(FootholdLine fh, float x)
+        {
+            float dx = fh.SecondDot.X - fh.FirstDot.X;
+            float dy = fh.SecondDot.Y - fh.FirstDot.Y;
+            float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
+            return fh.FirstDot.Y + t * dy;
+        }
+        #endregion
     }
 }

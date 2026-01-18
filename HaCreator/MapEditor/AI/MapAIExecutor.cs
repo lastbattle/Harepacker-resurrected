@@ -246,13 +246,28 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
+            // Find foothold below the specified position
+            var foothold = board.FindFootholdBelow(x, y);
+            if (foothold == null)
+            {
+                Log($"ERROR: No foothold found below position ({x}, {y}). Cannot add mob - mobs must be placed on a platform.");
+                return false;
+            }
+
+            // Snap the y-coordinate to the foothold
+            int snappedY = (int)Math.Round(Board.CalculateYOnFoothold(foothold, x));
+            if (snappedY != y)
+            {
+                Log($"Snapped mob Y position from {y} to {snappedY} (foothold below)");
+            }
+
             bool flip = command.Parameters.TryGetValue("flip", out var flipObj) && (bool)flipObj;
             int? mobTime = command.Parameters.TryGetValue("respawn_time", out var rtObj) ? (int?)Convert.ToInt32(rtObj) : null;
 
             lock (board.ParentControl)
             {
                 var mob = new MobInstance(
-                    mobInfo, board, x, y,
+                    mobInfo, board, x, snappedY,
                     rx0Shift: 0, rx1Shift: 0, yShift: 0,
                     limitedname: null, mobTime: mobTime,
                     flip: flip, hide: false,
@@ -264,7 +279,7 @@ namespace HaCreator.MapEditor.AI
                 board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(mob) });
             }
 
-            Log($"Added mob {mobId} at ({x}, {y})");
+            Log($"Added mob {mobId} at ({x}, {snappedY})");
             return true;
         }
 
@@ -284,12 +299,27 @@ namespace HaCreator.MapEditor.AI
                 return false;
             }
 
+            // Find foothold below the specified position
+            var foothold = board.FindFootholdBelow(x, y);
+            if (foothold == null)
+            {
+                Log($"ERROR: No foothold found below position ({x}, {y}). Cannot add NPC - NPCs must be placed on a platform.");
+                return false;
+            }
+
+            // Snap the y-coordinate to the foothold
+            int snappedY = (int)Math.Round(Board.CalculateYOnFoothold(foothold, x));
+            if (snappedY != y)
+            {
+                Log($"Snapped NPC Y position from {y} to {snappedY} (foothold below)");
+            }
+
             bool flip = command.Parameters.TryGetValue("flip", out var flipObj) && (bool)flipObj;
 
             lock (board.ParentControl)
             {
                 var npc = new NpcInstance(
-                    npcInfo, board, x, y,
+                    npcInfo, board, x, snappedY,
                     rx0Shift: 0, rx1Shift: 0, yShift: 0,
                     limitedname: null, mobTime: null,
                     flip: flip, hide: false,
@@ -301,7 +331,7 @@ namespace HaCreator.MapEditor.AI
                 board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(npc) });
             }
 
-            Log($"Added NPC {npcId} at ({x}, {y})");
+            Log($"Added NPC {npcId} at ({x}, {snappedY})");
             return true;
         }
 
