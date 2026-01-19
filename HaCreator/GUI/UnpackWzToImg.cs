@@ -223,6 +223,7 @@ namespace HaCreator.GUI
                     $"{versionName} (Extracted {DateTime.Now:yyyy-MM-dd})",
                     mapleVer,
                     selectedCategories,
+                    resolveLinks: true,
                     _cancellationTokenSource.Token,
                     progress);
 
@@ -234,13 +235,22 @@ namespace HaCreator.GUI
                     listBox_log.Items.Add($"=== Extraction Complete ===");
                     listBox_log.Items.Add($"Total images: {extractionResult.TotalImagesExtracted}");
                     listBox_log.Items.Add($"Total size: {FormatBytes(extractionResult.TotalSize)}");
+                    listBox_log.Items.Add($"Links resolved: {extractionResult.TotalLinksResolved}");
+                    if (extractionResult.TotalLinksFailed > 0)
+                    {
+                        listBox_log.Items.Add($"Links failed: {extractionResult.TotalLinksFailed} (missing in original WZ)");
+                    }
                     listBox_log.Items.Add($"Duration: {extractionResult.Duration.TotalSeconds:F1}s");
                     listBox_log.Items.Add($"Output: {versionOutputPath}");
+
+                    string linksInfo = $"Links resolved: {extractionResult.TotalLinksResolved}" +
+                        (extractionResult.TotalLinksFailed > 0 ? $" (missing in original WZ: {extractionResult.TotalLinksFailed})" : "") + "\n";
 
                     MessageBox.Show(
                         $"Extraction complete!\n\n" +
                         $"Images extracted: {extractionResult.TotalImagesExtracted}\n" +
                         $"Total size: {FormatBytes(extractionResult.TotalSize)}\n" +
+                        linksInfo +
                         $"Duration: {extractionResult.Duration.TotalSeconds:F1} seconds\n" +
                         $"Output: {versionOutputPath}",
                         "Success",
@@ -326,7 +336,10 @@ namespace HaCreator.GUI
 
             if (e.Result != null)
             {
-                listBox_log.Items.Add($"  Completed: {e.Category} - {e.Result.ImagesExtracted} images ({FormatBytes(e.Result.TotalSize)})");
+                string linksInfo = e.Result.LinksResolved > 0
+                    ? $", {e.Result.LinksResolved} links resolved"
+                    : "";
+                listBox_log.Items.Add($"  Completed: {e.Category} - {e.Result.ImagesExtracted} images ({FormatBytes(e.Result.TotalSize)}{linksInfo})");
 
                 if (e.Result.Errors.Count > 0)
                 {
