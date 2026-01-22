@@ -157,7 +157,39 @@ namespace HaCreator.GUI
                 ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
                 ApplicationSettings.MapleStoryClientLocalisation = (int)comboBox_localisation.SelectedValue;
 
-                WzMapleVersion mapleVer = (WzMapleVersion)ApplicationSettings.MapleVersionIndex;
+                WzMapleVersion mapleVer;
+                int selectedIndex = versionBox.SelectedIndex;
+
+                // Map dropdown index to WzMapleVersion
+                // Index 0: GMS, 1: EMS/MSEA/KMS, 2: BMS/JMS, 3: Auto-Detect
+                if (selectedIndex == 3) // Auto-Detect
+                {
+                    // Find Base.wz to detect encryption
+                    string baseWzPath = Path.Combine(_mapleStoryPath, "Base.wz");
+                    if (!File.Exists(baseWzPath))
+                    {
+                        // Try to find any .wz file for detection
+                        var wzFiles = Directory.GetFiles(_mapleStoryPath, "*.wz");
+                        baseWzPath = wzFiles.FirstOrDefault();
+                    }
+
+                    if (!string.IsNullOrEmpty(baseWzPath) && File.Exists(baseWzPath))
+                    {
+                        mapleVer = MapleLib.WzLib.Util.WzTool.DetectMapleVersion(baseWzPath, out _);
+                        listBox_log.Items.Add($"Auto-detected encryption: {mapleVer}");
+                    }
+                    else
+                    {
+                        mapleVer = WzMapleVersion.BMS; // Default to BMS if detection fails
+                        listBox_log.Items.Add($"Could not auto-detect, defaulting to: {mapleVer}");
+                    }
+                }
+                else
+                {
+                    // Direct mapping: 0=GMS, 1=EMS, 2=BMS
+                    mapleVer = (WzMapleVersion)selectedIndex;
+                }
+
                 string outputFolder = textBox_path.Text;
                 string versionName = textBox_versionName.Text;
 
