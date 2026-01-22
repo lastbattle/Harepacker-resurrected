@@ -275,6 +275,9 @@ namespace HaCreator.GUI
                     listBox_log.Items.Add($"Duration: {extractionResult.Duration.TotalSeconds:F1}s");
                     listBox_log.Items.Add($"Output: {versionOutputPath}");
 
+                    // Automatically add the extracted version to the version selector
+                    AddExtractedVersionToSelector(versionOutputPath);
+
                     string linksInfo = $"Links resolved: {extractionResult.TotalLinksResolved}" +
                         (extractionResult.TotalLinksFailed > 0 ? $" (missing in original WZ: {extractionResult.TotalLinksFailed})" : "") + "\n";
 
@@ -284,7 +287,8 @@ namespace HaCreator.GUI
                         $"Total size: {FormatBytes(extractionResult.TotalSize)}\n" +
                         linksInfo +
                         $"Duration: {extractionResult.Duration.TotalSeconds:F1} seconds\n" +
-                        $"Output: {versionOutputPath}",
+                        $"Output: {versionOutputPath}\n\n" +
+                        $"The version has been added to HaCreator's version selector.",
                         "Success",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
@@ -574,6 +578,36 @@ namespace HaCreator.GUI
                 len /= 1024;
             }
             return $"{len:0.##} {sizes[order]}";
+        }
+
+        /// <summary>
+        /// Adds the extracted version to the HaCreator version selector
+        /// </summary>
+        /// <param name="versionPath">The path to the extracted version folder</param>
+        private void AddExtractedVersionToSelector(string versionPath)
+        {
+            try
+            {
+                // Add to VersionManager
+                var versionInfo = Program.StartupManager.VersionManager.AddExternalVersion(versionPath);
+                if (versionInfo != null)
+                {
+                    listBox_log.Items.Add($"Added version '{versionInfo.DisplayName}' to version selector");
+                }
+                else
+                {
+                    listBox_log.Items.Add($"Version already exists in selector");
+                }
+
+                // Add to recent version paths in config for persistence
+                var config = MapleLib.Img.HaCreatorConfig.Load();
+                config.AddToRecentVersionPaths(versionPath);
+                config.Save();
+            }
+            catch (Exception ex)
+            {
+                listBox_log.Items.Add($"Warning: Could not add to version selector: {ex.Message}");
+            }
         }
         #endregion
 
