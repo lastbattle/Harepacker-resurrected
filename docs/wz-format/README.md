@@ -59,7 +59,7 @@ bool isVeryOldPreBB = File.Exists("Data.wz")
 
 ---
 
-### Pre-Big Bang (v0.31 - v0.92)
+### Pre-Big Bang (v0.31 - v0.94)
 
 After the beta period, MapleStory split data into separate WZ files and introduced List.wz.
 
@@ -102,7 +102,7 @@ if (File.Exists("List.wz") && WzTool.IsListFile("List.wz"))
 
 ---
 
-### Post-Big Bang (v0.93 - v149)
+### Post-Big Bang (v0.95 - v179)
 
 The Big Bang update (December 2010) restructured the game significantly. The WZ format also changed.
 
@@ -136,8 +136,6 @@ MapleStory/
 - **BigBang marker** in UI.wz/UIWindow2.img: `BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`
 - Later versions add **BigBang2 marker**: `BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`
 - Categories may split into numbered files (Mob.wz, Mob2.wz, Mob001.wz)
-- 32-bit WZ file format
-- Improved encryption
 
 **Detection in code:**
 ```csharp
