@@ -37,6 +37,84 @@ namespace HaCreator.GUI
             _extractionService.CategoryStarted += OnCategoryStarted;
             _extractionService.CategoryCompleted += OnCategoryCompleted;
             _extractionService.ErrorOccurred += OnExtractionError;
+
+            // Setup log listbox for copy functionality
+            SetupLogListBoxCopySupport();
+        }
+
+        /// <summary>
+        /// Sets up copy/paste functionality for the log listbox
+        /// </summary>
+        private void SetupLogListBoxCopySupport()
+        {
+            // Enable multi-select for copying multiple lines
+            listBox_log.SelectionMode = SelectionMode.MultiExtended;
+
+            // Add keyboard shortcuts (Ctrl+C, Ctrl+A)
+            listBox_log.KeyDown += ListBox_log_KeyDown;
+
+            // Add context menu for copy
+            var contextMenu = new ContextMenuStrip();
+            var copyItem = new ToolStripMenuItem("Copy", null, (s, e) => CopySelectedLogItems());
+            copyItem.ShortcutKeys = Keys.Control | Keys.C;
+            var selectAllItem = new ToolStripMenuItem("Select All", null, (s, e) => SelectAllLogItems());
+            selectAllItem.ShortcutKeys = Keys.Control | Keys.A;
+            var copyAllItem = new ToolStripMenuItem("Copy All", null, (s, e) => CopyAllLogItems());
+
+            contextMenu.Items.Add(copyItem);
+            contextMenu.Items.Add(selectAllItem);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add(copyAllItem);
+
+            listBox_log.ContextMenuStrip = contextMenu;
+        }
+
+        private void ListBox_log_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Control && e.KeyCode == Keys.C)
+            {
+                CopySelectedLogItems();
+                e.Handled = true;
+            }
+            else if (e.Control && e.KeyCode == Keys.A)
+            {
+                SelectAllLogItems();
+                e.Handled = true;
+            }
+        }
+
+        private void CopySelectedLogItems()
+        {
+            if (listBox_log.SelectedItems.Count > 0)
+            {
+                var selectedText = string.Join(Environment.NewLine,
+                    listBox_log.SelectedItems.Cast<object>().Select(item => item.ToString()));
+                if (!string.IsNullOrEmpty(selectedText))
+                {
+                    Clipboard.SetText(selectedText);
+                }
+            }
+        }
+
+        private void SelectAllLogItems()
+        {
+            for (int i = 0; i < listBox_log.Items.Count; i++)
+            {
+                listBox_log.SetSelected(i, true);
+            }
+        }
+
+        private void CopyAllLogItems()
+        {
+            if (listBox_log.Items.Count > 0)
+            {
+                var allText = string.Join(Environment.NewLine,
+                    listBox_log.Items.Cast<object>().Select(item => item.ToString()));
+                if (!string.IsNullOrEmpty(allText))
+                {
+                    Clipboard.SetText(allText);
+                }
+            }
         }
 
         #region Initialization
@@ -67,8 +145,8 @@ namespace HaCreator.GUI
             var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault();
             comboBox_localisation.SelectedItem = savedLocaliation ?? values[0];
 
-            // Set default version name
-            textBox_versionName.Text = "v" + DateTime.Now.ToString("yyyyMMdd");
+            // Set default version name (include hour and minute for multiple extractions per day)
+            textBox_versionName.Text = "v" + DateTime.Now.ToString("yyyyMMdd_HHmm");
         }
         #endregion
 
@@ -160,23 +238,52 @@ namespace HaCreator.GUI
                 WzMapleVersion mapleVer;
                 int selectedIndex = versionBox.SelectedIndex;
 
+                // Detect if 64-bit format
+                bool is64Bit = WzFileManager.Detect64BitDirectoryWzFileFormat(_mapleStoryPath);
+
                 // Map dropdown index to WzMapleVersion
                 // Index 0: GMS, 1: EMS/MSEA/KMS, 2: BMS/JMS, 3: Auto-Detect
                 if (selectedIndex == 3) // Auto-Detect
                 {
-                    // Find Base.wz to detect encryption
-                    string baseWzPath = Path.Combine(_mapleStoryPath, "Base.wz");
-                    if (!File.Exists(baseWzPath))
+                    string baseWzPath = null;
+
+                    if (is64Bit)
                     {
-                        // Try to find any .wz file for detection
-                        var wzFiles = Directory.GetFiles(_mapleStoryPath, "*.wz");
-                        baseWzPath = wzFiles.FirstOrDefault();
+                        // 64-bit format: Base.wz is in Data/Base/Base_000.wz
+                        string dataBasePath = Path.Combine(_mapleStoryPath, "Data", "Base");
+                        if (Directory.Exists(dataBasePath))
+                        {
+                            var wzFiles = Directory.GetFiles(dataBasePath, "*.wz");
+                            baseWzPath = wzFiles.FirstOrDefault();
+                        }
+
+                        // If not found in Data/Base, try any .wz file in Data folder
+                        if (string.IsNullOrEmpty(baseWzPath))
+                        {
+                            string dataPath = Path.Combine(_mapleStoryPath, "Data");
+                            if (Directory.Exists(dataPath))
+                            {
+                                var wzFiles = Directory.GetFiles(dataPath, "*.wz", SearchOption.AllDirectories);
+                                baseWzPath = wzFiles.FirstOrDefault();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Standard format: Base.wz is in root
+                        baseWzPath = Path.Combine(_mapleStoryPath, "Base.wz");
+                        if (!File.Exists(baseWzPath))
+                        {
+                            // Try to find any .wz file for detection
+                            var wzFiles = Directory.GetFiles(_mapleStoryPath, "*.wz");
+                            baseWzPath = wzFiles.FirstOrDefault();
+                        }
                     }
 
                     if (!string.IsNullOrEmpty(baseWzPath) && File.Exists(baseWzPath))
                     {
                         mapleVer = MapleLib.WzLib.Util.WzTool.DetectMapleVersion(baseWzPath, out _);
-                        listBox_log.Items.Add($"Auto-detected encryption: {mapleVer}");
+                        listBox_log.Items.Add($"Auto-detected encryption: {mapleVer} (64-bit: {is64Bit})");
                     }
                     else
                     {
@@ -412,8 +519,8 @@ namespace HaCreator.GUI
         {
             using (OpenFileDialog baseWzSelect = new()
             {
-                Filter = "MapleStory|Base.wz|All files (*.*)|*.*",
-                Title = "Select Base.wz file from MapleStory installation",
+                Filter = "MapleStory WZ|Base.wz;Base_000.wz|All WZ files (*.wz)|*.wz|All files (*.*)|*.*",
+                Title = "Select Base.wz (or Base_000.wz for 64-bit) from MapleStory installation",
                 CheckFileExists = true,
                 CheckPathExists = true
             })
@@ -424,14 +531,60 @@ namespace HaCreator.GUI
                 string wzFullPath = Path.GetFullPath(baseWzSelect.FileName);
                 string baseWzFileName = Path.GetFileName(wzFullPath);
 
-                if (!baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
+                // Check for standard Base.wz
+                if (baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
                 {
-                    MessageBox.Show("Please select the Base.wz file.", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    _mapleStoryPath = Path.GetDirectoryName(wzFullPath);
+                }
+                // Check for 64-bit Base_000.wz (in Data/Base/ folder)
+                else if (baseWzFileName.StartsWith("Base_", StringComparison.OrdinalIgnoreCase) &&
+                         baseWzFileName.EndsWith(".wz", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Navigate up from Data/Base/Base_000.wz to MapleStory root
+                    string baseFolderPath = Path.GetDirectoryName(wzFullPath); // Data/Base
+                    string dataFolderPath = Path.GetDirectoryName(baseFolderPath); // Data
+                    _mapleStoryPath = Path.GetDirectoryName(dataFolderPath); // MapleStory root
+
+                    // Verify this looks like a valid 64-bit installation
+                    if (!Directory.Exists(Path.Combine(_mapleStoryPath, "Data")))
+                    {
+                        MessageBox.Show("Could not detect MapleStory installation directory from the selected file.\n" +
+                            "Please select Base.wz from a standard installation or Base_000.wz from a 64-bit installation (in Data/Base folder).",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
+                // Check for any WZ file in Data folder (64-bit) - try to navigate to root
+                else if (wzFullPath.Contains(Path.Combine("Data", "")))
+                {
+                    // Try to find the MapleStory root by looking for the Data folder
+                    string currentPath = Path.GetDirectoryName(wzFullPath);
+                    while (!string.IsNullOrEmpty(currentPath))
+                    {
+                        string parentPath = Path.GetDirectoryName(currentPath);
+                        if (parentPath != null && Path.GetFileName(currentPath).Equals("Data", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _mapleStoryPath = parentPath;
+                            break;
+                        }
+                        currentPath = parentPath;
+                    }
+
+                    if (string.IsNullOrEmpty(_mapleStoryPath) || !Directory.Exists(Path.Combine(_mapleStoryPath, "Data")))
+                    {
+                        MessageBox.Show("Could not detect MapleStory installation directory.\n" +
+                            "Please select Base.wz from a standard installation or any .wz file from a 64-bit installation's Data folder.",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
+                else
+                {
+                    MessageBox.Show("Please select the Base.wz file (standard) or Base_000.wz file (64-bit from Data/Base folder).",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
 
-                _mapleStoryPath = Path.GetDirectoryName(wzFullPath);
                 PopulateWzFileList();
             }
         }
@@ -458,11 +611,64 @@ namespace HaCreator.GUI
                     foreach (var dir in Directory.EnumerateDirectories(dataPath))
                     {
                         string dirName = Path.GetFileName(dir);
-                        // Check if it has .wz files inside
-                        if (Directory.EnumerateFiles(dir, "*.wz").Any())
+
+                        // Skip Packs folder (handled separately)
+                        if (dirName.Equals("Packs", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        // Get all .wz files in this category folder (including subfolders)
+                        var allWzFiles = Directory.EnumerateFiles(dir, "*.wz", SearchOption.AllDirectories).ToList();
+
+                        if (allWzFiles.Count > 0)
                         {
-                            int wzCount = Directory.EnumerateFiles(dir, "*.wz", SearchOption.AllDirectories).Count();
-                            wzFiles.Add(new WzFileInfo(dirName, $"{dirName} ({wzCount} files)", true));
+                            // Calculate total file size for all WZ files in the folder
+                            long totalSize = 0;
+                            int mainWzCount = 0;
+                            int canvasWzCount = 0;
+
+                            foreach (var wzFile in allWzFiles)
+                            {
+                                totalSize += new FileInfo(wzFile).Length;
+
+                                // Check if it's a _Canvas file
+                                if (wzFile.Contains("_Canvas", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    canvasWzCount++;
+                                }
+                                else
+                                {
+                                    mainWzCount++;
+                                }
+                            }
+
+                            // Build display string with total size (like older MapleStory format)
+                            // Note: _Canvas files are used for link resolution and embedded into main .img files
+                            string displayText;
+                            if (canvasWzCount > 0)
+                            {
+                                displayText = $"{dirName} ({FormatBytes(totalSize)}, {mainWzCount} + {canvasWzCount} canvas files)";
+                            }
+                            else
+                            {
+                                displayText = $"{dirName} ({FormatBytes(totalSize)}, {mainWzCount} files)";
+                            }
+
+                            bool isStandard = WzExtractionService.STANDARD_WZ_FILES.Contains(dirName, StringComparer.OrdinalIgnoreCase);
+                            wzFiles.Add(new WzFileInfo(dirName, displayText, isStandard));
+                        }
+                    }
+
+                    // Check for Packs folder with .ms files
+                    string packsPath = Path.Combine(dataPath, "Packs");
+                    if (Directory.Exists(packsPath))
+                    {
+                        var allMsFiles = Directory.EnumerateFiles(packsPath, "*.ms", SearchOption.AllDirectories).ToList();
+                        if (allMsFiles.Count > 0)
+                        {
+                            long totalSize = allMsFiles.Sum(f => new FileInfo(f).Length);
+                            string displayText = $"Packs ({FormatBytes(totalSize)}, {allMsFiles.Count} .ms files)";
+                            // Mark as standard so it's checked by default
+                            wzFiles.Add(new WzFileInfo("Packs", displayText, true));
                         }
                     }
                 }
