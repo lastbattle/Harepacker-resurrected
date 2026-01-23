@@ -62,9 +62,14 @@ git submodule update
 Technical documentation for HaSuite internals.
 
 ### WZ File Format
-- [64-bit Canvas System](docs/wz-format/64bit-canvas-system.md) - How the _Canvas system works in 64-bit MapleStory WZ files
-- [IMG Filesystem](docs/wz-format/IMG_FILESYSTEM_MIGRATION_PLAN.md) - IMG filesystem migration and design
-- [IMG Hot Swap](docs/wz-format/img-hot-swap.md) - Hot-swapping IMG files during development
+- [WZ Format Overview](docs/wz-format/README.md) - MapleStory WZ file formats (Beta, Pre-BB, Post-BB, 64-bit, MS/NM packs)
+- [WzFileManager Reference](docs/wz-format/WzFileManager.md) - Central WZ file loading and management class
+- [Canvas & Outlink System](docs/wz-format/canvas-outlink-system.md) - _Canvas directories and _outlink/_inlink resolution
+
+### HaCreator & HaRepacker Architecture
+- [Architecture Overview](docs/hacreator-harepacker-architecture/README.md) - Data source abstraction and component architecture
+- [IMG Filesystem Migration](docs/hacreator-harepacker-architecture/IMG_FILESYSTEM_MIGRATION_PLAN.md) - IMG filesystem migration and design
+- [IMG Hot Swap](docs/hacreator-harepacker-architecture/img-hot-swap.md) - Hot-swapping IMG files during development
 
 ### Map Simulator
 - [Damage Number Analysis](docs/mapsimulator/damage_number_analysis.md) - Analysis of damage number rendering
