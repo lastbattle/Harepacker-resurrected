@@ -23,9 +23,9 @@ MapleStory has used several WZ file format versions over its 20+ year history:
 |-----|----------|--------|---------------------|
 | Beta/Early | v0.01-v0.30 | Single Data.wz | All data in one file |
 | Pre-Big Bang | v0.31-v0.94 | Split WZ + List.wz | Separate WZ files, List.wz index |
-| Post-Big Bang | v0.95-v179 | Split WZ (32-bit) | No List.wz, BigBang marker in UI.wz |
-| Modern 64-bit | v180-v219 | 64-bit Split | Data/ directory, numbered files, _Canvas |
-| Modern + MS Packs | v220+ | 64-bit + .ms files | Snowcrypt encryption layer over WZ structure |
+| Post-Big Bang | v0.95-v179 | Split WZ | No List.wz, BigBang marker in UI.wz |
+| Modern 64-bit | v180-v219 | 64-bit .exe Split | Data/ directory, numbered files, _Canvas |
+| Modern + MS Packs | v220+ | 64-bit .exe + .ms files | Snowcrypt encryption layer over WZ structure |
 | MapleStoryN | N/A | .nm files | MapleStoryN-specific encryption format |
 
 ---
@@ -153,9 +153,9 @@ bool isBigBang = uiWindow2["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null;
 
 ---
 
-### 64-bit Modern Format (v180+)
+### 64-bit .exe with Modern Format (v180+)
 
-Starting around v180+, MapleStory moved to a 64-bit client with a completely restructured file system.
+Starting around v180+, MapleStory moved to a 64-bit .exe client with a completely restructured file system.
 
 ```
 MapleStory/
@@ -235,7 +235,7 @@ Starting with v220+, MapleStory added `.ms` pack files which provide an addition
 MapleStory/
 ├── MapleStory.exe
 ├── Data/
-│   ├── [Standard 64-bit structure - .wz files still present]
+│   ├── [Standard 64-bit .exe structure - .wz files still present]
 │   └── Packs/
 │       ├── Base_00000.ms
 │       ├── Character_00000.ms
@@ -247,22 +247,22 @@ MapleStory/
 
 **Encryption Layer:**
 ```
-┌─────────────────────────────────────────────────┐
-│                   .ms File                       │
-│  ┌───────────────────────────────────────────┐  │
-│  │         Snowcrypt Encryption Layer         │  │
-│  │  ┌─────────────────────────────────────┐  │  │
-│  │  │     Standard WZ/IMG Structure       │  │  │
-│  │  │  (Same as 64-bit WZ internally)     │  │  │
-│  │  └─────────────────────────────────────┘  │  │
-│  └───────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                   .ms File                           │
+│  ┌────────────────────────────────────────────────┐  │
+│  │         Snowcrypt Encryption Layer             │  │
+│  │  ┌─────────────────────────────────────-────┐  │  │
+│  │  │     Standard WZ/IMG Structure            │  │  │
+│  │  │  (Same as 64-bit .exe WZ internally)     │  │  │
+│  │  └──────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────┘
 ```
 
 **Characteristics:**
 - `.ms` files are used by all MapleStory versions v220+
 - **Snowcrypt**: Additional encryption algorithm wrapping standard WZ data
-- Once decrypted, internal structure is identical to standard 64-bit WZ format
+- Once decrypted, internal structure is identical to standard 64-bit .exe WZ format
 - Contains standard WZ directories, images, and properties inside
 - Loaded via `WzMsFile` class which handles Snowcrypt decryption
 - Converted to `WzFile` for compatibility with existing codebase
@@ -312,7 +312,7 @@ MapleStoryN/
 ## Key Detection Methods
 
 ```csharp
-// Detect 64-bit format (Data/ directory with 40+ WZ files)
+// Detect 64-bit .exe format (Data/ directory with 40+ WZ files)
 bool is64Bit = WzFileManager.Detect64BitDirectoryWzFileFormat(path);
 
 // Detect pre-Big Bang format (List.wz exists or single Data.wz)
@@ -400,7 +400,7 @@ Start
   ▼
 Does Data/ directory exist with 40+ WZ files?
   │
-  ├─Yes─► 64-bit Format
+  ├─Yes─► 64-bit .exe Format
   │
   ▼ No
 Does List.wz exist and is valid?
