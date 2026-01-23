@@ -57,6 +57,23 @@ git submodule update
 
 ----
 
+## Documentation
+
+Technical documentation for HaSuite internals.
+
+### WZ File Format
+- [64-bit Canvas System](docs/wz-format/64bit-canvas-system.md) - How the _Canvas system works in 64-bit MapleStory WZ files
+- [IMG Filesystem](docs/wz-format/IMG_FILESYSTEM_MIGRATION_PLAN.md) - IMG filesystem migration and design
+- [IMG Hot Swap](docs/wz-format/img-hot-swap.md) - Hot-swapping IMG files during development
+
+### Map Simulator
+- [Damage Number Analysis](docs/mapsimulator/damage_number_analysis.md) - Analysis of damage number rendering
+
+### Architecture & Design
+- [AI Map Edit Window Redesign](docs/architecture/AIMapEditWindow-Chat-Redesign-Plan.md) - Chat interface redesign plan
+
+----
+
 
 ## Development
 
