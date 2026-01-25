@@ -519,8 +519,8 @@ namespace HaCreator.GUI
         {
             using (OpenFileDialog baseWzSelect = new()
             {
-                Filter = "MapleStory WZ|Base.wz;Base_000.wz|All WZ files (*.wz)|*.wz|All files (*.*)|*.*",
-                Title = "Select Base.wz (or Base_000.wz for 64-bit) from MapleStory installation",
+                Filter = "MapleStory WZ|Base.wz;Base_000.wz;Data.wz|All WZ files (*.wz)|*.wz|All files (*.*)|*.*",
+                Title = "Select Base.wz, Data.wz (beta), or Base_000.wz (64-bit) from MapleStory installation",
                 CheckFileExists = true,
                 CheckPathExists = true
             })
@@ -531,8 +531,27 @@ namespace HaCreator.GUI
                 string wzFullPath = Path.GetFullPath(baseWzSelect.FileName);
                 string baseWzFileName = Path.GetFileName(wzFullPath);
 
+                // Check for beta Data.wz (single file containing all categories)
+                if (baseWzFileName.Equals("Data.wz", StringComparison.OrdinalIgnoreCase))
+                {
+                    _mapleStoryPath = Path.GetDirectoryName(wzFullPath);
+
+                    // Verify this is actually a beta format (no separate category WZ files)
+                    string skillWzPath = Path.Combine(_mapleStoryPath, "Skill.wz");
+                    string stringWzPath = Path.Combine(_mapleStoryPath, "String.wz");
+                    string characterWzPath = Path.Combine(_mapleStoryPath, "Character.wz");
+
+                    if (File.Exists(skillWzPath) || File.Exists(stringWzPath) || File.Exists(characterWzPath))
+                    {
+                        // This is likely a hotfix Data.wz, not beta - treat as standard installation
+                        MessageBox.Show("This appears to be a hotfix Data.wz file, not a beta MapleStory installation.\n" +
+                            "Please select Base.wz for standard installations.",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
                 // Check for standard Base.wz
-                if (baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
+                else if (baseWzFileName.Equals("Base.wz", StringComparison.OrdinalIgnoreCase))
                 {
                     _mapleStoryPath = Path.GetDirectoryName(wzFullPath);
                 }
@@ -580,7 +599,7 @@ namespace HaCreator.GUI
                 }
                 else
                 {
-                    MessageBox.Show("Please select the Base.wz file (standard) or Base_000.wz file (64-bit from Data/Base folder).",
+                    MessageBox.Show("Please select Base.wz (standard), Data.wz (beta), or Base_000.wz (64-bit from Data/Base folder).",
                         "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
@@ -598,11 +617,73 @@ namespace HaCreator.GUI
 
             // Detect format
             bool is64Bit = WzFileManager.Detect64BitDirectoryWzFileFormat(_mapleStoryPath);
+            bool isBetaDataWz = WzFileManager.DetectBetaDataWzFormat(_mapleStoryPath);
 
             // Get all WZ files
             var wzFiles = new List<WzFileInfo>();
 
-            if (is64Bit)
+            if (isBetaDataWz)
+            {
+                // Beta format: Read Data.wz and list subdirectories as categories
+                string dataWzPath = Path.Combine(_mapleStoryPath, "Data.wz");
+                long dataWzSize = new FileInfo(dataWzPath).Length;
+
+                try
+                {
+                    // Auto-detect encryption for beta Data.wz
+                    WzMapleVersion encryption = WzMapleVersion.BMS;
+                    int selectedIndex = versionBox.SelectedIndex;
+                    if (selectedIndex >= 0 && selectedIndex < 3)
+                    {
+                        encryption = (WzMapleVersion)selectedIndex;
+                    }
+                    else
+                    {
+                        // Try auto-detect
+                        encryption = MapleLib.WzLib.Util.WzTool.DetectMapleVersion(dataWzPath, out _);
+                    }
+
+                    using (var wzFile = new WzFile(dataWzPath, encryption))
+                    {
+                        var parseStatus = wzFile.ParseWzFile();
+                        if (parseStatus == WzFileParseStatus.Success && wzFile.WzDirectory != null)
+                        {
+                            // List each top-level directory as a category
+                            foreach (var dir in wzFile.WzDirectory.WzDirectories)
+                            {
+                                string dirName = dir.Name;
+                                int imageCount = dir.CountImages();
+
+                                bool isStandard = WzExtractionService.STANDARD_WZ_FILES.Contains(dirName, StringComparer.OrdinalIgnoreCase);
+                                string displayText = $"{dirName} ({imageCount} images) [from Data.wz]";
+                                wzFiles.Add(new WzFileInfo(dirName, displayText, isStandard));
+                            }
+
+                            // Also list any images directly in root of Data.wz
+                            if (wzFile.WzDirectory.WzImages != null && wzFile.WzDirectory.WzImages.Count > 0)
+                            {
+                                int rootImageCount = wzFile.WzDirectory.WzImages.Count;
+                                wzFiles.Add(new WzFileInfo("_Root", $"_Root ({rootImageCount} images) [from Data.wz]", false));
+                            }
+
+                            listBox_log.Items.Add($"Detected beta Data.wz format ({FormatBytes(dataWzSize)}, encryption: {encryption})");
+                        }
+                        else
+                        {
+                            listBox_log.Items.Add($"Failed to parse Data.wz: {parseStatus}");
+                            MessageBox.Show($"Failed to parse Data.wz: {parseStatus}\n\nTry selecting a different encryption version.",
+                                "Parse Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    listBox_log.Items.Add($"Error reading Data.wz: {ex.Message}");
+                    MessageBox.Show($"Error reading Data.wz: {ex.Message}\n\nTry selecting a different encryption version.",
+                        "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else if (is64Bit)
             {
                 // 64-bit: Look in Data folder
                 string dataPath = Path.Combine(_mapleStoryPath, "Data");
