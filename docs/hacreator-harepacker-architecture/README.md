@@ -294,5 +294,5 @@ See [img-hot-swap.md](./img-hot-swap.md) Part 2 for details.
 
 ## See Also
 
-- [WZ Format Documentation](../wz-format/README.md) - WZ file format details
+- [WZ Format Documentation](../wz-format/README.md) - WZ file format overview and index
 - [MapSimulator Documentation](../mapsimulator/README.md) - Map simulator architecture

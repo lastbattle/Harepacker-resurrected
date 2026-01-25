@@ -35,7 +35,7 @@ WzFileManager supports all major MapleStory file format eras:
 | 64-bit Modern (v180+) | Data/ directory with 40+ WZ files | `Detect64BitDirectoryWzFileFormat()` |
 | MS/NM Packs | Packs/ folder with .ms/.nm files | `LoadPacksFiles()` handles these |
 
-For detailed file structures of each era, see [README.md](./README.md#directory-structures-by-era).
+For detailed file structures of each era, see [WZ Format History](./wz-format-history.md#directory-structures-by-era).
 
 ---
 
