@@ -824,11 +824,12 @@ namespace HaCreator.GUI
         {
             if (Program.StartupManager?.VersionManager == null) return;
 
-            var config = HaCreatorConfig.Load();
+            // Use StartupManager's config instance to avoid being overwritten on shutdown
+            var config = Program.StartupManager.Config;
             bool configChanged = false;
 
             var pathsToRemove = new List<string>();
-            foreach (var path in config.AdditionalVersionPaths)
+            foreach (var path in config.AdditionalVersionPaths.ToList())
             {
                 if (Directory.Exists(path))
                 {
@@ -858,11 +859,12 @@ namespace HaCreator.GUI
         {
             if (Program.StartupManager?.VersionManager == null) return;
 
-            var config = HaCreatorConfig.Load();
+            // Use StartupManager's config instance to avoid being overwritten on shutdown
+            var config = Program.StartupManager.Config;
             bool configChanged = false;
 
             var pathsToRemove = new List<string>();
-            foreach (var path in config.RecentVersionPaths)
+            foreach (var path in config.RecentVersionPaths.ToList())
             {
                 if (Directory.Exists(path))
                 {
@@ -937,13 +939,18 @@ namespace HaCreator.GUI
                 label_versionName.Text = v.DisplayName ?? v.Version;
                 label_extractedDate.Text = $"Extracted: {v.ExtractedDate:yyyy-MM-dd HH:mm}";
                 label_encryptionInfo.Text = $"Encryption: {v.Encryption}";
-                label_format.Text = v.Is64Bit ? "Format: 64-bit" : (v.IsPreBB ? "Format: Pre-BB" : "Format: Standard");
+
+                // Build detailed format string
+                string formatDetails = GetVersionFormatDetails(v);
+                label_format.Text = $"Format: {formatDetails}";
 
                 int totalImages = v.Categories.Values.Sum(c => c.FileCount);
                 label_imageCount.Text = $"Total Images: {totalImages:N0}";
                 label_categoryCount.Text = $"Categories: {v.Categories.Count}";
 
-                label_features.Text = "Features: -";
+                // Build features string
+                string features = GetVersionFeatures(v);
+                label_features.Text = $"Info: {features}";
 
                 if (!v.IsValid && v.ValidationErrors.Count > 0)
                 {
@@ -960,6 +967,50 @@ namespace HaCreator.GUI
             {
                 panel_versionDetails.Visible = false;
             }
+        }
+
+        /// <summary>
+        /// Gets a detailed format description for a version
+        /// </summary>
+        private string GetVersionFormatDetails(VersionInfo v)
+        {
+            var parts = new List<string>();
+
+            if (v.IsBetaMs)
+                parts.Add("Beta MapleStory (v0.01-v0.30)");
+            else if (v.IsPreBB)
+                parts.Add("Pre-Big Bang");
+            else if (v.IsBigBang2)
+                parts.Add("Big Bang 2 / Chaos");
+            else
+                parts.Add("Post-Big Bang");
+
+            if (v.Is64Bit)
+                parts.Add("64-bit");
+
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>
+        /// Gets feature/info string for a version
+        /// </summary>
+        private string GetVersionFeatures(VersionInfo v)
+        {
+            var parts = new List<string>();
+
+            // Add patch version if available
+            if (v.PatchVersion > 0)
+                parts.Add($"Patch v{v.PatchVersion}");
+
+            // Add region if available
+            if (!string.IsNullOrEmpty(v.SourceRegion))
+                parts.Add(v.SourceRegion);
+
+            // Add external marker
+            if (v.IsExternal)
+                parts.Add("External");
+
+            return parts.Count > 0 ? string.Join(", ", parts) : "-";
         }
 
         /// <summary>
@@ -1027,7 +1078,8 @@ namespace HaCreator.GUI
                         var version = Program.StartupManager.VersionManager.AddExternalVersion(selectedPath);
                         if (version != null)
                         {
-                            var config = HaCreatorConfig.Load();
+                            // Use StartupManager's config instance to avoid being overwritten on shutdown
+                            var config = Program.StartupManager.Config;
 
                             string normalizedPath = Path.GetFullPath(selectedPath);
                             if (!config.AdditionalVersionPaths.Any(p =>
@@ -1116,7 +1168,10 @@ namespace HaCreator.GUI
         /// </summary>
         private void RemoveVersionPathFromConfig(string path)
         {
-            var config = HaCreatorConfig.Load();
+            // Use StartupManager's config instance to avoid being overwritten on shutdown
+            var config = Program.StartupManager?.Config;
+            if (config == null) return;
+
             string normalizedPath = Path.GetFullPath(path);
             bool changed = false;
 
@@ -1156,7 +1211,36 @@ namespace HaCreator.GUI
 
             public override string ToString()
             {
-                return Version.DisplayName ?? Version.Version;
+                var v = Version;
+                string name = v.DisplayName ?? v.Version;
+
+                // Build format tag
+                string formatTag = GetFormatTag(v);
+
+                // Build version number if available
+                string versionTag = v.PatchVersion > 0 ? $"v{v.PatchVersion}" : "";
+
+                // Build region tag if available
+                string regionTag = !string.IsNullOrEmpty(v.SourceRegion) ? v.SourceRegion : "";
+
+                // Combine tags
+                var tags = new List<string>();
+                if (!string.IsNullOrEmpty(formatTag)) tags.Add(formatTag);
+                if (!string.IsNullOrEmpty(versionTag) && !name.Contains($"v{v.PatchVersion}")) tags.Add(versionTag);
+                if (!string.IsNullOrEmpty(regionTag) && !name.ToUpper().Contains(regionTag.ToUpper())) tags.Add(regionTag);
+
+                if (tags.Count > 0)
+                    return $"{name} [{string.Join(", ", tags)}]";
+                return name;
+            }
+
+            private static string GetFormatTag(VersionInfo v)
+            {
+                if (v.IsBetaMs) return "Beta";
+                if (v.IsPreBB) return "Pre-BB";
+                if (v.IsBigBang2) return "BB2/Chaos";
+                if (v.Is64Bit) return "64-bit";
+                return "";
             }
         }
 
