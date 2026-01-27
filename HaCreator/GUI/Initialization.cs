@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Windows.Forms;
 using System.Collections.Generic;
@@ -26,7 +26,6 @@ namespace HaCreator.GUI
     {
         public HaEditor editor = null;
 
-
         private static WzMapleVersion _wzMapleVersion = WzMapleVersion.BMS; // Default to BMS, the enc version to use when decrypting the WZ files.
         public static WzMapleVersion WzMapleVersion
         {
@@ -40,6 +39,9 @@ namespace HaCreator.GUI
         public Initialization()
         {
             InitializeComponent();
+
+            // Subscribe to hot swap events for IMG versions
+            SubscribeToHotSwapEvents();
         }
 
         private bool IsPathCommon(string path)
@@ -53,11 +55,10 @@ namespace HaCreator.GUI
         }
 
         private bool _bIsInitialising = false;
+
         /// <summary>
-        /// Initialise
+        /// Unified Initialize button - works based on active tab
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void button_initialise_Click(object sender, EventArgs e)
         {
             if (_bIsInitialising)
@@ -68,31 +69,15 @@ namespace HaCreator.GUI
 
             try
             {
-                ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
-                ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
-                ApplicationSettings.MapleStoryClientLocalisation = (int)comboBox_localisation.SelectedValue;
-
-                string wzPath = pathBox.Text;
-
-                // MapleStoryDataFolder
-                if (wzPath == "Select MapleStory Folder")
+                if (tabControl_dataSource.SelectedTab == tabPage_wzFiles)
                 {
-                    MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
+                    // WZ Files initialization
+                    InitializeFromWzFiles();
                 }
-                if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
+                else if (tabControl_dataSource.SelectedTab == tabPage_imgVersions)
                 {
-                    ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
-                }
-                WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-                if (InitializeWzFiles(wzPath, fileVersion, false))
-                {
-                    Hide();
-                    Application.DoEvents();
-                    editor = new HaEditor();
-                    editor.ShowDialog();
-
-                    Application.Exit();
+                    // IMG version initialization
+                    InitializeFromSelectedImgVersion();
                 }
             }
             finally
@@ -102,62 +87,80 @@ namespace HaCreator.GUI
         }
 
         /// <summary>
-        /// Initialize from IMG filesystem - shows version selector
+        /// Initialize from WZ files (original initialization logic)
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void button_initialiseImg_Click(object sender, EventArgs e)
+        private void InitializeFromWzFiles()
         {
-            if (_bIsInitialising)
+            ApplicationSettings.MapleVersionIndex = versionBox.SelectedIndex;
+            ApplicationSettings.MapleFolderIndex = pathBox.SelectedIndex;
+            ApplicationSettings.MapleStoryClientLocalisation = (int)comboBox_localisation.SelectedValue;
+
+            string wzPath = pathBox.Text;
+
+            // MapleStoryDataFolder
+            if (wzPath == "Select MapleStory Folder")
             {
+                MessageBox.Show("Please select the MapleStory folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
-            _bIsInitialising = true;
-
-            try
+            if (!ApplicationSettings.MapleFoldersList.Contains(wzPath) && !IsPathCommon(wzPath))
             {
-                // Show version selector
-                using (var selector = new VersionSelector(Program.StartupManager.VersionManager))
-                {
-                    var result = selector.ShowDialog(this);
+                ApplicationSettings.MapleFoldersList = ApplicationSettings.MapleFoldersList == "" ? wzPath : (ApplicationSettings.MapleFoldersList + "," + wzPath);
+            }
+            WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
 
-                    if (result == DialogResult.OK && selector.SelectedVersion != null)
+            // Save the data source mode
+            var config = HaCreatorConfig.Load();
+            config.DataSourceMode = DataSourceMode.WzFiles;
+            config.Save();
+
+            if (InitializeWzFilesInternal(wzPath, fileVersion, false))
+            {
+                Hide();
+                Application.DoEvents();
+                editor = new HaEditor();
+                editor.ShowDialog();
+
+                Application.Exit();
+            }
+        }
+
+        /// <summary>
+        /// Initialize from selected IMG version in the list
+        /// </summary>
+        private void InitializeFromSelectedImgVersion()
+        {
+            if (listBox_imgVersions.SelectedItem is VersionListItem item)
+            {
+                var selectedVersion = item.Version;
+
+                // Save to config for next time
+                var config = HaCreatorConfig.Load();
+                config.LastUsedVersion = selectedVersion.Version;
+                config.DataSourceMode = DataSourceMode.ImgFileSystem;
+                config.AddToRecentVersionPaths(selectedVersion.DirectoryPath);
+                config.Save();
+
+                if (InitializeFromImgFileSystem(selectedVersion))
+                {
+                    Hide();
+                    Application.DoEvents();
+                    try
                     {
-                        // User selected a version - initialize from IMG filesystem
-                        if (InitializeFromImgFileSystem(selector.SelectedVersion))
-                        {
-                            Hide();
-                            Application.DoEvents();
-                            try
-                            {
-                                editor = new HaEditor();
-                                editor.ShowDialog();
-                            }
-                            catch (Exception ex)
-                            {
-                                MessageBox.Show($"Error showing editor:\n{ex.Message}\n\n{ex.StackTrace}",
-                                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            }
-                            Application.Exit();
-                        }
+                        editor = new HaEditor();
+                        editor.ShowDialog();
                     }
-                    else if (selector.ExtractNewVersion)
+                    catch (Exception ex)
                     {
-                        // User wants to extract a new version
-                        button_unpack_Click(sender, e);
-                        // After extraction, refresh and try again
-                        Program.StartupManager.ScanVersions();
+                        MessageBox.Show($"Error showing editor:\n{ex.Message}\n\n{ex.StackTrace}",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
-                    else if (selector.UseWzFilesInstead)
-                    {
-                        // User wants to use WZ files - fall through to normal initialization
-                        // This is handled by the regular Initialize button
-                    }
+                    Application.Exit();
                 }
             }
-            finally
+            else
             {
-                _bIsInitialising = false;
+                MessageBox.Show("Please select a version from the list.", "No Version Selected", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
@@ -224,11 +227,7 @@ namespace HaCreator.GUI
         /// <summary>
         /// Initialise the WZ files with the provided folder path
         /// </summary>
-        /// <param name="wzPath"></param>
-        /// <param name="fileVersion"></param>
-        /// <param name="bFromImgFile"></param>
-        /// <returns></returns>
-        private bool InitializeWzFiles(string wzPath, WzMapleVersion fileVersion, bool bFromImgFile)
+        private bool InitializeWzFilesInternal(string wzPath, WzMapleVersion fileVersion, bool bFromImgFile)
         {
             // Check if directory exist
             if (!Directory.Exists(wzPath))
@@ -268,14 +267,12 @@ namespace HaCreator.GUI
                 }
 
                 ExtractStringFile(true);
-                //Program.WzManager.ExtractItems();
 
                 ExtractMobFile();
                 ExtractNpcFile();
                 ExtractReactorFile();
                 ExtractSoundFile();
                 ExtractQuestFile();
-                //ExtractCharacterFile(); // due to performance issue, its loaded on demand
                 ExtractSkillFile();
                 ExtractItemFile();
                 ExtractMapMarks();
@@ -286,15 +283,10 @@ namespace HaCreator.GUI
 
                 ExtractMaps();
 
-                // Set image format detection flag for pre-Big Bang compatibility
-                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
                 ImageFormatDetector.UsePreBigBangImageFormats = true;
             }
             else // for versions beyond v30x
             {
-                // Check if this wz is list.wz, and load if possible
-                // this is only available in pre-bb variants of the client.
-                // and contains the possible path of .img that uses a different encryption
                 Program.WzManager.LoadListWzFile(_wzMapleVersion);
 
                 UpdateUI_CurrentLoadingWzFile("encrypted .ms file(s).", false);
@@ -306,11 +298,10 @@ namespace HaCreator.GUI
                 foreach (string stringWzFileName in stringWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(stringWzFileName, true);
-
                     Program.WzManager.LoadWzFile(stringWzFileName, _wzMapleVersion);
                 }
                 ExtractStringFile(false);
-                LoadCanvasSection(STRING_PATH); // Load canvas
+                LoadCanvasSection(STRING_PATH);
 
                 // Mob WZ
                 const string MOB_PATH = "mob";
@@ -318,11 +309,10 @@ namespace HaCreator.GUI
                 foreach (string mobWZFile in mobWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(mobWZFile, true);
-
                     Program.WzManager.LoadWzFile(mobWZFile, _wzMapleVersion);
                 }
                 ExtractMobFile();
-                LoadCanvasSection(MOB_PATH); // Load canvas
+                LoadCanvasSection(MOB_PATH);
 
                 // Load Npc
                 const string NPC_PATH = "npc";
@@ -330,11 +320,10 @@ namespace HaCreator.GUI
                 foreach (string npc in npcWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(npc, true);
-
                     Program.WzManager.LoadWzFile(npc, _wzMapleVersion);
                 }
                 ExtractNpcFile();
-                LoadCanvasSection(NPC_PATH); // Load canvas
+                LoadCanvasSection(NPC_PATH);
 
                 // Load reactor
                 const string REACTOR_PATH = "reactor";
@@ -342,11 +331,10 @@ namespace HaCreator.GUI
                 foreach (string reactor in reactorWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(reactor, true);
-
                     Program.WzManager.LoadWzFile(reactor, _wzMapleVersion);
                 }
                 ExtractReactorFile();
-                LoadCanvasSection(REACTOR_PATH); // Load canvas
+                LoadCanvasSection(REACTOR_PATH);
 
                 // Load sound
                 const string SOUND_PATH = "sound";
@@ -354,11 +342,10 @@ namespace HaCreator.GUI
                 foreach (string soundDirName in soundWzDirs)
                 {
                     UpdateUI_CurrentLoadingWzFile(soundDirName, true);
-
                     Program.WzManager.LoadWzFile(soundDirName, _wzMapleVersion);
                 }
                 ExtractSoundFile();
-                LoadCanvasSection(SOUND_PATH); // Load canvas
+                LoadCanvasSection(SOUND_PATH);
 
                 // Load quests
                 const string QUEST_PATH = "quest";
@@ -366,11 +353,10 @@ namespace HaCreator.GUI
                 foreach (string questWzDir in questWzDirs)
                 {
                     UpdateUI_CurrentLoadingWzFile(questWzDir, true);
-
                     Program.WzManager.LoadWzFile(questWzDir, _wzMapleVersion);
                 }
                 ExtractQuestFile();
-                LoadCanvasSection(QUEST_PATH); // Load canvas
+                LoadCanvasSection(QUEST_PATH);
 
                 // Load character
                 const string CHARACTER_PATH = "character";
@@ -378,11 +364,9 @@ namespace HaCreator.GUI
                 foreach (string characterWzDir in characterWzDirs)
                 {
                     UpdateUI_CurrentLoadingWzFile(characterWzDir, true);
-
                     Program.WzManager.LoadWzFile(characterWzDir, _wzMapleVersion);
                 }
-                //ExtractCharacterFile(); // due to performance issue, its loaded on demand
-                LoadCanvasSection(CHARACTER_PATH); // Load canvas
+                LoadCanvasSection(CHARACTER_PATH);
 
                 // Load skills
                 const string SKILL_PATH = "skill";
@@ -390,11 +374,10 @@ namespace HaCreator.GUI
                 foreach (string skillWzDir in skillWzDirs)
                 {
                     UpdateUI_CurrentLoadingWzFile(skillWzDir, true);
-
                     Program.WzManager.LoadWzFile(skillWzDir, _wzMapleVersion);
                 }
                 ExtractSkillFile();
-                LoadCanvasSection(SKILL_PATH); // Load canvas
+                LoadCanvasSection(SKILL_PATH);
 
                 // Load Items
                 const string ITEM_PATH = "item";
@@ -402,11 +385,10 @@ namespace HaCreator.GUI
                 foreach (string itemWzDir in itemWzDirs)
                 {
                     UpdateUI_CurrentLoadingWzFile(itemWzDir, true);
-
                     Program.WzManager.LoadWzFile(itemWzDir, _wzMapleVersion);
                 }
                 ExtractItemFile();
-                LoadCanvasSection(ITEM_PATH); // Load canvas
+                LoadCanvasSection(ITEM_PATH);
 
                 // Load maps
                 const string MAP_PATH = "map";
@@ -414,10 +396,9 @@ namespace HaCreator.GUI
                 foreach (string mapWzFileName in mapWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(mapWzFileName, true);
-
                     Program.WzManager.LoadWzFile(mapWzFileName, _wzMapleVersion);
                 }
-                LoadCanvasSection(MAP_PATH); // Load canvas
+                LoadCanvasSection(MAP_PATH);
 
                 for (int i_map = 0; i_map <= 9; i_map++)
                 {
@@ -426,41 +407,37 @@ namespace HaCreator.GUI
                     foreach (string map_iWzFileName in map_iWzFiles)
                     {
                         UpdateUI_CurrentLoadingWzFile(map_iWzFileName, true);
-
                         Program.WzManager.LoadWzFile(map_iWzFileName, _wzMapleVersion);
                     }
-                    LoadCanvasSection(MAP_PART_PATH); // Load canvas
+                    LoadCanvasSection(MAP_PART_PATH);
                 }
 
                 const string MAPTILE_PATH = "map\\tile";
-                List<string> tileWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPTILE_PATH); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                List<string> tileWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPTILE_PATH);
                 foreach (string tileWzFileNames in tileWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(tileWzFileNames, true);
-
                     Program.WzManager.LoadWzFile(tileWzFileNames, _wzMapleVersion);
                 }
-                LoadCanvasSection(MAPTILE_PATH); // Load canvas
+                LoadCanvasSection(MAPTILE_PATH);
 
                 const string MAPOBJ_WZ_PATH = "map\\obj";
-                List<string> objWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPOBJ_WZ_PATH); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                List<string> objWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPOBJ_WZ_PATH);
                 foreach (string objWzFileName in objWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(objWzFileName, true);
-
                     Program.WzManager.LoadWzFile(objWzFileName, _wzMapleVersion);
                 }
-                LoadCanvasSection(MAPOBJ_WZ_PATH); // Load canvas
+                LoadCanvasSection(MAPOBJ_WZ_PATH);
 
                 const string MAPBACK_WZ_PATH = "map\\back";
-                List<string> backWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPBACK_WZ_PATH); // this doesnt exist before 64-bit client, and is kept in Map.wz
+                List<string> backWzFiles = Program.WzManager.GetWzFileNameListFromBase(MAPBACK_WZ_PATH);
                 foreach (string backWzFileName in backWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(backWzFileName, true);
-
                     Program.WzManager.LoadWzFile(backWzFileName, _wzMapleVersion);
                 }
-                LoadCanvasSection(MAPBACK_WZ_PATH); // Load canvas
+                LoadCanvasSection(MAPBACK_WZ_PATH);
 
                 ExtractMapMarks();
                 ExtractMapPortals();
@@ -469,8 +446,6 @@ namespace HaCreator.GUI
                 ExtractMapBackgroundSets();
                 ExtractMaps();
 
-                // Set image format detection flag for pre-Big Bang compatibility
-                // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
                 ImageFormatDetector.UsePreBigBangImageFormats = Program.IsPreBBDataWzFormat;
 
                 // UI.wz
@@ -479,10 +454,9 @@ namespace HaCreator.GUI
                 foreach (string uiWzFileNames in uiWzFiles)
                 {
                     UpdateUI_CurrentLoadingWzFile(uiWzFileNames, true);
-
                     Program.WzManager.LoadWzFile(uiWzFileNames, _wzMapleVersion);
                 }
-                LoadCanvasSection(UI_WZ_PATH); // Load canvas
+                LoadCanvasSection(UI_WZ_PATH);
             }
             return true;
         }
@@ -490,11 +464,9 @@ namespace HaCreator.GUI
         /// <summary>
         /// Load canvas section for the directory
         /// </summary>
-        /// <param name="directory"></param>
         private void LoadCanvasSection(string directory)
         {
-            directory = directory.Replace("\\", "/"); // TODO: normalise this to just '/' some day across the project
-
+            directory = directory.Replace("\\", "/");
             WzFileManager.fileManager.LoadCanvasSection(directory, _wzMapleVersion);
         }
 
@@ -507,22 +479,20 @@ namespace HaCreator.GUI
         /// <summary>
         /// On loading initialization.cs
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Initialization_Load(object sender, EventArgs e)
         {
+            // WZ Tab initialization
             versionBox.SelectedIndex = 0;
             try
             {
                 string[] paths = ApplicationSettings.MapleFoldersList.Split(",".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
                 foreach (string path in paths)
                 {
-                    if (!Directory.Exists(path)) // check if the old path actually exist before adding it to the combobox
+                    if (!Directory.Exists(path))
                         continue;
-
                     pathBox.Items.Add(path);
                 }
-                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY) // default path list
+                foreach (string path in WzFileManager.COMMON_MAPLESTORY_DIRECTORY)
                 {
                     if (Directory.Exists(path))
                     {
@@ -554,21 +524,62 @@ namespace HaCreator.GUI
                         Value = (int)v
                     })
                     .ToList();
-            // set ComboBox properties
             comboBox_localisation.DataSource = values;
             comboBox_localisation.DisplayMember = "Text";
             comboBox_localisation.ValueMember = "Value";
 
-            var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault(); // get the saved location from settings
-            comboBox_localisation.SelectedItem = savedLocaliation ?? values[0]; // KMS if null
+            var savedLocaliation = values.Where(x => x.Value == ApplicationSettings.MapleStoryClientLocalisation).FirstOrDefault();
+            comboBox_localisation.SelectedItem = savedLocaliation ?? values[0];
+
+            // IMG Versions Tab initialization
+            LoadAdditionalVersionPaths();
+            LoadRecentVersionPaths();
+            RefreshVersionList();
+
+            // Select last used version if available
+            var config = HaCreatorConfig.Load();
+            bool foundLastUsed = false;
+
+            if (!string.IsNullOrEmpty(config.LastUsedVersion))
+            {
+                for (int i = 0; i < listBox_imgVersions.Items.Count; i++)
+                {
+                    if (listBox_imgVersions.Items[i] is VersionListItem item &&
+                        item.Version.Version == config.LastUsedVersion)
+                    {
+                        listBox_imgVersions.SelectedIndex = i;
+                        foundLastUsed = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!foundLastUsed && listBox_imgVersions.Items.Count > 0)
+            {
+                listBox_imgVersions.SelectedIndex = 0;
+            }
+
+            UpdateImgButtonStates();
+
+            // Select appropriate default tab based on config
+            if (config.DataSourceMode == DataSourceMode.ImgFileSystem && listBox_imgVersions.Items.Count > 0)
+            {
+                tabControl_dataSource.SelectedTab = tabPage_imgVersions;
+            }
+            else
+            {
+                tabControl_dataSource.SelectedTab = tabPage_wzFiles;
+            }
         }
 
-        private void button2_Click(object sender, EventArgs e)
+        /// <summary>
+        /// Browse for WZ folder
+        /// </summary>
+        private void button_browseWz_Click(object sender, EventArgs e)
         {
             using (FolderBrowserDialog mapleSelect = new()
             {
                 ShowNewFolderButton = true,
-                //   RootFolder = Environment.SpecialFolder.ProgramFilesX86,
                 Description = "Select the MapleStory folder."
             })
             {
@@ -578,24 +589,19 @@ namespace HaCreator.GUI
                 pathBox.Items.Add(mapleSelect.SelectedPath);
                 pathBox.SelectedIndex = pathBox.Items.Count - 1;
             }
-            ;
         }
 
         /// <summary>
         /// Debug button for check map errors
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void debugButton_Click(object sender, EventArgs e)
         {
             const string OUTPUT_ERROR_FILENAME = "Errors_MapDebug.txt";
 
-            // This function iterates over all maps in the game and verifies that we recognize all their props
-            // It is meant to use by the developer(s) to speed up the process of adjusting this program for different MapleStory versions
             string wzPath = pathBox.Text;
 
             WzMapleVersion fileVersion = (WzMapleVersion)versionBox.SelectedIndex;
-            if (!InitializeWzFiles(wzPath, fileVersion, false))
+            if (!InitializeWzFilesInternal(wzPath, fileVersion, false))
             {
                 return;
             }
@@ -641,10 +647,6 @@ namespace HaCreator.GUI
                     MapLoader.LoadBackgrounds(mapImage, mapBoard);
                     MapLoader.LoadMisc(mapImage, mapBoard);
 
-                    //MapLoader.LoadBackgrounds(mapImage, board);
-                    //MapLoader.LoadMisc(mapImage, board);
-
-                    // Check background to ensure that its correct
                     List<BackgroundInstance> allBackgrounds = new List<BackgroundInstance>();
                     allBackgrounds.AddRange(mapBoard.BoardItems.BackBackgrounds);
                     allBackgrounds.AddRange(mapBoard.BoardItems.FrontBackgrounds);
@@ -655,7 +657,7 @@ namespace HaCreator.GUI
                         {
                             if (bg.cx < 0 || bg.cy < 0)
                             {
-                                string error = string.Format("Negative CX/ CY moving background object. CX='{0}', CY={1}, Type={2}, {3}{4}", bg.cx, bg.cy, bg.type.ToString(), Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/);
+                                string error = string.Format("Negative CX/ CY moving background object. CX='{0}', CY={1}, Type={2}, {3}{4}", bg.cx, bg.cy, bg.type.ToString(), Environment.NewLine, mapImage.ToString());
                                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                             }
                         }
@@ -664,7 +666,7 @@ namespace HaCreator.GUI
                 }
                 catch (Exception exp)
                 {
-                    string error = string.Format("Exception occured loading {0}{1}{2}{3}", Environment.NewLine, mapImage.ToString() /*overrides, see WzImage.ToString*/, Environment.NewLine, exp.ToString());
+                    string error = string.Format("Exception occured loading {0}{1}{2}{3}", Environment.NewLine, mapImage.ToString(), Environment.NewLine, exp.ToString());
                     ErrorLogger.Log(ErrorLevel.Crash, error);
                 }
                 finally
@@ -674,7 +676,7 @@ namespace HaCreator.GUI
                     mapBoard.BoardItems.BackBackgrounds.Clear();
                     mapBoard.BoardItems.FrontBackgrounds.Clear();
 
-                    mapImage.UnparseImage(); // To preserve memory, since this is a very memory intensive test
+                    mapImage.UnparseImage();
                 }
 
                 if (ErrorLogger.NumberOfErrorsPresent() > 200)
@@ -682,15 +684,12 @@ namespace HaCreator.GUI
             }
             ErrorLogger.SaveToFile(OUTPUT_ERROR_FILENAME);
 
-
             MessageBox.Show(string.Format("Check for map errors completed. See '{0}' for more information.", OUTPUT_ERROR_FILENAME));
         }
 
         /// <summary>
         /// Keyboard navigation
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void Initialization_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter)
@@ -703,17 +702,473 @@ namespace HaCreator.GUI
             }
         }
 
-
-        #region Extractor
         /// <summary>
-        /// Mob.wz
+        /// Tab selection changed
         /// </summary>
+        private void tabControl_dataSource_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            // Update button states when switching tabs
+            if (tabControl_dataSource.SelectedTab == tabPage_imgVersions)
+            {
+                UpdateImgButtonStates();
+            }
+        }
+
+        #region IMG Version Tab Methods
+
+        /// <summary>
+        /// Subscribes to hot swap events from the VersionManager
+        /// </summary>
+        private void SubscribeToHotSwapEvents()
+        {
+            if (Program.StartupManager?.VersionManager != null)
+            {
+                Program.StartupManager.VersionManager.VersionsChanged += OnVersionsChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles version list changes from hot swap
+        /// </summary>
+        private void OnVersionsChanged(object sender, VersionsChangedEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => HandleVersionChange(e)));
+            }
+            else
+            {
+                HandleVersionChange(e);
+            }
+        }
+
+        /// <summary>
+        /// Handles the version change on the UI thread
+        /// </summary>
+        private void HandleVersionChange(VersionsChangedEventArgs e)
+        {
+            switch (e.ChangeType)
+            {
+                case VersionChangeType.Added:
+                    if (e.AffectedVersion != null)
+                    {
+                        var newItem = new VersionListItem(e.AffectedVersion);
+                        listBox_imgVersions.Items.Add(newItem);
+                        label_noVersions.Visible = false;
+                        SortVersionList();
+                    }
+                    break;
+
+                case VersionChangeType.Removed:
+                    if (e.AffectedVersion != null)
+                    {
+                        for (int i = listBox_imgVersions.Items.Count - 1; i >= 0; i--)
+                        {
+                            if (listBox_imgVersions.Items[i] is VersionListItem item &&
+                                item.Version.DirectoryPath.Equals(e.AffectedVersion.DirectoryPath, StringComparison.OrdinalIgnoreCase))
+                            {
+                                bool wasSelected = listBox_imgVersions.SelectedIndex == i;
+                                listBox_imgVersions.Items.RemoveAt(i);
+
+                                if (wasSelected && listBox_imgVersions.Items.Count > 0)
+                                {
+                                    listBox_imgVersions.SelectedIndex = Math.Min(i, listBox_imgVersions.Items.Count - 1);
+                                }
+                                break;
+                            }
+                        }
+
+                        if (listBox_imgVersions.Items.Count == 0)
+                        {
+                            label_noVersions.Visible = true;
+                            panel_versionDetails.Visible = false;
+                        }
+                    }
+                    break;
+
+                case VersionChangeType.Refreshed:
+                    RefreshVersionList();
+                    break;
+            }
+
+            UpdateImgButtonStates();
+        }
+
+        /// <summary>
+        /// Sorts the version list alphabetically
+        /// </summary>
+        private void SortVersionList()
+        {
+            var items = listBox_imgVersions.Items.Cast<VersionListItem>()
+                .OrderBy(i => i.Version.Version)
+                .ToList();
+
+            var selectedItem = listBox_imgVersions.SelectedItem;
+            listBox_imgVersions.Items.Clear();
+
+            foreach (var item in items)
+            {
+                listBox_imgVersions.Items.Add(item);
+            }
+
+            if (selectedItem != null)
+            {
+                listBox_imgVersions.SelectedItem = selectedItem;
+            }
+        }
+
+        /// <summary>
+        /// Loads additional version paths from config and validates they still exist
+        /// </summary>
+        private void LoadAdditionalVersionPaths()
+        {
+            if (Program.StartupManager?.VersionManager == null) return;
+
+            var config = HaCreatorConfig.Load();
+            bool configChanged = false;
+
+            var pathsToRemove = new List<string>();
+            foreach (var path in config.AdditionalVersionPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    Program.StartupManager.VersionManager.AddExternalVersion(path);
+                }
+                else
+                {
+                    pathsToRemove.Add(path);
+                    configChanged = true;
+                }
+            }
+
+            if (configChanged)
+            {
+                foreach (var path in pathsToRemove)
+                {
+                    config.AdditionalVersionPaths.Remove(path);
+                }
+                config.Save();
+            }
+        }
+
+        /// <summary>
+        /// Loads recent version paths from history and validates they still exist
+        /// </summary>
+        private void LoadRecentVersionPaths()
+        {
+            if (Program.StartupManager?.VersionManager == null) return;
+
+            var config = HaCreatorConfig.Load();
+            bool configChanged = false;
+
+            var pathsToRemove = new List<string>();
+            foreach (var path in config.RecentVersionPaths)
+            {
+                if (Directory.Exists(path))
+                {
+                    Program.StartupManager.VersionManager.AddExternalVersion(path);
+                }
+                else
+                {
+                    pathsToRemove.Add(path);
+                    configChanged = true;
+                }
+            }
+
+            if (configChanged)
+            {
+                foreach (var path in pathsToRemove)
+                {
+                    config.RecentVersionPaths.Remove(path);
+                }
+                config.Save();
+            }
+        }
+
+        /// <summary>
+        /// Refreshes the IMG version list
+        /// </summary>
+        private void RefreshVersionList()
+        {
+            listBox_imgVersions.Items.Clear();
+
+            if (Program.StartupManager?.VersionManager != null)
+            {
+                Program.StartupManager.VersionManager.Refresh();
+
+                foreach (var version in Program.StartupManager.VersionManager.AvailableVersions)
+                {
+                    listBox_imgVersions.Items.Add(new VersionListItem(version));
+                }
+            }
+
+            if (listBox_imgVersions.Items.Count == 0)
+            {
+                label_noVersions.Visible = true;
+                panel_versionDetails.Visible = false;
+            }
+            else
+            {
+                label_noVersions.Visible = false;
+            }
+
+            UpdateImgButtonStates();
+        }
+
+        /// <summary>
+        /// Version list selection changed
+        /// </summary>
+        private void listBox_imgVersions_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            UpdateVersionDetails();
+            UpdateImgButtonStates();
+        }
+
+        /// <summary>
+        /// Updates the version details panel
+        /// </summary>
+        private void UpdateVersionDetails()
+        {
+            if (listBox_imgVersions.SelectedItem is VersionListItem item)
+            {
+                panel_versionDetails.Visible = true;
+
+                var v = item.Version;
+                label_versionName.Text = v.DisplayName ?? v.Version;
+                label_extractedDate.Text = $"Extracted: {v.ExtractedDate:yyyy-MM-dd HH:mm}";
+                label_encryptionInfo.Text = $"Encryption: {v.Encryption}";
+                label_format.Text = v.Is64Bit ? "Format: 64-bit" : (v.IsPreBB ? "Format: Pre-BB" : "Format: Standard");
+
+                int totalImages = v.Categories.Values.Sum(c => c.FileCount);
+                label_imageCount.Text = $"Total Images: {totalImages:N0}";
+                label_categoryCount.Text = $"Categories: {v.Categories.Count}";
+
+                label_features.Text = "Features: -";
+
+                if (!v.IsValid && v.ValidationErrors.Count > 0)
+                {
+                    label_validationStatus.Text = $"Warning: {v.ValidationErrors.First()}";
+                    label_validationStatus.ForeColor = Color.OrangeRed;
+                }
+                else
+                {
+                    label_validationStatus.Text = "Status: Valid";
+                    label_validationStatus.ForeColor = Color.Green;
+                }
+            }
+            else
+            {
+                panel_versionDetails.Visible = false;
+            }
+        }
+
+        /// <summary>
+        /// Updates button states for IMG version tab
+        /// </summary>
+        private void UpdateImgButtonStates()
+        {
+            bool hasSelection = listBox_imgVersions.SelectedItem != null;
+            button_deleteVersion.Enabled = hasSelection;
+        }
+
+        /// <summary>
+        /// Extract new version button click
+        /// </summary>
+        private void button_extractNew_Click(object sender, EventArgs e)
+        {
+            UnpackWzToImg unpacker = new UnpackWzToImg();
+            unpacker.ShowDialog(this);
+            unpacker.Close();
+
+            // After extraction, refresh and try to select the new version
+            Program.StartupManager?.ScanVersions();
+            RefreshVersionList();
+
+            // Select the most recently added version (last in list after sort)
+            if (listBox_imgVersions.Items.Count > 0)
+            {
+                listBox_imgVersions.SelectedIndex = listBox_imgVersions.Items.Count - 1;
+            }
+        }
+
+        /// <summary>
+        /// Browse for existing IMG version folder
+        /// </summary>
+        private void button_browseVersion_Click(object sender, EventArgs e)
+        {
+            using (var folderBrowser = new FolderBrowserDialog())
+            {
+                folderBrowser.Description = "Select a folder containing extracted IMG files";
+                folderBrowser.ShowNewFolderButton = false;
+
+                if (folderBrowser.ShowDialog() == DialogResult.OK)
+                {
+                    string selectedPath = folderBrowser.SelectedPath;
+
+                    bool hasManifest = File.Exists(Path.Combine(selectedPath, "manifest.json"));
+                    bool hasStringFolder = Directory.Exists(Path.Combine(selectedPath, "String"));
+                    bool hasMapFolder = Directory.Exists(Path.Combine(selectedPath, "Map"));
+
+                    if (!hasManifest && !hasStringFolder && !hasMapFolder)
+                    {
+                        MessageBox.Show(
+                            "The selected folder doesn't appear to contain extracted IMG files.\n\n" +
+                            "A valid version folder should contain:\n" +
+                            "- A manifest.json file, OR\n" +
+                            "- String/ and Map/ folders with .img files",
+                            "Invalid Folder",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    if (Program.StartupManager?.VersionManager != null)
+                    {
+                        var version = Program.StartupManager.VersionManager.AddExternalVersion(selectedPath);
+                        if (version != null)
+                        {
+                            var config = HaCreatorConfig.Load();
+
+                            string normalizedPath = Path.GetFullPath(selectedPath);
+                            if (!config.AdditionalVersionPaths.Any(p =>
+                                Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                config.AdditionalVersionPaths.Add(selectedPath);
+                            }
+
+                            config.AddToRecentVersionPaths(selectedPath);
+                            config.Save();
+
+                            var newItem = new VersionListItem(version);
+                            listBox_imgVersions.Items.Add(newItem);
+                            listBox_imgVersions.SelectedItem = newItem;
+
+                            label_noVersions.Visible = false;
+
+                            UpdateVersionDetails();
+                            UpdateImgButtonStates();
+                        }
+                        else
+                        {
+                            MessageBox.Show(
+                                "Failed to add the version. It may already be in the list.",
+                                "Error",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Delete selected version
+        /// </summary>
+        private void button_deleteVersion_Click(object sender, EventArgs e)
+        {
+            if (listBox_imgVersions.SelectedItem is VersionListItem item)
+            {
+                var result = MessageBox.Show(
+                    $"Are you sure you want to delete version '{item.Version.DisplayName}'?\n\nThis will permanently delete all extracted IMG files.",
+                    "Confirm Delete",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    string versionPath = item.Version.DirectoryPath;
+
+                    if (Program.StartupManager?.VersionManager?.DeleteVersion(item.Version.Version) == true)
+                    {
+                        RemoveVersionPathFromConfig(versionPath);
+                        RefreshVersionList();
+                    }
+                    else
+                    {
+                        MessageBox.Show("Failed to delete version. The files may be in use.",
+                            "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Refresh versions list
+        /// </summary>
+        private void button_refreshVersions_Click(object sender, EventArgs e)
+        {
+            RefreshVersionList();
+        }
+
+        /// <summary>
+        /// Double-click on version list to initialize
+        /// </summary>
+        private void listBox_imgVersions_DoubleClick(object sender, EventArgs e)
+        {
+            if (listBox_imgVersions.SelectedItem != null)
+            {
+                button_initialise_Click(sender, e);
+            }
+        }
+
+        /// <summary>
+        /// Removes a version path from all config lists
+        /// </summary>
+        private void RemoveVersionPathFromConfig(string path)
+        {
+            var config = HaCreatorConfig.Load();
+            string normalizedPath = Path.GetFullPath(path);
+            bool changed = false;
+
+            var toRemoveAdditional = config.AdditionalVersionPaths
+                .FirstOrDefault(p => Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+            if (toRemoveAdditional != null)
+            {
+                config.AdditionalVersionPaths.Remove(toRemoveAdditional);
+                changed = true;
+            }
+
+            var toRemoveRecent = config.RecentVersionPaths
+                .FirstOrDefault(p => Path.GetFullPath(p).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+            if (toRemoveRecent != null)
+            {
+                config.RecentVersionPaths.Remove(toRemoveRecent);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                config.Save();
+            }
+        }
+
+        /// <summary>
+        /// List item wrapper for VersionInfo
+        /// </summary>
+        private class VersionListItem
+        {
+            public VersionInfo Version { get; }
+
+            public VersionListItem(VersionInfo version)
+            {
+                Version = version;
+            }
+
+            public override string ToString()
+            {
+                return Version.DisplayName ?? Version.Version;
+            }
+        }
+
+        #endregion
+
+        #region Extractor Methods
+
         public void ExtractMobFile()
         {
             if (Program.InfoManager.MobIconCache.Count != 0)
                 return;
 
-            // Mob.wz
             const string MOB_WZ_PATH = "mob";
             List<WzDirectory> mobWzDirs = Program.WzManager.GetWzDirectoriesFromBase(MOB_WZ_PATH);
 
@@ -734,8 +1189,7 @@ namespace HaCreator.GUI
                         case "BossNohime":
                         case "BossSuu":
                         case "PatternSystem":
-                        case "pack_ignore.txt": // GMS
-                            // TODO
+                        case "pack_ignore.txt":
                             break;
                         default:
                             {
@@ -757,21 +1211,16 @@ namespace HaCreator.GUI
                                 break;
                             }
                     }
-
                 }
             }
-            LoadCanvasSection(MOB_WZ_PATH); // Load canvas
+            LoadCanvasSection(MOB_WZ_PATH);
         }
 
-        /// <summary>
-        /// NPC.wz
-        /// </summary>
         public void ExtractNpcFile()
         {
             if (Program.InfoManager.NpcPropertyCache.Count != 0)
                 return;
 
-            // Npc.wz
             const string NPC_WZ_PATH = "npc";
             List<WzDirectory> npcWzDirs = Program.WzManager.GetWzDirectoriesFromBase(NPC_WZ_PATH);
 
@@ -787,29 +1236,9 @@ namespace HaCreator.GUI
                     }
                 }
             }
-            LoadCanvasSection(NPC_WZ_PATH); // Load canvas
-
-            // String.wz
-            /*List<WzDirectory> stringWzDirs = Program.WzManager.GetWzDirectoriesFromBase("string");
-            foreach (WzDirectory stringWzDir in stringWzDirs)
-            {
-                WzImage npcImage = (WzImage)stringWzDir?["Npc.img"];
-                if (npcImage == null)
-                    continue; // not in this wz
-
-                foreach (WzSubProperty npc in npcImage.WzProperties)
-                {
-                    WzStringProperty nameProp = (WzStringProperty)npc["name"];
-                    string name = nameProp == null ? "" : nameProp.Value;
-
-                    Program.InfoManager.NPCs.Add(WzInfoTools.AddLeadingZeros(npc.Name, 7), new Tuple<WzSubProperty, string>(npc, name));
-                }
-            }*/
+            LoadCanvasSection(NPC_WZ_PATH);
         }
 
-        /// <summary>
-        /// Reactor.wz
-        /// </summary>
         public void ExtractReactorFile()
         {
             if (Program.InfoManager.Reactors.Count != 0)
@@ -823,7 +1252,7 @@ namespace HaCreator.GUI
                 {
                     WzSubProperty infoProp = (WzSubProperty)reactorImage["info"];
 
-                    string reactorId = WzInfoTools.RemoveExtension(reactorImage.Name); // without ".img"
+                    string reactorId = WzInfoTools.RemoveExtension(reactorImage.Name);
                     string name = "NO NAME";
                     if (infoProp != null)
                     {
@@ -837,15 +1266,12 @@ namespace HaCreator.GUI
                     Program.InfoManager.Reactors[reactor.ID] = reactor;
                 }
             }
-            LoadCanvasSection(REACTOR_WZ_PATH); // Load canvas
+            LoadCanvasSection(REACTOR_WZ_PATH);
         }
 
-        /// <summary>
-        /// Quest.wz
-        /// </summary>
         public void ExtractQuestFile()
         {
-            if (Program.InfoManager.QuestActs.Count != 0) // already loaded
+            if (Program.InfoManager.QuestActs.Count != 0)
                 return;
 
             const string QUEST_WZ_PATH = "quest";
@@ -880,8 +1306,7 @@ namespace HaCreator.GUI
                                 Program.InfoManager.QuestSays.Add(questSayImage.Name, questSayImage as WzSubProperty);
                             }
                             break;
-
-                        case "ChangeableQExpTable.img": // later ver of maplestory
+                        case "ChangeableQExpTable.img":
                         case "Exclusive.img":
                         case "PQuest.img":
                         case "PQuestSearch.img":
@@ -892,53 +1317,14 @@ namespace HaCreator.GUI
                     }
                 }
             }
-            LoadCanvasSection(QUEST_WZ_PATH); // Load canvas
+            LoadCanvasSection(QUEST_WZ_PATH);
         }
 
         public void ExtractCharacterFile()
         {
             // disabled due to performance issue on startup
-            // only load on demand
-
-            /*if (Program.InfoManager.MapsNameCache.Count == 0)
-                throw new Exception("ExtractStringWzFile needs to be called first.");
-            else if (Program.InfoManager.EquipItemCache.Count != 0)
-                return; // loaded
-
-            List<WzDirectory> characterWzDirs = Program.WzManager.GetWzDirectoriesFromBase("character");
-            foreach (WzDirectory characterWzDir in characterWzDirs)
-            {
-                // foreach (WzDirectory characterWzImage in characterWzDir.WzDirectories)
-                Parallel.ForEach(characterWzDir.WzDirectories, characterWzImage =>
-                {
-                    switch (characterWzImage.Name)
-                    {
-                        case "Afterimage": // weapon delays
-                            break;
-                        default:
-                            {
-                                foreach (WzImage itemImg in characterWzImage.WzImages)
-                                {
-                                    string itemId = itemImg.Name.Replace(".img", "");
-                                    WzCanvasProperty icon = itemImg["info"]?["icon"] as WzCanvasProperty;
-                                    if (icon != null)
-                                    {
-                                        int intName = 0;
-                                        int.TryParse(itemId, out intName);
-
-                                        Program.InfoManager.EquipItemCache.Add(intName, itemImg);
-                                    }
-                                }
-                                break;
-                            }
-                    }
-                });
-            }*/
         }
 
-        /// <summary>
-        /// Skill.wz
-        /// </summary>
         public void ExtractSkillFile()
         {
             if (Program.InfoManager.SkillWzImageCache.Count != 0)
@@ -948,49 +1334,42 @@ namespace HaCreator.GUI
             List<WzDirectory> skillWzDirs = Program.WzManager.GetWzDirectoriesFromBase(SKILL_WZ_PATH);
             foreach (WzDirectory skillWzDir in skillWzDirs)
             {
-                foreach (WzImage skillWzImage in skillWzDir.WzImages) // <imgdir name="9201.img">
+                foreach (WzImage skillWzImage in skillWzDir.WzImages)
                 {
                     string skillDirectoryId = skillWzImage.Name;
 
-                    WzImageProperty imgSkill = skillWzImage["skill"]; // in each xml contains the skills
+                    WzImageProperty imgSkill = skillWzImage["skill"];
                     if (imgSkill != null)
                     {
                         foreach (WzImageProperty skillItemImage in imgSkill.WzProperties)
                         {
                             string skillId = skillItemImage.Name;
-
                             Program.InfoManager.SkillWzImageCache.Add(skillId, skillItemImage);
                         }
                     }
                 }
             }
-            LoadCanvasSection(SKILL_WZ_PATH); // Load canvas
+            LoadCanvasSection(SKILL_WZ_PATH);
         }
 
-        /// <summary>
-        /// Item.wz
-        /// </summary>
         public void ExtractItemFile()
         {
             if (Program.InfoManager.MapsNameCache.Count == 0)
                 throw new Exception("ExtractStringWzFile needs to be called first.");
             else if (Program.InfoManager.ItemIconCache.Count != 0)
-                return; // loaded
+                return;
 
             const string ITEM_WZ_PATH = "item";
             List<WzDirectory> itemWzDirs = Program.WzManager.GetWzDirectoriesFromBase(ITEM_WZ_PATH);
             foreach (WzDirectory itemWzDir in itemWzDirs)
             {
                 Parallel.ForEach(itemWzDir.WzDirectories, itemWzImage =>
-                //foreach (WzDirectory itemWzImage in itemWzDir.WzDirectories)
                 {
                     switch (itemWzImage.Name)
                     {
                         case "ItemOption.img":
                         case "Special":
-                            {
-                                break;
-                            }
+                            break;
                         case "Consume":
                         case "Etc":
                         case "Cash":
@@ -1021,7 +1400,7 @@ namespace HaCreator.GUI
                                 }
                                 break;
                             }
-                        case "Pet": // pet doesnt have a group directory
+                        case "Pet":
                             {
                                 foreach (WzImage petImg in itemWzImage.WzImages)
                                 {
@@ -1042,18 +1421,13 @@ namespace HaCreator.GUI
                                 break;
                             }
                         default:
-                            {
-                                break;
-                            }
+                            break;
                     }
                 });
             }
-            LoadCanvasSection(ITEM_WZ_PATH); // Load canvas
+            LoadCanvasSection(ITEM_WZ_PATH);
         }
 
-        /// <summary>
-        /// Sound.wz
-        /// </summary>
         public void ExtractSoundFile()
         {
             if (Program.InfoManager.BGMs.Count != 0)
@@ -1082,7 +1456,7 @@ namespace HaCreator.GUI
                             {
                                 binProperty = bgm;
                             }
-                            else if (bgmImage is WzUOLProperty uolBGM) // is UOL property
+                            else if (bgmImage is WzUOLProperty uolBGM)
                             {
                                 WzObject linkVal = ((WzUOLProperty)bgmImage).LinkValue;
                                 if (linkVal is WzBinaryProperty linkCanvas)
@@ -1103,12 +1477,9 @@ namespace HaCreator.GUI
                     }
                 }
             }
-            LoadCanvasSection(SOUND_WZ_PATH); // Load canvas
+            LoadCanvasSection(SOUND_WZ_PATH);
         }
 
-        /// <summary>
-        /// Map marks
-        /// </summary>
         public void ExtractMapMarks()
         {
             if (Program.InfoManager.MapMarks.Count != 0)
@@ -1124,9 +1495,6 @@ namespace HaCreator.GUI
             }
         }
 
-        /// <summary>
-        /// Map tiles
-        /// </summary>
         public void ExtractMapTileSets()
         {
             if (Program.InfoManager.TileSets.Count != 0)
@@ -1143,8 +1511,6 @@ namespace HaCreator.GUI
                 bLoadedInMap = true;
             }
 
-            // Not loaded, try to find it in "tile.wz"
-            // on 64-bit client it is stored in a different file apart from map
             if (!bLoadedInMap)
             {
                 const string MAP_TILE_WZ_PATH = "map\\tile";
@@ -1154,22 +1520,16 @@ namespace HaCreator.GUI
                     foreach (WzImage tileset in tileWzDir.WzImages)
                         Program.InfoManager.TileSets[WzInfoTools.RemoveExtension(tileset.Name)] = tileset;
                 }
-                LoadCanvasSection(MAP_TILE_WZ_PATH); // Load canvas
+                LoadCanvasSection(MAP_TILE_WZ_PATH);
             }
 
-            // Finally
-            // Sort order in advance (only if using regular Dictionary, not LazyWzImageDictionary)
             if (Program.InfoManager.TileSets is Dictionary<string, WzImage> regularDict)
             {
                 Program.InfoManager.TileSets = regularDict.OrderBy(kvp => kvp.Key)
                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
             }
-            // LazyWzImageDictionary already handles ordering during registration
         }
 
-        /// <summary>
-        /// Handle various scenarios ie Map001.wz exists but may only contain Back or only Obj etc
-        /// </summary>
         public void ExtractMapObjSets()
         {
             if (Program.InfoManager.ObjectSets.Count != 0)
@@ -1184,11 +1544,9 @@ namespace HaCreator.GUI
                     Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
 
                 bLoadedInMap = true;
-                return; // only needs to be loaded once
+                return;
             }
 
-            // Not loaded, try to find it in "tile.wz"
-            // on 64-bit client it is stored in a different file apart from map
             if (!bLoadedInMap)
             {
                 const string MAP_OBJ_WZ_PATH = "map\\obj";
@@ -1198,13 +1556,10 @@ namespace HaCreator.GUI
                     foreach (WzImage objset in objWzDir.WzImages)
                         Program.InfoManager.ObjectSets[WzInfoTools.RemoveExtension(objset.Name)] = objset;
                 }
-                LoadCanvasSection(MAP_OBJ_WZ_PATH); // Load canvas
+                LoadCanvasSection(MAP_OBJ_WZ_PATH);
             }
         }
 
-        /// <summary>
-        /// Map background sets
-        /// </summary>
         public void ExtractMapBackgroundSets()
         {
             if (Program.InfoManager.BackgroundSets.Count != 0)
@@ -1221,8 +1576,6 @@ namespace HaCreator.GUI
                 bLoadedInMap = true;
             }
 
-            // Not loaded, try to find it in "tile.wz"
-            // on 64-bit client it is stored in a different file apart from map
             if (!bLoadedInMap)
             {
                 const string MAP_BACK_WZ_PATH = "map\\back";
@@ -1232,14 +1585,10 @@ namespace HaCreator.GUI
                     foreach (WzImage bgset in backWzDir.WzImages)
                         Program.InfoManager.BackgroundSets[WzInfoTools.RemoveExtension(bgset.Name)] = bgset;
                 }
-                LoadCanvasSection(MAP_BACK_WZ_PATH); // Load canvas
+                LoadCanvasSection(MAP_BACK_WZ_PATH);
             }
         }
 
-        /// <summary>
-        /// Extracts all string.wz map list and places it in Program.InfoManager.Maps dictionary
-        /// <paramref name="bIsBetaMapleStory">Versions before 30 with Data.wz</paramref>
-        /// </summary>
         public void ExtractStringFile(bool bIsBetaMapleStory)
         {
             if (Program.InfoManager.MapsNameCache.Count != 0)
@@ -1247,11 +1596,11 @@ namespace HaCreator.GUI
 
             // Npc strings
             WzImage stringNpcImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Npc.img");
-            foreach (WzSubProperty npcImg in stringNpcImg.WzProperties) // String.wz/Npc.img/2000
+            foreach (WzSubProperty npcImg in stringNpcImg.WzProperties)
             {
                 string npcId = npcImg.Name;
                 string npcName = (npcImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
-                string npcFunc = (npcImg["func"] as WzStringProperty)?.Value ?? string.Empty;  // dont use "NO FUNC" for desc
+                string npcFunc = (npcImg["func"] as WzStringProperty)?.Value ?? string.Empty;
 
                 if (!Program.InfoManager.NpcNameCache.ContainsKey(npcId))
                     Program.InfoManager.NpcNameCache[npcId] = new Tuple<string, string>(npcName, npcFunc);
@@ -1291,12 +1640,10 @@ namespace HaCreator.GUI
 
             // Mob strings
             WzImage stringMobImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Mob.img");
-            foreach (WzSubProperty mobImg in stringMobImg.WzProperties) // String.wz/Mob.img/100100
+            foreach (WzSubProperty mobImg in stringMobImg.WzProperties)
             {
                 string mobId = mobImg.Name;
                 string itemName = (mobImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
-
-                //string WzInfoTools.AddLeadingZeros(mob.Name, 7)
 
                 if (!Program.InfoManager.MobNameCache.ContainsKey(mobId))
                     Program.InfoManager.MobNameCache[mobId] = itemName;
@@ -1309,7 +1656,7 @@ namespace HaCreator.GUI
 
             // Skill strings
             WzImage stringSkillImg = (WzImage)Program.WzManager.FindWzImageByName("string", "Skill.img");
-            foreach (WzSubProperty skillImg in stringSkillImg.WzProperties) // String.wz/Mob.img/100100
+            foreach (WzSubProperty skillImg in stringSkillImg.WzProperties)
             {
                 string skillId = skillImg.Name;
                 string skillName = (skillImg["name"] as WzStringProperty)?.Value ?? "NO NAME";
@@ -1324,7 +1671,7 @@ namespace HaCreator.GUI
                 }
             }
 
-            // Item strings
+            // Item strings - Equipment
             WzPropertyCollection stringEqpImg;
             if (bIsBetaMapleStory)
                 stringEqpImg = ((WzSubProperty)Program.WzManager.FindWzImageByName("string", "Item.img")["Eqp"]).WzProperties;
@@ -1337,18 +1684,13 @@ namespace HaCreator.GUI
                 {
                     if (bIsBetaMapleStory)
                     {
-                        // In beta, process the category property directly
                         ExtractStringFile_ProcessEquipmentItem(eqpCategorySubProp, eqpCategorySubProp.Name);
                     }
                     else
                     {
-                        // In non-beta, process each item within the category
                         eqpCategorySubProp.WzProperties
-                            //.Cast<WzSubProperty>()
                             .ToList()
-                            .ForEach(itemProp => ExtractStringFile_ProcessEquipmentItem(
-                                itemProp,
-                                eqpCategorySubProp.Name));
+                            .ForEach(itemProp => ExtractStringFile_ProcessEquipmentItem(itemProp, eqpCategorySubProp.Name));
                     }
                 }
             }
@@ -1359,7 +1701,7 @@ namespace HaCreator.GUI
             else
                 stringInsImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Ins.img")).WzProperties;
 
-            foreach (WzImageProperty insItemImage in stringInsImg) // String.wz/Ins.img/3010000
+            foreach (WzImageProperty insItemImage in stringInsImg)
             {
                 if (insItemImage is WzSubProperty insItemSubProp)
                 {
@@ -1379,12 +1721,6 @@ namespace HaCreator.GUI
                         ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                     }
                 }
-                else
-                {
-                    // TOOD: Handle MapleStoryN related items
-                    // WzUOLProperty? or is it a mistake
-                    // Ins/3019381 Ins/3700770 Ins/3700771
-                }
             }
 
             WzPropertyCollection stringCashImg;
@@ -1393,7 +1729,7 @@ namespace HaCreator.GUI
             else
                 stringCashImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Cash.img")).WzProperties;
 
-            foreach (WzSubProperty cashItemImg in stringCashImg) // String.wz/Cash.img/5010000
+            foreach (WzSubProperty cashItemImg in stringCashImg)
             {
                 string itemId = cashItemImg.Name;
                 const string itemCategory = "Cash";
@@ -1418,7 +1754,7 @@ namespace HaCreator.GUI
             else
                 stringConsumeImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Consume.img")).WzProperties;
 
-            foreach (WzSubProperty consumeItemImg in stringConsumeImg) // String.wz/Cash.img/5010000
+            foreach (WzSubProperty consumeItemImg in stringConsumeImg)
             {
                 string itemId = consumeItemImg.Name;
                 const string itemCategory = "Consume";
@@ -1443,22 +1779,18 @@ namespace HaCreator.GUI
             else
                 stringEtcImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Etc.img")).WzProperties;
 
-            foreach (WzSubProperty etcSubProp in stringEtcImg) // String.wz/Etc.img/Etc/1010000
+            foreach (WzSubProperty etcSubProp in stringEtcImg)
             {
                 if (bIsBetaMapleStory)
                 {
-                    // In beta, process the property directly
                     ExtractStringFile_ProcessEtcItem(etcSubProp, etcSubProp.Name);
                 }
                 else
                 {
-                    // In non-beta, process each item within the property
                     etcSubProp.WzProperties
                         .Cast<WzSubProperty>()
                         .ToList()
-                        .ForEach(itemProp => ExtractStringFile_ProcessEtcItem(
-                            itemProp,
-                            etcSubProp.Name));
+                        .ForEach(itemProp => ExtractStringFile_ProcessEtcItem(itemProp, etcSubProp.Name));
                 }
             }
 
@@ -1468,13 +1800,9 @@ namespace HaCreator.GUI
             else
                 stringPetImg = ((WzImage)Program.WzManager.FindWzImageByName("string", "Pet.img")).WzProperties;
 
-            // In non-beta, process each item within the category
             stringPetImg
-                //.Cast<WzSubProperty>()
                 .ToList()
-                .ForEach(itemProp => ExtractStringFile_ProcessPetItem(
-                    itemProp
-                    ));
+                .ForEach(itemProp => ExtractStringFile_ProcessPetItem(itemProp));
         }
 
         private void ExtractStringFile_ProcessEtcItem(WzSubProperty itemProp, string parentName)
@@ -1495,6 +1823,7 @@ namespace HaCreator.GUI
                 ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
             }
         }
+
         private void ExtractStringFile_ProcessPetItem(WzImageProperty petProp)
         {
             if (petProp is WzSubProperty petSubProp)
@@ -1504,7 +1833,6 @@ namespace HaCreator.GUI
                 string itemId = petSubProp.Name;
                 string itemName = (petSubProp["name"] as WzStringProperty)?.Value ?? "NO NAME";
                 string itemDesc = (petSubProp["desc"] as WzStringProperty)?.Value ?? "NO DESC";
-                string itemDescD = (petSubProp["descD"] as WzStringProperty)?.Value ?? "NO DESC"; // if the pet is dead
 
                 int intName = 0;
                 int.TryParse(itemId, out intName);
@@ -1517,11 +1845,8 @@ namespace HaCreator.GUI
                     ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                 }
             }
-            else
-            {
-                // 5002129, 5002128, 5002127, 5002223, 5002224, 
-            }
         }
+
         private void ExtractStringFile_ProcessEquipmentItem(WzImageProperty itemImageProp, string category)
         {
             if (itemImageProp is WzSubProperty itemProp)
@@ -1543,17 +1868,8 @@ namespace HaCreator.GUI
                     }
                 }
             }
-            else
-            {
-                // TODO: Handle MapleStoryN related equipments
-                // WzUOLProperty? or is it a mistake
-            }
         }
 
-
-        /// <summary>
-        /// Pre-load all maps in the memory
-        /// </summary>
         public void ExtractMaps()
         {
             if (Program.InfoManager.MapsCache.Count != 0)
@@ -1561,13 +1877,11 @@ namespace HaCreator.GUI
 
             UpdateUI_CurrentLoadingWzFile(string.Format("{0} map data", Program.InfoManager.MapsNameCache.Count), false);
 
-            // Create a ParallelOptions object
             var parallelOptions = new ParallelOptions
             {
-                MaxDegreeOfParallelism = Environment.ProcessorCount * 2 // number of concurrent tasks, typically bottlenecked by disk I/O and RAM speeds
+                MaxDegreeOfParallelism = Environment.ProcessorCount * 2
             };
 
-            //foreach (KeyValuePair<string, Tuple<string, string>> val in Program.InfoManager.MapsNameCache) {
             Parallel.ForEach(Program.InfoManager.MapsNameCache, parallelOptions, val =>
             {
                 int mapid = 0;
@@ -1575,7 +1889,7 @@ namespace HaCreator.GUI
 
                 WzImage mapImage = WzInfoTools.FindMapImage(mapid.ToString(), Program.WzManager);
                 if (mapImage != null)
-                { // its okay if the image is not found, sometimes there may be strings in String.wz but not the actual maps in Map.wz
+                {
                     string mapId = val.Key;
                     string mapName = "NO NAME";
                     string streetName = "NO NAME";
@@ -1592,7 +1906,6 @@ namespace HaCreator.GUI
                     {
                         MapInfo info = new MapInfo(mapImage, mapName, streetName, categoryName);
 
-                        // Ensure thread safety when writing to the shared resource
                         lock (Program.InfoManager.MapsCache)
                         {
                             Program.InfoManager.MapsCache[val.Key] = new Tuple<WzImage, string, string, string, MapInfo>(
@@ -1600,22 +1913,10 @@ namespace HaCreator.GUI
                             );
                         }
                     }
-                    else
-                    {
-                        // Japan Maplestory
-                        // MapID 100020100, 100020101, 120000100, 120000200, 120000201, 120000202, 120000300, 120000301, 120000101
-                        // is missing of "info"
-                        // it is an empty "map".img, likely pre-bb deleted 
-                    }
                 }
-                //}
             });
         }
 
-        /// <summary>
-        /// Map portals
-        /// </summary>
-        /// <exception cref="Exception"></exception>
         public void ExtractMapPortals()
         {
             if (Program.InfoManager.PortalGame.Count != 0)
@@ -1629,7 +1930,7 @@ namespace HaCreator.GUI
 
             // Editor portals
             WzSubProperty editorParent = (WzSubProperty)portalParent["editor"];
-            foreach (WzCanvasProperty portalProp in editorParent.WzProperties) // sp, pi, pv, pc, pg, tp, ps, ph, pcj, pci, pci2, pcig, pshg, pcir
+            foreach (WzCanvasProperty portalProp in editorParent.WzProperties)
             {
                 Program.InfoManager.PortalEditor_TypeById.Add(PortalTypeExtensions.FromCode(portalProp.Name));
                 PortalInfo.Load(portalProp);
@@ -1637,24 +1938,22 @@ namespace HaCreator.GUI
 
             // Game portals
             WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
-            foreach (WzImageProperty portalProp in gameParent.WzProperties) // "pv", "ph", "psh"
+            foreach (WzImageProperty portalProp in gameParent.WzProperties)
             {
                 PortalType portalType = PortalTypeExtensions.FromCode(portalProp.Name);
 
-                // These are portal types with multiple image template.
-                if (portalProp["default"]?["portalStart"] != null) // psh, ph. 
+                if (portalProp["default"]?["portalStart"] != null)
                 {
                     Dictionary<string, List<Bitmap>> portalTemplateImage = new();
 
-                    foreach (WzSubProperty portalImageProp in portalProp.WzProperties)  // "1", "2", "default"
+                    foreach (WzSubProperty portalImageProp in portalProp.WzProperties)
                     {
-                        WzSubProperty portalStartProp = portalImageProp["portalStart"] as WzSubProperty; // "portalStart", "portalContinue", "portalExit"
+                        WzSubProperty portalStartProp = portalImageProp["portalStart"] as WzSubProperty;
                         List<Bitmap> images = new();
 
                         foreach (WzCanvasProperty portalImageCanvas in portalStartProp.WzProperties)
                         {
                             Bitmap portalImage = portalImageCanvas.GetLinkedWzCanvasBitmap();
-
                             images.Add(portalImage);
                         }
                         portalTemplateImage.Add(portalImageProp.Name, images);
@@ -1662,21 +1961,18 @@ namespace HaCreator.GUI
 
                     Program.InfoManager.PortalGame.Add(portalType, new PortalGameImageInfo(portalTemplateImage.FirstOrDefault().Value[0], portalTemplateImage));
                 }
-                else // pv. 
+                else
                 {
-                    // These are portal types with only a single image template.
-
                     Dictionary<string, List<Bitmap>> portalTemplateImage = new();
                     Bitmap defaultImage = null;
 
                     List<Bitmap> images = new();
-                    foreach (WzImageProperty image in portalProp.WzProperties)  // 1,2,3,4,5,6,7,8,9,10,11
+                    foreach (WzImageProperty image in portalProp.WzProperties)
                     {
                         if (image is WzCanvasProperty portalImg)
                         {
                             Bitmap portalImage = portalImg.GetLinkedWzCanvasBitmap();
                             defaultImage = portalImage;
-
                             images.Add(portalImage);
                         }
                     }
@@ -1697,8 +1993,6 @@ namespace HaCreator.GUI
         /// <summary>
         /// On click unpack from .wz to -> .img files
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void button_unpack_Click(object sender, EventArgs e)
         {
             UnpackWzToImg unpacker = new UnpackWzToImg();
@@ -1709,21 +2003,17 @@ namespace HaCreator.GUI
         /// <summary>
         /// Opens the data source settings dialog
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         private void button_settings_Click(object sender, EventArgs e)
         {
             using (var settingsForm = new DataSourceSettings())
             {
                 if (settingsForm.ShowDialog(this) == DialogResult.OK)
                 {
-                    // Reload configuration if settings were changed
                     if (settingsForm.ConfigChanged)
                     {
-                        Program.StartupManager.ReloadConfig();
-
-                        // Refresh the version list if in IMG mode
-                        Program.StartupManager.ScanVersions();
+                        Program.StartupManager?.ReloadConfig();
+                        Program.StartupManager?.ScanVersions();
+                        RefreshVersionList();
                     }
                 }
             }
