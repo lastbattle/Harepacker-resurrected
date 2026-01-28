@@ -778,15 +778,30 @@ namespace HaCreator.MapSimulator.Loaders
 
             List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
 
-            // Mouse hold state
-            BaseDXDrawableItem holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            // Mouse hold state (style 12 - may not exist in beta MapleStory)
+            BaseDXDrawableItem holdState = null;
+            if (cursorHold != null)
+            {
+                holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             // Mouse clicked item state
-            BaseDXDrawableItem clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseDXDrawableItem clickableButtonState = null;
+            if (cursorClickable != null)
+            {
+                clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             // NPC hover cursor state (uses style 4 - alternate clickable, or fallback to style 1)
-            WzSubProperty npcHoverSource = cursorClickable2 ?? cursorClickable;
-            BaseDXDrawableItem npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, npcHoverSource, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseDXDrawableItem npcHoverState = null;
+            if (cursorClickable2 != null)
+            {
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable2, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
+            else if (cursorClickable != null)
+            {
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState);
         }
