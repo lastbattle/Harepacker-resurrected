@@ -1,12 +1,20 @@
+/.history
 /.vs
 /Debug
+/Dev
 /packages
 /Release
 
+/HaCreator/.vs
+/HaCreator/obj
+/HaCreator/bin
+/HaRepacker/.vs
 /HaRepacker/obj
 /HaRepacker/bin
+/MapleLib/.vs
 /MapleLib/bin
 /MapleLib/obj
+/Win32/.vs
 /Win32/bin
 /Win32/obj
 
