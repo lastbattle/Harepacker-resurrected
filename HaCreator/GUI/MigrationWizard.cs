@@ -326,7 +326,7 @@ namespace HaCreator.GUI
                     _versionName,
                     string.IsNullOrEmpty(_displayName) ? _versionName : _displayName,
                     _encryption,
-                    resolveLinks: true,
+                    resolveLinks: false,
                     _cancellationTokenSource.Token,
                     null);
 

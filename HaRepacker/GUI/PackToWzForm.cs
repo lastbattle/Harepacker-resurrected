@@ -78,9 +78,10 @@ namespace HaRepacker.GUI
                     label_format.ForeColor = System.Drawing.Color.Black;
                 }
 
-                // Auto-fill patch version from manifest
+                // Respect manifest patchVersion verbatim so "0 = auto" persists across sessions.
                 int patchVersion = _versionInfo.PatchVersion;
-                if (patchVersion > 0 && patchVersion <= numericUpDown_patchVersion.Maximum)
+                if (patchVersion >= numericUpDown_patchVersion.Minimum &&
+                    patchVersion <= numericUpDown_patchVersion.Maximum)
                 {
                     numericUpDown_patchVersion.Value = patchVersion;
                 }
@@ -107,12 +108,7 @@ namespace HaRepacker.GUI
         {
             comboBox_encryption.Items.Clear();
 
-            // Get the encryption from manifest (if available)
-            WzMapleVersion manifestEncryption = WzMapleVersion.BMS;
-            if (_versionInfo != null && !string.IsNullOrEmpty(_versionInfo.Encryption))
-            {
-                Enum.TryParse<WzMapleVersion>(_versionInfo.Encryption, out manifestEncryption);
-            }
+            WzMapleVersion manifestEncryption = GetRecommendedEncryption();
 
             // Add encryption options with recommended marker
             var encryptionOptions = new[]
@@ -152,6 +148,61 @@ namespace HaRepacker.GUI
                 return item.Encryption;
             }
             return WzMapleVersion.BMS;
+        }
+
+        /// <summary>
+        /// Resolves recommended encryption from manifest metadata.
+        /// Falls back to SourceRegion when Encryption is missing.
+        /// </summary>
+        private WzMapleVersion GetRecommendedEncryption()
+        {
+            if (_versionInfo != null)
+            {
+                if (!string.IsNullOrEmpty(_versionInfo.Encryption) &&
+                    Enum.TryParse<WzMapleVersion>(_versionInfo.Encryption, true, out var parsed))
+                {
+                    return parsed;
+                }
+
+                if (!string.IsNullOrEmpty(_versionInfo.SourceRegion))
+                {
+                    switch (_versionInfo.SourceRegion.Trim().ToUpperInvariant())
+                    {
+                        case "GMS":
+                            return WzMapleVersion.GMS;
+                        case "EMS":
+                            return WzMapleVersion.EMS;
+                        case "CLASSIC":
+                            return WzMapleVersion.CLASSIC;
+                    }
+                }
+            }
+
+            return WzMapleVersion.BMS;
+        }
+
+        /// <summary>
+        /// Extracts version number from strings like "v83", "gms_v230", "GMS v83 (Pre-Big Bang)".
+        /// </summary>
+        private int ExtractVersionNumber(string versionString)
+        {
+            if (string.IsNullOrEmpty(versionString))
+                return 0;
+
+            var match = System.Text.RegularExpressions.Regex.Match(
+                versionString, @"v(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int version))
+            {
+                return version;
+            }
+
+            match = System.Text.RegularExpressions.Regex.Match(versionString, @"(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out version))
+            {
+                return version;
+            }
+
+            return 0;
         }
 
         private void InitializeComponent()
@@ -285,19 +336,19 @@ namespace HaRepacker.GUI
             this.label_patchVersion.AutoSize = true;
             this.label_patchVersion.Location = new System.Drawing.Point(12, 350);
             this.label_patchVersion.Name = "label_patchVersion";
-            this.label_patchVersion.Size = new System.Drawing.Size(81, 15);
+            this.label_patchVersion.Size = new System.Drawing.Size(122, 15);
             this.label_patchVersion.TabIndex = 13;
-            this.label_patchVersion.Text = "Patch Version:";
+            this.label_patchVersion.Text = "Patch Version (0=auto):";
             //
             // numericUpDown_patchVersion
             //
             this.numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 348);
             this.numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
-            this.numericUpDown_patchVersion.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.numericUpDown_patchVersion.Minimum = new decimal(new int[] { 0, 0, 0, 0 });
             this.numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
             this.numericUpDown_patchVersion.Size = new System.Drawing.Size(80, 23);
             this.numericUpDown_patchVersion.TabIndex = 14;
-            this.numericUpDown_patchVersion.Value = new decimal(new int[] { 1, 0, 0, 0 });
+            this.numericUpDown_patchVersion.Value = new decimal(new int[] { 0, 0, 0, 0 });
             //
             // label_format
             //
@@ -437,13 +488,26 @@ namespace HaRepacker.GUI
                 {
                     int imgCount = Directory.EnumerateFiles(categoryPath, "*.img", SearchOption.AllDirectories).Count();
                     int subDirCount = Directory.EnumerateDirectories(categoryPath, "*", SearchOption.AllDirectories).Count();
+                    bool hasListJson = category.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                       File.Exists(Path.Combine(categoryPath, "List.json"));
 
-                    // Add if it has .img files OR subdirectories (for structures like Base.wz)
-                    if (imgCount > 0 || subDirCount > 0)
+                    // Add if it has .img files, subdirectories, or List.json (pre-BB List category).
+                    if (imgCount > 0 || subDirCount > 0 || hasListJson)
                     {
-                        string displayName = imgCount > 0
-                            ? $"{category} ({imgCount} images)"
-                            : $"{category} (directory structure)";
+                        string displayName;
+                        if (imgCount > 0)
+                        {
+                            displayName = $"{category} ({imgCount} images)";
+                        }
+                        else if (hasListJson)
+                        {
+                            displayName = $"{category} (List.json)";
+                        }
+                        else
+                        {
+                            displayName = $"{category} (directory structure)";
+                        }
+
                         checkedListBox_categories.Items.Add(displayName, true);
                         addedCategories.Add(category);
                     }
@@ -463,12 +527,25 @@ namespace HaRepacker.GUI
 
                 int imgCount = Directory.EnumerateFiles(dirPath, "*.img", SearchOption.AllDirectories).Count();
                 int subDirCount = Directory.EnumerateDirectories(dirPath, "*", SearchOption.AllDirectories).Count();
+                bool hasListJson = dirName.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                   File.Exists(Path.Combine(dirPath, "List.json"));
 
-                if (imgCount > 0 || subDirCount > 0)
+                if (imgCount > 0 || subDirCount > 0 || hasListJson)
                 {
-                    string displayName = imgCount > 0
-                        ? $"{dirName} ({imgCount} images)"
-                        : $"{dirName} (directory structure)";
+                    string displayName;
+                    if (imgCount > 0)
+                    {
+                        displayName = $"{dirName} ({imgCount} images)";
+                    }
+                    else if (hasListJson)
+                    {
+                        displayName = $"{dirName} (List.json)";
+                    }
+                    else
+                    {
+                        displayName = $"{dirName} (directory structure)";
+                    }
+
                     checkedListBox_categories.Items.Add(displayName, true);
                 }
             }
@@ -533,6 +610,40 @@ namespace HaRepacker.GUI
             }
         }
 
+        /// <summary>
+        /// Persists selected packing settings to manifest.json so future pack sessions
+        /// reuse the same effective encryption/format defaults.
+        /// </summary>
+        private void SavePackingSettingsToManifest()
+        {
+            if (_versionInfo == null)
+            {
+                return;
+            }
+
+            string manifestPath = Path.Combine(_versionPath, "manifest.json");
+            if (!File.Exists(manifestPath))
+            {
+                return;
+            }
+
+            try
+            {
+                _versionInfo.Encryption = GetSelectedEncryption().ToString();
+                _versionInfo.Is64Bit = checkBox_64bit.Checked;
+                _versionInfo.IsBetaMs = checkBox_betaFormat.Checked;
+
+                _versionInfo.PatchVersion = (short)numericUpDown_patchVersion.Value;
+
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(_versionInfo, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(manifestPath, json);
+            }
+            catch
+            {
+                // Best-effort persistence only; packing should continue even if manifest write fails.
+            }
+        }
+
         private async void button_pack_Click(object sender, EventArgs e)
         {
             if (_isPacking)
@@ -566,6 +677,8 @@ namespace HaRepacker.GUI
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
+
+            SavePackingSettingsToManifest();
 
             // Start packing
             _isPacking = true;
