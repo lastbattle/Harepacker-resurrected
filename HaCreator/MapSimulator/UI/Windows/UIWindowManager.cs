@@ -26,6 +26,8 @@ namespace HaCreator.MapSimulator.UI
         public UIWindowBase SkillWindow { get; private set; }
         public UIWindowBase QuestWindow { get; private set; }
         public UIWindowBase AbilityWindow { get; private set; }
+        public QuickSlotUI QuickSlotWindow { get; private set; }
+        public SkillMacroUI SkillMacroWindow { get; private set; }
 
         // Window that currently has focus (topmost)
         private UIWindowBase _focusedWindow;
@@ -40,7 +42,9 @@ namespace HaCreator.MapSimulator.UI
             { Keys.E, "Equipment" },
             { Keys.S, "Skills" },
             { Keys.Q, "Quest" },
-            { Keys.A, "Ability" }
+            { Keys.A, "Ability" },
+            { Keys.OemTilde, "QuickSlot" }  // ` key toggles quick slot bar
+            // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
         };
 
         // Last key states for toggle detection
@@ -126,6 +130,24 @@ namespace HaCreator.MapSimulator.UI
         {
             AbilityWindow = abilityWindow;
             RegisterWindow(abilityWindow);
+        }
+
+        /// <summary>
+        /// Register the quick slot window for skill hotkey assignment
+        /// </summary>
+        public void RegisterQuickSlotWindow(QuickSlotUI quickSlotWindow)
+        {
+            QuickSlotWindow = quickSlotWindow;
+            RegisterWindow(quickSlotWindow);
+        }
+
+        /// <summary>
+        /// Register the skill macro window for creating skill macros
+        /// </summary>
+        public void RegisterSkillMacroWindow(SkillMacroUI skillMacroWindow)
+        {
+            SkillMacroWindow = skillMacroWindow;
+            RegisterWindow(skillMacroWindow);
         }
 
         /// <summary>
@@ -402,6 +424,17 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Utility
+        /// <summary>
+        /// Set fonts for all windows that support text rendering
+        /// </summary>
+        public void SetFonts(SpriteFont font)
+        {
+            foreach (var window in windows)
+            {
+                window.SetFont(font);
+            }
+        }
+
         /// <summary>
         /// Set position for a window
         /// </summary>

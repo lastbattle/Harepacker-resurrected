@@ -111,12 +111,17 @@ namespace HaCreator.MapSimulator.UI {
             List<UIObject> otherUI)
             : base(frame, false) {
 
-            uiButtons.Add(obj_Ui_BtCashShop);
+            // Add buttons with null checks (pre-BigBang may have fewer buttons)
+            if (obj_Ui_BtCashShop != null)
+                uiButtons.Add(obj_Ui_BtCashShop);
             if (obj_Ui_BtMTS != null)
                 uiButtons.Add(obj_Ui_BtMTS);
-            uiButtons.Add(obj_Ui_BtMenu);
-            uiButtons.Add(obj_Ui_BtSystem);
-            uiButtons.Add(obj_Ui_BtChannel);
+            if (obj_Ui_BtMenu != null)
+                uiButtons.Add(obj_Ui_BtMenu);
+            if (obj_Ui_BtSystem != null)
+                uiButtons.Add(obj_Ui_BtSystem);
+            if (obj_Ui_BtChannel != null)
+                uiButtons.Add(obj_Ui_BtChannel);
 
             uiButtons.AddRange(otherUI);
 

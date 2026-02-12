@@ -489,8 +489,24 @@ namespace HaCreator.MapSimulator
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
             WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
 
-            _gameState.IsBigBangUpdate = uiWindow2Image?["BigBang!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // different rendering for pre and post-bb, to support multiple vers
-            _gameState.IsBigBang2Update = uiWindow2Image?["BigBang2!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"] != null; // chaos update
+            // Skill.wz and String.wz for skill window content
+            WzFile skillWzFile = null;
+            WzFile stringWzFile = null;
+            try
+            {
+                var fileManager = WzFileManager.fileManager;
+                if (fileManager != null)
+                {
+                    var skillDir = fileManager["skill"];
+                    skillWzFile = skillDir?.WzFileParent;
+                    var stringDir = fileManager["string"];
+                    stringWzFile = stringDir?.WzFileParent;
+                }
+            }
+            catch { }
+
+            _gameState.IsBigBangUpdate = WzFileManager.IsBigBangUpdate(uiWindow2Image); // different rendering for pre and post-bb, to support multiple vers
+            _gameState.IsBigBang2Update = WzFileManager.IsBigBang2Update(uiWindow2Image); // chaos update
 
             // BGM
             if (Program.InfoManager.BGMs.ContainsKey(_mapBoard.MapInfo.bgm))
@@ -714,6 +730,7 @@ namespace HaCreator.MapSimulator
                 if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap) {
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
+                        skillWzFile, stringWzFile,
                         GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
                 }
             });
@@ -723,6 +740,9 @@ namespace HaCreator.MapSimulator
             {
                 Thread.Sleep(100);
             }
+
+            // Set fonts on UI windows after all tasks complete
+            uiWindowManager?.SetFonts(_fontChat);
 
             // Initialize mob foothold references after all mobs are loaded
             InitializeMobFootholds();
@@ -1172,6 +1192,22 @@ namespace HaCreator.MapSimulator
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
             WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
 
+            // Skill.wz and String.wz for skill window content
+            WzFile skillWzFile = null;
+            WzFile stringWzFile = null;
+            try
+            {
+                var fileManager = WzFileManager.fileManager;
+                if (fileManager != null)
+                {
+                    var skillDir = fileManager["skill"];
+                    skillWzFile = skillDir?.WzFileParent;
+                    var stringDir = fileManager["string"];
+                    stringWzFile = stringDir?.WzFileParent;
+                }
+            }
+            catch { }
+
             // BGM - only reload if different from current BGM
             string newBgmName = _mapBoard.MapInfo.bgm;
             if (_currentBgmName != newBgmName)
@@ -1325,13 +1361,15 @@ namespace HaCreator.MapSimulator
                 }
             });
 
-            // Recreate UI Windows (Inventory, Equipment, Skills, Quest)
+            // Reuse existing UI Windows if available (UI windows are preserved across map changes)
+            // This preserves skill data, hotkey assignments, and other UI state
             Task t_uiWindows = Task.Run(() =>
             {
-                if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap)
+                if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap && uiWindowManager == null)
                 {
                     uiWindowManager = UIWindowLoader.CreateUIWindowManager(
                         uiWindow1Image, uiWindow2Image, uiBasicImage, soundUIImage,
+                        skillWzFile, stringWzFile,
                         GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight, _gameState.IsBigBangUpdate);
                 }
             });
@@ -1348,6 +1386,9 @@ namespace HaCreator.MapSimulator
 
             // Wait for all loading tasks
             Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_uiWindows, t_cursor);
+
+            // Set fonts on UI windows after all tasks complete
+            uiWindowManager?.SetFonts(_fontChat);
 
             // Initialize status bar character stats display after map change
             if (statusBarUi != null)
@@ -3790,10 +3831,54 @@ namespace HaCreator.MapSimulator
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
 
-            // Set up foothold lookup callback using shared Board method
+            // Set up foothold lookup callback
+            var footholds = _mapBoard.BoardItems.FootholdLines;
             _playerManager.SetFootholdLookup((x, y, searchRange) =>
             {
-                return _mapBoard.FindFootholdBelow(x, y, searchRange);
+                // Find foothold at position
+                if (footholds == null || footholds.Count == 0)
+                    return null;
+
+                FootholdLine bestFh = null;
+                float bestDist = float.MaxValue;
+
+                // Allow finding footholds slightly above player (for walking transitions)
+                // When walking between connected footholds, the next foothold might be
+                // at a slightly higher Y position
+                const float upwardTolerance = 10f;
+
+                foreach (var fh in footholds)
+                {
+                    // Check if X is within foothold range
+                    float fhMinX = Math.Min(fh.FirstDot.X, fh.SecondDot.X);
+                    float fhMaxX = Math.Max(fh.FirstDot.X, fh.SecondDot.X);
+
+                    if (x < fhMinX || x > fhMaxX)
+                        continue;
+
+                    // Calculate Y at X position on this foothold
+                    float dx = fh.SecondDot.X - fh.FirstDot.X;
+                    float dy = fh.SecondDot.Y - fh.FirstDot.Y;
+                    float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
+                    float fhY = fh.FirstDot.Y + t * dy;
+
+                    // Check if foothold is within range (below or slightly above player)
+                    // dist > 0 means foothold is below, dist < 0 means foothold is above
+                    float dist = fhY - y;
+                    float absDist = Math.Abs(dist);
+
+                    // Accept footholds below (within searchRange) or slightly above (within tolerance)
+                    if ((dist >= 0 && dist < searchRange) || (dist < 0 && -dist <= upwardTolerance))
+                    {
+                        if (absDist < bestDist)
+                        {
+                            bestDist = absDist;
+                            bestFh = fh;
+                        }
+                    }
+                }
+
+                return bestFh;
             });
 
             // Set up ladder lookup callback
@@ -3898,10 +3983,44 @@ namespace HaCreator.MapSimulator
             // Set spawn point for new map
             _playerManager.SetSpawnPoint(spawnX, spawnY);
 
-            // Set up foothold lookup callback for new map using shared Board method
+            // Set up foothold lookup callback for new map
+            var footholds = _mapBoard.BoardItems.FootholdLines;
             _playerManager.SetFootholdLookup((x, y, searchRange) =>
             {
-                return _mapBoard.FindFootholdBelow(x, y, searchRange);
+                if (footholds == null || footholds.Count == 0)
+                    return null;
+
+                FootholdLine bestFh = null;
+                float bestDist = float.MaxValue;
+                const float upwardTolerance = 10f;
+
+                foreach (var fh in footholds)
+                {
+                    float fhMinX = Math.Min(fh.FirstDot.X, fh.SecondDot.X);
+                    float fhMaxX = Math.Max(fh.FirstDot.X, fh.SecondDot.X);
+
+                    if (x < fhMinX || x > fhMaxX)
+                        continue;
+
+                    float dx = fh.SecondDot.X - fh.FirstDot.X;
+                    float dy = fh.SecondDot.Y - fh.FirstDot.Y;
+                    float t = (dx != 0) ? (x - fh.FirstDot.X) / dx : 0;
+                    float fhY = fh.FirstDot.Y + t * dy;
+
+                    float dist = fhY - y;
+                    float absDist = Math.Abs(dist);
+
+                    if ((dist >= 0 && dist < searchRange) || (dist < 0 && -dist <= upwardTolerance))
+                    {
+                        if (absDist < bestDist)
+                        {
+                            bestDist = absDist;
+                            bestFh = fh;
+                        }
+                    }
+                }
+
+                return bestFh;
             });
 
             // Set up ladder lookup callback for new map
@@ -3993,9 +4112,9 @@ namespace HaCreator.MapSimulator
                 MaxMP = player.MaxMP,
                 Level = player.Level,
                 Name = player.Build?.Name ?? "Player",
-                Job = "Beginner", // Default job since CharacterBuild doesn't have job
-                EXP = 0,         // EXP not tracked in current implementation
-                MaxEXP = 100     // Default max EXP
+                Job = player.Build?.JobName ?? "Beginner",
+                EXP = player.Build?.Exp ?? 0,
+                MaxEXP = player.Build?.ExpToNextLevel ?? 100
             };
         }
 
@@ -4350,12 +4469,16 @@ namespace HaCreator.MapSimulator
 
                 statusBarUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
 
-                statusBarChatUI.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
-                            mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
-                            null,
-                            _renderParams,
-                            TickCount);
-                statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                // StatusBarChatUI may be null for pre-BigBang versions
+                if (statusBarChatUI != null)
+                {
+                    statusBarChatUI.Draw(_spriteBatch, _skeletonMeshRenderer, gameTime,
+                                mapShiftX, mapShiftY, minimapPos.X, minimapPos.Y,
+                                null,
+                                _renderParams,
+                                TickCount);
+                    statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                }
             }
 
             // Minimap

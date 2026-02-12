@@ -38,6 +38,17 @@ namespace HaCreator.MapSimulator.Character
         public float Speed { get; set; } = 100;
         public float JumpPower { get; set; } = 100;
 
+        // Skill hotkey configuration
+        // Key: slot index (0-27), Value: skill ID
+        // Slots 0-7: Primary hotkeys (Skill1-8)
+        // Slots 8-19: Function key hotkeys (F1-F12)
+        // Slots 20-27: Ctrl+Number hotkeys (Ctrl+1-8)
+        public Dictionary<int, int> SkillHotkeys { get; set; } = new();
+
+        // Learned skill levels
+        // Key: skill ID, Value: skill level
+        public Dictionary<int, int> SkillLevels { get; set; } = new();
+
         /// <summary>
         /// Create preset from build
         /// </summary>
@@ -115,6 +126,50 @@ namespace HaCreator.MapSimulator.Character
 
             return build;
         }
+
+        /// <summary>
+        /// Copy skill configuration from a SkillManager
+        /// </summary>
+        public void CopySkillsFrom(Skills.SkillManager skillManager)
+        {
+            if (skillManager == null) return;
+
+            // Copy hotkey assignments
+            SkillHotkeys = skillManager.GetAllHotkeys();
+
+            // Copy learned skill levels
+            SkillLevels.Clear();
+            foreach (var skill in skillManager.GetLearnedSkills())
+            {
+                int level = skillManager.GetSkillLevel(skill.SkillId);
+                if (level > 0)
+                {
+                    SkillLevels[skill.SkillId] = level;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Apply skill configuration to a SkillManager
+        /// </summary>
+        public void ApplySkillsTo(Skills.SkillManager skillManager)
+        {
+            if (skillManager == null) return;
+
+            // Load hotkey assignments
+            skillManager.LoadHotkeys(SkillHotkeys);
+
+            // Load skill levels
+            foreach (var kv in SkillLevels)
+            {
+                skillManager.SetSkillLevel(kv.Key, kv.Value);
+            }
+        }
+
+        /// <summary>
+        /// Check if this preset has any skill configuration
+        /// </summary>
+        public bool HasSkillConfiguration => (SkillHotkeys?.Count ?? 0) > 0 || (SkillLevels?.Count ?? 0) > 0;
     }
 
     /// <summary>

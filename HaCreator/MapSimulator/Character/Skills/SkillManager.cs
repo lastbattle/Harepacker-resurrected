@@ -14,6 +14,20 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillManager
     {
+        #region Constants
+
+        // Hotkey slot counts
+        public const int PRIMARY_SLOT_COUNT = 8;       // Skill1-8 (indices 0-7)
+        public const int FUNCTION_SLOT_COUNT = 12;     // F1-F12 (indices 8-19)
+        public const int CTRL_SLOT_COUNT = 8;          // Ctrl+1-8 (indices 20-27)
+        public const int TOTAL_SLOT_COUNT = PRIMARY_SLOT_COUNT + FUNCTION_SLOT_COUNT + CTRL_SLOT_COUNT;
+
+        // Slot index offsets
+        public const int FUNCTION_SLOT_OFFSET = PRIMARY_SLOT_COUNT;
+        public const int CTRL_SLOT_OFFSET = PRIMARY_SLOT_COUNT + FUNCTION_SLOT_COUNT;
+
+        #endregion
+
         #region Properties
 
         private readonly SkillLoader _loader;
@@ -30,8 +44,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _skillLevels = new(); // skillId -> level
         private List<SkillData> _availableSkills = new();
 
-        // Hotkeys
-        private readonly Dictionary<int, int> _skillHotkeys = new(); // keyIndex -> skillId
+        // Hotkeys - supports 28 total slots:
+        // 0-7: Primary slots (Skill1-8)
+        // 8-19: Function key slots (F1-F12)
+        // 20-27: Ctrl+Number slots (Ctrl+1-8)
+        private readonly Dictionary<int, int> _skillHotkeys = new(); // slotIndex -> skillId
 
         // Counters
         private int _nextProjectileId = 1;
@@ -93,24 +110,201 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         /// <summary>
-        /// Set skill hotkey
+        /// Set skill hotkey by absolute slot index (0-27)
         /// </summary>
-        public void SetHotkey(int keyIndex, int skillId)
+        public void SetHotkey(int slotIndex, int skillId)
         {
-            _skillHotkeys[keyIndex] = skillId;
+            if (slotIndex < 0 || slotIndex >= TOTAL_SLOT_COUNT)
+                return;
+
+            if (skillId <= 0)
+            {
+                _skillHotkeys.Remove(slotIndex);
+            }
+            else
+            {
+                _skillHotkeys[slotIndex] = skillId;
+            }
         }
 
         /// <summary>
-        /// Get skill on hotkey
+        /// Get skill on hotkey by absolute slot index (0-27)
         /// </summary>
-        public int GetHotkeySkill(int keyIndex)
+        public int GetHotkeySkill(int slotIndex)
         {
-            return _skillHotkeys.TryGetValue(keyIndex, out int skillId) ? skillId : 0;
+            return _skillHotkeys.TryGetValue(slotIndex, out int skillId) ? skillId : 0;
+        }
+
+        /// <summary>
+        /// Set primary hotkey (slots 0-7, used by Skill1-8 keys)
+        /// </summary>
+        public void SetPrimaryHotkey(int index, int skillId)
+        {
+            if (index >= 0 && index < PRIMARY_SLOT_COUNT)
+                SetHotkey(index, skillId);
+        }
+
+        /// <summary>
+        /// Get primary hotkey skill (slots 0-7)
+        /// </summary>
+        public int GetPrimaryHotkey(int index)
+        {
+            return index >= 0 && index < PRIMARY_SLOT_COUNT ? GetHotkeySkill(index) : 0;
+        }
+
+        /// <summary>
+        /// Set function key hotkey (F1-F12, slots 8-19)
+        /// </summary>
+        public void SetFunctionHotkey(int index, int skillId)
+        {
+            if (index >= 0 && index < FUNCTION_SLOT_COUNT)
+                SetHotkey(FUNCTION_SLOT_OFFSET + index, skillId);
+        }
+
+        /// <summary>
+        /// Get function key hotkey skill (F1-F12, slots 8-19)
+        /// </summary>
+        public int GetFunctionHotkey(int index)
+        {
+            return index >= 0 && index < FUNCTION_SLOT_COUNT ? GetHotkeySkill(FUNCTION_SLOT_OFFSET + index) : 0;
+        }
+
+        /// <summary>
+        /// Set Ctrl+Number hotkey (Ctrl+1-8, slots 20-27)
+        /// </summary>
+        public void SetCtrlHotkey(int index, int skillId)
+        {
+            if (index >= 0 && index < CTRL_SLOT_COUNT)
+                SetHotkey(CTRL_SLOT_OFFSET + index, skillId);
+        }
+
+        /// <summary>
+        /// Get Ctrl+Number hotkey skill (Ctrl+1-8, slots 20-27)
+        /// </summary>
+        public int GetCtrlHotkey(int index)
+        {
+            return index >= 0 && index < CTRL_SLOT_COUNT ? GetHotkeySkill(CTRL_SLOT_OFFSET + index) : 0;
+        }
+
+        /// <summary>
+        /// Clear a hotkey slot
+        /// </summary>
+        public void ClearHotkey(int slotIndex)
+        {
+            _skillHotkeys.Remove(slotIndex);
+        }
+
+        /// <summary>
+        /// Get the slot index where a skill is assigned (or -1 if not found)
+        /// </summary>
+        public int FindSkillSlot(int skillId)
+        {
+            foreach (var kv in _skillHotkeys)
+            {
+                if (kv.Value == skillId)
+                    return kv.Key;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Get all hotkey configurations for saving
+        /// Returns dictionary of slotIndex -> skillId
+        /// </summary>
+        public Dictionary<int, int> GetAllHotkeys()
+        {
+            return new Dictionary<int, int>(_skillHotkeys);
+        }
+
+        /// <summary>
+        /// Load all hotkey configurations
+        /// </summary>
+        public void LoadHotkeys(Dictionary<int, int> hotkeys)
+        {
+            _skillHotkeys.Clear();
+            if (hotkeys == null) return;
+
+            foreach (var kv in hotkeys)
+            {
+                if (kv.Key >= 0 && kv.Key < TOTAL_SLOT_COUNT && kv.Value > 0)
+                {
+                    _skillHotkeys[kv.Key] = kv.Value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Clear all hotkeys
+        /// </summary>
+        public void ClearAllHotkeys()
+        {
+            _skillHotkeys.Clear();
         }
 
         #endregion
 
         #region Skill Casting
+
+        // Skill queue for macro execution
+        private readonly Queue<int> _skillQueue = new();
+        private int _lastQueuedSkillTime = 0;
+        private const int SKILL_QUEUE_DELAY = 100; // ms between queued skill attempts
+
+        /// <summary>
+        /// Queue a skill for execution (used by skill macros)
+        /// </summary>
+        public void QueueSkill(int skillId)
+        {
+            if (skillId > 0)
+            {
+                _skillQueue.Enqueue(skillId);
+            }
+        }
+
+        /// <summary>
+        /// Clear the skill queue
+        /// </summary>
+        public void ClearSkillQueue()
+        {
+            _skillQueue.Clear();
+        }
+
+        /// <summary>
+        /// Process queued skills (called from Update)
+        /// </summary>
+        private void ProcessSkillQueue(int currentTime)
+        {
+            if (_skillQueue.Count == 0)
+                return;
+
+            // Rate limit queue processing
+            if (currentTime - _lastQueuedSkillTime < SKILL_QUEUE_DELAY)
+                return;
+
+            // Try to cast the next queued skill
+            while (_skillQueue.Count > 0)
+            {
+                int skillId = _skillQueue.Peek();
+
+                if (TryCastSkill(skillId, currentTime))
+                {
+                    _skillQueue.Dequeue();
+                    _lastQueuedSkillTime = currentTime;
+                    break; // Only cast one skill per frame
+                }
+                else if (!CanCastSkill(skillId, currentTime))
+                {
+                    // Can't cast this skill (on cooldown, no MP, etc.)
+                    // Remove it from queue to avoid blocking
+                    _skillQueue.Dequeue();
+                }
+                else
+                {
+                    // Skill might be castable later, keep it in queue
+                    break;
+                }
+            }
+        }
 
         /// <summary>
         /// Try to cast a skill
@@ -1085,6 +1279,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     }
                 }
             }
+
+            // Process skill queue (for macros)
+            ProcessSkillQueue(currentTime);
 
             // Update projectiles
             UpdateProjectiles(currentTime, deltaTime);
