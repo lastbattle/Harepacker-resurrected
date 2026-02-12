@@ -953,23 +953,27 @@ namespace HaCreator.MapEditor
                 // Show Pack to WZ dialog for IMG filesystem mode
                 if (Program.DataSource != null)
                 {
-                    // Get the version path from DataSource
+                    // Get the version path and data source from DataSource
                     string versionPath = null;
+                    MapleLib.Img.ImgFileSystemDataSource imgDataSource = null;
+
                     if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDs)
                     {
                         versionPath = imgDs.Manager?.VersionPath;
+                        imgDataSource = imgDs;
                     }
                     else if (Program.DataSource is MapleLib.Img.HybridDataSource hybridDs)
                     {
                         // Try to get from hybrid's img source
                         versionPath = hybridDs.ImgSource?.Manager?.VersionPath;
+                        imgDataSource = hybridDs.ImgSource;
                     }
 
                     if (!string.IsNullOrEmpty(versionPath))
                     {
                         lock (multiBoard)
                         {
-                            PackToWz packDialog = new PackToWz(versionPath);
+                            PackToWz packDialog = new PackToWz(versionPath, imgDataSource);
                             packDialog.ShowDialog();
                         }
                         return;
