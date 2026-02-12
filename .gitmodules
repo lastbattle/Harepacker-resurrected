@@ -6,3 +6,6 @@
 	path = dockpanelsuite
 	url = https://github.com/lastbattle/dockpanelsuiteCore
 	branch = main
+[submodule "WzImg-MCP-Server"]
+	path = WzImg-MCP-Server
+	url = https://github.com/lastbattle/WzImg-MCP-Server

@@ -41,9 +41,8 @@ A collection of tools for MapleStory, including a .wz file and level/field/map e
 
 ### Cloning
 ```
-git clone https://github.com/lastbattle/Harepacker-resurrected.git
-git submodule init
-git submodule update
+ git clone https://github.com/lastbattle/Harepacker-resurrected.git
+ git submodule update --init --recursive
 ```
 
 ```nuget Update-Package```
@@ -53,16 +52,26 @@ git submodule update
 
 - [Spine-Runtime](https://github.com/EsotericSoftware/spine-runtimes)
 - [MapleLib](https://github.com/lastbattle/MapleLib)
+- [WzImg-MCP-Server](https://github.com/lastbattle/WzImg-MCP-Server) (Codex MCP tooling / IMG data access)
+
+### Codex MCP (optional)
+If you want to use the `wzimg` MCP server with OpenAI Codex:
+- Build it (after cloning with submodules):
+```
+dotnet publish .\\WzImg-MCP-Server\\WzImgMCP\\WzImgMCP.csproj -c Release -r win-x64 --self-contained false
+```
+- Then configure it in Codex (`codex mcp add ...`) pointing at:
+`WzImg-MCP-Server\\WzImgMCP\\bin\\Release\\net10.0-windows\\win-x64\\publish\\WzImgMCP.exe`
 
 
-----
+ ----
 
 ## Documentation
 
 Technical documentation for HaSuite internals.
 
 ### WZ File Format
-- [WZ Format Overview](docs/wz-format/README.md) - MapleStory WZ file formats (Beta, Pre-BB, Post-BB, 64-bit, MS/NM packs)
+- [WZ Format Documentation](docs/wz-format/README.md) - WZ/IMG file structure, encryption, and format history
 - [WzFileManager Reference](docs/wz-format/WzFileManager.md) - Central WZ file loading and management class
 - [Canvas & Outlink System](docs/wz-format/canvas-outlink-system.md) - _Canvas directories and _outlink/_inlink resolution
 
