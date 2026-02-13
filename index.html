@@ -1,233 +1,923 @@
 <!DOCTYPE html>
-<html>
-	<head>
-		<meta http-equiv="Content-Type" content="text/html;charset=UTF-8">
-		<title>HaSuite Help</title>
-		<style type="text/css">
-			*{
-				padding: 0;
-				margin: 0;
-				box-sizing: border-box;
-			}
-			body{
-				color: #484036;
-				font-family: sans-serif;
-				background-color: #EEE;
-			}
-			::selection{
-				background-color: #484848;
-				color: #EEE;
-			}
-			nav{			
-				padding: 15px 5px;
-				background-color: #484848;
-			}
-			nav div{
-				width: 775px;
-				margin: auto;
-				padding: 0 25px;
-			}
-			nav div h1{
-				color: #EEE;
-				font-size: 16pt;
-			}
-			nav div h1 .sub-title{
-				font-size: 15pt;
-				color: #FE973A;
-				font-family: serif;
-				font-style: oblique;
-				text-decoration: underline;
-			}
-			span{
-				font-style: oblique;
-				font-weight: bold;
-			}
-			.content{
-				margin: 50px auto 0 auto;
-				width: 100%;
-				max-width: 775px;
-				padding: 0 25px;
-			}
-			.content .article{
-				margin-top: 25px;
-				margin-bottom: 25px;
-			}
-			.content .article p{
-				padding-bottom: 10px;
-				font-size: 10pt;
-			}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HaSuite - A collection of tools for MapleStory including HaRepacker (.wz file editor) and HaCreator (map/level editor) with AI-powered map creation">
+    <meta name="keywords" content="MapleStory, HaRepacker, HaCreator, WZ Editor, Map Editor, HaSuite, AI Map Editor">
+    <title>HaSuite - HaRepacker & HaCreator for MapleStory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #FF6B35;
+            --primary-dark: #E55A2B;
+            --bg-dark: #1a1a2e;
+            --bg-darker: #16162a;
+            --bg-card: #252545;
+            --text: #e8e8e8;
+            --text-muted: #a0a0a0;
+            --border: #3a3a5a;
+            --gradient: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+            --ai-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
 
-			strong{
-				color: #FE973A;
-			}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
 
-			.article h2{
-				font-size: 15pt;
-			}
-			.disclaimer h2, .harepacker h2, .hacreator h2{
-				border-bottom: 2px solid white;
-			}
-			.disclaimer h2{
-				margin-bottom: 10px;
-			}
+        ::selection {
+            background-color: var(--primary);
+            color: white;
+        }
 
-			.requirements ul, .harepacker ul, .hacreator ul{
-				padding-left: 25px;
-			}
+        a {
+            color: var(--primary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
 
-			.requirements ul li{
-				padding: 2px 0;
-			}
-			.requirements ul li a{
-				font-size: 10pt;
-				color: #FE973A;
-				text-decoration: none;
-			}
-			.requirements ul li a:hover{
-				text-decoration: underline;
-			}
+        a:hover {
+            color: var(--primary-dark);
+        }
 
-			.harepacker h2, .hacreator h2{
-				margin-top: 50px;
-			}
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
 
-			.harepacker h3, .hacreator h3{
-				padding-top: 10px;
-				padding-bottom: 10px;
-				text-decoration: underline;
-				text-decoration-color: #FE973A;
-				font-size: 11pt;
-			}
-			.harepacker ul li, .hacreator ul li{
-				font-size: 10pt;
-				padding-bottom: 15px;
-			}
-			aside img{
-				margin: 0 auto;
-				display: block;
-			}
-			footer{
-				background-color: #484848;
-				color: #EEE;
-				padding: 50px 0;
-			}
-			footer div{
-				margin-left: auto;
-				margin-right: auto;
-				padding: 0 25px;
-				width: 100%;
-				max-width: 750px;
-				text-align: center;
-			}
-			footer h2{
-				margin-bottom: 15px;
-			}
-			footer div p{				
-				font-size: 9pt;
-			}
-			footer div ul{
-				display: flex;
-				flex-wrap: wrap;
-				justify-content: center;
-				margin-top: 10px;
-				list-style: none;
-			}
-			footer div ul li{
-				margin: 0 25px;
-			}
-			footer div ul li a{
-				color: #FE973A;
-				font-size: 9pt;
-				text-decoration: none;
-			}
-			footer div ul li a:hover{
-				text-decoration: underline;
-			}
-		</style>
-	</head>
+        /* Navigation */
+        nav {
+            background: var(--bg-darker);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
 
-	<body>
-		<div class="container">
-			<nav>
-				<div>
-					<h1>HaSuite: <span class="sub-title">help</span></h1>
-				</div>
-			</nav>
-			<main class="content">
-				<article class=" article disclaimer">
-					<h2>Disclaimer</h2>
-					<p>This program and all libraries included with it are provided free of charge and for educational and testing purposes only. You may not use any of this program or any files included with it to commit any action which is illegal in the United States or where you reside.</p>
-					<p>This	program is licensed under the Mozilla Public License (MPL), with some parts under different licenses, includeing the GNU General Public License (GPL), Microsoft Public License (Ms-PL) and MIT License. See the source code repository and the relevant LICENSE files in it for details.</p>
-				</article>
-				<article class=" article requirements">
-					<h4>System Requirements:</h4>
-					<ul>
-						<li><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40773" target="_blank">NET Framework 4.5.1</a></li>
-						<li><a href="https://www.microsoft.com/en-us/download/details.aspx?id=40784" target="_blank">Visual C++ Redistributable Packages for Visual Studio 2013</a></li>
-					</ul>
-				</article>
+        nav .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
 
-				<article class=" article harepacker">
-					<h2>HaRepacker</h2>					
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text);
+        }
 
-					<h3>Shortcut Keys:</h3>					
-					<ul>
-						<li><strong>Delet(Supr): </strong>delete all currently selected nodes.</li>
-						<li><strong>Ctrl+C \ Ctrl+V: </strong> copy\paste.</li>
-						<li><strong>Ctrl+F: </strong>the search bar.</li>
-						<li><strong>Ctrl+T: </strong>Create an empty WZ file.</li>
-						<li><strong>Ctl+A / F5: </strong>Animate all selected Canvas and UOL property.</li>
-						<li><strong>Ctl+P: </strong>Stop animating.</li>
-						<li><strong>Ctl+O: </strong>Hotkey for opening a new WZ file.</li>
-					</ul>
-					<h3>WZ Serialization (aka dumping & importing):</h3>
-					<p>HaRepacker 4 provides a few different methods for serializing WZ data. Most of them can also be deserialized (returned to WZ data form). Additionally, most methods can be performed either on the selected nodes or on a group of not-yet-loaded files. When using the second option, it is important to make sure the file is NOT loaded into HaRepacker yet.</p>
+        .logo span {
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
 
-					<h3>Serialization methods:</h3>
-					<ul>
-						<li><strong>XML –> Private server XML:</strong> Separate XML files intended to <span>be used inside an OdinMS based server’s WZ directory</span>. It can only serialize WZ files, directories or images. WZ directories and files turn into actual directories, while WZ images turn into XML files. This type of XML <span>cannot be deserialized</span> back to WZ form (aka imported)</li>
-						<li><strong>XML –> Classic:</strong> This serialization method works exactly like the previous one, but it includes png and sound data in the XML and therefore <span>can be deserialized</span>. Since this type of XML has all the information the previous one has, it <span>can also be used inside a server’s WZ directory</span> (however, this is not a recommended practice because this type of XMLs take a lot of space).</li>
-						<li><strong>XML –> New:</strong> This is the new type of serialization into XML, which was only partially available in the previous versions. This serialization method <span>only works with HaRepacker</span> and is intended purely for information storage. This serialization method will <span>export any amount of WZ properties, images or directories into a single XML file</span>. The only data it cannot serialize is List.wz data. This type of XML <span>can be deserialized</span>.</li>
-						<li><strong>PNG\MP3:</strong> Dumps only the PNG and MP3 data to disk. WZ directories and images turn into real directories, and all PNGs and MP3 files are saved to their image’s directory. <span>Cannot be deserialized</span>.</li>
-						<li><strong>IMG Files:</strong> Dumps the WZ images into *.img files. This method can only serialize WZ files, directories and images, <span>can be deserialized</span> and is  the <span>recommended method of dumping and storing information</span> as it is the fastest, most compact and most memory efficient serialization method. When an IMG file is deserialized, the file is left open and <span>cannot be moved, changed, renamed or deleted</span> until the WZ file holding the image is closed.</li>
-					</ul>
-				</article>
+        .version-badge {
+            font-size: 0.7rem;
+            background: var(--ai-gradient);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
 
-				<article class=" article hacreator">
-					<h2>HaCreator</h2>
-					<h3>B.Shortcut Keys:</h3>
-					<ul>
-						<li><strong>Left mouse button: </strong>select objects (either from map or from the objects panel)</li>
-						<li><strong>Right mouse button: </strong>release selected objects (while adding items from the objects panel), show the menu (when used on existing objects), edit map options (when used on the map tab)</li>
-						<li><strong>Double click: </strong>new foothold anchor (while adding footholds), show instance editor (when used on existing objects)</li>
-						<li><strong>Escape:</strong> deselect everything</li>
-						<li><strong>Arrow Keys: </strong> move selected items</li>
-						<li><strong>Ctrl+F: </strong>flip item</li>
-						<li><strong>Ctrl+A: </strong>select all</li>
-						<li><strong>Ctrl+Z\Y: </strong>undo\redo</li>
-						<li><strong>Numpad +\-: </strong>increase\decrease Z value</li>
-						<li><strong>Ctrl+C\V: </strong>Copy\Paste</li>
-						<li><strong>Ctrl+S: </strong>Save to HAM file</li>
-						<li><strong>Ctrl+O: </strong>Open another map</li>
-					</ul>
-				</article>
-				<aside >
-					<img src="https://media.giphy.com/media/Bxd5ulAo0R7Fu/giphy.gif" title="^_^" alt="Mushroom">
-				</aside>
-			</main>
-		</div>
-		<footer>
-			<div>
-				<h2>HaSuite</H2>
-				<p>Want to contribute? Great! Fork it, create pull request!</p>
-				<p>This is purely community driven and at my time, please dont expect me to fix things for you immediately. If there are any bugs, describe it clearly.</p>
-				<ul>
-					<li><a href="https://github.com/eaxvac/Harepacker-resurrected" target="_blank">Repository</a></li>
-					<li><a href="https://github.com/eaxvac/Harepacker-resurrected/blob/master/LICENSE" target="_blank">License</a></li>
-					<li><a href="https://github.com/eaxvac/Harepacker-resurrected/releases" target="_black">Release</a></li>
-				</ul>
-			</div>
-		</footer>
-	</body>
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 32px;
+        }
+
+        nav ul li a {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        nav ul li a:hover {
+            color: var(--primary);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 80px 0;
+            text-align: center;
+            background: linear-gradient(180deg, var(--bg-darker) 0%, var(--bg-dark) 100%);
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            line-height: 1.2;
+        }
+
+        .hero h1 span {
+            background: var(--gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .tagline {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto 16px;
+        }
+
+        .hero .version-info {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+        }
+
+        .hero .version-info strong {
+            color: var(--primary);
+        }
+
+        .badge-container {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .badge-container img {
+            height: 24px;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--gradient);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(255, 107, 53, 0.3);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 2px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* AI Feature Highlight */
+        .ai-highlight {
+            padding: 60px 0;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-top: 1px solid rgba(102, 126, 234, 0.3);
+            border-bottom: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .ai-highlight .container {
+            display: flex;
+            align-items: center;
+            gap: 48px;
+            flex-wrap: wrap;
+        }
+
+        .ai-content {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .ai-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--ai-gradient);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .ai-content h2 {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .ai-content p {
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .agent-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .agent-tag {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        /* Features Section */
+        .features {
+            padding: 80px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 48px;
+        }
+
+        .section-title h2 {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+        }
+
+        .section-title p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card.highlight {
+            border-color: rgba(102, 126, 234, 0.5);
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%);
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            background: var(--gradient);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .feature-card.highlight .feature-icon {
+            background: var(--ai-gradient);
+        }
+
+        .feature-card h3 {
+            font-size: 1.35rem;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .new-tag {
+            background: var(--ai-gradient);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        /* Screenshots Section */
+        .screenshots {
+            padding: 80px 0;
+            background: var(--bg-darker);
+        }
+
+        .screenshot-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+        }
+
+        .screenshot-card {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            transition: transform 0.3s;
+        }
+
+        .screenshot-card:hover {
+            transform: scale(1.02);
+        }
+
+        .screenshot-card img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .screenshot-card figcaption {
+            background: var(--bg-card);
+            padding: 16px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        /* Requirements Section */
+        .requirements {
+            padding: 80px 0;
+        }
+
+        .req-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .req-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .req-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 16px;
+            color: var(--primary);
+        }
+
+        .req-card ul {
+            list-style: none;
+        }
+
+        .req-card ul li {
+            padding: 8px 0;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .req-card ul li:last-child {
+            border-bottom: none;
+        }
+
+        .req-card ul li::before {
+            content: "✓";
+            color: var(--primary);
+            margin-right: 8px;
+        }
+
+        /* Compatibility Section */
+        .compatibility {
+            padding: 60px 0;
+            background: var(--bg-darker);
+        }
+
+        .compat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            text-align: center;
+        }
+
+        .compat-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .compat-item h4 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: var(--primary);
+        }
+
+        .compat-item p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Shortcuts Section */
+        .shortcuts {
+            padding: 80px 0;
+        }
+
+        .shortcut-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .shortcut-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .shortcut-section h3 {
+            font-size: 1.25rem;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        .shortcut-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .shortcut-item:last-child {
+            border-bottom: none;
+        }
+
+        .key {
+            background: var(--bg-darker);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            color: var(--primary);
+        }
+
+        .shortcut-item span:last-child {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Footer */
+        footer {
+            background: var(--bg-darker);
+            border-top: 1px solid var(--border);
+            padding: 48px 0;
+            text-align: center;
+        }
+
+        footer .logo {
+            margin-bottom: 16px;
+        }
+
+        footer p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+
+        footer ul {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            list-style: none;
+            flex-wrap: wrap;
+        }
+
+        footer ul li a {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        footer ul li a:hover {
+            color: var(--primary);
+        }
+
+        .copyright {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            nav ul {
+                display: none;
+            }
+
+            .feature-grid, .screenshot-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .ai-highlight .container {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <div class="logo">Ha<span>Suite</span> <span class="version-badge">v8.0</span></div>
+            <ul>
+                <li><a href="#features">Features</a></li>
+                <li><a href="#screenshots">Screenshots</a></li>
+                <li><a href="#requirements">Requirements</a></li>
+                <li><a href="#shortcuts">Shortcuts</a></li>
+                <li><a href="https://github.com/lastbattle/Harepacker-resurrected" target="_blank">GitHub</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="container">
+            <h1>Ha<span>Suite</span></h1>
+            <p class="tagline">A powerful collection of tools for MapleStory including a .wz file editor, level/map editor, and AI-powered map creation.</p>
+            <p class="version-info">Latest: <strong>Version 8.0.0</strong> &bull; Built on .NET 10.0 &bull; DirectX 12</p>
+
+            <div class="badge-container">
+                <img src="https://img.shields.io/github/downloads/lastbattle/Harepacker-resurrected/total.svg?style=flat-square&color=FF6B35" alt="Total Downloads">
+                <img src="https://img.shields.io/github/release/lastbattle/Harepacker-resurrected.svg?style=flat-square&color=FF6B35" alt="Latest Release">
+                <img src="https://img.shields.io/github/issues/lastbattle/Harepacker-resurrected.svg?style=flat-square" alt="Issues">
+            </div>
+
+            <div class="btn-group">
+                <a href="https://github.com/lastbattle/Harepacker-resurrected/releases" class="btn btn-primary" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download Latest
+                </a>
+                <a href="https://github.com/lastbattle/Harepacker-resurrected" class="btn btn-secondary" target="_blank">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                    View Source
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="ai-highlight">
+        <div class="container">
+            <div class="ai-content">
+                <div class="ai-badge">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>
+                    NEW IN v8.0
+                </div>
+                <h2>AI-Powered Map Editor</h2>
+                <p>Create MapleStory maps using natural language! Our multi-agent AI system uses 7 specialized agents to handle different map elements - from terrain and backgrounds to NPCs and portals.</p>
+                <div class="agent-list">
+                    <span class="agent-tag">Terrain Agent</span>
+                    <span class="agent-tag">Background Agent</span>
+                    <span class="agent-tag">Object Agent</span>
+                    <span class="agent-tag">NPC Agent</span>
+                    <span class="agent-tag">Mob Agent</span>
+                    <span class="agent-tag">Portal Agent</span>
+                    <span class="agent-tag">Life Agent</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-title">
+                <h2>Features</h2>
+                <p>Everything you need to work with MapleStory files</p>
+            </div>
+
+            <div class="feature-grid">
+                <div class="feature-card highlight">
+                    <div class="feature-icon">🤖</div>
+                    <h3>AI Map Creation <span class="new-tag">NEW</span></h3>
+                    <p>Create maps using natural language descriptions. The AI system analyzes your requirements and places appropriate tiles, objects, NPCs, and mobs automatically.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📦</div>
+                    <h3>HaRepacker</h3>
+                    <p>A powerful .wz file editor supporting all modern WZ formats including .ms encrypted files (v230+). Browse, edit, extract, and serialize WZ data with ease.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🗺️</div>
+                    <h3>HaCreator</h3>
+                    <p>Full-featured MapleStory map and level editor. Create new maps from scratch or modify existing ones with an intuitive visual interface and quest editor.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🎮</div>
+                    <h3>Map Simulator</h3>
+                    <p>Preview your maps with full mob and NPC animations. Features foothold-based pathfinding and movement simulation for testing gameplay.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🎬</div>
+                    <h3>Spine Animation</h3>
+                    <p>Built-in Spine 2D animation support for viewing and working with modern MapleStory skeletal animations.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🖼️</div>
+                    <h3>AI Upscaling</h3>
+                    <p>Integrated Real-ESRGAN support for AI-powered 2D image upscaling of MapleStory assets with color filter options.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📜</div>
+                    <h3>Quest Editor</h3>
+                    <p>Comprehensive quest creation tool for custom quests. Design NPC dialogues, requirements, and rewards for nostalgic MapleStory experiences.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Optimized Performance</h3>
+                    <p>40-70% rendering improvement for typical maps, up to 80% for large maps. Built on .NET 10.0 with DirectX 12 and spatial partitioning.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="compatibility">
+        <div class="container">
+            <div class="section-title">
+                <h2>MapleStory Version Support</h2>
+                <p>Compatible with a wide range of MapleStory versions</p>
+            </div>
+
+            <div class="compat-grid">
+                <div class="compat-item">
+                    <h4>Beta / Pre-v40</h4>
+                    <p>Early MS versions</p>
+                </div>
+                <div class="compat-item">
+                    <h4>Pre-Big Bang</h4>
+                    <p>Classic versions</p>
+                </div>
+                <div class="compat-item">
+                    <h4>Post-Big Bang</h4>
+                    <p>Modern versions</p>
+                </div>
+                <div class="compat-item">
+                    <h4>64-bit Client</h4>
+                    <p>v149.2+</p>
+                </div>
+                <div class="compat-item">
+                    <h4>.ms Encryption</h4>
+                    <p>v230+</p>
+                </div>
+                <div class="compat-item">
+                    <h4>Latest</h4>
+                    <p>Up to v264+</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="screenshots" id="screenshots">
+        <div class="container">
+            <div class="section-title">
+                <h2>Screenshots</h2>
+                <p>See HaSuite in action</p>
+            </div>
+
+            <div class="screenshot-grid">
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/109911770-a7d45e80-7ce5-11eb-9843-e4414bb6016f.png" alt="HaRepacker main interface" loading="lazy">
+                    <figcaption>HaRepacker - WZ File Browser</figcaption>
+                </figure>
+
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/109911721-85dadc00-7ce5-11eb-9111-4e2bfdbf5551.png" alt="Image preview in HaRepacker" loading="lazy">
+                    <figcaption>Image Preview Panel</figcaption>
+                </figure>
+
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/109911553-43b19a80-7ce5-11eb-8495-206a9c79d76f.png" alt="Spine animation preview" loading="lazy">
+                    <figcaption>Spine Animation Support</figcaption>
+                </figure>
+
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/208673934-e4300f74-8b6f-4866-a778-f7e675355ced.png" alt="Limen map in HaCreator" loading="lazy">
+                    <figcaption>HaCreator - Limen: Where the World Ends</figcaption>
+                </figure>
+
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/208673762-4207a6c5-0f04-42a1-8f32-f6cd39598409.jpg" alt="Rainbow Street Amherst" loading="lazy">
+                    <figcaption>Rainbow Street Amherst</figcaption>
+                </figure>
+
+                <figure class="screenshot-card">
+                    <img src="https://user-images.githubusercontent.com/4586194/208673402-8c28c9f4-72da-4c8b-a818-43ed053cf126.png" alt="Oblivion Lake map" loading="lazy">
+                    <figcaption>Oblivion Lake</figcaption>
+                </figure>
+            </div>
+        </div>
+    </section>
+
+    <section class="requirements" id="requirements">
+        <div class="container">
+            <div class="section-title">
+                <h2>System Requirements</h2>
+                <p>What you need to run HaSuite</p>
+            </div>
+
+            <div class="req-grid">
+                <div class="req-card">
+                    <h3>Operating System</h3>
+                    <ul>
+                        <li>Windows 10/11 version 1607+</li>
+                        <li>Windows Server 2016+</li>
+                    </ul>
+                </div>
+
+                <div class="req-card">
+                    <h3>Runtime</h3>
+                    <ul>
+                        <li>.NET 10.0 Runtime</li>
+                    </ul>
+                </div>
+
+                <div class="req-card">
+                    <h3>Architecture</h3>
+                    <ul>
+                        <li>x64 (64-bit)</li>
+                        <li>ARM64</li>
+                        <li>x86 (32-bit)</li>
+                    </ul>
+                </div>
+
+                <div class="req-card">
+                    <h3>Hardware</h3>
+                    <ul>
+                        <li>8GB RAM minimum</li>
+                        <li>DirectX 12 compatible GPU</li>
+                        <li>2GB VRAM minimum</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="shortcuts" id="shortcuts">
+        <div class="container">
+            <div class="section-title">
+                <h2>Keyboard Shortcuts</h2>
+                <p>Work faster with these shortcuts</p>
+            </div>
+
+            <div class="shortcut-content">
+                <div class="shortcut-section">
+                    <h3>HaRepacker</h3>
+                    <div class="shortcut-item">
+                        <span class="key">Delete</span>
+                        <span>Delete selected nodes</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+C / Ctrl+V</span>
+                        <span>Copy / Paste</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+F</span>
+                        <span>Open search bar</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+T</span>
+                        <span>Create empty WZ file</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+A / F5</span>
+                        <span>Animate selected Canvas/UOL</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+P</span>
+                        <span>Stop animation</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+O</span>
+                        <span>Open WZ file</span>
+                    </div>
+                </div>
+
+                <div class="shortcut-section">
+                    <h3>HaCreator</h3>
+                    <div class="shortcut-item">
+                        <span class="key">Left Click</span>
+                        <span>Select objects</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Right Click</span>
+                        <span>Context menu / Release selection</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Double Click</span>
+                        <span>New foothold anchor / Edit instance</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Escape</span>
+                        <span>Deselect everything</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Arrow Keys</span>
+                        <span>Move selected items</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+F</span>
+                        <span>Flip item</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+Z / Ctrl+Y</span>
+                        <span>Undo / Redo</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Numpad +/-</span>
+                        <span>Increase / Decrease Z value</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+S</span>
+                        <span>Save to HAM file</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="key">Ctrl+O</span>
+                        <span>Open another map</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <div class="logo">Ha<span>Suite</span></div>
+            <p>Community-driven MapleStory tools. Contributions welcome!</p>
+
+            <ul>
+                <li><a href="https://github.com/lastbattle/Harepacker-resurrected" target="_blank">Repository</a></li>
+                <li><a href="https://github.com/lastbattle/Harepacker-resurrected/releases" target="_blank">Releases</a></li>
+                <li><a href="https://github.com/lastbattle/Harepacker-resurrected/issues" target="_blank">Issues</a></li>
+                <li><a href="https://github.com/lastbattle/Harepacker-resurrected/blob/master/LICENSE" target="_blank">License (MIT)</a></li>
+                <li><a href="https://forum.ragezone.com/f702/release-harepacker-resurrected-1149521/" target="_blank">Ragezone Thread</a></li>
+            </ul>
+
+            <p class="copyright">
+                Copyright &copy; 2018-2025 LastBattle &bull; Originally by haha01haha01<br>
+                Licensed under MIT License
+            </p>
+        </div>
+    </footer>
+</body>
 </html>

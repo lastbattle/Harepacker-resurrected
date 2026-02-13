@@ -31,9 +31,6 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <ApplicationIcon>HaLogo.ico</ApplicationIcon>
-  </PropertyGroup>
-  <PropertyGroup>
     <StartupObject>HaRepacker.Program</StartupObject>
   </PropertyGroup>
   
@@ -64,7 +61,6 @@
     <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="HaLogo.ico" />
     <Content Include="Resources\arrow_left.png" />
     <Content Include="Resources\arrow_right.png" />
     <Content Include="Resources\Pause.png" />
