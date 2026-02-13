@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -672,6 +673,64 @@ namespace HaCreator.MapSimulator.Loaders
                 catch { }
             }
 
+            // Load skill list background (backgrnd3)
+            WzCanvasProperty backgrnd3 = (WzCanvasProperty)mainProperty["backgrnd3"];
+            if (backgrnd3 != null)
+            {
+                try
+                {
+                    System.Drawing.Bitmap bg3Bitmap = backgrnd3.GetLinkedWzCanvasBitmap();
+                    Texture2D bg3Texture = bg3Bitmap.ToTexture2D(device);
+                    IDXObject skillListBg = new DXObject(0, 0, bg3Texture, 0);
+                    System.Drawing.PointF? origin = backgrnd3.GetCanvasOriginPosition();
+                    int offsetX = origin.HasValue ? -(int)origin.Value.X : 7;
+                    int offsetY = origin.HasValue ? -(int)origin.Value.Y : 47;
+                    skill.SetSkillListBackground(skillListBg, offsetX, offsetY);
+                }
+                catch { }
+            }
+
+            // Load skill row textures (skill0, skill1 - alternating row backgrounds)
+            Texture2D skillRow0 = LoadCanvasTexture(mainProperty, "skill0", device);
+            Texture2D skillRow1 = LoadCanvasTexture(mainProperty, "skill1", device);
+            Texture2D skillLine = LoadCanvasTexture(mainProperty, "line", device);
+            skill.SetSkillRowTextures(skillRow0, skillRow1, skillLine);
+            System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Skill row textures: row0={skillRow0 != null}, row1={skillRow1 != null}, line={skillLine != null}");
+
+            // Load tab textures
+            WzSubProperty tabProperty = (WzSubProperty)mainProperty["Tab"];
+            if (tabProperty != null)
+            {
+                Texture2D[] tabEnabled = new Texture2D[5];
+                Texture2D[] tabDisabled = new Texture2D[5];
+
+                WzSubProperty enabledProperty = (WzSubProperty)tabProperty["enabled"];
+                WzSubProperty disabledProperty = (WzSubProperty)tabProperty["disabled"];
+
+                for (int i = 0; i < 5; i++)
+                {
+                    string tabIndex = i.ToString();
+                    if (enabledProperty != null)
+                        tabEnabled[i] = LoadCanvasTexture(enabledProperty, tabIndex, device);
+                    if (disabledProperty != null)
+                        tabDisabled[i] = LoadCanvasTexture(disabledProperty, tabIndex, device);
+                }
+
+                skill.SetTabTextures(tabEnabled, tabDisabled);
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab textures loaded: enabled[0]={tabEnabled[0] != null}, disabled[0]={tabDisabled[0] != null}");
+            }
+
+            // Load SP Up button textures
+            WzSubProperty spUpProperty = (WzSubProperty)mainProperty["BtSpUp"];
+            if (spUpProperty != null)
+            {
+                Texture2D spUpNormal = LoadButtonStateTexture(spUpProperty, "normal", device);
+                Texture2D spUpPressed = LoadButtonStateTexture(spUpProperty, "pressed", device);
+                Texture2D spUpDisabled = LoadButtonStateTexture(spUpProperty, "disabled", device);
+                Texture2D spUpMouseOver = LoadButtonStateTexture(spUpProperty, "mouseOver", device);
+                skill.SetSpUpTextures(spUpNormal, spUpPressed, spUpDisabled, spUpMouseOver);
+            }
+
             // Load button sounds
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
             WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
@@ -692,11 +751,245 @@ namespace HaCreator.MapSimulator.Loaders
             }
             skill.InitializeCloseButton(closeBtn);
 
-            // Load macro button
+            // Load macro button - position from WZ origin (-114, -273) means X=114, Y=273
             UIObject macroBtn = LoadButton(mainProperty, "BtMacro", btClickSound, btOverSound, device);
+            if (macroBtn != null)
+            {
+                macroBtn.X = 114;
+                macroBtn.Y = 273;
+            }
             skill.InitializeMacroButton(macroBtn);
 
             return skill;
+        }
+
+        /// <summary>
+        /// Load beginner skills into a skill window (legacy method for compatibility)
+        /// </summary>
+        public static void LoadBeginnerSkills(SkillUIBigBang skillWindow, WzFile skillWzFile, WzFile stringWzFile, GraphicsDevice device)
+        {
+            // Default to beginner job
+            LoadSkillsForJob(skillWindow, 0, device);
+        }
+
+        /// <summary>
+        /// Load skills for a character's job into a skill window
+        /// This loads all skills in the job progression path
+        /// </summary>
+        /// <param name="skillWindow">The skill window to populate</param>
+        /// <param name="jobId">The character's current job ID (e.g., 212 for Bishop)</param>
+        /// <param name="device">Graphics device for texture creation</param>
+        public static void LoadSkillsForJob(SkillUIBigBang skillWindow, int jobId, GraphicsDevice device)
+        {
+            if (skillWindow == null)
+                return;
+
+            try
+            {
+                // Get the job path (all jobs from beginner to current job)
+                var jobPath = GetJobPath(jobId);
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId}, path: [{string.Join(", ", jobPath)}]");
+
+                // Load skills for each job in the path
+                for (int tabIndex = 0; tabIndex < jobPath.Count && tabIndex < 5; tabIndex++)
+                {
+                    int job = jobPath[tabIndex];
+                    var skills = SkillDataLoader.LoadSkillsForJob(job, device);
+                    skillWindow.AddSkills(tabIndex, skills);
+                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {skills.Count} skills for job {job}");
+
+                    // Load and set the job icon and name
+                    Texture2D jobIcon = SkillDataLoader.LoadJobIcon(job, device);
+                    string jobName = SkillDataLoader.GetJobName(job);
+                    skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
+                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Set job info for {jobName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to load skills: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get the job path from beginner to the specified job
+        /// </summary>
+        private static List<int> GetJobPath(int job)
+        {
+            var path = new List<int> { 0 }; // Always include beginner
+
+            if (job == 0)
+                return path;
+
+            // Add first job (e.g., 200 for Magician)
+            int firstJob = (job / 100) * 100;
+            if (firstJob > 0)
+                path.Add(firstJob);
+
+            // Add second job (e.g., 210 for Cleric)
+            int secondJob = (job / 10) * 10;
+            if (secondJob > firstJob)
+                path.Add(secondJob);
+
+            // Add third job (e.g., 211 for Priest)
+            int thirdJob = secondJob + 1;
+            if (thirdJob > secondJob && thirdJob < job)
+                path.Add(thirdJob);
+
+            // Add current job (e.g., 212 for Bishop)
+            if (!path.Contains(job))
+                path.Add(job);
+
+            return path;
+        }
+
+        /// <summary>
+        /// Create the Skill Macro window for post-Big Bang
+        /// Structure: UI.wz/UIWindow2.img/Skill/macro
+        /// </summary>
+        public static SkillMacroUI CreateSkillMacroWindowBigBang(
+            WzImage uiWindow2Image, WzImage soundUIImage, GraphicsDevice device, int screenWidth, int screenHeight)
+        {
+            if (uiWindow2Image == null)
+                return null;
+
+            try
+            {
+                // Get the Skill/macro property
+                WzSubProperty skillProperty = (WzSubProperty)uiWindow2Image["Skill"];
+                if (skillProperty == null)
+                    return null;
+
+                WzSubProperty macroProperty = (WzSubProperty)skillProperty["macro"];
+                if (macroProperty == null)
+                    return null;
+
+                // Load background - handle both direct canvas and linked canvas
+                WzObject backgrndObj = macroProperty["backgrnd"];
+                if (backgrndObj == null)
+                    return null;
+
+                System.Drawing.Bitmap bgBitmap = null;
+                if (backgrndObj is WzCanvasProperty canvasProp)
+                {
+                    bgBitmap = canvasProp.GetLinkedWzCanvasBitmap();
+                }
+                else if (backgrndObj is WzSubProperty subProp)
+                {
+                    // Try to find canvas inside sub-property (might be named "0" or direct child)
+                    WzCanvasProperty innerCanvas = (WzCanvasProperty)subProp["0"] ?? (WzCanvasProperty)subProp.WzProperties.FirstOrDefault(p => p is WzCanvasProperty);
+                    if (innerCanvas != null)
+                        bgBitmap = innerCanvas.GetLinkedWzCanvasBitmap();
+                }
+
+                Texture2D bgTexture = bgBitmap?.ToTexture2D(device);
+                if (bgTexture == null)
+                    return null;
+
+                IDXObject frame = new DXObject(0, 0, bgTexture, 0);
+
+                // Create the macro window
+                SkillMacroUI macroUI = new SkillMacroUI(frame, device);
+
+                // Position window in center of screen
+                macroUI.Position = new Point(
+                    (screenWidth - bgTexture.Width) / 2,
+                    (screenHeight - bgTexture.Height) / 2);
+
+                // Load button sounds
+                WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
+                WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
+
+                // Load OK button
+                UIObject btnOK = LoadButton(macroProperty, "BtOK", btClickSound, btOverSound, device);
+                if (btnOK != null)
+                {
+                    macroUI.InitializeButtons(btnOK, null, null);
+                }
+
+                // Load selection highlight texture
+                Texture2D selectTexture = LoadCanvasTexture(macroProperty, "select", device);
+                if (selectTexture != null)
+                {
+                    macroUI.SetSelectionTexture(selectTexture);
+                }
+
+                // Load macro slot icons from Macroicon
+                WzSubProperty macroIconProp = (WzSubProperty)macroProperty["Macroicon"];
+                if (macroIconProp != null)
+                {
+                    Texture2D[] macroIcons = new Texture2D[5];
+                    for (int i = 0; i < 5; i++)
+                    {
+                        macroIcons[i] = LoadCanvasTexture(macroIconProp, i.ToString(), device);
+                    }
+                    macroUI.SetMacroSlotIcons(macroIcons);
+                }
+
+                System.Diagnostics.Debug.WriteLine("[UIWindowLoader] Created SkillMacroUI");
+                return macroUI;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to create SkillMacroUI: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Load a canvas texture from a property
+        /// </summary>
+        private static Texture2D LoadCanvasTexture(WzSubProperty parent, string name, GraphicsDevice device)
+        {
+            WzObject obj = parent?[name];
+            if (obj == null)
+                return null;
+
+            try
+            {
+                System.Drawing.Bitmap bitmap = null;
+                if (obj is WzCanvasProperty canvas)
+                {
+                    bitmap = canvas.GetLinkedWzCanvasBitmap();
+                }
+                else if (obj is WzSubProperty subProp)
+                {
+                    // Try to find canvas inside sub-property
+                    WzCanvasProperty innerCanvas = subProp["0"] as WzCanvasProperty
+                        ?? subProp.WzProperties.FirstOrDefault(p => p is WzCanvasProperty) as WzCanvasProperty;
+                    if (innerCanvas != null)
+                        bitmap = innerCanvas.GetLinkedWzCanvasBitmap();
+                }
+                return bitmap?.ToTexture2D(device);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Load a button state texture (normal/pressed/disabled/mouseOver has sub-property "0")
+        /// </summary>
+        private static Texture2D LoadButtonStateTexture(WzSubProperty buttonProperty, string stateName, GraphicsDevice device)
+        {
+            WzSubProperty stateProperty = (WzSubProperty)buttonProperty?[stateName];
+            if (stateProperty == null)
+                return null;
+
+            WzCanvasProperty canvas = (WzCanvasProperty)stateProperty["0"];
+            if (canvas == null)
+                return null;
+
+            try
+            {
+                System.Drawing.Bitmap bitmap = canvas.GetLinkedWzCanvasBitmap();
+                return bitmap?.ToTexture2D(device);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static SkillUIBigBang CreatePlaceholderSkillBigBang(GraphicsDevice device, int screenWidth, int screenHeight)
@@ -1133,6 +1426,18 @@ namespace HaCreator.MapSimulator.Loaders
             WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage basicImage, WzImage soundUIImage,
             GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang)
         {
+            return CreateUIWindowManager(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage,
+                null, null, device, screenWidth, screenHeight, isBigBang, 212); // Default to Arch Mage F/P (job 212)
+        }
+
+        /// <summary>
+        /// Create and initialize a UIWindowManager with all windows and skill loading support
+        /// </summary>
+        public static UIWindowManager CreateUIWindowManager(
+            WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage basicImage, WzImage soundUIImage,
+            WzFile skillWzFile, WzFile stringWzFile,
+            GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang, int jobId = 212)
+        {
             UIWindowManager manager = new UIWindowManager();
 
             // Create windows - use unified methods that select pre-BB or post-BB based on flag
@@ -1142,12 +1447,46 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase quest = CreateQuestWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
 
+            // Load skills for the character's job into skill window
+            // This loads all skills from beginner through current job
+            if (skill is SkillUIBigBang skillBigBang)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into SkillUIBigBang");
+                LoadSkillsForJob(skillBigBang, jobId, device);
+            }
+
+            // Create skill macro window (post-BB only)
+            SkillMacroUI skillMacro = null;
+            if (isBigBang)
+            {
+                skillMacro = CreateSkillMacroWindowBigBang(uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+            }
+
             // Register with manager
             manager.RegisterInventoryWindow(inventory);
             manager.RegisterEquipWindow(equip);
             manager.RegisterSkillWindow(skill);
             manager.RegisterQuestWindow(quest);
             manager.RegisterAbilityWindow(ability);
+
+            if (skillMacro != null)
+            {
+                manager.RegisterSkillMacroWindow(skillMacro);
+
+                // Wire up the MACRO button in skill window to open the macro window
+                if (skill is SkillUIBigBang skillBB && skillBB.MacroButton != null)
+                {
+                    var macroWindow = skillMacro;
+                    skillBB.MacroButton.ButtonClickReleased += (sender) =>
+                    {
+                        if (macroWindow != null)
+                        {
+                            macroWindow.Show();
+                            manager.BringToFront(macroWindow);
+                        }
+                    };
+                }
+            }
 
             return manager;
         }

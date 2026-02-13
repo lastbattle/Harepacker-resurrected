@@ -5,6 +5,7 @@ using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -123,7 +124,8 @@ namespace HaCreator.MapSimulator.Effects
 
 
     /// <summary>
-    /// Damage number display - floating damage text that rises and fades
+    /// Damage number display - floating damage text that rises and fades.
+    /// Animation timing based on MapleStory binary analysis (CAnimationDisplayer::Effect_HP).
     /// </summary>
     public class DamageNumberDisplay
     {
@@ -137,13 +139,18 @@ namespace HaCreator.MapSimulator.Effects
         public float Alpha { get; set; } = 1.0f;
         public float Scale { get; set; } = 1.0f;
         public int ComboIndex { get; set; } = 0;    // For stacking multiple hits
+        public DamageColorType ColorType { get; set; } = DamageColorType.Red;
 
-        // Animation constants
-        public const int DISPLAY_DURATION = 1500;   // Total display time in ms
-        public const int RISE_DURATION = 400;       // Time to rise in ms
-        public const int FADE_START = 1000;         // When to start fading
-        public const float RISE_DISTANCE = 50f;     // How far to rise
-        public const float COMBO_OFFSET = 20f;      // Horizontal offset per combo hit
+        // Animation constants (from MapleStory binary analysis)
+        // Phase 1: 0-400ms = stationary, full alpha
+        // Phase 2: 400-1000ms = fade out + rise 30px
+        public const int DISPLAY_DURATION = 1000;   // Total display time in ms (binary: 400 + 600)
+        public const int PHASE1_DURATION = 400;     // Stationary phase duration
+        public const int PHASE2_DURATION = 600;     // Fade + rise phase duration
+        public const float RISE_DISTANCE = 30f;     // How far to rise (binary: 30px)
+        public const float COMBO_STACK_OFFSET_Y = 28f;  // Vertical offset per combo hit (>= digit height)
+        public const int CRITICAL_EFFECT_DELAY = 250;   // Critical effect appears after 250ms
+        public const int CRITICAL_EFFECT_OFFSET_Y = -30; // Critical effect Y offset
 
         public bool IsExpired(int currentTime) => currentTime - SpawnTime > DISPLAY_DURATION;
 
@@ -151,31 +158,44 @@ namespace HaCreator.MapSimulator.Effects
         {
             int elapsed = currentTime - SpawnTime;
 
-            // Rise animation (ease out)
-            if (elapsed < RISE_DURATION)
+            // Phase 1: Stationary (0-400ms)
+            if (elapsed < PHASE1_DURATION)
             {
-                float t = (float)elapsed / RISE_DURATION;
-                float eased = 1f - (1f - t) * (1f - t); // Ease out quad
-                Y = StartY - (RISE_DISTANCE * eased);
+                Y = StartY;
+                Alpha = 1.0f;
             }
+            // Phase 2: Fade + Rise (400-1000ms)
             else
             {
-                Y = StartY - RISE_DISTANCE;
+                float phase2Progress = (float)(elapsed - PHASE1_DURATION) / PHASE2_DURATION;
+                phase2Progress = Math.Clamp(phase2Progress, 0f, 1f);
+
+                // Linear rise
+                Y = StartY - (RISE_DISTANCE * phase2Progress);
+
+                // Linear alpha fade
+                Alpha = 1.0f - phase2Progress;
             }
 
-            // Fade out
-            if (elapsed > FADE_START)
-            {
-                float fadeT = (float)(elapsed - FADE_START) / (DISPLAY_DURATION - FADE_START);
-                Alpha = 1f - fadeT;
-            }
-
-            // Critical scale pulse
+            // Critical scale pulse (optional visual enhancement)
             if (IsCritical && elapsed < 200)
             {
                 float pulseT = (float)elapsed / 200f;
                 Scale = 1.2f - (0.2f * pulseT); // Start big, shrink to normal
             }
+            else
+            {
+                Scale = 1.0f;
+            }
+        }
+
+        /// <summary>
+        /// Whether critical effect should be shown (appears 250ms after spawn).
+        /// </summary>
+        public bool ShouldShowCriticalEffect(int currentTime)
+        {
+            int elapsed = currentTime - SpawnTime;
+            return IsCritical && elapsed >= CRITICAL_EFFECT_DELAY && elapsed < DISPLAY_DURATION;
         }
     }
 
@@ -454,6 +474,10 @@ namespace HaCreator.MapSimulator.Effects
         private SpriteFont _criticalFont;
         private Dictionary<int, List<IDXObject>> _hitEffectFrames;  // Hit effect variations
         private List<IDXObject> _deathEffectFrames;
+
+        // WZ-based damage number renderer
+        private DamageNumberRenderer _wzDamageRenderer;
+        private bool _useWzDamageNumbers = false;
         #endregion
 
         #region State
@@ -491,14 +515,70 @@ namespace HaCreator.MapSimulator.Effects
         {
             _deathEffectFrames = frames;
         }
+
+        /// <summary>
+        /// Load damage number sprites from Effect.wz/BasicEff.img.
+        /// Call this after Initialize() to enable authentic WZ-based damage numbers.
+        /// </summary>
+        /// <param name="basicEffImage">Effect.wz/BasicEff.img WzImage</param>
+        /// <returns>True if damage numbers were loaded successfully</returns>
+        public bool LoadDamageNumbersFromWz(WzImage basicEffImage)
+        {
+            if (_device == null || basicEffImage == null)
+            {
+                System.Diagnostics.Debug.WriteLine("[CombatEffects] Cannot load damage numbers: device or image is null");
+                return false;
+            }
+
+            // Load the digit sprites
+            bool loaded = DamageNumberLoader.LoadDamageNumbers(_device, basicEffImage);
+
+            if (loaded)
+            {
+                // Initialize the WZ damage renderer
+                _wzDamageRenderer = new DamageNumberRenderer();
+                _wzDamageRenderer.Initialize(_device, _damageFont);
+                _useWzDamageNumbers = true;
+
+                System.Diagnostics.Debug.WriteLine($"[CombatEffects] Loaded {DamageNumberLoader.LoadedSetCount} damage number digit sets from WZ");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[CombatEffects] Failed to load damage numbers from WZ, using fallback");
+            }
+
+            return loaded;
+        }
+
+        /// <summary>
+        /// Whether WZ-based damage numbers are available.
+        /// </summary>
+        public bool HasWzDamageNumbers => _useWzDamageNumbers && _wzDamageRenderer != null;
         #endregion
 
         #region Add Effects
         /// <summary>
-        /// Add a damage number display at a position
+        /// Add a damage number display at a position.
         /// </summary>
-        public void AddDamageNumber(int damage, float x, float y, bool isCritical, bool isMiss, int currentTime, int comboIndex = 0)
+        /// <param name="damage">Damage value</param>
+        /// <param name="x">X position (map coordinates)</param>
+        /// <param name="y">Y position (map coordinates)</param>
+        /// <param name="isCritical">Whether critical hit</param>
+        /// <param name="isMiss">Whether miss</param>
+        /// <param name="currentTime">Current game tick</param>
+        /// <param name="comboIndex">Multi-hit combo index</param>
+        /// <param name="colorType">Damage color type (Red=player damage, Blue=received, Violet=party)</param>
+        public void AddDamageNumber(int damage, float x, float y, bool isCritical, bool isMiss, int currentTime,
+            int comboIndex = 0, DamageColorType colorType = DamageColorType.Red)
         {
+            // Use WZ renderer if available
+            if (_useWzDamageNumbers && _wzDamageRenderer != null)
+            {
+                _wzDamageRenderer.SpawnDamageNumber(damage, x, y, colorType, isCritical, isMiss, currentTime, comboIndex);
+                return;
+            }
+
+            // Fallback to SpriteFont rendering
             if (_damageNumbers.Count >= MAX_DAMAGE_DISPLAYS)
             {
                 // Recycle oldest
@@ -509,51 +589,73 @@ namespace HaCreator.MapSimulator.Effects
 
             var display = _damagePool.Count > 0 ? _damagePool.Dequeue() : new DamageNumberDisplay();
             display.Damage = damage;
-            display.X = x + (comboIndex * DamageNumberDisplay.COMBO_OFFSET);
+            display.X = x;
             display.Y = y;
-            display.StartY = y;
+            // Apply stacking offset for multi-hit (vertical stacking like MapleStory)
+            display.StartY = y - (comboIndex * DamageNumberDisplay.COMBO_STACK_OFFSET_Y);
             display.SpawnTime = currentTime;
             display.IsCritical = isCritical;
             display.IsMiss = isMiss;
             display.Alpha = 1.0f;
             display.Scale = isCritical ? 1.2f : 1.0f;
             display.ComboIndex = comboIndex;
+            display.ColorType = colorType;
 
             _damageNumbers.Add(display);
         }
 
         /// <summary>
-        /// Add damage numbers from a mob's damage display list
+        /// Add player damage to monster (Red damage numbers).
+        /// </summary>
+        public void AddPlayerDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
+        {
+            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Red);
+        }
+
+        /// <summary>
+        /// Add damage received by player from monsters (Violet damage numbers).
+        /// </summary>
+        public void AddReceivedDamage(int damage, float x, float y, bool isCritical, int currentTime)
+        {
+            AddDamageNumber(damage, x, y, isCritical, false, currentTime, 0, DamageColorType.Violet);
+        }
+
+        /// <summary>
+        /// Add party/summon damage (Red damage numbers, same as player damage).
+        /// </summary>
+        public void AddPartyDamage(int damage, float x, float y, bool isCritical, int currentTime, int comboIndex = 0)
+        {
+            AddDamageNumber(damage, x, y, isCritical, false, currentTime, comboIndex, DamageColorType.Red);
+        }
+
+        /// <summary>
+        /// Add heal number (Blue damage numbers).
+        /// </summary>
+        public void AddHealNumber(int amount, float x, float y, int currentTime)
+        {
+            AddDamageNumber(amount, x, y, false, false, currentTime, 0, DamageColorType.Blue);
+        }
+
+        /// <summary>
+        /// Add miss indicator.
+        /// </summary>
+        public void AddMiss(float x, float y, int currentTime, DamageColorType colorType = DamageColorType.Red)
+        {
+            AddDamageNumber(0, x, y, false, true, currentTime, 0, colorType);
+        }
+
+        /// <summary>
+        /// Add damage numbers from a mob's damage display list.
+        /// Note: This is now a NO-OP since damage numbers are added directly via AddDamageNumber
+        /// in PlayerManager's OnAttackHitbox callback or SkillManager's attack processing.
+        /// The mob's DamageDisplays list is used internally for mob state tracking only.
         /// </summary>
         public void AddDamageFromMob(MobItem mob, int currentTime)
         {
-            if (mob?.AI == null || mob.MovementInfo == null)
-                return;
-
-            float mobX = mob.MovementInfo.X;
-            float mobY = mob.MovementInfo.Y - 30; // Above mob head
-
-            int comboIndex = 0;
-            foreach (var dmgInfo in mob.AI.DamageDisplays)
-            {
-                // Only add if not already added (check display time proximity)
-                bool alreadyAdded = false;
-                foreach (var existing in _damageNumbers)
-                {
-                    if (Math.Abs(existing.SpawnTime - dmgInfo.DisplayTime) < 50 &&
-                        existing.Damage == dmgInfo.Damage)
-                    {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-
-                if (!alreadyAdded)
-                {
-                    AddDamageNumber(dmgInfo.Damage, mobX, mobY, dmgInfo.IsCritical, false, dmgInfo.DisplayTime, comboIndex);
-                    comboIndex++;
-                }
-            }
+            // Damage numbers are now added directly via AddDamageNumber() calls
+            // in PlayerManager.OnAttackHitbox and SkillManager attack processing.
+            // This method is kept for API compatibility but does nothing to prevent duplicates.
+            // The mob's AI.DamageDisplays is used for internal damage tracking only.
         }
 
         /// <summary>
@@ -1047,7 +1149,13 @@ namespace HaCreator.MapSimulator.Effects
         #region Update
         public void Update(int currentTime, float deltaTime)
         {
-            // Update damage numbers
+            // Update WZ damage number renderer (if using WZ sprites)
+            if (_useWzDamageNumbers && _wzDamageRenderer != null)
+            {
+                _wzDamageRenderer.Update(deltaTime * 1000f); // Convert to milliseconds
+            }
+
+            // Update fallback damage numbers (if not using WZ sprites)
             for (int i = _damageNumbers.Count - 1; i >= 0; i--)
             {
                 var dmg = _damageNumbers[i];
@@ -1394,6 +1502,14 @@ namespace HaCreator.MapSimulator.Effects
 
         private void DrawDamageNumbers(SpriteBatch spriteBatch, int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
+            // Use WZ renderer if available
+            if (_useWzDamageNumbers && _wzDamageRenderer != null)
+            {
+                _wzDamageRenderer.Draw(spriteBatch, mapShiftX, mapShiftY, centerX, centerY);
+                return;
+            }
+
+            // Fallback SpriteFont rendering
             if (_damageFont == null)
                 return;
 
@@ -1404,7 +1520,27 @@ namespace HaCreator.MapSimulator.Effects
                 int screenY = (int)dmg.Y - mapShiftY + centerY;
 
                 string text = dmg.IsMiss ? "MISS" : dmg.Damage.ToString();
-                Color color = dmg.IsMiss ? COLOR_MISS : (dmg.IsCritical ? COLOR_CRITICAL : COLOR_NORMAL);
+
+                // Color based on damage type
+                Color color;
+                if (dmg.IsMiss)
+                {
+                    color = COLOR_MISS;
+                }
+                else if (dmg.IsCritical)
+                {
+                    color = COLOR_CRITICAL;
+                }
+                else
+                {
+                    // Use color based on damage type
+                    color = dmg.ColorType switch
+                    {
+                        DamageColorType.Blue => new Color(100, 150, 255),   // Healing
+                        DamageColorType.Violet => new Color(200, 100, 255), // Damage received from monsters
+                        _ => COLOR_NORMAL                                     // Player damage (white/red)
+                    };
+                }
                 color *= dmg.Alpha;
 
                 SpriteFont font = dmg.IsCritical ? _criticalFont : _damageFont;
@@ -1529,11 +1665,14 @@ namespace HaCreator.MapSimulator.Effects
 
             // Clear WZ-based boss HP bar UI
             _bossHPBarUI?.Clear();
+
+            // Clear WZ damage number renderer
+            _wzDamageRenderer?.Clear();
         }
 
         /// <summary>
         /// Clear map-specific state but preserve initialized resources.
-        /// Preserves: textures, fonts, hit effect frames, death effect frames.
+        /// Preserves: textures, fonts, hit effect frames, death effect frames, WZ digit sprites.
         /// Clears: active damage numbers, hit effects, death effects, mob/boss HP bars.
         /// </summary>
         public void ClearMapState()
@@ -1557,12 +1696,17 @@ namespace HaCreator.MapSimulator.Effects
             // Clear WZ-based boss HP bar UI state
             _bossHPBarUI?.Clear();
 
+            // Clear WZ damage number renderer active numbers (preserves digit sprites)
+            _wzDamageRenderer?.Clear();
+
             // Note: We intentionally do NOT clear:
             // - _pixelTexture (reusable)
             // - _damageFont / _criticalFont (reusable)
             // - _hitEffectFrames (could be reloaded, but usually same across maps)
             // - _deathEffectFrames (reusable)
             // - _damagePool (object pool for reuse)
+            // - _wzDamageRenderer (preserves loaded digit sprites)
+            // - DamageNumberLoader digit sets (global cache)
             // - _initialized flag
         }
 
@@ -1570,12 +1714,16 @@ namespace HaCreator.MapSimulator.Effects
         {
             _pixelTexture?.Dispose();
             _bossHPBarUI?.Dispose();
+            _wzDamageRenderer?.Dispose();
+            DamageNumberLoader.Clear(); // Dispose all loaded digit textures
             Clear();
         }
         #endregion
 
         #region Stats
-        public int ActiveDamageNumbers => _damageNumbers.Count;
+        public int ActiveDamageNumbers => (_useWzDamageNumbers && _wzDamageRenderer != null)
+            ? _wzDamageRenderer.ActiveCount
+            : _damageNumbers.Count;
         public int ActiveHitEffects => _hitEffects.Count;
         public int ActiveMobHPBars => _mobHPBars.Count;
         public int ActiveBossHPBars => (_useWzBossHPBar && _bossHPBarUI != null)

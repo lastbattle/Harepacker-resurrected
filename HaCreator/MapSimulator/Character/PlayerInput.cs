@@ -18,6 +18,8 @@ namespace HaCreator.MapSimulator.Character
         Attack,
         Pickup,
         Interact,
+
+        // Primary skill hotkeys (8 slots - configurable, default: Insert, Home, PageUp, Delete, End, PageDown, 1, 2)
         Skill1,
         Skill2,
         Skill3,
@@ -26,6 +28,8 @@ namespace HaCreator.MapSimulator.Character
         Skill6,
         Skill7,
         Skill8,
+
+        // Quick slots for items/potions (8 slots - default: 3-0 number keys)
         QuickSlot1,
         QuickSlot2,
         QuickSlot3,
@@ -34,6 +38,31 @@ namespace HaCreator.MapSimulator.Character
         QuickSlot6,
         QuickSlot7,
         QuickSlot8,
+
+        // Extended skill hotkeys via Function keys (12 slots - F1-F12)
+        FunctionSlot1,
+        FunctionSlot2,
+        FunctionSlot3,
+        FunctionSlot4,
+        FunctionSlot5,
+        FunctionSlot6,
+        FunctionSlot7,
+        FunctionSlot8,
+        FunctionSlot9,
+        FunctionSlot10,
+        FunctionSlot11,
+        FunctionSlot12,
+
+        // Secondary skill bar via Ctrl+Number (8 slots - Ctrl+1-8)
+        CtrlSlot1,
+        CtrlSlot2,
+        CtrlSlot3,
+        CtrlSlot4,
+        CtrlSlot5,
+        CtrlSlot6,
+        CtrlSlot7,
+        CtrlSlot8,
+
         ToggleInventory,
         ToggleEquip,
         ToggleSkills,
@@ -41,6 +70,7 @@ namespace HaCreator.MapSimulator.Character
         ToggleStats,
         ToggleMinimap,
         ToggleChat,
+        ToggleQuickSlot,  // Toggle quick slot bar visibility
         Escape
     }
 
@@ -83,8 +113,17 @@ namespace HaCreator.MapSimulator.Character
         public bool PickupPressed;
         public bool InteractPressed;
 
+        // Skill hotkeys (8 primary slots)
         public bool[] Skills;
+
+        // Quick slots for items (8 slots)
         public bool[] QuickSlots;
+
+        // Function key slots (12 slots - F1-F12)
+        public bool[] FunctionSlots;
+
+        // Ctrl+Number slots (8 secondary skill slots)
+        public bool[] CtrlSlots;
 
         public bool InventoryPressed;
         public bool EquipPressed;
@@ -93,6 +132,7 @@ namespace HaCreator.MapSimulator.Character
         public bool StatsPressed;
         public bool MinimapPressed;
         public bool ChatPressed;
+        public bool QuickSlotPressed;
         public bool EscapePressed;
     }
 
@@ -113,6 +153,7 @@ namespace HaCreator.MapSimulator.Character
         // Default key bindings (matching MapleStory)
         private static readonly (InputAction action, Keys primary, Keys secondary, Buttons gamepad)[] DefaultBindings = new[]
         {
+            // Movement
             (InputAction.MoveLeft, Keys.Left, Keys.None, Buttons.LeftThumbstickLeft),
             (InputAction.MoveRight, Keys.Right, Keys.None, Buttons.LeftThumbstickRight),
             (InputAction.MoveUp, Keys.Up, Keys.None, Buttons.LeftThumbstickUp),
@@ -121,6 +162,8 @@ namespace HaCreator.MapSimulator.Character
             (InputAction.Attack, Keys.LeftControl, Keys.None, Buttons.X),
             (InputAction.Pickup, Keys.Z, Keys.None, Buttons.B),
             (InputAction.Interact, Keys.Up, Keys.None, Buttons.Y),
+
+            // Primary skill hotkeys (8 slots)
             (InputAction.Skill1, Keys.Insert, Keys.None, Buttons.LeftShoulder),
             (InputAction.Skill2, Keys.Home, Keys.None, Buttons.RightShoulder),
             (InputAction.Skill3, Keys.PageUp, Keys.None, Buttons.LeftTrigger),
@@ -129,6 +172,8 @@ namespace HaCreator.MapSimulator.Character
             (InputAction.Skill6, Keys.PageDown, Keys.None, (Buttons)0),
             (InputAction.Skill7, Keys.D1, Keys.None, (Buttons)0),
             (InputAction.Skill8, Keys.D2, Keys.None, (Buttons)0),
+
+            // Quick slots for items/potions (8 slots)
             (InputAction.QuickSlot1, Keys.D3, Keys.None, (Buttons)0),
             (InputAction.QuickSlot2, Keys.D4, Keys.None, (Buttons)0),
             (InputAction.QuickSlot3, Keys.D5, Keys.None, (Buttons)0),
@@ -137,6 +182,32 @@ namespace HaCreator.MapSimulator.Character
             (InputAction.QuickSlot6, Keys.D8, Keys.None, (Buttons)0),
             (InputAction.QuickSlot7, Keys.D9, Keys.None, (Buttons)0),
             (InputAction.QuickSlot8, Keys.D0, Keys.None, (Buttons)0),
+
+            // Function key skill slots (12 slots - F1-F12)
+            (InputAction.FunctionSlot1, Keys.F1, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot2, Keys.F2, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot3, Keys.F3, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot4, Keys.F4, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot5, Keys.F5, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot6, Keys.F6, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot7, Keys.F7, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot8, Keys.F8, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot9, Keys.F9, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot10, Keys.F10, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot11, Keys.F11, Keys.None, (Buttons)0),
+            (InputAction.FunctionSlot12, Keys.F12, Keys.None, (Buttons)0),
+
+            // Ctrl+Number secondary skill slots (8 slots) - Note: These require modifier key checking
+            (InputAction.CtrlSlot1, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot2, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot3, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot4, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot5, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot6, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot7, Keys.None, Keys.None, (Buttons)0),
+            (InputAction.CtrlSlot8, Keys.None, Keys.None, (Buttons)0),
+
+            // UI toggles
             (InputAction.ToggleInventory, Keys.I, Keys.None, Buttons.Back),
             (InputAction.ToggleEquip, Keys.E, Keys.None, (Buttons)0),
             (InputAction.ToggleSkills, Keys.K, Keys.None, (Buttons)0),
@@ -144,6 +215,7 @@ namespace HaCreator.MapSimulator.Character
             (InputAction.ToggleStats, Keys.S, Keys.None, (Buttons)0),
             (InputAction.ToggleMinimap, Keys.M, Keys.None, (Buttons)0),
             (InputAction.ToggleChat, Keys.Enter, Keys.None, (Buttons)0),
+            (InputAction.ToggleQuickSlot, Keys.OemTilde, Keys.None, (Buttons)0),  // ` key to toggle quick slot bar
             (InputAction.Escape, Keys.Escape, Keys.None, Buttons.Start)
         };
 
@@ -232,6 +304,8 @@ namespace HaCreator.MapSimulator.Character
 
                 Skills = new bool[8],
                 QuickSlots = new bool[8],
+                FunctionSlots = new bool[12],
+                CtrlSlots = new bool[8],
 
                 InventoryPressed = IsPressed(InputAction.ToggleInventory),
                 EquipPressed = IsPressed(InputAction.ToggleEquip),
@@ -240,19 +314,38 @@ namespace HaCreator.MapSimulator.Character
                 StatsPressed = IsPressed(InputAction.ToggleStats),
                 MinimapPressed = IsPressed(InputAction.ToggleMinimap),
                 ChatPressed = IsPressed(InputAction.ToggleChat),
+                QuickSlotPressed = IsPressed(InputAction.ToggleQuickSlot),
                 EscapePressed = IsPressed(InputAction.Escape)
             };
 
-            // Skills
+            // Primary skill hotkeys (8 slots)
             for (int i = 0; i < 8; i++)
             {
                 state.Skills[i] = IsPressed(InputAction.Skill1 + i);
             }
 
-            // Quick slots
+            // Quick slots for items (8 slots)
             for (int i = 0; i < 8; i++)
             {
                 state.QuickSlots[i] = IsPressed(InputAction.QuickSlot1 + i);
+            }
+
+            // Function key slots (12 slots - F1-F12)
+            for (int i = 0; i < 12; i++)
+            {
+                state.FunctionSlots[i] = IsPressed(InputAction.FunctionSlot1 + i);
+            }
+
+            // Ctrl+Number secondary skill slots (8 slots)
+            // These check for Ctrl modifier + number key
+            bool ctrlHeld = _currentKeyboard.IsKeyDown(Keys.LeftControl) || _currentKeyboard.IsKeyDown(Keys.RightControl);
+            if (ctrlHeld)
+            {
+                Keys[] ctrlKeys = { Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8 };
+                for (int i = 0; i < 8; i++)
+                {
+                    state.CtrlSlots[i] = _currentKeyboard.IsKeyDown(ctrlKeys[i]) && !_previousKeyboard.IsKeyDown(ctrlKeys[i]);
+                }
             }
 
             return state;

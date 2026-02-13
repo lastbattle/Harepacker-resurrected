@@ -507,29 +507,31 @@ namespace HaCreator.MapSimulator.UI
             int gaugeY = yPos + 3; // 3 pixels below frame top
             int gaugeX = backgrnd3X;           // Gauge starts where backgrnd3 starts (no left gap)
             int gaugeWidth = backgrnd3Width;   // Gauge fills the entire backgrnd3 area
+            int gaugeDrawHeight = gaugeFill?.Height ?? gaugeBg?.Height ?? _gaugeHeight;
 
-            // Draw background gauge (full width, represents empty HP)
-            if (gaugeBg != null && gaugeWidth > 0)
+            // Draw BLACK background first (represents missing/empty HP)
+            // This ensures the missing HP portion is always black
+            if (gaugeWidth > 0)
             {
-                spriteBatch.Draw(gaugeBg,
-                    new Rectangle(gaugeX, gaugeY, gaugeWidth, gaugeBg.Height),
-                    Color.White * alpha);
+                spriteBatch.Draw(_pixelTexture,
+                    new Rectangle(gaugeX, gaugeY, gaugeWidth, gaugeDrawHeight),
+                    Color.Black * alpha);
             }
 
-            // Draw damage trail (orange/red showing recent damage)
-            if (info.TrailHpPercent > info.DisplayedHpPercent && gaugeBg != null)
+            // Draw damage trail (orange/red showing recent damage) - between current HP and trail position
+            if (info.TrailHpPercent > info.DisplayedHpPercent)
             {
                 int trailWidth = (int)(gaugeWidth * info.TrailHpPercent);
                 int hpWidth = (int)(gaugeWidth * info.DisplayedHpPercent);
 
-                // Draw trail in a slightly different color
+                // Draw trail in orange color to show recent damage
                 Color trailColor = new Color(255, 180, 80);
                 spriteBatch.Draw(_pixelTexture,
-                    new Rectangle(gaugeX + hpWidth, gaugeY, trailWidth - hpWidth, _gaugeHeight),
+                    new Rectangle(gaugeX + hpWidth, gaugeY, trailWidth - hpWidth, gaugeDrawHeight),
                     trailColor * alpha * 0.7f);
             }
 
-            // Draw filled gauge (HP remaining)
+            // Draw filled gauge (HP remaining) on top
             if (gaugeFill != null && gaugeWidth > 0)
             {
                 int hpWidth = (int)(gaugeWidth * info.DisplayedHpPercent);
@@ -538,6 +540,18 @@ namespace HaCreator.MapSimulator.UI
                     spriteBatch.Draw(gaugeFill,
                         new Rectangle(gaugeX, gaugeY, hpWidth, gaugeFill.Height),
                         Color.White * alpha);
+                }
+            }
+            else if (gaugeWidth > 0)
+            {
+                // Fallback if no WZ gauge texture - draw colored bar
+                int hpWidth = (int)(gaugeWidth * info.DisplayedHpPercent);
+                if (hpWidth > 0)
+                {
+                    Color hpColor = GetHpTagColor(info.HpTagColorId);
+                    spriteBatch.Draw(_pixelTexture,
+                        new Rectangle(gaugeX, gaugeY, hpWidth, gaugeDrawHeight),
+                        hpColor * alpha);
                 }
             }
 
@@ -575,7 +589,6 @@ namespace HaCreator.MapSimulator.UI
 
             // Get HP bar color from hpTagColor
             Color hpColor = GetHpTagColor(info.HpTagColorId);
-            Color bgColor = GetHpTagBgColor(info.HpTagBgColorId);
 
             // === Draw frame ===
 
@@ -615,12 +628,12 @@ namespace HaCreator.MapSimulator.UI
             int gaugeY = yPos + 6;
             int gaugeHeight = 16;
 
-            // Gauge background
+            // BLACK background for missing HP
             spriteBatch.Draw(_pixelTexture,
                 new Rectangle(gaugeX, gaugeY, gaugeWidth, gaugeHeight),
-                bgColor * alpha);
+                Color.Black * alpha);
 
-            // Damage trail
+            // Damage trail (orange showing recent damage)
             if (info.TrailHpPercent > info.DisplayedHpPercent)
             {
                 int trailWidth = (int)(gaugeWidth * info.TrailHpPercent);
@@ -630,7 +643,7 @@ namespace HaCreator.MapSimulator.UI
                     new Color(255, 180, 80) * alpha * 0.7f);
             }
 
-            // HP bar
+            // HP bar (remaining HP)
             int currentHpWidth = (int)(gaugeWidth * info.DisplayedHpPercent);
             if (currentHpWidth > 0)
             {
@@ -638,7 +651,7 @@ namespace HaCreator.MapSimulator.UI
                     new Rectangle(gaugeX, gaugeY, currentHpWidth, gaugeHeight),
                     hpColor * alpha);
 
-                // Highlight
+                // Highlight on top of HP bar
                 spriteBatch.Draw(_pixelTexture,
                     new Rectangle(gaugeX, gaugeY, currentHpWidth, 3),
                     Color.Lerp(hpColor, Color.White, 0.3f) * alpha);

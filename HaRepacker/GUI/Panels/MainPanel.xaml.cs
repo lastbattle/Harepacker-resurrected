@@ -814,25 +814,20 @@ namespace HaRepacker.GUI.Panels
             }
 
             if (node.Tag is WzCanvasProperty property) {
-                WzImageProperty linkedTarget = property.GetLinkedWzImageProperty();
                 if (property.ContainsInlinkProperty() || property.ContainsOutlinkProperty()) // if its an inlink property, remove that before updating base image.
                 {
+                    // Delete UI nodes before resolving (they will be removed from the property)
                     if (property.ContainsInlinkProperty()) {
-                        property.RemoveProperty(property[WzCanvasProperty.InlinkPropertyName]);
                         WzNode childInlinkNode = WzNode.GetChildNode(node, WzCanvasProperty.InlinkPropertyName);
-
-                        childInlinkNode.DeleteWzNode(); // Delete '_inlink' node
+                        childInlinkNode?.DeleteWzNode(); // Delete '_inlink' node
                     }
-
-                    if (property.ContainsOutlinkProperty()) // if its an outlink property, remove that before updating base image.
-{
-                        property.RemoveProperty(property[WzCanvasProperty.OutlinkPropertyName]);
+                    if (property.ContainsOutlinkProperty()) {
                         WzNode childOutlinkNode = WzNode.GetChildNode(node, WzCanvasProperty.OutlinkPropertyName);
-
-                        childOutlinkNode.DeleteWzNode(); // Delete '_outlink' node
+                        childOutlinkNode?.DeleteWzNode(); // Delete '_outlink' node
                     }
 
-                    property.PngProperty.PNG = linkedTarget.GetBitmap();
+                    // Use centralized link resolution logic
+                    WzLinkResolver.ResolveSingleCanvas(property);
 
                     // Updates
                     node.ChangedNodeProperty();

@@ -53,11 +53,156 @@ namespace HaRepacker.GUI
             {
                 label_versionInfo.Text = $"Version: {_versionInfo.DisplayName ?? _versionInfo.Version}";
                 checkBox_64bit.Checked = _versionInfo.Is64Bit;
+
+                // Set format label based on detected format and pre-select beta checkbox if applicable
+                if (_versionInfo.IsBetaMs)
+                {
+                    label_format.Text = "Source: Beta (Single Data.wz)";
+                    label_format.ForeColor = System.Drawing.Color.DarkGreen;
+                    // Pre-select beta format checkbox (user can uncheck if desired)
+                    checkBox_betaFormat.Checked = true;
+                }
+                else if (_versionInfo.Is64Bit)
+                {
+                    label_format.Text = "Source: 64-bit (Data folder)";
+                    label_format.ForeColor = System.Drawing.Color.DarkBlue;
+                }
+                else if (_versionInfo.IsPreBB)
+                {
+                    label_format.Text = "Source: Pre-Big Bang";
+                    label_format.ForeColor = System.Drawing.Color.DarkOrange;
+                }
+                else
+                {
+                    label_format.Text = "Source: Standard";
+                    label_format.ForeColor = System.Drawing.Color.Black;
+                }
+
+                // Respect manifest patchVersion verbatim so "0 = auto" persists across sessions.
+                int patchVersion = _versionInfo.PatchVersion;
+                if (patchVersion >= numericUpDown_patchVersion.Minimum &&
+                    patchVersion <= numericUpDown_patchVersion.Maximum)
+                {
+                    numericUpDown_patchVersion.Value = patchVersion;
+                }
             }
             else
             {
                 label_versionInfo.Text = "Version: Unknown (no manifest.json)";
+                label_format.Text = "Source: Unknown";
+                label_format.ForeColor = System.Drawing.Color.Gray;
             }
+
+            // Populate encryption dropdown
+            PopulateEncryptionDropdown();
+
+            // Update UI state based on initial checkbox values
+            UpdateFormatOptionsState();
+        }
+
+        /// <summary>
+        /// Populates the encryption dropdown with available options.
+        /// The encryption from manifest is marked as recommended.
+        /// </summary>
+        private void PopulateEncryptionDropdown()
+        {
+            comboBox_encryption.Items.Clear();
+
+            WzMapleVersion manifestEncryption = GetRecommendedEncryption();
+
+            // Add encryption options with recommended marker
+            var encryptionOptions = new[]
+            {
+                WzMapleVersion.BMS,
+                WzMapleVersion.GMS,
+                WzMapleVersion.EMS,
+                WzMapleVersion.CLASSIC
+            };
+
+            int selectedIndex = 0;
+            for (int i = 0; i < encryptionOptions.Length; i++)
+            {
+                var enc = encryptionOptions[i];
+                string displayName = enc.ToString();
+
+                // Mark the manifest encryption as recommended
+                if (enc == manifestEncryption)
+                {
+                    displayName += " (Recommended)";
+                    selectedIndex = i;
+                }
+
+                comboBox_encryption.Items.Add(new EncryptionItem(enc, displayName));
+            }
+
+            comboBox_encryption.SelectedIndex = selectedIndex;
+        }
+
+        /// <summary>
+        /// Gets the currently selected encryption from the dropdown.
+        /// </summary>
+        private WzMapleVersion GetSelectedEncryption()
+        {
+            if (comboBox_encryption.SelectedItem is EncryptionItem item)
+            {
+                return item.Encryption;
+            }
+            return WzMapleVersion.BMS;
+        }
+
+        /// <summary>
+        /// Resolves recommended encryption from manifest metadata.
+        /// Falls back to SourceRegion when Encryption is missing.
+        /// </summary>
+        private WzMapleVersion GetRecommendedEncryption()
+        {
+            if (_versionInfo != null)
+            {
+                if (!string.IsNullOrEmpty(_versionInfo.Encryption) &&
+                    Enum.TryParse<WzMapleVersion>(_versionInfo.Encryption, true, out var parsed))
+                {
+                    return parsed;
+                }
+
+                if (!string.IsNullOrEmpty(_versionInfo.SourceRegion))
+                {
+                    switch (_versionInfo.SourceRegion.Trim().ToUpperInvariant())
+                    {
+                        case "GMS":
+                            return WzMapleVersion.GMS;
+                        case "EMS":
+                            return WzMapleVersion.EMS;
+                        case "CLASSIC":
+                            return WzMapleVersion.CLASSIC;
+                    }
+                }
+            }
+
+            return WzMapleVersion.BMS;
+        }
+
+        /// <summary>
+        /// Extracts version number from strings like "v83", "gms_v230", "GMS v83 (Pre-Big Bang)".
+        /// </summary>
+        private int ExtractVersionNumber(string versionString)
+        {
+            if (string.IsNullOrEmpty(versionString))
+                return 0;
+
+            var match = System.Text.RegularExpressions.Regex.Match(
+                versionString, @"v(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int version))
+            {
+                return version;
+            }
+
+            match = System.Text.RegularExpressions.Regex.Match(versionString, @"(\d+)");
+            if (match.Success && int.TryParse(match.Groups[1].Value, out version))
+            {
+                return version;
+            }
+
+            return 0;
         }
 
         private void InitializeComponent()
@@ -75,6 +220,13 @@ namespace HaRepacker.GUI
             this.label_versionInfo = new System.Windows.Forms.Label();
             this.button_selectAll = new System.Windows.Forms.Button();
             this.button_selectNone = new System.Windows.Forms.Button();
+            this.label_format = new System.Windows.Forms.Label();
+            this.label_patchVersion = new System.Windows.Forms.Label();
+            this.numericUpDown_patchVersion = new System.Windows.Forms.NumericUpDown();
+            this.checkBox_betaFormat = new System.Windows.Forms.CheckBox();
+            this.label_encryption = new System.Windows.Forms.Label();
+            this.comboBox_encryption = new System.Windows.Forms.ComboBox();
+            ((System.ComponentModel.ISupportInitialize)(this.numericUpDown_patchVersion)).BeginInit();
             this.SuspendLayout();
             //
             // label_versionInfo
@@ -166,12 +318,71 @@ namespace HaRepacker.GUI
             this.checkBox_64bit.TabIndex = 8;
             this.checkBox_64bit.Text = "Save as 64-bit WZ format";
             this.checkBox_64bit.UseVisualStyleBackColor = true;
+            this.checkBox_64bit.CheckedChanged += new System.EventHandler(this.checkBox_64bit_CheckedChanged);
+            //
+            // checkBox_betaFormat
+            //
+            this.checkBox_betaFormat.AutoSize = true;
+            this.checkBox_betaFormat.Location = new System.Drawing.Point(200, 322);
+            this.checkBox_betaFormat.Name = "checkBox_betaFormat";
+            this.checkBox_betaFormat.Size = new System.Drawing.Size(172, 19);
+            this.checkBox_betaFormat.TabIndex = 16;
+            this.checkBox_betaFormat.Text = "Pack as Beta Data.wz";
+            this.checkBox_betaFormat.UseVisualStyleBackColor = true;
+            this.checkBox_betaFormat.CheckedChanged += new System.EventHandler(this.checkBox_betaFormat_CheckedChanged);
+            //
+            // label_patchVersion
+            //
+            this.label_patchVersion.AutoSize = true;
+            this.label_patchVersion.Location = new System.Drawing.Point(12, 350);
+            this.label_patchVersion.Name = "label_patchVersion";
+            this.label_patchVersion.Size = new System.Drawing.Size(122, 15);
+            this.label_patchVersion.TabIndex = 13;
+            this.label_patchVersion.Text = "Patch Version (0=auto):";
+            //
+            // numericUpDown_patchVersion
+            //
+            this.numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 348);
+            this.numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
+            this.numericUpDown_patchVersion.Minimum = new decimal(new int[] { 0, 0, 0, 0 });
+            this.numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
+            this.numericUpDown_patchVersion.Size = new System.Drawing.Size(80, 23);
+            this.numericUpDown_patchVersion.TabIndex = 14;
+            this.numericUpDown_patchVersion.Value = new decimal(new int[] { 0, 0, 0, 0 });
+            //
+            // label_format
+            //
+            this.label_format.AutoSize = true;
+            this.label_format.ForeColor = System.Drawing.Color.DarkBlue;
+            this.label_format.Location = new System.Drawing.Point(12, 375);
+            this.label_format.Name = "label_format";
+            this.label_format.Size = new System.Drawing.Size(180, 15);
+            this.label_format.TabIndex = 15;
+            this.label_format.Text = "Source: Standard";
+            //
+            // label_encryption
+            //
+            this.label_encryption.AutoSize = true;
+            this.label_encryption.Location = new System.Drawing.Point(200, 327);
+            this.label_encryption.Name = "label_encryption";
+            this.label_encryption.Size = new System.Drawing.Size(67, 15);
+            this.label_encryption.TabIndex = 17;
+            this.label_encryption.Text = "Encryption:";
+            //
+            // comboBox_encryption
+            //
+            this.comboBox_encryption.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboBox_encryption.FormattingEnabled = true;
+            this.comboBox_encryption.Location = new System.Drawing.Point(200, 348);
+            this.comboBox_encryption.Name = "comboBox_encryption";
+            this.comboBox_encryption.Size = new System.Drawing.Size(170, 23);
+            this.comboBox_encryption.TabIndex = 18;
             //
             // progressBar
             //
             this.progressBar.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.progressBar.Location = new System.Drawing.Point(12, 350);
+            this.progressBar.Location = new System.Drawing.Point(12, 400);
             this.progressBar.Name = "progressBar";
             this.progressBar.Size = new System.Drawing.Size(360, 23);
             this.progressBar.TabIndex = 9;
@@ -180,7 +391,7 @@ namespace HaRepacker.GUI
             //
             this.label_status.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.label_status.Location = new System.Drawing.Point(12, 376);
+            this.label_status.Location = new System.Drawing.Point(12, 426);
             this.label_status.Name = "label_status";
             this.label_status.Size = new System.Drawing.Size(360, 15);
             this.label_status.TabIndex = 10;
@@ -189,7 +400,7 @@ namespace HaRepacker.GUI
             // button_pack
             //
             this.button_pack.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_pack.Location = new System.Drawing.Point(216, 400);
+            this.button_pack.Location = new System.Drawing.Point(216, 450);
             this.button_pack.Name = "button_pack";
             this.button_pack.Size = new System.Drawing.Size(75, 23);
             this.button_pack.TabIndex = 11;
@@ -200,7 +411,7 @@ namespace HaRepacker.GUI
             // button_cancel
             //
             this.button_cancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.button_cancel.Location = new System.Drawing.Point(297, 400);
+            this.button_cancel.Location = new System.Drawing.Point(297, 450);
             this.button_cancel.Name = "button_cancel";
             this.button_cancel.Size = new System.Drawing.Size(75, 23);
             this.button_cancel.TabIndex = 12;
@@ -212,11 +423,17 @@ namespace HaRepacker.GUI
             //
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(384, 431);
+            this.ClientSize = new System.Drawing.Size(384, 481);
             this.Controls.Add(this.button_cancel);
             this.Controls.Add(this.button_pack);
             this.Controls.Add(this.label_status);
             this.Controls.Add(this.progressBar);
+            this.Controls.Add(this.comboBox_encryption);
+            this.Controls.Add(this.label_encryption);
+            this.Controls.Add(this.label_format);
+            this.Controls.Add(this.numericUpDown_patchVersion);
+            this.Controls.Add(this.label_patchVersion);
+            this.Controls.Add(this.checkBox_betaFormat);
             this.Controls.Add(this.checkBox_64bit);
             this.Controls.Add(this.button_browse);
             this.Controls.Add(this.textBox_outputPath);
@@ -233,6 +450,7 @@ namespace HaRepacker.GUI
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "Pack IMG Files to WZ";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.PackToWzForm_FormClosing);
+            ((System.ComponentModel.ISupportInitialize)(this.numericUpDown_patchVersion)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
         }
@@ -250,6 +468,12 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.Label label_versionInfo;
         private System.Windows.Forms.Button button_selectAll;
         private System.Windows.Forms.Button button_selectNone;
+        private System.Windows.Forms.Label label_format;
+        private System.Windows.Forms.Label label_patchVersion;
+        private System.Windows.Forms.NumericUpDown numericUpDown_patchVersion;
+        private System.Windows.Forms.CheckBox checkBox_betaFormat;
+        private System.Windows.Forms.Label label_encryption;
+        private System.Windows.Forms.ComboBox comboBox_encryption;
 
         private void PopulateCategoriesList()
         {
@@ -264,13 +488,26 @@ namespace HaRepacker.GUI
                 {
                     int imgCount = Directory.EnumerateFiles(categoryPath, "*.img", SearchOption.AllDirectories).Count();
                     int subDirCount = Directory.EnumerateDirectories(categoryPath, "*", SearchOption.AllDirectories).Count();
+                    bool hasListJson = category.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                       File.Exists(Path.Combine(categoryPath, "List.json"));
 
-                    // Add if it has .img files OR subdirectories (for structures like Base.wz)
-                    if (imgCount > 0 || subDirCount > 0)
+                    // Add if it has .img files, subdirectories, or List.json (pre-BB List category).
+                    if (imgCount > 0 || subDirCount > 0 || hasListJson)
                     {
-                        string displayName = imgCount > 0
-                            ? $"{category} ({imgCount} images)"
-                            : $"{category} (directory structure)";
+                        string displayName;
+                        if (imgCount > 0)
+                        {
+                            displayName = $"{category} ({imgCount} images)";
+                        }
+                        else if (hasListJson)
+                        {
+                            displayName = $"{category} (List.json)";
+                        }
+                        else
+                        {
+                            displayName = $"{category} (directory structure)";
+                        }
+
                         checkedListBox_categories.Items.Add(displayName, true);
                         addedCategories.Add(category);
                     }
@@ -290,12 +527,25 @@ namespace HaRepacker.GUI
 
                 int imgCount = Directory.EnumerateFiles(dirPath, "*.img", SearchOption.AllDirectories).Count();
                 int subDirCount = Directory.EnumerateDirectories(dirPath, "*", SearchOption.AllDirectories).Count();
+                bool hasListJson = dirName.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                   File.Exists(Path.Combine(dirPath, "List.json"));
 
-                if (imgCount > 0 || subDirCount > 0)
+                if (imgCount > 0 || subDirCount > 0 || hasListJson)
                 {
-                    string displayName = imgCount > 0
-                        ? $"{dirName} ({imgCount} images)"
-                        : $"{dirName} (directory structure)";
+                    string displayName;
+                    if (imgCount > 0)
+                    {
+                        displayName = $"{dirName} ({imgCount} images)";
+                    }
+                    else if (hasListJson)
+                    {
+                        displayName = $"{dirName} (List.json)";
+                    }
+                    else
+                    {
+                        displayName = $"{dirName} (directory structure)";
+                    }
+
                     checkedListBox_categories.Items.Add(displayName, true);
                 }
             }
@@ -328,6 +578,69 @@ namespace HaRepacker.GUI
                 {
                     textBox_outputPath.Text = dialog.SelectedPath;
                 }
+            }
+        }
+
+        private void checkBox_64bit_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateFormatOptionsState();
+        }
+
+        private void checkBox_betaFormat_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateFormatOptionsState();
+        }
+
+        /// <summary>
+        /// Updates the enabled state of format options based on checkbox selections.
+        /// Beta format and 64-bit format are mutually exclusive.
+        /// </summary>
+        private void UpdateFormatOptionsState()
+        {
+            if (checkBox_betaFormat.Checked)
+            {
+                // Beta format - disable 64-bit option
+                checkBox_64bit.Checked = false;
+                checkBox_64bit.Enabled = false;
+            }
+            else
+            {
+                // Standard/64-bit format
+                checkBox_64bit.Enabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Persists selected packing settings to manifest.json so future pack sessions
+        /// reuse the same effective encryption/format defaults.
+        /// </summary>
+        private void SavePackingSettingsToManifest()
+        {
+            if (_versionInfo == null)
+            {
+                return;
+            }
+
+            string manifestPath = Path.Combine(_versionPath, "manifest.json");
+            if (!File.Exists(manifestPath))
+            {
+                return;
+            }
+
+            try
+            {
+                _versionInfo.Encryption = GetSelectedEncryption().ToString();
+                _versionInfo.Is64Bit = checkBox_64bit.Checked;
+                _versionInfo.IsBetaMs = checkBox_betaFormat.Checked;
+
+                _versionInfo.PatchVersion = (short)numericUpDown_patchVersion.Value;
+
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(_versionInfo, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(manifestPath, json);
+            }
+            catch
+            {
+                // Best-effort persistence only; packing should continue even if manifest write fails.
             }
         }
 
@@ -365,6 +678,8 @@ namespace HaRepacker.GUI
                 return;
             }
 
+            SavePackingSettingsToManifest();
+
             // Start packing
             _isPacking = true;
             button_pack.Text = "Cancel";
@@ -372,6 +687,9 @@ namespace HaRepacker.GUI
             textBox_outputPath.Enabled = false;
             button_browse.Enabled = false;
             checkBox_64bit.Enabled = false;
+            checkBox_betaFormat.Enabled = false;
+            numericUpDown_patchVersion.Enabled = false;
+            comboBox_encryption.Enabled = false;
 
             try
             {
@@ -389,13 +707,36 @@ namespace HaRepacker.GUI
                     }
                 });
 
-                var result = await packingService.PackCategoriesAsync(
-                    _versionPath,
-                    outputPath,
-                    selectedCategories,
-                    checkBox_64bit.Checked,
-                    _cancellationTokenSource.Token,
-                    progress);
+                // Get selected encryption
+                WzMapleVersion selectedEncryption = GetSelectedEncryption();
+
+                PackingResult result;
+                if (checkBox_betaFormat.Checked)
+                {
+                    // Use beta packing for single Data.wz format
+                    result = await packingService.PackBetaDataWzAsync(
+                        _versionPath,
+                        outputPath,
+                        selectedCategories,
+                        _cancellationTokenSource.Token,
+                        progress,
+                        (short)numericUpDown_patchVersion.Value,
+                        selectedEncryption);
+                }
+                else
+                {
+                    // Use standard packing for separate category WZ files
+                    result = await packingService.PackCategoriesAsync(
+                        _versionPath,
+                        outputPath,
+                        selectedCategories,
+                        checkBox_64bit.Checked,
+                        _cancellationTokenSource.Token,
+                        progress,
+                        (short)numericUpDown_patchVersion.Value,
+                        false, // separateCanvas
+                        selectedEncryption);
+                }
 
                 if (result.Success)
                 {
@@ -436,7 +777,11 @@ namespace HaRepacker.GUI
                 checkedListBox_categories.Enabled = true;
                 textBox_outputPath.Enabled = true;
                 button_browse.Enabled = true;
-                checkBox_64bit.Enabled = true;
+                checkBox_betaFormat.Enabled = true;
+                numericUpDown_patchVersion.Enabled = true;
+                comboBox_encryption.Enabled = true;
+                // Re-enable format options based on current checkbox state
+                UpdateFormatOptionsState();
             }
         }
 
@@ -484,5 +829,22 @@ namespace HaRepacker.GUI
             }
             return $"{size:F2} {sizes[order]}";
         }
+    }
+
+    /// <summary>
+    /// Helper class for encryption dropdown items.
+    /// </summary>
+    internal class EncryptionItem
+    {
+        public WzMapleVersion Encryption { get; }
+        public string DisplayName { get; }
+
+        public EncryptionItem(WzMapleVersion encryption, string displayName)
+        {
+            Encryption = encryption;
+            DisplayName = displayName;
+        }
+
+        public override string ToString() => DisplayName;
     }
 }

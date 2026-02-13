@@ -133,7 +133,7 @@ namespace HaCreator.MapSimulator.UI
                         renderParameters,
                         TickCount);
                 }
-                else if (_isHoveringToClickableButton) {
+                else if (_isHoveringToClickableButton && _cursorClickableState != null) {
                     _cursorClickableState.Draw(sprite, skeletonMeshRenderer, gameTime,
                         -MousePos.X, -MousePos.Y, centerX, centerY,
                         drawReflectionInfo,
@@ -150,11 +150,23 @@ namespace HaCreator.MapSimulator.UI
             }
             else // if left or right press is active, draw pressed state
             {
-                _cursorPressedState.Draw(sprite, skeletonMeshRenderer, gameTime,
-                    -MousePos.X, -MousePos.Y, centerX, centerY,
-                    drawReflectionInfo,
-                    renderParameters,
-                    TickCount);
+                if (_cursorPressedState != null)
+                {
+                    _cursorPressedState.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -MousePos.X, -MousePos.Y, centerX, centerY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
+                else
+                {
+                    // Fallback to default cursor if no pressed state available (beta MapleStory)
+                    base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        -MousePos.X, -MousePos.Y, centerX, centerY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
             }
         }
     }

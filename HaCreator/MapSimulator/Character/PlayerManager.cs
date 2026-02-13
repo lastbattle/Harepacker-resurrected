@@ -304,10 +304,20 @@ namespace HaCreator.MapSimulator.Character
                 // Could trigger death effect, etc.
             };
 
-            // Set up damage received callback
+            // Set up damage received callback - show violet damage number above player
             Player.OnDamaged = (player, damage) =>
             {
-                // Could show damage number above player
+                if (_combatEffects != null && damage > 0)
+                {
+                    int currentTime = Environment.TickCount;
+                    // Show violet damage number above player's head (NoViolet)
+                    _combatEffects.AddReceivedDamage(
+                        damage,
+                        player.X,
+                        player.Y - 50, // Above player head
+                        false, // Not critical (mobs don't crit in basic implementation)
+                        currentTime);
+                }
             };
 
             // Set spawn position and snap to foothold
@@ -438,14 +448,35 @@ namespace HaCreator.MapSimulator.Character
                     Player.ToggleGodMode();
                 }
 
-                // Handle skill hotkeys (Skill1-8)
+                // Handle skill hotkeys
                 if (Skills != null)
                 {
+                    var inputState = Input.GetState();
+
+                    // Primary skill hotkeys (Skill1-8, slots 0-7)
                     for (int i = 0; i < 8; i++)
                     {
-                        if (Input.IsPressed(InputAction.Skill1 + i))
+                        if (inputState.Skills[i])
                         {
                             Skills.TryCastHotkey(i, currentTime);
+                        }
+                    }
+
+                    // Function key hotkeys (F1-F12, slots 8-19)
+                    for (int i = 0; i < 12; i++)
+                    {
+                        if (inputState.FunctionSlots[i])
+                        {
+                            Skills.TryCastHotkey(SkillManager.FUNCTION_SLOT_OFFSET + i, currentTime);
+                        }
+                    }
+
+                    // Ctrl+Number hotkeys (Ctrl+1-8, slots 20-27)
+                    for (int i = 0; i < 8; i++)
+                    {
+                        if (inputState.CtrlSlots[i])
+                        {
+                            Skills.TryCastHotkey(SkillManager.CTRL_SLOT_OFFSET + i, currentTime);
                         }
                     }
                 }
@@ -608,6 +639,15 @@ namespace HaCreator.MapSimulator.Character
         public bool IsPlayerNear(float x, float y, float range)
         {
             return Player?.IsInRange(x, y, range) ?? false;
+        }
+
+        /// <summary>
+        /// Force the player to standing state and clear all movement.
+        /// Used when entering portals, interacting with objects, etc.
+        /// </summary>
+        public void ForceStand()
+        {
+            Player?.ForceStand();
         }
 
         /// <summary>

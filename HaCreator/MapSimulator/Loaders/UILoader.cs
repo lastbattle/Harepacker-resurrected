@@ -502,6 +502,248 @@ namespace HaCreator.MapSimulator.Loaders
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
             }
+            else
+            {
+                // Pre-BigBang and Beta MapleStory status bar (uses StatusBar.img instead of StatusBar2.img)
+                // This handles both pre-BB (v82 etc.) and beta (v15 etc.) since they share similar structure:
+                // - base/backgrnd (800x71 main background)
+                // - gauge/bar (gauge fill texture)
+                // - number/0-9, Lbracket, Rbracket, slash, percent (digit textures)
+                // - BtShop, BtMenu, BtShort (common buttons, some may be missing in beta)
+                WzSubProperty baseProperties = (uiStatusBar?["base"] as WzSubProperty);
+                WzSubProperty gaugeProperties = (uiStatusBar?["gauge"] as WzSubProperty);
+                WzSubProperty numberProperties = (uiStatusBar?["number"] as WzSubProperty);
+
+                if (baseProperties != null)
+                {
+                    HaUIGrid grid = new HaUIGrid(1, 1);
+
+                    // Main background - 800x71 in pre-BB
+                    System.Drawing.Bitmap backgrnd = ((WzCanvasProperty)baseProperties?["backgrnd"])?.GetLinkedWzCanvasBitmap();
+
+                    if (backgrnd != null)
+                    {
+                        grid.AddRenderable(0, 0, new HaUIImage(new HaUIInfo()
+                        {
+                            Bitmap = backgrnd,
+                            VerticalAlignment = HaUIAlignment.Start,
+                            HorizontalAlignment = HaUIAlignment.Start
+                        }));
+                    }
+
+                    const int UI_PADDING_PX = 2;
+
+                    // Load gauge textures for HP, MP, EXP bars
+                    Texture2D hpGaugeTexture = null, mpGaugeTexture = null, expGaugeTexture = null;
+
+                    if (gaugeProperties != null)
+                    {
+                        // Pre-BB uses gauge/bar for the gauge fill, gauge/hpFlash and gauge/mpFlash for animations
+                        // The gauge/bar is the main gauge texture
+                        WzCanvasProperty barCanvas = gaugeProperties["bar"] as WzCanvasProperty;
+                        if (barCanvas != null)
+                        {
+                            var barBitmap = barCanvas.GetLinkedWzCanvasBitmap();
+                            if (barBitmap != null)
+                            {
+                                // Pre-BB uses the same gauge bar texture for all gauges
+                                hpGaugeTexture = barBitmap.ToTexture2D(device);
+                                mpGaugeTexture = barBitmap.ToTexture2D(device);
+                                expGaugeTexture = barBitmap.ToTexture2D(device);
+                            }
+                        }
+                    }
+
+                    // Sound properties for buttons
+                    WzBinaryProperty binaryProp_BtMouseClickSoundProperty = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
+                    WzBinaryProperty binaryProp_BtMouseOverSoundProperty = (WzBinaryProperty)soundUIImage?["BtMouseOver"];
+
+                    // Pre-BB buttons: BtShop (CashShop), BtMenu, BtNPT (MTS equivalent), BtShort
+                    WzSubProperty subProperty_BtShop = (WzSubProperty)uiStatusBar?["BtShop"];
+                    UIObject obj_Ui_BtCashShop = null;
+                    if (subProperty_BtShop != null)
+                    {
+                        obj_Ui_BtCashShop = new UIObject(subProperty_BtShop, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                            false,
+                            new Point(0, 0), device);
+                        obj_Ui_BtCashShop.X = backgrnd?.Width ?? 800 - obj_Ui_BtCashShop.CanvasSnapshotWidth - UI_PADDING_PX;
+                        obj_Ui_BtCashShop.Y = backgrnd?.Height ?? 71;
+                    }
+
+                    WzSubProperty subProperty_BtNPT = (WzSubProperty)uiStatusBar?["BtNPT"];
+                    UIObject obj_Ui_BtMTS = null;
+                    if (subProperty_BtNPT != null)
+                    {
+                        obj_Ui_BtMTS = new UIObject(subProperty_BtNPT, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                            false,
+                            new Point(0, 0), device);
+                        if (obj_Ui_BtCashShop != null)
+                        {
+                            obj_Ui_BtMTS.X = obj_Ui_BtCashShop.X - obj_Ui_BtMTS.CanvasSnapshotWidth;
+                        }
+                        obj_Ui_BtMTS.Y = backgrnd?.Height ?? 71;
+                    }
+
+                    WzSubProperty subProperty_BtMenu = (WzSubProperty)uiStatusBar?["BtMenu"];
+                    UIObject obj_Ui_BtMenu = null;
+                    if (subProperty_BtMenu != null)
+                    {
+                        obj_Ui_BtMenu = new UIObject(subProperty_BtMenu, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                            false,
+                            new Point(0, 0), device);
+                        if (obj_Ui_BtMTS != null)
+                        {
+                            obj_Ui_BtMenu.X = obj_Ui_BtMTS.X - obj_Ui_BtMenu.CanvasSnapshotWidth;
+                        }
+                        else if (obj_Ui_BtCashShop != null)
+                        {
+                            obj_Ui_BtMenu.X = obj_Ui_BtCashShop.X - obj_Ui_BtMenu.CanvasSnapshotWidth;
+                        }
+                        obj_Ui_BtMenu.Y = backgrnd?.Height ?? 71;
+                    }
+
+                    WzSubProperty subProperty_BtShort = (WzSubProperty)uiStatusBar?["BtShort"];
+                    UIObject obj_Ui_BtSystem = null;
+                    if (subProperty_BtShort != null)
+                    {
+                        obj_Ui_BtSystem = new UIObject(subProperty_BtShort, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                            false,
+                            new Point(0, 0), device);
+                        if (obj_Ui_BtMenu != null)
+                        {
+                            obj_Ui_BtSystem.X = obj_Ui_BtMenu.X - obj_Ui_BtSystem.CanvasSnapshotWidth;
+                        }
+                        obj_Ui_BtSystem.Y = backgrnd?.Height ?? 71;
+                    }
+
+                    // Pre-BB doesn't have BtChannel, create a dummy null
+                    UIObject obj_Ui_BtChannel = null;
+
+                    Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
+
+                    IDXObject dxObj_backgrnd = new DXObject(0, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid.GetSize().Height, texture_backgrnd, 0);
+                    StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd,
+                        obj_Ui_BtCashShop,
+                        obj_Ui_BtMTS,
+                        obj_Ui_BtMenu,
+                        obj_Ui_BtSystem,
+                        obj_Ui_BtChannel,
+                        new Point(dxObj_backgrnd.X, dxObj_backgrnd.Y),
+                        new List<UIObject> { });
+                    statusBar.InitializeButtons();
+
+                    // Set gauge textures if loaded
+                    if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null)
+                    {
+                        statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    }
+
+                    // Load bitmap font digit textures from StatusBar.img/number
+                    if (numberProperties != null)
+                    {
+                        Texture2D[] digitTextures = new Texture2D[10];
+                        Point[] digitOrigins = new Point[10];
+                        bool hasDigits = false;
+
+                        // Helper to get origin from canvas
+                        Point GetCanvasOrigin(WzCanvasProperty canvas)
+                        {
+                            if (canvas == null) return Point.Zero;
+                            var origin = canvas["origin"] as WzVectorProperty;
+                            if (origin != null)
+                            {
+                                return new Point(origin.X.Value, origin.Y.Value);
+                            }
+                            return Point.Zero;
+                        }
+
+                        // Load digits 0-9 with origins
+                        for (int i = 0; i < 10; i++)
+                        {
+                            WzCanvasProperty digitCanvas = numberProperties[i.ToString()] as WzCanvasProperty;
+                            if (digitCanvas != null)
+                            {
+                                var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null)
+                                {
+                                    digitTextures[i] = bitmap.ToTexture2D(device);
+                                    digitOrigins[i] = GetCanvasOrigin(digitCanvas);
+                                    hasDigits = true;
+                                }
+                            }
+                        }
+
+                        if (hasDigits)
+                        {
+                            // Load special characters - Pre-BB uses Lbracket, Rbracket, slash, percent
+                            Texture2D slashTexture = null, percentTexture = null;
+                            Texture2D bracketLeftTexture = null, bracketRightTexture = null;
+                            Texture2D dotTexture = null;
+                            Point slashOrigin = Point.Zero, percentOrigin = Point.Zero;
+                            Point bracketLeftOrigin = Point.Zero, bracketRightOrigin = Point.Zero;
+                            Point dotOrigin = Point.Zero;
+
+                            // Left bracket [
+                            WzCanvasProperty lbCanvas = numberProperties["Lbracket"] as WzCanvasProperty;
+                            if (lbCanvas != null)
+                            {
+                                var bitmap = lbCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null)
+                                {
+                                    bracketLeftTexture = bitmap.ToTexture2D(device);
+                                    bracketLeftOrigin = GetCanvasOrigin(lbCanvas);
+                                }
+                            }
+
+                            // Right bracket ]
+                            WzCanvasProperty rbCanvas = numberProperties["Rbracket"] as WzCanvasProperty;
+                            if (rbCanvas != null)
+                            {
+                                var bitmap = rbCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null)
+                                {
+                                    bracketRightTexture = bitmap.ToTexture2D(device);
+                                    bracketRightOrigin = GetCanvasOrigin(rbCanvas);
+                                }
+                            }
+
+                            // Slash /
+                            WzCanvasProperty slashCanvas = numberProperties["slash"] as WzCanvasProperty;
+                            if (slashCanvas != null)
+                            {
+                                var bitmap = slashCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null)
+                                {
+                                    slashTexture = bitmap.ToTexture2D(device);
+                                    slashOrigin = GetCanvasOrigin(slashCanvas);
+                                }
+                            }
+
+                            // Percent %
+                            WzCanvasProperty percentCanvas = numberProperties["percent"] as WzCanvasProperty;
+                            if (percentCanvas != null)
+                            {
+                                var bitmap = percentCanvas.GetLinkedWzCanvasBitmap();
+                                if (bitmap != null)
+                                {
+                                    percentTexture = bitmap.ToTexture2D(device);
+                                    percentOrigin = GetCanvasOrigin(percentCanvas);
+                                }
+                            }
+
+                            statusBar.SetDigitTextures(digitTextures, digitOrigins,
+                                slashTexture, slashOrigin,
+                                percentTexture, percentOrigin,
+                                bracketLeftTexture, bracketLeftOrigin,
+                                bracketRightTexture, bracketRightOrigin,
+                                dotTexture, dotOrigin);
+                        }
+                    }
+
+                    // Pre-BB doesn't have separate chat UI, return null for chatUI
+                    return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, null);
+                }
+            }
             return null;
         }
 
@@ -778,15 +1020,30 @@ namespace HaCreator.MapSimulator.Loaders
 
             List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
 
-            // Mouse hold state
-            BaseDXDrawableItem holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            // Mouse hold state (style 12 - may not exist in beta MapleStory)
+            BaseDXDrawableItem holdState = null;
+            if (cursorHold != null)
+            {
+                holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             // Mouse clicked item state
-            BaseDXDrawableItem clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseDXDrawableItem clickableButtonState = null;
+            if (cursorClickable != null)
+            {
+                clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             // NPC hover cursor state (uses style 4 - alternate clickable, or fallback to style 1)
-            WzSubProperty npcHoverSource = cursorClickable2 ?? cursorClickable;
-            BaseDXDrawableItem npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, npcHoverSource, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            BaseDXDrawableItem npcHoverState = null;
+            if (cursorClickable2 != null)
+            {
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable2, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
+            else if (cursorClickable != null)
+            {
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+            }
 
             return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState);
         }

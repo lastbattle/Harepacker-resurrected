@@ -51,6 +51,7 @@ namespace HaCreator.MapEditor
         private BackgroundPanel backgroundPanel;
         private LifePanel lifePanel;
         private BlackBorderPanel blackBorderPanel;
+        private ObjectViewerPanel objectViewerPanel;
         private System.Windows.Controls.ScrollViewer editorPanel;
         public readonly BackupManager backupMan;
 
@@ -517,6 +518,9 @@ namespace HaCreator.MapEditor
                     // LBTop LBBottom LBSide
                     blackBorderPanel.UpdateBoardData();
 
+                    // Notify object viewer of board change
+                    objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
+
                     ParseVisibleEditedTypes();
                 } else
                 {
@@ -949,23 +953,27 @@ namespace HaCreator.MapEditor
                 // Show Pack to WZ dialog for IMG filesystem mode
                 if (Program.DataSource != null)
                 {
-                    // Get the version path from DataSource
+                    // Get the version path and data source from DataSource
                     string versionPath = null;
+                    MapleLib.Img.ImgFileSystemDataSource imgDataSource = null;
+
                     if (Program.DataSource is MapleLib.Img.ImgFileSystemDataSource imgDs)
                     {
                         versionPath = imgDs.Manager?.VersionPath;
+                        imgDataSource = imgDs;
                     }
                     else if (Program.DataSource is MapleLib.Img.HybridDataSource hybridDs)
                     {
                         // Try to get from hybrid's img source
                         versionPath = hybridDs.ImgSource?.Manager?.VersionPath;
+                        imgDataSource = hybridDs.ImgSource;
                     }
 
                     if (!string.IsNullOrEmpty(versionPath))
                     {
                         lock (multiBoard)
                         {
-                            PackToWz packDialog = new PackToWz(versionPath);
+                            PackToWz packDialog = new PackToWz(versionPath, imgDataSource);
                             packDialog.ShowDialog();
                         }
                         return;
@@ -1073,6 +1081,10 @@ namespace HaCreator.MapEditor
                     multiBoard.SelectedBoard.VisibleTypes = ApplicationSettings.theoreticalVisibleTypes;
                     multiBoard.SelectedBoard.EditedTypes = ApplicationSettings.theoreticalEditedTypes;
                     ParseVisibleEditedTypes();
+
+                    // Notify object viewer of new board
+                    objectViewerPanel?.OnBoardChanged(multiBoard.SelectedBoard);
+
                     multiBoard.Focus();
                 }
             }
@@ -1282,6 +1294,15 @@ namespace HaCreator.MapEditor
         public void SetLifePanel(LifePanel lp)
         {
             this.lifePanel = lp;
+        }
+
+        /// <summary>
+        /// Sets the object viewer panel
+        /// </summary>
+        /// <param name="ovp"></param>
+        public void SetObjectViewerPanel(ObjectViewerPanel ovp)
+        {
+            this.objectViewerPanel = ovp;
         }
 
         #region Hot Swap

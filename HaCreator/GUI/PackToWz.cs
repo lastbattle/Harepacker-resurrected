@@ -14,6 +14,7 @@ namespace HaCreator.GUI
     {
         private readonly string _versionPath;
         private readonly VersionInfo _versionInfo;
+        private readonly ImgFileSystemDataSource _imgDataSource;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private GroupBox groupBox1;
         private bool _isPacking = false;
@@ -22,11 +23,13 @@ namespace HaCreator.GUI
         /// Constructor
         /// </summary>
         /// <param name="versionPath">Path to the IMG filesystem version directory</param>
-        public PackToWz(string versionPath)
+        /// <param name="imgDataSource">Optional data source for tracking in-memory changes</param>
+        public PackToWz(string versionPath, ImgFileSystemDataSource imgDataSource = null)
         {
             InitializeComponent();
 
             _versionPath = versionPath;
+            _imgDataSource = imgDataSource;
 
             // Load version info
             string manifestPath = Path.Combine(versionPath, "manifest.json");
@@ -55,22 +58,34 @@ namespace HaCreator.GUI
                 label_versionInfo.Text = $"{_versionInfo.DisplayName ?? _versionInfo.Version}";
                 checkBox_64bit.Checked = _versionInfo.Is64Bit;
 
-                // Auto-fill patch version from manifest
+                // Set format label based on detected format and pre-select beta checkbox if applicable
+                if (_versionInfo.IsBetaMs)
+                {
+                    label_format.Text = "Source: Beta (Single Data.wz)";
+                    label_format.ForeColor = System.Drawing.Color.DarkGreen;
+                    // Pre-select beta format checkbox (user can uncheck if desired)
+                    checkBox_betaFormat.Checked = true;
+                }
+                else if (_versionInfo.Is64Bit)
+                {
+                    label_format.Text = "Source: 64-bit (Data folder)";
+                    label_format.ForeColor = System.Drawing.Color.DarkBlue;
+                }
+                else if (_versionInfo.IsPreBB)
+                {
+                    label_format.Text = "Source: Pre-Big Bang";
+                    label_format.ForeColor = System.Drawing.Color.DarkOrange;
+                }
+                else
+                {
+                    label_format.Text = "Source: Standard";
+                    label_format.ForeColor = System.Drawing.Color.Black;
+                }
+
+                // Respect manifest patchVersion verbatim so "0 = auto" persists across sessions.
                 int patchVersion = _versionInfo.PatchVersion;
-
-                // If patchVersion is not set, try to extract from version string (e.g., "v83", "gms_v230")
-                if (patchVersion <= 0 && !string.IsNullOrEmpty(_versionInfo.Version))
-                {
-                    patchVersion = ExtractVersionNumber(_versionInfo.Version);
-                }
-
-                // If still not found, try from display name
-                if (patchVersion <= 0 && !string.IsNullOrEmpty(_versionInfo.DisplayName))
-                {
-                    patchVersion = ExtractVersionNumber(_versionInfo.DisplayName);
-                }
-
-                if (patchVersion > 0 && patchVersion <= numericUpDown_patchVersion.Maximum)
+                if (patchVersion >= numericUpDown_patchVersion.Minimum &&
+                    patchVersion <= numericUpDown_patchVersion.Maximum)
                 {
                     numericUpDown_patchVersion.Value = patchVersion;
                 }
@@ -78,7 +93,128 @@ namespace HaCreator.GUI
             else
             {
                 label_versionInfo.Text = "Version: Unknown (no manifest.json)";
+                label_format.Text = "Source: Unknown";
+                label_format.ForeColor = System.Drawing.Color.Gray;
             }
+
+            // Populate encryption dropdown
+            PopulateEncryptionDropdown();
+
+            // Update UI state based on initial checkbox values
+            UpdateFormatOptionsState();
+
+            // Update changed images count
+            UpdateChangedImagesCount();
+        }
+
+        /// <summary>
+        /// Updates the label showing how many images have unsaved changes
+        /// </summary>
+        private void UpdateChangedImagesCount()
+        {
+            if (_imgDataSource != null)
+            {
+                int changedCount = _imgDataSource.GetChangedImagesCount();
+                if (changedCount > 0)
+                {
+                    checkBox_saveChangedImages.Enabled = true;
+                    checkBox_saveChangedImages.Checked = true;
+                    checkBox_saveChangedImages.Text = $"Save {changedCount} changed image(s) to source before packing";
+                }
+                else
+                {
+                    checkBox_saveChangedImages.Enabled = false;
+                    checkBox_saveChangedImages.Checked = false;
+                    checkBox_saveChangedImages.Text = "No changed images to save";
+                }
+            }
+            else
+            {
+                checkBox_saveChangedImages.Enabled = false;
+                checkBox_saveChangedImages.Checked = false;
+                checkBox_saveChangedImages.Text = "No data source available";
+            }
+        }
+
+        /// <summary>
+        /// Populates the encryption dropdown with available options.
+        /// The encryption from manifest is marked as recommended.
+        /// </summary>
+        private void PopulateEncryptionDropdown()
+        {
+            comboBox_encryption.Items.Clear();
+
+            WzMapleVersion manifestEncryption = GetRecommendedEncryption();
+
+            // Add encryption options with recommended marker
+            var encryptionOptions = new[]
+            {
+                WzMapleVersion.BMS,
+                WzMapleVersion.GMS,
+                WzMapleVersion.EMS,
+                WzMapleVersion.CLASSIC
+            };
+
+            int selectedIndex = 0;
+            for (int i = 0; i < encryptionOptions.Length; i++)
+            {
+                var enc = encryptionOptions[i];
+                string displayName = enc.ToString();
+
+                // Mark the manifest encryption as recommended
+                if (enc == manifestEncryption)
+                {
+                    displayName += " (Recommended)";
+                    selectedIndex = i;
+                }
+
+                comboBox_encryption.Items.Add(new EncryptionItem(enc, displayName));
+            }
+
+            comboBox_encryption.SelectedIndex = selectedIndex;
+        }
+
+        /// <summary>
+        /// Gets the currently selected encryption from the dropdown.
+        /// </summary>
+        private WzMapleVersion GetSelectedEncryption()
+        {
+            if (comboBox_encryption.SelectedItem is EncryptionItem item)
+            {
+                return item.Encryption;
+            }
+            return WzMapleVersion.BMS;
+        }
+
+        /// <summary>
+        /// Resolves recommended encryption from manifest metadata.
+        /// Falls back to SourceRegion when Encryption is missing.
+        /// </summary>
+        private WzMapleVersion GetRecommendedEncryption()
+        {
+            if (_versionInfo != null)
+            {
+                if (!string.IsNullOrEmpty(_versionInfo.Encryption) &&
+                    Enum.TryParse<WzMapleVersion>(_versionInfo.Encryption, true, out var parsed))
+                {
+                    return parsed;
+                }
+
+                if (!string.IsNullOrEmpty(_versionInfo.SourceRegion))
+                {
+                    switch (_versionInfo.SourceRegion.Trim().ToUpperInvariant())
+                    {
+                        case "GMS":
+                            return WzMapleVersion.GMS;
+                        case "EMS":
+                            return WzMapleVersion.EMS;
+                        case "CLASSIC":
+                            return WzMapleVersion.CLASSIC;
+                    }
+                }
+            }
+
+            return WzMapleVersion.BMS;
         }
 
         /// <summary>
@@ -124,6 +260,11 @@ namespace HaCreator.GUI
             label_patchVersion = new Label();
             numericUpDown_patchVersion = new NumericUpDown();
             groupBox1 = new GroupBox();
+            label_format = new Label();
+            checkBox_betaFormat = new CheckBox();
+            label_encryption = new Label();
+            comboBox_encryption = new ComboBox();
+            checkBox_saveChangedImages = new CheckBox();
             ((System.ComponentModel.ISupportInitialize)numericUpDown_patchVersion).BeginInit();
             groupBox1.SuspendLayout();
             SuspendLayout();
@@ -169,7 +310,7 @@ namespace HaCreator.GUI
             // button_pack
             // 
             button_pack.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            button_pack.Location = new System.Drawing.Point(216, 452);
+            button_pack.Location = new System.Drawing.Point(216, 506);
             button_pack.Name = "button_pack";
             button_pack.Size = new System.Drawing.Size(75, 23);
             button_pack.TabIndex = 11;
@@ -180,7 +321,7 @@ namespace HaCreator.GUI
             // button_cancel
             // 
             button_cancel.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-            button_cancel.Location = new System.Drawing.Point(297, 452);
+            button_cancel.Location = new System.Drawing.Point(297, 506);
             button_cancel.Name = "button_cancel";
             button_cancel.Size = new System.Drawing.Size(75, 23);
             button_cancel.TabIndex = 12;
@@ -191,7 +332,7 @@ namespace HaCreator.GUI
             // progressBar
             // 
             progressBar.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            progressBar.Location = new System.Drawing.Point(12, 402);
+            progressBar.Location = new System.Drawing.Point(12, 461);
             progressBar.Name = "progressBar";
             progressBar.Size = new System.Drawing.Size(360, 23);
             progressBar.TabIndex = 9;
@@ -199,7 +340,7 @@ namespace HaCreator.GUI
             // label_status
             // 
             label_status.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            label_status.Location = new System.Drawing.Point(12, 428);
+            label_status.Location = new System.Drawing.Point(12, 487);
             label_status.Name = "label_status";
             label_status.Size = new System.Drawing.Size(360, 15);
             label_status.TabIndex = 10;
@@ -208,7 +349,7 @@ namespace HaCreator.GUI
             // checkBox_64bit
             // 
             checkBox_64bit.AutoSize = true;
-            checkBox_64bit.Location = new System.Drawing.Point(12, 322);
+            checkBox_64bit.Location = new System.Drawing.Point(12, 348);
             checkBox_64bit.Name = "checkBox_64bit";
             checkBox_64bit.Size = new System.Drawing.Size(158, 19);
             checkBox_64bit.TabIndex = 8;
@@ -220,7 +361,7 @@ namespace HaCreator.GUI
             // 
             checkBox_separateCanvas.AutoSize = true;
             checkBox_separateCanvas.Enabled = false;
-            checkBox_separateCanvas.Location = new System.Drawing.Point(30, 344);
+            checkBox_separateCanvas.Location = new System.Drawing.Point(30, 370);
             checkBox_separateCanvas.Name = "checkBox_separateCanvas";
             checkBox_separateCanvas.Size = new System.Drawing.Size(231, 19);
             checkBox_separateCanvas.TabIndex = 15;
@@ -230,7 +371,7 @@ namespace HaCreator.GUI
             // label_versionInfo
             // 
             label_versionInfo.AutoSize = true;
-            label_versionInfo.Location = new System.Drawing.Point(189, 372);
+            label_versionInfo.Location = new System.Drawing.Point(189, 420);
             label_versionInfo.Name = "label_versionInfo";
             label_versionInfo.Size = new System.Drawing.Size(58, 15);
             label_versionInfo.TabIndex = 0;
@@ -261,21 +402,21 @@ namespace HaCreator.GUI
             // label_patchVersion
             // 
             label_patchVersion.AutoSize = true;
-            label_patchVersion.Location = new System.Drawing.Point(12, 372);
+            label_patchVersion.Location = new System.Drawing.Point(12, 398);
             label_patchVersion.Name = "label_patchVersion";
-            label_patchVersion.Size = new System.Drawing.Size(81, 15);
+            label_patchVersion.Size = new System.Drawing.Size(122, 15);
             label_patchVersion.TabIndex = 13;
-            label_patchVersion.Text = "Patch Version:";
+            label_patchVersion.Text = "Patch Version (0=auto):";
             // 
             // numericUpDown_patchVersion
             // 
-            numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 370);
+            numericUpDown_patchVersion.Location = new System.Drawing.Point(103, 396);
             numericUpDown_patchVersion.Maximum = new decimal(new int[] { 32767, 0, 0, 0 });
-            numericUpDown_patchVersion.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            numericUpDown_patchVersion.Minimum = new decimal(new int[] { 0, 0, 0, 0 });
             numericUpDown_patchVersion.Name = "numericUpDown_patchVersion";
             numericUpDown_patchVersion.Size = new System.Drawing.Size(80, 23);
             numericUpDown_patchVersion.TabIndex = 14;
-            numericUpDown_patchVersion.Value = new decimal(new int[] { 1, 0, 0, 0 });
+            numericUpDown_patchVersion.Value = new decimal(new int[] { 0, 0, 0, 0 });
             // 
             // groupBox1
             // 
@@ -289,11 +430,60 @@ namespace HaCreator.GUI
             groupBox1.TabStop = false;
             groupBox1.Text = "Categories to pack:";
             // 
+            // label_format
+            // 
+            label_format.AutoSize = true;
+            label_format.ForeColor = System.Drawing.Color.DarkBlue;
+            label_format.Location = new System.Drawing.Point(12, 419);
+            label_format.Name = "label_format";
+            label_format.Size = new System.Drawing.Size(98, 15);
+            label_format.TabIndex = 18;
+            label_format.Text = "Format: Standard";
+            // 
+            // checkBox_betaFormat
+            // 
+            checkBox_betaFormat.AutoSize = true;
+            checkBox_betaFormat.Location = new System.Drawing.Point(12, 323);
+            checkBox_betaFormat.Name = "checkBox_betaFormat";
+            checkBox_betaFormat.Size = new System.Drawing.Size(135, 19);
+            checkBox_betaFormat.TabIndex = 17;
+            checkBox_betaFormat.Text = "Pack as Beta Data.wz";
+            checkBox_betaFormat.UseVisualStyleBackColor = true;
+            checkBox_betaFormat.CheckedChanged += checkBox_betaFormat_CheckedChanged;
+            // 
+            // label_encryption
+            // 
+            label_encryption.AutoSize = true;
+            label_encryption.Location = new System.Drawing.Point(200, 372);
+            label_encryption.Name = "label_encryption";
+            label_encryption.Size = new System.Drawing.Size(67, 15);
+            label_encryption.TabIndex = 19;
+            label_encryption.Text = "Encryption:";
+            //
+            // comboBox_encryption
+            //
+            comboBox_encryption.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboBox_encryption.FormattingEnabled = true;
+            comboBox_encryption.Location = new System.Drawing.Point(200, 393);
+            comboBox_encryption.Name = "comboBox_encryption";
+            comboBox_encryption.Size = new System.Drawing.Size(170, 23);
+            comboBox_encryption.TabIndex = 20;
+            //
+            // checkBox_saveChangedImages
+            //
+            checkBox_saveChangedImages.AutoSize = true;
+            checkBox_saveChangedImages.Location = new System.Drawing.Point(12, 438);
+            checkBox_saveChangedImages.Name = "checkBox_saveChangedImages";
+            checkBox_saveChangedImages.Size = new System.Drawing.Size(200, 19);
+            checkBox_saveChangedImages.TabIndex = 21;
+            checkBox_saveChangedImages.Text = "Save changed images to source";
+            checkBox_saveChangedImages.UseVisualStyleBackColor = true;
+            //
             // PackToWz
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new System.Drawing.Size(384, 485);
+            ClientSize = new System.Drawing.Size(384, 560);
             Controls.Add(groupBox1);
             Controls.Add(numericUpDown_patchVersion);
             Controls.Add(label_patchVersion);
@@ -307,6 +497,11 @@ namespace HaCreator.GUI
             Controls.Add(textBox_outputPath);
             Controls.Add(label_outputPath);
             Controls.Add(label_versionInfo);
+            Controls.Add(label_format);
+            Controls.Add(checkBox_betaFormat);
+            Controls.Add(label_encryption);
+            Controls.Add(comboBox_encryption);
+            Controls.Add(checkBox_saveChangedImages);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -335,6 +530,11 @@ namespace HaCreator.GUI
         private System.Windows.Forms.Button button_selectNone;
         private System.Windows.Forms.Label label_patchVersion;
         private System.Windows.Forms.NumericUpDown numericUpDown_patchVersion;
+        private System.Windows.Forms.Label label_format;
+        private System.Windows.Forms.CheckBox checkBox_betaFormat;
+        private System.Windows.Forms.Label label_encryption;
+        private System.Windows.Forms.ComboBox comboBox_encryption;
+        private System.Windows.Forms.CheckBox checkBox_saveChangedImages;
 
         private void PopulateCategoriesList()
         {
@@ -349,13 +549,26 @@ namespace HaCreator.GUI
                 {
                     int imgCount = Directory.EnumerateFiles(categoryPath, "*.img", SearchOption.AllDirectories).Count();
                     int subDirCount = Directory.EnumerateDirectories(categoryPath, "*", SearchOption.AllDirectories).Count();
+                    bool hasListJson = category.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                       File.Exists(Path.Combine(categoryPath, "List.json"));
 
-                    // Add if it has .img files OR subdirectories (for structures like Base.wz)
-                    if (imgCount > 0 || subDirCount > 0)
+                    // Add if it has .img files, subdirectories, or List.json (pre-BB List category).
+                    if (imgCount > 0 || subDirCount > 0 || hasListJson)
                     {
-                        string displayName = imgCount > 0
-                            ? $"{category} ({imgCount} images)"
-                            : $"{category} (directory structure)";
+                        string displayName;
+                        if (imgCount > 0)
+                        {
+                            displayName = $"{category} ({imgCount} images)";
+                        }
+                        else if (hasListJson)
+                        {
+                            displayName = $"{category} (List.json)";
+                        }
+                        else
+                        {
+                            displayName = $"{category} (directory structure)";
+                        }
+
                         checkedListBox_categories.Items.Add(displayName, true);
                         addedCategories.Add(category);
                     }
@@ -375,12 +588,25 @@ namespace HaCreator.GUI
 
                 int imgCount = Directory.EnumerateFiles(dirPath, "*.img", SearchOption.AllDirectories).Count();
                 int subDirCount = Directory.EnumerateDirectories(dirPath, "*", SearchOption.AllDirectories).Count();
+                bool hasListJson = dirName.Equals("List", StringComparison.OrdinalIgnoreCase) &&
+                                   File.Exists(Path.Combine(dirPath, "List.json"));
 
-                if (imgCount > 0 || subDirCount > 0)
+                if (imgCount > 0 || subDirCount > 0 || hasListJson)
                 {
-                    string displayName = imgCount > 0
-                        ? $"{dirName} ({imgCount} images)"
-                        : $"{dirName} (directory structure)";
+                    string displayName;
+                    if (imgCount > 0)
+                    {
+                        displayName = $"{dirName} ({imgCount} images)";
+                    }
+                    else if (hasListJson)
+                    {
+                        displayName = $"{dirName} (List.json)";
+                    }
+                    else
+                    {
+                        displayName = $"{dirName} (directory structure)";
+                    }
+
                     checkedListBox_categories.Items.Add(displayName, true);
                 }
             }
@@ -418,11 +644,71 @@ namespace HaCreator.GUI
 
         private void checkBox_64bit_CheckedChanged(object sender, EventArgs e)
         {
-            // Only enable separate canvas option when 64-bit is checked
-            checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
-            if (!checkBox_64bit.Checked)
+            UpdateFormatOptionsState();
+        }
+
+        private void checkBox_betaFormat_CheckedChanged(object sender, EventArgs e)
+        {
+            UpdateFormatOptionsState();
+        }
+
+        /// <summary>
+        /// Updates the enabled state of format options based on checkbox selections.
+        /// Beta format and 64-bit format are mutually exclusive.
+        /// </summary>
+        private void UpdateFormatOptionsState()
+        {
+            if (checkBox_betaFormat.Checked)
             {
+                // Beta format - disable 64-bit options
+                checkBox_64bit.Checked = false;
+                checkBox_64bit.Enabled = false;
                 checkBox_separateCanvas.Checked = false;
+                checkBox_separateCanvas.Enabled = false;
+            }
+            else
+            {
+                // Standard/64-bit format
+                checkBox_64bit.Enabled = true;
+                checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
+                if (!checkBox_64bit.Checked)
+                {
+                    checkBox_separateCanvas.Checked = false;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Persists selected packing settings to manifest.json so future pack sessions
+        /// reuse the same effective encryption/format defaults.
+        /// </summary>
+        private void SavePackingSettingsToManifest()
+        {
+            if (_versionInfo == null)
+            {
+                return;
+            }
+
+            string manifestPath = Path.Combine(_versionPath, "manifest.json");
+            if (!File.Exists(manifestPath))
+            {
+                return;
+            }
+
+            try
+            {
+                _versionInfo.Encryption = GetSelectedEncryption().ToString();
+                _versionInfo.Is64Bit = checkBox_64bit.Checked;
+                _versionInfo.IsBetaMs = checkBox_betaFormat.Checked;
+
+                _versionInfo.PatchVersion = (short)numericUpDown_patchVersion.Value;
+
+                string json = Newtonsoft.Json.JsonConvert.SerializeObject(_versionInfo, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(manifestPath, json);
+            }
+            catch
+            {
+                // Best-effort persistence only; packing should continue even if manifest write fails.
             }
         }
 
@@ -460,6 +746,36 @@ namespace HaCreator.GUI
                 return;
             }
 
+            // Save changed images to source if requested
+            if (checkBox_saveChangedImages.Checked && checkBox_saveChangedImages.Enabled && _imgDataSource != null)
+            {
+                int changedCount = _imgDataSource.GetChangedImagesCount();
+                if (changedCount > 0)
+                {
+                    label_status.Text = $"Saving {changedCount} changed image(s) to source...";
+                    Application.DoEvents();
+
+                    int savedCount = _imgDataSource.SaveAllChangedImages();
+                    if (savedCount > 0)
+                    {
+                        label_status.Text = $"Saved {savedCount} image(s) to source.";
+                    }
+                    else if (savedCount < changedCount)
+                    {
+                        MessageBox.Show(
+                            $"Warning: Only {savedCount} of {changedCount} changed images were saved successfully.",
+                            "Partial Save",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                    }
+
+                    // Update the checkbox to reflect current state
+                    UpdateChangedImagesCount();
+                }
+            }
+
+            SavePackingSettingsToManifest();
+
             // Start packing
             _isPacking = true;
             button_pack.Text = "Cancel";
@@ -468,6 +784,8 @@ namespace HaCreator.GUI
             button_browse.Enabled = false;
             checkBox_64bit.Enabled = false;
             checkBox_separateCanvas.Enabled = false;
+            checkBox_betaFormat.Enabled = false;
+            checkBox_saveChangedImages.Enabled = false;
             numericUpDown_patchVersion.Enabled = false;
 
             try
@@ -486,15 +804,36 @@ namespace HaCreator.GUI
                     }
                 });
 
-                var result = await packingService.PackCategoriesAsync(
-                    _versionPath,
-                    outputPath,
-                    selectedCategories,
-                    checkBox_64bit.Checked,
-                    _cancellationTokenSource.Token,
-                    progress,
-                    (short)numericUpDown_patchVersion.Value,
-                    checkBox_separateCanvas.Checked);
+                // Get selected encryption
+                WzMapleVersion selectedEncryption = GetSelectedEncryption();
+
+                PackingResult result;
+                if (checkBox_betaFormat.Checked)
+                {
+                    // Use beta packing for single Data.wz format
+                    result = await packingService.PackBetaDataWzAsync(
+                        _versionPath,
+                        outputPath,
+                        selectedCategories,
+                        _cancellationTokenSource.Token,
+                        progress,
+                        (short)numericUpDown_patchVersion.Value,
+                        selectedEncryption);
+                }
+                else
+                {
+                    // Use standard packing for separate category WZ files
+                    result = await packingService.PackCategoriesAsync(
+                        _versionPath,
+                        outputPath,
+                        selectedCategories,
+                        checkBox_64bit.Checked,
+                        _cancellationTokenSource.Token,
+                        progress,
+                        (short)numericUpDown_patchVersion.Value,
+                        checkBox_separateCanvas.Checked,
+                        selectedEncryption);
+                }
 
                 if (result.Success)
                 {
@@ -535,9 +874,12 @@ namespace HaCreator.GUI
                 checkedListBox_categories.Enabled = true;
                 textBox_outputPath.Enabled = true;
                 button_browse.Enabled = true;
-                checkBox_64bit.Enabled = true;
-                checkBox_separateCanvas.Enabled = checkBox_64bit.Checked;
+                checkBox_betaFormat.Enabled = true;
                 numericUpDown_patchVersion.Enabled = true;
+                // Re-enable format options based on current checkbox state
+                UpdateFormatOptionsState();
+                // Update changed images count after packing
+                UpdateChangedImagesCount();
             }
         }
 
@@ -585,5 +927,22 @@ namespace HaCreator.GUI
             }
             return $"{size:F2} {sizes[order]}";
         }
+    }
+
+    /// <summary>
+    /// Helper class for encryption dropdown items.
+    /// </summary>
+    internal class EncryptionItem
+    {
+        public WzMapleVersion Encryption { get; }
+        public string DisplayName { get; }
+
+        public EncryptionItem(WzMapleVersion encryption, string displayName)
+        {
+            Encryption = encryption;
+            DisplayName = displayName;
+        }
+
+        public override string ToString() => DisplayName;
     }
 }

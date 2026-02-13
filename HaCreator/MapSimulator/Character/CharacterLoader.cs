@@ -1474,7 +1474,10 @@ namespace HaCreator.MapSimulator.Character
                 Head = LoadHead(SkinColor.Light),
                 Face = LoadFace(20000),   // Default male face
                 Hair = LoadHair(30000),   // Default male hair
-                Name = "Default Male"
+                Name = "Default Male",
+                Level = 200,              // Level 200
+                Job = 212,                // Arch Mage (F/P) (4th job Fire/Poison path: 200->210->211->212)
+                JobName = "Arch Mage (F/P)"
             };
 
             // Load and equip beginner sword (One-Handed Sword)
@@ -1505,7 +1508,10 @@ namespace HaCreator.MapSimulator.Character
                 Head = LoadHead(SkinColor.Light),
                 Face = LoadFace(21000),   // Default female face
                 Hair = LoadHair(31000),   // Default female hair
-                Name = "Default Female"
+                Name = "Default Female",
+                Level = 200,              // Level 200
+                Job = 212,                // Bishop (4th job Cleric)
+                JobName = "Bishop"
             };
 
             // Load and equip beginner sword (One-Handed Sword)

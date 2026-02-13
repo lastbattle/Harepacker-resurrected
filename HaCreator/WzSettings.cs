@@ -86,5 +86,10 @@ namespace HaCreator
         public static bool lastAllLayers = true;
         public static string LastHamPath = "";
         public static string LastXmlPath = "";
+
+        // Object Viewer settings
+        public static bool ShowObjectViewerOnLoad = true;
+        public static double ObjectViewerWidth = 350;
+        public static double ObjectViewerHeight = 600;
     }
 }
