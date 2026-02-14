@@ -21,6 +21,7 @@ using HaRepacker.GUI.Panels.SubPanels;
 using HaRepacker.GUI.Controls;
 using MapleLib.WzLib.WzStructure.Data;
 using System.ComponentModel.DataAnnotations;
+using MapleLib.Img;
 
 namespace HaRepacker.GUI.Panels
 {
@@ -118,6 +119,15 @@ namespace HaRepacker.GUI.Panels
         #region Data Tree
         private void DataTree_DoubleClick(object sender, EventArgs e)
         {
+            if (DataTree.SelectedNode is not WzNode selectedNode)
+                return;
+
+            // IMG filesystem tree uses lightweight references until explicitly opened.
+            if (TryResolveImgFilesystemImageNode(selectedNode, out var resolved) && resolved != null)
+            {
+                // If node was a reference, it is now a WzImage. Continue into normal flow.
+            }
+
             if (DataTree.SelectedNode != null && DataTree.SelectedNode.Tag is WzImage && DataTree.SelectedNode.Nodes.Count == 0)
             {
                 ParseOnDataTreeSelectedItem(((WzNode)DataTree.SelectedNode), true);
@@ -142,7 +152,18 @@ namespace HaRepacker.GUI.Panels
         /// <param name="selectedNode"></param>
         private static void ParseOnDataTreeSelectedItem(WzNode selectedNode, bool expandDataTree = true)
         {
-            WzImage wzImage = (WzImage)selectedNode.Tag;
+            if (selectedNode.Tag is ImgFileWzImageReference imgRef)
+            {
+                var resolved = imgRef.Resolve();
+                if (resolved == null)
+                    return;
+
+                resolved.HRTag = selectedNode;
+                selectedNode.Tag = resolved;
+            }
+
+            if (selectedNode.Tag is not WzImage wzImage)
+                return;
 
             if (!wzImage.Parsed)
                 wzImage.ParseImage();
@@ -218,6 +239,60 @@ namespace HaRepacker.GUI.Panels
                         break;
                 }
             }
+        }
+
+        private void DataTree_BeforeExpand(object sender, System.Windows.Forms.TreeViewCancelEventArgs e)
+        {
+            if (e.Node is not WzNode node)
+                return;
+
+            if (node.Tag is not VirtualWzDirectory virtualDir)
+                return;
+
+            // Only populate once: placeholder is inserted by WzNode for VirtualWzDirectory.
+            if (node.Nodes.Count != 1 || node.Nodes[0].Tag is not WzNode.LazyLoadPlaceholder)
+                return;
+
+            DataTree.BeginUpdate();
+            try
+            {
+                node.Nodes.Clear();
+
+                foreach (WzDirectory dir in virtualDir.WzDirectories)
+                {
+                    node.Nodes.Add(new WzNode(dir));
+                }
+
+                foreach (string fileName in virtualDir.GetImageNames())
+                {
+                    node.Nodes.Add(new WzNode(new ImgFileWzImageReference(virtualDir, fileName)));
+                }
+
+                if (Program.ConfigurationManager.UserSettings.Sort)
+                {
+                    _mainForm.SortNodesRecursively(node, true);
+                }
+            }
+            finally
+            {
+                DataTree.EndUpdate();
+            }
+        }
+
+        private static bool TryResolveImgFilesystemImageNode(WzNode node, out WzImage resolved)
+        {
+            resolved = null;
+
+            if (node.Tag is not ImgFileWzImageReference imgRef)
+                return false;
+
+            resolved = imgRef.Resolve();
+            if (resolved == null)
+                return true;
+
+            resolved.HRTag = node;
+            node.Tag = resolved;
+            return true;
         }
         #endregion
 

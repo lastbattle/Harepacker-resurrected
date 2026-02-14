@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -1130,9 +1130,25 @@ namespace HaRepacker.GUI
                 // Validate directory has IMG files or manifest.json
                 string selectedPath = fbd.SelectedPath;
                 bool hasManifest = File.Exists(Path.Combine(selectedPath, "manifest.json"));
-                bool hasImgFiles = Directory.GetFiles(selectedPath, "*.img", SearchOption.AllDirectories).Length > 0;
                 bool hasCategories = ImgFileSystemManager.STANDARD_CATEGORIES.Any(cat =>
                     Directory.Exists(Path.Combine(selectedPath, cat)));
+
+                // Only do an expensive recursive scan if we have no other strong signal.
+                // The previous implementation materialized *all* matches which can take minutes on large exports.
+                bool hasImgFiles = false;
+                if (!hasManifest && !hasCategories)
+                {
+                    try
+                    {
+                        hasImgFiles = Directory.EnumerateFiles(selectedPath, "*.img", SearchOption.AllDirectories)
+                            .Take(1)
+                            .Any();
+                    }
+                    catch
+                    {
+                        hasImgFiles = false;
+                    }
+                }
 
                 if (!hasManifest && !hasImgFiles && !hasCategories)
                 {
@@ -1180,7 +1196,6 @@ namespace HaRepacker.GUI
         {
             // Initialize ImgFileSystemManager
             var manager = new ImgFileSystemManager(versionPath);
-            manager.Initialize();
 
             // Set image format detection flag for pre-Big Bang compatibility
             // DXT formats (Format3, Format1026, Format2050) are not supported by pre-BB clients
@@ -1190,8 +1205,22 @@ namespace HaRepacker.GUI
             // Get version name
             string versionName = manager.VersionInfo?.DisplayName ?? Path.GetFileName(versionPath);
 
-            // Create virtual WzDirectory structure for each category
-            foreach (string category in manager.GetCategories())
+            // Create virtual WzDirectory structure for each category.
+            // IMPORTANT: do not force a full filesystem index build here; it can be extremely large and is not
+            // needed to show a top-level tree. Categories are derived from existing directories and images are
+            // loaded on-demand when the user expands/selects nodes.
+            var categories = ImgFileSystemManager.STANDARD_CATEGORIES
+                .Where(cat => Directory.Exists(Path.Combine(versionPath, cat)))
+                .ToList();
+            if (categories.Count == 0)
+            {
+                categories = Directory.EnumerateDirectories(versionPath)
+                    .Select(Path.GetFileName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .ToList();
+            }
+
+            foreach (string category in categories)
             {
                 var virtualDir = manager.GetDirectory(category);
                 if (virtualDir != null)
@@ -1376,12 +1405,7 @@ namespace HaRepacker.GUI
                         if (node.Tag is MapleLib.Img.VirtualWzDirectory virtualDir)
                         {
                             virtualDir.Refresh();
-                            node.Nodes.Clear();
-                            // Re-populate children
-                            foreach (WzDirectory dir in virtualDir.WzDirectories)
-                                node.Nodes.Add(new WzNode(dir));
-                            foreach (WzImage img in virtualDir.WzImages)
-                                node.Nodes.Add(new WzNode(img));
+                            node.Reparse(); // restores lazy placeholder for IMG filesystem nodes
                         }
                     }
                 });
