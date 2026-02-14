@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>WinExe</OutputType>
-    <ApplicationIcon>HaLogo.ico</ApplicationIcon>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <UseWindowsForms>true</UseWindowsForms>
     <UseWPF>true</UseWPF>
@@ -168,9 +167,6 @@
     <Resource Include="Images\ColorSwatchSquare2.png" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Images\HaLogo32.png" />
-  </ItemGroup>
-  <ItemGroup>
     <Resource Include="Images\Foothold.png" />
   </ItemGroup>
   <ItemGroup>
@@ -185,6 +181,13 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Images\new_icon.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- AI Prompt files - must be copied to output for runtime loading -->
+    <Content Include="MapEditor\AI\Prompts\*.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>AI\Prompts\%(Filename)%(Extension)</Link>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="10.0.0" />
@@ -227,17 +230,6 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="HaLogo.ico" />
-    <Content Include="HaLogo\%24this.Icon.ico" />
-    <Content Include="HaLogo\HaLogo.ico" />
-    <Content Include="HaLogo\HaLogo.svg" />
-    <Content Include="HaLogo\HaLogo128.png" />
-    <Content Include="HaLogo\HaLogo16.png" />
-    <Content Include="HaLogo\HaLogo256.png" />
-    <Content Include="HaLogo\HaLogo32.png" />
-    <Content Include="HaLogo\HaLogo48.png" />
-    <Content Include="HaLogo\HaLogo512.png" />
-    <Content Include="HaLogo\HaLogo64.png" />
     <Content Include="MapEditor\AI\Prompts\BackgroundAgentPrompt.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>AI\Prompts\BackgroundAgentPrompt.txt</TargetPath>
@@ -278,6 +270,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>AI\Prompts\TileAgentPrompt.txt</TargetPath>
     </Content>
+
     <Resource Include="Images\Quest\2022240_buff_icon.png" />
     <Content Include="Images\Quest\BtMarkNpc.png" />
     <Resource Include="Images\Quest\shop.meso.png" />
