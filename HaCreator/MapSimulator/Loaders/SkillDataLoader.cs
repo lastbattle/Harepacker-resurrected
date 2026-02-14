@@ -359,6 +359,8 @@ namespace HaCreator.MapSimulator.Loaders
                 { 420, "Bandit" }, { 421, "Chief Bandit" }, { 422, "Shadower" },
                 { 500, "Pirate" }, { 510, "Brawler" }, { 511, "Marauder" }, { 512, "Buccaneer" },
                 { 520, "Gunslinger" }, { 521, "Outlaw" }, { 522, "Corsair" },
+                { 900, "GM" },
+                { 910, "SuperGM" },
             };
 
             if (defaultNames.TryGetValue(jobId, out string name))

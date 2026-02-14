@@ -774,7 +774,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         /// <summary>
         /// Load skills for a character's job into a skill window
-        /// This loads all skills in the job progression path
+        /// This only loads skills for the character's current job (not the full job path).
         /// </summary>
         /// <param name="skillWindow">The skill window to populate</param>
         /// <param name="jobId">The character's current job ID (e.g., 212 for Bishop)</param>
@@ -786,24 +786,46 @@ namespace HaCreator.MapSimulator.Loaders
 
             try
             {
-                // Get the job path (all jobs from beginner to current job)
-                var jobPath = GetJobPath(jobId);
-                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId}, path: [{string.Join(", ", jobPath)}]");
+                // Clear any previously loaded skills.
+                skillWindow.ClearSkills();
 
-                // Load skills for each job in the path
-                for (int tabIndex = 0; tabIndex < jobPath.Count && tabIndex < 5; tabIndex++)
+                int tabIndex = GetSkillTabFromJobId(jobId);
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into tab {tabIndex}");
+
+                // Some jobs have skills stored under a different "skill book" job id (e.g. SuperGM 910 uses GM 900).
+                var bookJobIds = GetSkillBookJobIdsForJob(jobId);
+                var skillMap = new Dictionary<int, SkillDisplayData>();
+                foreach (int bookJobId in bookJobIds)
                 {
-                    int job = jobPath[tabIndex];
-                    var skills = SkillDataLoader.LoadSkillsForJob(job, device);
-                    skillWindow.AddSkills(tabIndex, skills);
-                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {skills.Count} skills for job {job}");
-
-                    // Load and set the job icon and name
-                    Texture2D jobIcon = SkillDataLoader.LoadJobIcon(job, device);
-                    string jobName = SkillDataLoader.GetJobName(job);
-                    skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
-                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Set job info for {jobName}");
+                    var skills = SkillDataLoader.LoadSkillsForJob(bookJobId, device);
+                    foreach (var s in skills)
+                    {
+                        if (s == null) continue;
+                        if (!skillMap.ContainsKey(s.SkillId))
+                            skillMap[s.SkillId] = s;
+                    }
                 }
+
+                var mergedSkills = skillMap.Values.ToList();
+                skillWindow.AddSkills(tabIndex, mergedSkills);
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for job {jobId} (books: [{string.Join(", ", bookJobIds)}])");
+
+                // Load and set the job icon and name for the populated tab.
+                Texture2D jobIcon = SkillDataLoader.LoadJobIcon(jobId, device);
+                if (jobIcon == null)
+                {
+                    // Fallback for jobs where the icon lives in another book (e.g. GM).
+                    foreach (int bookJobId in bookJobIds)
+                    {
+                        jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
+                        if (jobIcon != null) break;
+                    }
+                }
+                string jobName = SkillDataLoader.GetJobName(jobId);
+                skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
+
+                // Show the populated tab by default.
+                skillWindow.CurrentTab = tabIndex;
             }
             catch (Exception ex)
             {
@@ -812,35 +834,43 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         /// <summary>
-        /// Get the job path from beginner to the specified job
+        /// Map a job id to a SkillUIBigBang tab index (0..4).
+        /// This is a heuristic based on common MapleStory job id patterns:
+        /// - 0 => beginner
+        /// - xx00 => 1st job
+        /// - xx10/xx20/... ending with 0 => 2nd job
+        /// - ending with 1 => 3rd job
+        /// - ending with 2 => 4th job
         /// </summary>
-        private static List<int> GetJobPath(int job)
+        private static int GetSkillTabFromJobId(int jobId)
         {
-            var path = new List<int> { 0 }; // Always include beginner
+            if (jobId <= 0)
+                return 0;
 
-            if (job == 0)
-                return path;
+            // Special jobs (Manager/GM/SuperGM) should still show up on the first job tab.
+            if (jobId >= 800 && jobId < 1000)
+                return 1;
 
-            // Add first job (e.g., 200 for Magician)
-            int firstJob = (job / 100) * 100;
-            if (firstJob > 0)
-                path.Add(firstJob);
+            // 100, 200, 300, 1100, 1200, 3000, etc.
+            if (jobId % 100 == 0)
+                return 1;
 
-            // Add second job (e.g., 210 for Cleric)
-            int secondJob = (job / 10) * 10;
-            if (secondJob > firstJob)
-                path.Add(secondJob);
+            return (jobId % 10) switch
+            {
+                0 => 2,
+                1 => 3,
+                2 => 4,
+                _ => 1
+            };
+        }
 
-            // Add third job (e.g., 211 for Priest)
-            int thirdJob = secondJob + 1;
-            if (thirdJob > secondJob && thirdJob < job)
-                path.Add(thirdJob);
-
-            // Add current job (e.g., 212 for Bishop)
-            if (!path.Contains(job))
-                path.Add(job);
-
-            return path;
+        private static IReadOnlyList<int> GetSkillBookJobIdsForJob(int jobId)
+        {
+            return jobId switch
+            {
+                910 => new[] { 900, 910 },
+                _ => new[] { jobId }
+            };
         }
 
         /// <summary>
@@ -1427,7 +1457,7 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang)
         {
             return CreateUIWindowManager(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage,
-                null, null, device, screenWidth, screenHeight, isBigBang, 212); // Default to Arch Mage F/P (job 212)
+                null, null, device, screenWidth, screenHeight, isBigBang, 910); // Default to SuperGM (job 910)
         }
 
         /// <summary>
@@ -1436,7 +1466,7 @@ namespace HaCreator.MapSimulator.Loaders
         public static UIWindowManager CreateUIWindowManager(
             WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage basicImage, WzImage soundUIImage,
             WzFile skillWzFile, WzFile stringWzFile,
-            GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang, int jobId = 212)
+            GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang, int jobId = 910)
         {
             UIWindowManager manager = new UIWindowManager();
 
@@ -1448,7 +1478,7 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
 
             // Load skills for the character's job into skill window
-            // This loads all skills from beginner through current job
+            // Only load skills for the current job to keep load time reasonable on newer versions.
             if (skill is SkillUIBigBang skillBigBang)
             {
                 System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into SkillUIBigBang");

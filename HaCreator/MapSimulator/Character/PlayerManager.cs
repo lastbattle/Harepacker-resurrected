@@ -255,14 +255,14 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetMobPool(_mobPool);
                 Skills.SetCombatEffects(_combatEffects);
 
-                // Load beginner skills (job 0) and set them all to max level for testing
-                Skills.LoadSkillsForJob(0);
+                // Load only the current job's skills (not every advancement/job).
+                Skills.LoadSkillsForJob(build?.Job ?? 0);
                 foreach (var skill in Skills.GetActiveSkills())
                 {
                     Skills.SetSkillLevel(skill.SkillId, skill.MaxLevel);
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created, loaded beginner skills");
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created, loaded job {build?.Job ?? 0} skills");
             }
 
             // Set up callbacks
