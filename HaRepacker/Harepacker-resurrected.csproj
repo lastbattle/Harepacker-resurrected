@@ -32,6 +32,8 @@
 
   <PropertyGroup>
     <StartupObject>HaRepacker.Program</StartupObject>
+    <ApplicationIcon>logo.ico</ApplicationIcon>
+    <PackageIcon>logo.png</PackageIcon>
   </PropertyGroup>
   
   <ItemGroup>
@@ -61,6 +63,7 @@
     <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="logo.ico" />
     <Content Include="Resources\arrow_left.png" />
     <Content Include="Resources\arrow_right.png" />
     <Content Include="Resources\Pause.png" />
@@ -86,5 +89,11 @@
     <EmbeddedResource Remove="GUI\Input\FindInputBox.resx" />
     <EmbeddedResource Remove="GUI\Input\IntegerInput.resx" />
     <EmbeddedResource Remove="GUI\Resources.resx" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\logo.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 </Project>
