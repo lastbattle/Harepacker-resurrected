@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.Versioning;
 
 namespace UnitTest_WzFile
@@ -131,6 +132,66 @@ namespace UnitTest_WzFile
                 {
                     Assert.IsTrue(true,
                         "Error initializing " + Path.GetFileName(filePath) + " (" + e.Message + ").\r\nAlso, check that the directory is valid and the file is not in use.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Regression test for extraction mode save path (forceReadFromData=true).
+        /// Legacy files can contain list.wz-formatted PNG blocks that require WzKey
+        /// during eager parse in WzPngProperty constructor.
+        /// </summary>
+        [TestMethod]
+        public void TestLegacyExtractionStyleSavePath_DoesNotThrow()
+        {
+            var legacyFiles = new[]
+            {
+                new Tuple<string, WzMapleVersion>("TamingMob_GMS_75.wz", WzMapleVersion.GMS),
+                new Tuple<string, WzMapleVersion>("TamingMob_GMS_87.wz", WzMapleVersion.GMS),
+                new Tuple<string, WzMapleVersion>("TamingMob_GMS_95.wz", WzMapleVersion.GMS)
+            };
+
+            foreach (Tuple<string, WzMapleVersion> testFile in legacyFiles)
+            {
+                string filePath = Path.Combine(Directory.GetCurrentDirectory(), "WzFiles", "Common", testFile.Item1);
+                using WzFile wzFile = new WzFile(filePath, (short)-1, testFile.Item2);
+
+                WzFileParseStatus parseStatus = wzFile.ParseWzFile();
+                Assert.AreEqual(WzFileParseStatus.Success, parseStatus, $"Failed to parse {testFile.Item1}: {parseStatus.GetErrorDescription()}");
+
+                foreach (WzImage image in EnumerateImages(wzFile.WzDirectory).Take(150))
+                {
+                    using MemoryStream stream = new MemoryStream();
+                    using WzBinaryWriter writer = new WzBinaryWriter(stream, WzAESConstant.WZ_BMSCLASSIC);
+
+                    try
+                    {
+                        image.SaveImage(writer, true, forceReadFromData: true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Assert.Fail($"Extraction-style save failed for {testFile.Item1}:{image.Name}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        image.UnparseImage();
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<WzImage> EnumerateImages(WzDirectory directory)
+        {
+            foreach (WzImage image in directory.WzImages)
+            {
+                yield return image;
+            }
+
+            foreach (WzDirectory subDirectory in directory.WzDirectories)
+            {
+                foreach (WzImage image in EnumerateImages(subDirectory))
+                {
+                    yield return image;
                 }
             }
         }
