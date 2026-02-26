@@ -25,7 +25,6 @@ namespace HaRepacker
         private ToolStripMenuItem Reload;
         private ToolStripMenuItem CollapseAllChildNode;
         private ToolStripMenuItem ExpandAllChildNode;
-        private ToolStripMenuItem MassImport;
         private ToolStripMenuItem SortAllChildViewNode, SortAllChildViewNode2;
         private ToolStripMenuItem SortPropertiesByName;
 
@@ -175,18 +174,6 @@ namespace HaRepacker
                     {
                         node.ExpandAll();
                     }
-                }));
-
-            MassImport = new ToolStripMenuItem("Mass Import from folder", null, new EventHandler(
-                delegate (object sender, EventArgs e)
-                {
-                    WzNode[] nodes = GetNodes(sender);
-                    if (nodes.Length != 1)
-                    {
-                        MessageBox.Show("Please select only ONE node");
-                        return;
-                    }
-                    new MassImportForm(parentPanel, nodes[0]).ShowDialog();
                 }));
 
             // This only sorts the view, does not affect the actual order of the 
@@ -491,7 +478,6 @@ namespace HaRepacker
             {
                 toolStripmenuItems.Add(CreateNewImgFile);
                 toolStripmenuItems.Add(AddDirsSubMenu);
-                toolStripmenuItems.Add(MassImport);
                 toolStripmenuItems.Add(Rename);
                 toolStripmenuItems.Add(SaveImg);
                 toolStripmenuItems.Add(Unload);
@@ -499,14 +485,12 @@ namespace HaRepacker
             else if (Tag is WzDirectory)
             {
                 toolStripmenuItems.Add(AddDirsSubMenu);
-                toolStripmenuItems.Add(MassImport);
                 toolStripmenuItems.Add(Rename);
                 toolStripmenuItems.Add(Remove);
             }
             else if (Tag is WzFile)
             {
                 toolStripmenuItems.Add(AddDirsSubMenu);
-                toolStripmenuItems.Add(MassImport);
                 toolStripmenuItems.Add(Rename);
                 toolStripmenuItems.Add(SaveFile);
                 toolStripmenuItems.Add(Unload);
