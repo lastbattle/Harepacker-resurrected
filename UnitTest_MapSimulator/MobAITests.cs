@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.AI;
 using Xunit;
 
 namespace UnitTest_MapSimulator
