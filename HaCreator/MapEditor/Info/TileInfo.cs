@@ -1,12 +1,7 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance;
+﻿using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -41,19 +36,33 @@ namespace HaCreator.MapEditor.Info
 
         public static TileInfo Get(string tS, string u, string no)
         {
-            int? mag = InfoTool.GetOptionalInt(Program.InfoManager.TileSets[tS]["info"]["mag"]);
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
+            if (tileSet == null)
+                return null;
+
+            int? mag = InfoTool.GetOptionalInt(tileSet["info"]?["mag"]);
             return Get(tS, u, no, mag);
         }
 
         public static TileInfo GetWithDefaultNo(string tS, string u, string no, string defaultNo)
         {
-            int? mag = InfoTool.GetOptionalInt(Program.InfoManager.TileSets[tS]["info"]["mag"]);
-            WzImageProperty prop = Program.InfoManager.TileSets[tS][u];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
+            if (tileSet == null)
+                return null;
+
+            int? mag = InfoTool.GetOptionalInt(tileSet["info"]?["mag"]);
+            WzImageProperty prop = tileSet[u];
+            if (prop == null)
+                return null;
+
             WzImageProperty tileInfoProp = prop[no];
             if (tileInfoProp == null)
             {
                 tileInfoProp = prop[defaultNo];
             }
+            if (tileInfoProp == null)
+                return null;
+
             if (tileInfoProp.HCTag == null)
                 tileInfoProp.HCTag = TileInfo.Load((WzCanvasProperty)tileInfoProp, tS, u, no, mag);
             return (TileInfo)tileInfoProp.HCTag;
@@ -62,7 +71,18 @@ namespace HaCreator.MapEditor.Info
         // Optimized version, for cases where you already know the mag (e.g. mass loading tiles of the same tileSet)
         public static TileInfo Get(string tS, string u, string no, int? mag)
         {
-            WzImageProperty tileInfoProp = Program.InfoManager.TileSets[tS][u][no];
+            WzImage tileSet = Program.InfoManager.GetTileSet(tS);
+            if (tileSet == null)
+                return null;
+
+            WzImageProperty categoryProp = tileSet[u];
+            if (categoryProp == null)
+                return null;
+
+            WzImageProperty tileInfoProp = categoryProp[no];
+            if (tileInfoProp == null)
+                return null;
+
             if (tileInfoProp.HCTag == null)
                 tileInfoProp.HCTag = TileInfo.Load((WzCanvasProperty)tileInfoProp, tS, u, no, mag);
             return (TileInfo)tileInfoProp.HCTag;
@@ -72,7 +92,10 @@ namespace HaCreator.MapEditor.Info
         {
             WzImageProperty zProp = parentObject["z"];
             int z = zProp == null ? 0 : InfoTool.GetInt(zProp);
-            TileInfo result = new TileInfo(parentObject.PngProperty.GetPNG(false), WzInfoTools.VectorToSystemPoint((WzVectorProperty)parentObject["origin"]), tS, u, no, mag.HasValue ? mag.Value : 1, z, parentObject);
+            TileInfo result = new TileInfo(
+                parentObject.GetLinkedWzCanvasBitmap(), 
+                WzInfoTools.PointFToSystemPoint(parentObject.GetCanvasOriginPosition()),
+                tS, u, no, mag.HasValue ? mag.Value : 1, z, parentObject);
             WzConvexProperty footholds = (WzConvexProperty)parentObject["foothold"];
             if (footholds != null)
                 foreach (WzVectorProperty foothold in footholds.WzProperties)

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -41,19 +35,11 @@ namespace HaCreator.MapEditor.Input
             IsDown = false;
         }
 
-        public static int NextInt32(int max)
-        {
-            byte[] bytes = new byte[sizeof(int)];
-            RNGCryptoServiceProvider Gen = new RNGCryptoServiceProvider();
-            Gen.GetBytes(bytes);
-            return Math.Abs(BitConverter.ToInt32(bytes, 0) % max);
-        }
-
         public void PlaceObject()
         {
             lock (Board.ParentControl)
             {
-                if (state == MouseState.StaticObjectAdding || state == MouseState.RandomTiles)
+                if (state == MouseState.StaticObjectAdding || state == MouseState.RandomTiles) // tiles, obj
                 {
                     List<UndoRedoAction> undoPipe = new List<UndoRedoAction>();
                     currAddedObj.OnItemPlaced(undoPipe);
@@ -63,18 +49,30 @@ namespace HaCreator.MapEditor.Input
                     {
                         int highestZ = 0;
                         foreach (LayeredItem item in Board.BoardItems.TileObjs)
-                            if (item.Z > highestZ) highestZ = item.Z;
+                        {
+                            if (item.Z > highestZ) 
+                                highestZ = item.Z;
+                        }
                         currAddedObj.Z = highestZ;
                         Board.BoardItems.Sort();
                     }
                     if (state == MouseState.StaticObjectAdding)
-                        currAddedObj = currAddedInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                    {
+                        BoardItem boardItem = currAddedInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                        currAddedObj = boardItem;
+                    }
                     else
-                        currAddedObj = tileRandomList[NextInt32(tileRandomList.Length)].CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                    {
+                        var randomTile = tileRandomList[RandomNumberGenerator.GetInt32(tileRandomList.Length)];
+
+                        BoardItem boardItem = randomTile.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2, 50, false);
+                        currAddedObj = boardItem;
+                    }
+
                     Board.BoardItems.Add(currAddedObj, false);
                     BindItem(currAddedObj, new Microsoft.Xna.Framework.Point(currAddedInfo.Origin.X - currAddedInfo.Image.Width / 2, currAddedInfo.Origin.Y - currAddedInfo.Image.Height / 2));
                 }
-                else if (state == MouseState.Chairs)
+                else if (state == MouseState.Chairs) // Chair
                 {
                     Board.UndoRedoMan.AddUndoBatch(new List<UndoRedoAction> { UndoRedoManager.ItemAdded(currAddedObj) });
                     ReleaseItem(currAddedObj);
@@ -82,7 +80,7 @@ namespace HaCreator.MapEditor.Input
                     Board.BoardItems.Add(currAddedObj, false);
                     BindItem(currAddedObj, new Microsoft.Xna.Framework.Point());
                 }
-                else if (state == MouseState.Ropes)
+                else if (state == MouseState.Ropes) // Ropes
                 {
                     int count = BoundItems.Count;
                     RopeAnchor anchor = (RopeAnchor)BoundItems.Keys.ElementAt(0);
@@ -93,7 +91,7 @@ namespace HaCreator.MapEditor.Input
                         CreateRope();
                     }
                 }
-                else if (state == MouseState.Tooltip)
+                else if (state == MouseState.Tooltip) // Tooltip
                 {
                     int count = BoundItems.Count;
                     ToolTipDot dot = (ToolTipDot)BoundItems.Keys.ElementAt(0);
@@ -106,7 +104,7 @@ namespace HaCreator.MapEditor.Input
                         CreateTooltip();
                     }
                 }
-                else if (state == MouseState.Clock)
+                else if (state == MouseState.Clock) // Clock
                 {
                     int count = BoundItems.Count;
                     List<BoardItem> items = BoundItems.Keys.ToList();
@@ -277,9 +275,16 @@ namespace HaCreator.MapEditor.Input
                 if (newInfo.Image == null) 
                     ((MapleExtractableInfo)newInfo).ParseImage();
                 currAddedInfo = newInfo;
+               
                 currAddedObj = newInfo.CreateInstance(Board.SelectedLayer, Board, X + currAddedInfo.Origin.X - newInfo.Image.Width / 2, Y + currAddedInfo.Origin.Y - newInfo.Image.Height / 2, 50, false);
                 Board.BoardItems.Add(currAddedObj, false);
+                
                 BindItem(currAddedObj, new Microsoft.Xna.Framework.Point(newInfo.Origin.X - newInfo.Image.Width / 2, newInfo.Origin.Y - newInfo.Image.Height / 2));
+            /*    if (currAddedInfo.Image.Width == 1 && currAddedInfo.Image.Height == 1)
+                {
+                    //case occurs for things like life/mob objects, //tbd investigate how wzR2 handles
+                    currAddedInfo.Image = global::HaCreator.Properties.Resources.placeholder;
+                }*/
                 state = MouseState.StaticObjectAdding;
             }
         }
@@ -290,7 +295,9 @@ namespace HaCreator.MapEditor.Input
             {
                 Clear();
                 tileRandomList = tileList;
-                SetHeldInfo(tileRandomList[NextInt32(tileRandomList.Length)]);
+
+                var randomTile = tileRandomList[RandomNumberGenerator.GetInt32(tileRandomList.Length)];
+                SetHeldInfo(randomTile);
                 state = MouseState.RandomTiles;
             }
         }

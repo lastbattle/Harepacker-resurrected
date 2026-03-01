@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-﻿using HaCreator.MapEditor.Input;
+﻿﻿using HaCreator.MapEditor.Input;
 using HaCreator.Wz;
 using System;
 using System.Collections.Generic;
@@ -22,11 +16,11 @@ namespace HaCreator.MapEditor
 
         private InputHandler input;
         private MultiBoard multiBoard;
-        private HaCreatorStateManager hcsm;
-        private HaCreator.ThirdParty.TabPages.PageCollection tabs;
+        private readonly HaCreatorStateManager hcsm;
+        private System.Windows.Controls.TabControl tabs;
         private bool enabled = false;
 
-        public BackupManager(MultiBoard multiBoard, InputHandler input, HaCreatorStateManager hcsm, HaCreator.ThirdParty.TabPages.PageCollection tabs)
+        public BackupManager(MultiBoard multiBoard, InputHandler input, HaCreatorStateManager hcsm, System.Windows.Controls.TabControl tabs)
         {
             this.input = input;
             this.multiBoard = multiBoard;
@@ -167,7 +161,7 @@ namespace HaCreator.MapEditor
                 {
                     if (Path.GetExtension(file.Key) != ".ham")
                         continue;
-                    new MapLoader().CreateMapFromHam(multiBoard, tabs, file.Value, hcsm.MakeRightClickHandler());
+                    MapLoader.CreateMapFromHam(multiBoard, tabs, file.Value, hcsm.MakeRightClickHandler());
                 }
             }
             ClearBackups();

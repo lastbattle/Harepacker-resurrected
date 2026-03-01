@@ -1,0 +1,5 @@
+﻿pip install opencv-python
+https://pypi.org/project/opencv-python/
+
+https://pytorch.org/
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118

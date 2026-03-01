@@ -1,32 +1,34 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.Info
 {
     public class ReactorInfo : MapleExtractableInfo
     {
-        private string id;
+        private readonly string id;
+        private readonly string _name;
 
-        private WzImage LinkedImage;
+        private WzImage _LinkedWzImage;
 
-        public ReactorInfo(Bitmap image, System.Drawing.Point origin, string id, WzObject parentObject)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="id"></param>
+        /// <param name="name"></param>
+        /// <param name="parentObject"></param>
+        public ReactorInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
         {
             this.id = id;
+            this._name = name;
         }
 
         private void ExtractPNGFromImage(WzImage image)
@@ -34,8 +36,8 @@ namespace HaCreator.MapEditor.Info
             WzCanvasProperty reactorImage = WzInfoTools.GetReactorImage(image);
             if (reactorImage != null)
             {
-                Image = reactorImage.PngProperty.GetPNG(false);
-                Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)reactorImage["origin"]);
+                Image = reactorImage.GetLinkedWzCanvasBitmap();
+                Origin = WzInfoTools.PointFToSystemPoint(reactorImage.GetCanvasOriginPosition());
             }
             else
             {
@@ -46,16 +48,10 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-            if (link != null)
-            {
-                LinkedImage = (WzImage)Program.WzManager["reactor"][link.Value + ".img"];
-                ExtractPNGFromImage(LinkedImage);
-            }
+            if (LinkedWzImage != null) // load from here too
+                ExtractPNGFromImage(_LinkedWzImage);
             else
-            {
                 ExtractPNGFromImage((WzImage)ParentObject);
-            }
         }
 
         public static ReactorInfo Get(string id)
@@ -65,33 +61,55 @@ namespace HaCreator.MapEditor.Info
             return result;
         }
 
-        public static ReactorInfo Load(WzImage parentObject)
-        {
-            return new ReactorInfo(null, new System.Drawing.Point(), WzInfoTools.RemoveExtension(parentObject.Name), parentObject);
-        }
-
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
             return new ReactorInstance(this, board, x, y, UserSettings.defaultReactorTime, "", flip);
         }
 
         public BoardItem CreateInstance(Board board, int x, int y, int reactorTime, string name, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null) 
+                ParseImage();
             return new ReactorInstance(this, board, x, y, reactorTime, name, flip);
         }
 
         public string ID
         {
-            get
-            {
-                return id;
+            get { return id; }
+            private set { }
+        }
+
+        public string Name
+        {
+            get { return _name; }
+            private set { }
+        }
+
+        /// <summary>
+        /// The source WzImage of the reactor
+        /// </summary>
+        public WzImage LinkedWzImage
+        {
+            get {
+                if (_LinkedWzImage == null) {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzImage reactorImage = Program.FindImage("Reactor", imgName);
+
+                    WzStringProperty link = (WzStringProperty)reactorImage?["info"]?["link"];
+                    if (link != null) {
+                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
+                        WzImage findLinkedImg = Program.FindImage("Reactor", linkImgName);
+
+                        _LinkedWzImage = findLinkedImg ?? reactorImage; // fallback if link is null
+                    }
+                    else
+                        _LinkedWzImage = reactorImage;
+                }
+                return _LinkedWzImage;
             }
-            set
-            {
-                this.id = value;
-            }
+            set { this._LinkedWzImage = value; }
         }
     }
 }

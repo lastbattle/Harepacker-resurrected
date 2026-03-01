@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.UndoRedo;
@@ -26,7 +20,7 @@ namespace HaCreator.MapEditor
     {
         protected XNA.Vector3 position;
         private Dictionary<BoardItem, XNA.Point> boundItems = new Dictionary<BoardItem, XNA.Point>();//key = BoardItem; value = point (distance)
-        private List<BoardItem> boundItemsList = new List<BoardItem>();
+        private readonly List<BoardItem> boundItemsList = new List<BoardItem>();
         private BoardItem parent = null;
         private bool selected = false;
         protected Board board;
@@ -95,19 +89,6 @@ namespace HaCreator.MapEditor
                 Selected = false;
                 board.BoardItems.Remove(this);
             }
-        }
-
-        public static Texture2D TextureFromBitmap(GraphicsDevice device, System.Drawing.Bitmap bitmap)
-        {
-            Texture2D texture;
-            using (System.IO.MemoryStream s = new System.IO.MemoryStream())
-            {
-                bitmap.Save(s, System.Drawing.Imaging.ImageFormat.Png);
-                s.Seek(0, System.IO.SeekOrigin.Begin);
-                texture = Texture2D.FromStream(device, s);
-                //texture = Texture2D.FromFile(device, s);
-            }
-            return texture;
         }
 
         public virtual void BindItem(BoardItem item, XNA.Point distance)
@@ -189,11 +170,19 @@ namespace HaCreator.MapEditor
             // By default, item is nonlayered
             return true;
         }
+
+        /// <summary>
+        /// Gets the active, inactive or selected color of the board.
+        /// </summary>
+        /// <param name="sel"></param>
+        /// <param name="selected"></param>
+        /// <returns></returns>
         public virtual XNA.Color GetColor(SelectionInfo sel, bool selected)
         {
             if ((sel.editedTypes & Type) == Type && CheckIfLayerSelected(sel))
                 return selected ? UserSettings.SelectedColor : XNA.Color.White;
-            else return MultiBoard.InactiveColor;
+            else 
+                return MultiBoard.InactiveColor;
         }
 
         public virtual bool IsPixelTransparent(int x, int y)
@@ -205,6 +194,11 @@ namespace HaCreator.MapEditor
                     x = image.Width - x;
                 return image.GetPixel(x, y).A == 0;
             }
+        }
+
+        public bool IsFlipped()
+        {
+            return this is IFlippable && ((IFlippable)this).Flip;
         }
 
         public bool BoundToSelectedItem(Board board)

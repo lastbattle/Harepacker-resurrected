@@ -1,11 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaRepacker.Configuration;
-using MapleLib.WzLib;
+﻿using MapleLib.WzLib;
 using System;
 using System.Drawing;
 using System.Windows.Forms;
@@ -20,7 +13,7 @@ namespace HaRepacker.GUI.Interaction
             bool result = form.ShowDialog() == DialogResult.OK;
 
             if (result)
-                MapleVersionEncryptionSelected = (WzMapleVersion)form.comboBox_wzEncryptionType.SelectedIndex;
+                MapleVersionEncryptionSelected = MainForm.GetWzMapleVersionByWzEncryptionBoxSelection(form.comboBox_wzEncryptionType.SelectedIndex);
             else
                 MapleVersionEncryptionSelected = WzMapleVersion.BMS; // default
 
@@ -34,7 +27,7 @@ namespace HaRepacker.GUI.Interaction
             Text = title;
 
             MainForm.AddWzEncryptionTypesToComboBox(comboBox_wzEncryptionType);
-            comboBox_wzEncryptionType.SelectedIndex = (int)Program.ConfigurationManager.ApplicationSettings.MapleVersion;
+            comboBox_wzEncryptionType.SelectedIndex = MainForm.GetIndexByWzMapleVersion(Program.ConfigurationManager.ApplicationSettings.MapleVersion);
 
             // Localization
             label_wzEncrytionType.Text = HaRepacker.Properties.Resources.InteractionWzMapleVersionInfo;

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Windows.Forms;
 using HaRepacker.GUI;
 using Microsoft.Win32;
@@ -14,18 +8,22 @@ using System.IO.Pipes;
 using System.IO;
 using System.Security.Principal;
 using System.Globalization;
-using HaRepacker.Configuration;
+using MapleLib.Configuration;
+using HaSharedLibrary;
+using System.Runtime.CompilerServices;
+using MapleLib;
 
 namespace HaRepacker
 {
     public static class Program
     {
-        public const string Version = "4.2.4";
-        public const int Version_ = 424;
+        private static WzFileManager _wzFileManager;
+        public static WzFileManager WzFileManager
+        {
+            get { return _wzFileManager; }
+            set { _wzFileManager = value; }
+        }
 
-        public const int TimeStartAnimateDefault = 10;
-
-        public static WzFileManager WzMan = new WzFileManager();
         public static NamedPipeServerStream pipe;
         public static Thread pipeThread;
 
@@ -44,6 +42,13 @@ namespace HaRepacker
         [STAThread]
         static void Main(string[] args)
         {
+            Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+
+            // App
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
             // Localisation
@@ -59,12 +64,7 @@ namespace HaRepacker
             CultureInfo.DefaultThreadCurrentUICulture = ci;
 
             // Threads
-            ThreadPool.SetMaxThreads(Environment.ProcessorCount * 5, Environment.ProcessorCount * 5); // This includes hyper-threading(Intel)/SMT (AMD) count.
-
-            // App
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            ThreadPool.SetMaxThreads(Environment.ProcessorCount * 3, Environment.ProcessorCount * 3); // This includes hyper-threading(Intel)/SMT (AMD) count.
 
             // Parameters
             bool firstRun = PrepareApplication(true);
@@ -75,26 +75,26 @@ namespace HaRepacker
             EndApplication(true, true);
         }
 
+        /// <summary>
+        /// Allows customisation of display text during runtime..
+        /// </summary>
+        /// <param name="ci"></param>
+        /// <returns></returns>
         private static CultureInfo GetMainCulture(CultureInfo ci)
         {
-            if (!ci.Name.Contains("-"))
+            var hyphen = ci.Name.IndexOf('-');
+            if (hyphen < 0)
                 return ci;
-            switch (ci.Name.Split("-".ToCharArray())[0])
+            return ci.Name.AsSpan(0, hyphen) switch
             {
-                case "ko":
-                    return new CultureInfo("ko");
-                case "ja":
-                    return new CultureInfo("ja");
-                case "en":
-                    return new CultureInfo("en");
-                case "zh":
-                    if (ci.EnglishName.Contains("Simplified"))
-                        return new CultureInfo("zh-CHS");
-                    else
-                        return new CultureInfo("zh-CHT");
-                default:
-                    return ci;
-            }
+                "ko" => new CultureInfo("ko"),
+                "ja" => new CultureInfo("ja"),
+                "en" => new CultureInfo("en"),
+                "zh" => ci.ThreeLetterWindowsLanguageName == "CHS"
+                    ? new CultureInfo("zh-CHS")
+                    : new CultureInfo("zh-CHT"),
+                _ => ci
+            };
         }
 
         private static void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
@@ -142,7 +142,6 @@ namespace HaRepacker
             bool loaded = _ConfigurationManager.Load();
             if (!loaded)
             {
-                Warning.Error(HaRepacker.Properties.Resources.ProgramLoadSettingsError);
                 return true;
             }
             bool firstRun = Program.ConfigurationManager.ApplicationSettings.FirstRun;
@@ -172,7 +171,8 @@ namespace HaRepacker
             }
             if (disposeFiles)
             {
-                WzMan.Terminate();
+                if (WzFileManager != null)
+                    WzFileManager.Dispose();
             }
             _ConfigurationManager.Save();
         }

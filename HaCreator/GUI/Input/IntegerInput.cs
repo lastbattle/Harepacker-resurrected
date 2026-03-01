@@ -1,0 +1,61 @@
+﻿using System;
+using System.ComponentModel;
+using System.Windows.Forms;
+
+namespace HaCreator.GUI.Input
+{
+    public class IntegerInput : TextBox
+    {
+        public IntegerInput()
+        {
+            this.KeyPress += new KeyPressEventHandler(HandleKeyPress);
+        }
+
+        private void HandleKeyPress(object sender, KeyPressEventArgs e)
+        {
+            if (!(char.IsDigit(e.KeyChar) || char.IsControl(e.KeyChar)))
+                e.Handled = true;
+        }
+
+        protected override void WndProc(ref Message msg)
+        {
+            if (msg.Msg == 770)
+            {
+                string cbdata = (string)Clipboard.GetDataObject().GetData(typeof(string));
+                int foo = 0;
+                if (!int.TryParse(cbdata, out foo))
+                {
+                    msg.Result = IntPtr.Zero;
+                    return;
+                }
+            }
+            base.WndProc(ref msg);
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public int Value
+        {
+            get
+            {
+                int result = 0;
+                if (int.TryParse(this.Text, out result)) return result;
+                else return 0;
+            }
+            set
+            {
+                this.Text = value.ToString();
+            }
+        }
+
+        private void InitializeComponent()
+        {
+            this.SuspendLayout();
+            // 
+            // IntegerInput
+            // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.ResumeLayout(false);
+
+        }
+    } 
+}

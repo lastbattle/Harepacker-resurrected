@@ -1,12 +1,4 @@
-﻿/* Copyright (C) 2020 LastBattle
-* https://github.com/lastbattle/Harepacker-resurrected
-* 
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-
-using HaRepacker.Utils;
+﻿using HaRepacker.Utils;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,16 +15,16 @@ namespace HaRepacker.Converter
 	{
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double widthOrHeight = (double)value;
-			double realWidthOrHeightToDisplay = widthOrHeight * ScreenDPI.GetScreenScaleFactor();
+			int widthOrHeight = (int)value;
+			int realWidthOrHeightToDisplay = (int) ((double) widthOrHeight * ScreenDPIUtil.GetScreenScaleFactor());
 
 			return realWidthOrHeightToDisplay;
 		}
 
 		public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			double value_ = (double)value;
-			double imageWidthOrHeight = value_ /  ScreenDPI.GetScreenScaleFactor();
+            int value_ = (int)value;
+            int imageWidthOrHeight = (int) ((double)value_ / ScreenDPIUtil.GetScreenScaleFactor());
 
 			return imageWidthOrHeight;
 		}

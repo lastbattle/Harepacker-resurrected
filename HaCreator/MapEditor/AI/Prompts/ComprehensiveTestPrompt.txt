@@ -1,0 +1,49 @@
+Create a complete winter-themed training map with the following:
+
+PLATFORMS & STRUCTURE:
+- Main ground platform from x=-600 to x=600 at y=400
+- Upper platform from x=-300 to x=300 at y=200
+- Small floating platform from x=-100 to x=100 at y=0
+- Left wall at x=-650 from y=0 to y=450
+- Right wall at x=650 from y=0 to y=450
+- A rope connecting the ground to the upper platform at x=-200
+- A ladder connecting upper platform to the floating platform at x=100
+
+TILES:
+- Tile all platforms with snowySoil tileset (or similar snowy tileset)
+- Add a tall tile structure on the left side
+
+BACKGROUNDS:
+- Add a snowy mountain background in the back layer with horizontal tiling
+- Add falling snow particles in the front layer
+- Add a night sky background with parallax effect rx=50 ry=30
+
+OBJECTS:
+- Add snow-covered trees on the ground platform
+- Add ice crystals near the upper platform
+- Add a wooden sign object near the spawn point
+
+PORTALS:
+- Spawn portal "sp" at (-500, 400)
+- Town portal "toTown" at (500, 400) leading to map 100000000
+- Hidden portal "secret" at (0, 0) on the floating platform
+
+MOBS & NPCs:
+- Search for "yeti" or snow-related mobs and add 5 of them spread across the ground platform with patrol ranges
+- Search for weaker mobs and add 2 on the upper platform
+- Add a storage NPC near the spawn point
+- Add a shop NPC on the right side of the ground, facing left
+
+MAP SETTINGS:
+- Enable snow weather effect
+- Set as a non-town map
+- Set BGM to something winter/christmas themed (query available BGMs first)
+- Set map size to 1400x600
+- Set VR to left=-700 top=-100 right=700 bottom=500
+- Set field limit: disable mystic door
+- Set mob spawn rate to 1.5x
+- Set return map to 100000000
+- Set level limit minimum 30
+- Set map description "A frozen training ground for adventurers"
+- Set help text "Defeat the monsters to train! Watch out for the yetis!"
+- Add a tooltip near the secret portal at (0, 0) with title "Hidden Area" and description "Only the observant will find this path"

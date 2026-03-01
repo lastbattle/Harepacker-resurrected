@@ -1,9 +1,14 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaCreator.GUI.Input;
+using HaCreator.GUI.InstanceEditor;
+using HaCreator.MapEditor;
+using HaCreator.Wz;
+using HaRepacker;
+using MapleLib.Helpers;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
+using MapleLib.WzLib.WzStructure.Data.MapStructure;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -13,26 +18,24 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using MapleLib.WzLib;
-using MapleLib.WzLib.WzProperties;
-using HaCreator.MapEditor;
-using MapleLib.WzLib.WzStructure;
-using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.GUI
 {
     public partial class InfoEditor : EditorBase
     {
         public MapInfo info;
-        private MultiBoard multiBoard;
-        private Board board;
+        private readonly MultiBoard multiBoard;
+        private readonly Board board;
+        private readonly System.Windows.Controls.TabItem tabItem;
 
-        public InfoEditor(Board board, MapInfo info, MultiBoard multiBoard)
+        public InfoEditor(Board board, MapInfo info, MultiBoard multiBoard, System.Windows.Controls.TabItem tabItem)
         {
             InitializeComponent();
 
             this.board = board;
+            this.info = info;
             this.multiBoard = multiBoard;
+            this.tabItem = tabItem;
 
             timeLimitEnable.Tag = timeLimit;
             lvLimitEnable.Tag = lvLimit;
@@ -52,23 +55,23 @@ namespace HaCreator.GUI
             reactorNameShuffle.Tag = reactorNameBox;
             fsEnable.Tag = fsBox;
             massEnable.Tag = new Control[] { createMobInterval, fixedMobCapacity };
-            hpDecEnable.Tag = new Control[] { decHP, protectItem, decIntervalEnable, decInterval, protectEnable };
-            protectEnable.Tag = new Control[] { protectItem };
+            hpDecEnable.Tag = new Control[] { decHP, listBox_protectItem, decIntervalEnable, decInterval, protectEnable };
+            protectEnable.Tag = new Control[] { listBox_protectItem };
             decIntervalEnable.Tag = decInterval;
             helpEnable.Tag = helpBox;
             timedMobEnable.Tag = new Control[] { timedMobEnd, timedMobStart };
             summonMobEnable.Tag = new Control[] { timedMobId, timedMobEnable, timedMobMessage };
             autoLieDetectorEnable.Tag = new Control[] { autoLieEnd, autoLieInterval, autoLieProp, autoLieStart };
             allowedItemsEnable.Tag = new Control[] { allowedItems, allowedItemsAdd, allowedItemsRemove };
+            //mirror_Bottom_Enabled.Tag = mirror
 
-            this.info = info;
             this.fieldType.SelectedIndex = 0;
 
             xBox.Value = board.MapSize.X;
             yBox.Value = board.MapSize.Y;
 
             List<string> sortedBGMs = new List<string>();
-            foreach (KeyValuePair<string, WzSoundProperty> bgm in Program.InfoManager.BGMs)
+            foreach (KeyValuePair<string, WzBinaryProperty> bgm in Program.InfoManager.BGMs)
                 sortedBGMs.Add(bgm.Key);
             sortedBGMs.Sort();
             foreach (string bgm in sortedBGMs)
@@ -91,6 +94,9 @@ namespace HaCreator.GUI
                 case MapType.MapLogin:
                     IDLabel.Text = "MapLogin";
                     break;
+                case MapType.ITCPreview:
+                    IDLabel.Text = "ITCPreview";
+                    break;
                 case MapType.RegularMap:
                     if (info.id == -1) IDLabel.Text = "";
                     else IDLabel.Text = info.id.ToString();
@@ -100,11 +106,14 @@ namespace HaCreator.GUI
             streetBox.Text = info.strStreetName;
             categoryBox.Text = info.strCategoryName;
             markBox.SelectedItem = info.mapMark;
-            if (info.returnMap == info.id) cannotReturnCBX.Checked = true;
+            if (info.returnMap == info.id)
+                cannotReturnCBX.Checked = true;
             else returnBox.Text = info.returnMap.ToString();
-            if (info.forcedReturn == 999999999) returnHereCBX.Checked = true;
+            if (info.forcedReturn == 999999999)
+                returnHereCBX.Checked = true;
             else forcedRet.Text = info.forcedReturn.ToString();
             mobRate.Value = (decimal)info.mobRate;
+
             //LoadOptionalInt(info.link, linkBox);
             LoadOptionalInt(info.timeLimit, timeLimit, timeLimitEnable);
             LoadOptionalInt(info.lvLimit, lvLimit, lvLimitEnable);
@@ -126,34 +135,43 @@ namespace HaCreator.GUI
             LoadOptionalInt(info.fixedMobCapacity, fixedMobCapacity, massEnable);
             LoadOptionalInt(info.decHP, decHP, hpDecEnable);
             LoadOptionalInt(info.decInterval, decInterval, decIntervalEnable);
-            LoadOptionalInt(info.protectItem, protectItem, protectEnable);
+            LoadOptionalIntArray(info.protectItem, listBox_protectItem, protectEnable);
+
+            // Help
             helpEnable.Checked = info.help != null;
             if (info.help != null)
                 helpBox.Text = info.help.Replace(@"\n", "\r\n");
+
+            // Time mobs
             if (info.timeMob != null)
             {
-                MapInfo.TimeMob tMob = (MapInfo.TimeMob)info.timeMob;
+                TimeMob tMob = (TimeMob)info.timeMob;
                 summonMobEnable.Checked = true;
                 LoadOptionalInt(tMob.startHour, timedMobStart, timedMobEnable);
                 LoadOptionalInt(tMob.endHour, timedMobEnd, timedMobEnable);
                 timedMobId.Value = tMob.id;
                 timedMobMessage.Text = tMob.message.Replace(@"\n", "\r\n");
             }
+
+            // Lie detector
             if (info.autoLieDetector != null)
             {
-                MapInfo.AutoLieDetector ald = (MapInfo.AutoLieDetector)info.autoLieDetector;
+                AutoLieDetector ald = (AutoLieDetector)info.autoLieDetector;
                 autoLieDetectorEnable.Checked = true;
                 autoLieStart.Value = ald.startHour;
                 autoLieEnd.Value = ald.endHour;
                 autoLieInterval.Value = ald.interval;
                 autoLieProp.Value = ald.prop;
             }
+
+            // Allowed item
             if (info.allowedItem != null)
             {
                 allowedItemsEnable.Checked = true;
                 foreach (int id in info.allowedItem)
                     allowedItems.Items.Add(id.ToString());
             }
+
             optionsList.SetChecked(0, info.cloud);
             optionsList.SetChecked(1, info.snow);
             optionsList.SetChecked(2, info.rain);
@@ -176,12 +194,13 @@ namespace HaCreator.GUI
             optionsList.SetChecked(19, info.zakum2Hack);
             optionsList.SetChecked(20, info.allMoveCheck);
             optionsList.SetChecked(21, info.VRLimit);
+            optionsList.SetChecked(22, info.mirror_Bottom);
 
-            for (int i = 0; i < fieldLimitList.Items.Count; i++)
-            {
-                int value = (int)Math.Pow(2, i);
-                fieldLimitList.SetChecked(i, ((int)info.fieldLimit & value) == value);
-            }
+            // Populate field limit items
+            // automatically populated via fieldLimitPanel1.Loaed
+            fieldLimitPanel1.PopulateDefaultListView();
+            fieldLimitPanel1.UpdateFieldLimitCheckboxes((ulong)info.fieldLimit);
+
             if (info.fieldType != null)/* fieldType.SelectedIndex = -1;
             else*/
             {
@@ -239,15 +258,106 @@ namespace HaCreator.GUI
             }
         }
 
+        /// <summary>
+        /// Loads optional int into the NumericUpDown target
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
         private void LoadOptionalInt(int? source, NumericUpDown target, CheckBox checkBox)
         {
             checkBox.Checked = source != null;
             if (source != null) target.Value = source.Value;
         }
 
+        /// <summary>
+        /// Loads an optional int array into a ComboBox
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
+        private void LoadOptionalIntArray(List<int> source, ComboBox target, CheckBox checkBox)
+        {
+            checkBox.Checked = source != null && source.Count > 0;
+            if (checkBox.Checked == true)
+            {
+                foreach (int val in source)
+                {
+                    target.Items.Add(val.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Loads an optional int array into a ListBox
+        /// </summary>
+        /// <param name="source"></param>
+        /// <param name="target"></param>
+        /// <param name="checkBox"></param>
+        private void LoadOptionalIntArray(List<int> source, ListBox target, CheckBox checkBox)
+        {
+            checkBox.Checked = source != null && source.Count > 0;
+            if (checkBox.Checked == true)
+            {
+                foreach (int val in source)
+                {
+                    target.Items.Add(val.ToString());
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets an optional int from a NumericUpDown
+        /// </summary>
+        /// <param name="textbox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns></returns>
         private int? GetOptionalInt(NumericUpDown textbox, CheckBox checkBox)
         {
             return checkBox.Checked ? (int?)textbox.Value : null;
+        }
+
+        /// <summary>
+        /// Gets an optional int array from a ComboBox
+        /// </summary>
+        /// <param name="comboBox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns>null if none is selected</returns>
+        private List<int> GetOptionalIntArrayFromList(ComboBox comboBox, CheckBox checkBox)
+        {
+            List<int> ret = new List<int>();
+            if (checkBox.Checked)
+            {
+                if (comboBox.SelectedText != null)
+                {
+                    foreach (string itemId in comboBox.Items)
+                    {
+                        ret.Add(int.Parse(itemId));
+                    }
+                    return ret;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Gets an optional int array from a ListBox
+        /// </summary>
+        /// <param name="comboBox"></param>
+        /// <param name="checkBox"></param>
+        /// <returns>null if none is selected</returns>
+        private List<int> GetOptionalIntArrayFromList(ListBox listBox, CheckBox checkBox)
+        {
+            List<int> ret = new List<int>();
+            if (checkBox.Checked)
+            {
+                foreach (string itemId in listBox.Items)
+                {
+                    ret.Add(int.Parse(itemId));
+                }
+                return ret;
+            }
+            return null;
         }
 
         private void LoadOptionalFloat(float? source, NumericUpDown target, CheckBox checkBox)
@@ -274,14 +384,53 @@ namespace HaCreator.GUI
 
         private void bgmBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            fieldLimitList.CheckOnClick = true;
-            bool a = fieldLimitList.Checked(0);
-            soundPlayer.SoundProperty = Program.InfoManager.BGMs[(string)bgmBox.SelectedItem];
+            string bgm = (string)bgmBox.SelectedItem;
+            if (Program.InfoManager.BGMs.ContainsKey(bgm))
+            {
+                soundPlayer1.SoundProperty = Program.InfoManager.BGMs[bgm];
+            } else
+            {
+                string error = string.Format("[InfoEditor] Missing BGM [{0}] in Sound.wz for the Field ID [{1}]", bgm, this.info.id);
+                ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
+            }
+        }
+
+        /// <summary>
+        /// On add protect item Id
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_addProtectItem_Click(object sender, EventArgs e)
+        {
+            string name;
+            int? value;
+
+            if (!IntInputBox.Show("Enter item ID", "0", 0, out name, out value, true))
+            {
+                return;
+            }
+            if (value == 0)
+            {
+                MessageBox.Show("Value must not be 0.");
+                return;
+            }
+            listBox_protectItem.Items.Add(value.ToString());
+        }
+
+        /// <summary>
+        /// Remove protect item
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_removeProtectItem_Click(object sender, EventArgs e)
+        {
+            if (listBox_protectItem.SelectedIndex != -1)
+                listBox_protectItem.Items.RemoveAt(listBox_protectItem.SelectedIndex);
         }
 
         private void InfoEditor_FormClosing(object sender, FormClosingEventArgs e)
         {
-            soundPlayer.SoundProperty = null;
+            soundPlayer1.SoundProperty = null;
         }
 
         private void markBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -298,7 +447,7 @@ namespace HaCreator.GUI
         {
             lock (multiBoard)
             {
-                if (info.mapType != MapType.CashShopPreview)
+                if (info.mapType != MapType.CashShopPreview && info.mapType != MapType.ITCPreview)
                 {
                     info.bgm = (string)bgmBox.SelectedItem;
                     info.mapMark = (string)markBox.SelectedItem;
@@ -311,7 +460,9 @@ namespace HaCreator.GUI
                     info.strCategoryName = categoryBox.Text;
 
                     // We do, however, need to change the tab's name/info
-                    board.TabPage.Text = info.strMapName;
+                    ((TabItemContainer)tabItem.Tag).Text = info.strMapName;
+
+                    tabItem.Header = MapLoader.GetFormattedMapNameForTabItem(info.id, info.strStreetName, info.strMapName);
                 }
                 info.returnMap = cannotReturnCBX.Checked ? info.id : (int)returnBox.Value;
                 info.forcedReturn = returnHereCBX.Checked ? 999999999 : (int)forcedRet.Value;
@@ -336,17 +487,17 @@ namespace HaCreator.GUI
                 info.fixedMobCapacity = GetOptionalInt(fixedMobCapacity, massEnable);
                 info.decHP = GetOptionalInt(decHP, hpDecEnable);
                 info.decInterval = GetOptionalInt(decInterval, decIntervalEnable);
-                info.protectItem = GetOptionalInt(protectItem, protectEnable);
+                info.protectItem = GetOptionalIntArrayFromList(listBox_protectItem, protectEnable);
 
                 if (helpEnable.Checked) info.help = helpBox.Text.Replace("\r\n", @"\n");
                 if (summonMobEnable.Checked)
-                    info.timeMob = new MapInfo.TimeMob(
+                    info.timeMob = new TimeMob(
                         GetOptionalInt(timedMobStart, timedMobEnable),
                         GetOptionalInt(timedMobEnd, timedMobEnable),
                         (int)timedMobId.Value,
                         timedMobMessage.Text.Replace("\r\n", @"\n"));
                 if (autoLieDetectorEnable.Checked)
-                    info.autoLieDetector = new MapInfo.AutoLieDetector(
+                    info.autoLieDetector = new AutoLieDetector(
                         (int)autoLieStart.Value,
                         (int)autoLieEnd.Value,
                         (int)autoLieInterval.Value,
@@ -379,14 +530,10 @@ namespace HaCreator.GUI
                 info.zakum2Hack = optionsList.Checked(19);
                 info.allMoveCheck = optionsList.Checked(20);
                 info.VRLimit = optionsList.Checked(21);
-                int fieldLimitInt = 0;
-                for (int i = 0; i < fieldLimitList.Items.Count; i++)
-                {
-                    int value = (int)Math.Pow(2, i);
-                    if (fieldLimitList.Checked(i))
-                        fieldLimitInt += value;
-                }
-                info.fieldLimit = (FieldLimit)fieldLimitInt;
+                info.mirror_Bottom = optionsList.Checked(22);
+
+                info.fieldLimit = (long)fieldLimitPanel1.FieldLimit;
+
                 if (fieldType.SelectedIndex <= 0x22)
                     info.fieldType = (FieldType)fieldType.SelectedIndex;
                 else
@@ -435,11 +582,14 @@ namespace HaCreator.GUI
         {
             CheckBox cbx = (CheckBox)sender;
             bool featureActivated = cbx.Checked && cbx.Enabled;
-            if (cbx.Tag is Control) ((Control)cbx.Tag).Enabled = featureActivated;
+            if (cbx.Tag is Control)
+                ((Control)cbx.Tag).Enabled = featureActivated;
             else
             {
-                foreach (Control control in (Control[])cbx.Tag) control.Enabled = featureActivated;
-                foreach (Control control in (Control[])cbx.Tag) if (control is CheckBox) enablingCheckBox_CheckChanged(control, e);
+                foreach (Control control in (Control[])cbx.Tag)
+                    control.Enabled = featureActivated;
+                foreach (Control control in (Control[])cbx.Tag) if (control is CheckBox)
+                        enablingCheckBox_CheckChanged(control, e);
             }
         }
 
@@ -469,6 +619,28 @@ namespace HaCreator.GUI
         private void allowedItemsAdd_Click(object sender, EventArgs e)
         {
             allowedItems.Items.Add(Microsoft.VisualBasic.Interaction.InputBox("Insert item ID", "Add Allowed Item", "", -1, -1));
+        }
+
+        /// <summary>
+        /// Select field ID for return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(returnBox);
+            selector.ShowDialog();
+        }
+
+        /// <summary>
+        /// Select field ID for forced return map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_selectForcedReturnMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(forcedRet);
+            selector.ShowDialog();
         }
     }
 }

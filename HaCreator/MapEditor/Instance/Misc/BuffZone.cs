@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance.Shapes;
+﻿using HaCreator.MapEditor.Instance.Shapes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,10 +10,12 @@ namespace HaCreator.MapEditor.Instance.Misc
 {
     public class BuffZone : MiscRectangle, ISerializable
     {
+        #region Fields
         private int itemID;
         private int interval;
         private int duration;
         private string zoneName;
+        #endregion
 
         public BuffZone(Board board, XNA.Rectangle rect, int itemID, int interval, int duration, string zoneName)
             : base(board, rect)

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
 using XNA = Microsoft.Xna.Framework;
@@ -16,6 +10,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.Exceptions;
 using HaCreator.MapEditor.Info;
+using HaRepacker.Utils;
 
 namespace HaCreator.MapEditor.Input
 {
@@ -24,6 +19,7 @@ namespace HaCreator.MapEditor.Input
         private MultiBoard parentBoard;
         private int lastUserInteraction = 0;
         private int lastBackup = 0;
+        private XNA.Point lastPhysicalPos = new XNA.Point(0, 0); // Track physical position for auto-scroll
 
         public void OnUserInteraction()
         {
@@ -63,11 +59,12 @@ namespace HaCreator.MapEditor.Input
         public InputHandler(MultiBoard parentBoard)
         {
             this.parentBoard = parentBoard;
+
             parentBoard.LeftMouseDown += new MultiBoard.LeftMouseDownDelegate(parentBoard_LeftMouseDown);
             parentBoard.LeftMouseUp += new MultiBoard.LeftMouseUpDelegate(parentBoard_LeftMouseUp);
             parentBoard.RightMouseClick += new MultiBoard.RightMouseClickDelegate(parentBoard_RightMouseClick);
             parentBoard.MouseDoubleClick += new MultiBoard.MouseDoubleClickDelegate(parentBoard_MouseDoubleClick);
-            parentBoard.ShortcutKeyPressed += new MultiBoard.ShortcutKeyPressedDelegate(parentBoard_ShortcutKeyPressed);
+            parentBoard.ShortcutKeyPressed += new MultiBoard.ShortcutKeyPressedDelegate(ParentBoard_ShortcutKeyPressed);
             parentBoard.MouseMoved += new MultiBoard.MouseMovedDelegate(parentBoard_MouseMoved);
         }
 
@@ -148,20 +145,32 @@ namespace HaCreator.MapEditor.Input
                     selectedBoard.Mouse.DoSnap();
                 }
 
+                // Always update lastPhysicalPos for accurate delta calculation
+                int deltaX = currPhysicalPos.X - lastPhysicalPos.X;
+                int deltaY = currPhysicalPos.Y - lastPhysicalPos.Y;
+                lastPhysicalPos = currPhysicalPos;
+
                 if ((selectedBoard.Mouse.BoundItems.Count > 0 || selectedBoard.Mouse.MultiSelectOngoing) && selectedBoard.Mouse.State == MouseState.Selection)
                 {
                     // auto scrolling
-                    // Bind physicalpos to our dxcontainer, to prevent extremely fast scrolling
-                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), parentBoard.Width), Math.Min(Math.Max(currPhysicalPos.Y, 0), parentBoard.Height));
+                    // Use ActualWidth/ActualHeight for rendered dimensions (Width/Height can be NaN in WPF)
+                    int boardWidth = (int)parentBoard.ActualWidth;
+                    int boardHeight = (int)parentBoard.ActualHeight;
 
-                    if (currPhysicalPos.X - UserSettings.ScrollDistance < 0 && oldPos.X > newPos.X) //move to left
+                    // Bind physicalpos to our dxcontainer, to prevent extremely fast scrolling
+                    currPhysicalPos = new XNA.Point(Math.Min(Math.Max(currPhysicalPos.X, 0), boardWidth), Math.Min(Math.Max(currPhysicalPos.Y, 0), boardHeight));
+
+                    // Require minimum movement threshold to prevent accidental scrolling on click
+                    const int minMovement = 5;
+
+                    if (currPhysicalPos.X - UserSettings.ScrollDistance < 0 && deltaX < -minMovement) //move to left
                         selectedBoard.hScroll = (int)Math.Max(0, selectedBoard.hScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.X) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
-                    else if (currPhysicalPos.X + UserSettings.ScrollDistance > parentBoard.Width && oldPos.X < newPos.X) //move to right
-                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - parentBoard.Width + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.maxHScroll);
-                    if (currPhysicalPos.Y - UserSettings.ScrollDistance < 0 && oldPos.Y > newPos.Y) //move to top
+                    else if (currPhysicalPos.X + UserSettings.ScrollDistance > boardWidth && deltaX > minMovement) //move to right
+                        selectedBoard.hScroll = (int)Math.Min(selectedBoard.hScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.X - boardWidth + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxHScroll);
+                    if (currPhysicalPos.Y - UserSettings.ScrollDistance < 0 && deltaY < -minMovement) //move to top
                         selectedBoard.vScroll = (int)Math.Max(0, selectedBoard.vScroll - Math.Pow(UserSettings.ScrollBase, (UserSettings.ScrollDistance - currPhysicalPos.Y) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor);
-                    else if (currPhysicalPos.Y + UserSettings.ScrollDistance > parentBoard.Height && oldPos.Y < newPos.Y) //move to bottom
-                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - parentBoard.Height + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.maxVScroll);
+                    else if (currPhysicalPos.Y + UserSettings.ScrollDistance > boardHeight && deltaY > minMovement) //move to bottom
+                        selectedBoard.vScroll = (int)Math.Min(selectedBoard.vScroll + Math.Pow(UserSettings.ScrollBase, (currPhysicalPos.Y - boardHeight + UserSettings.ScrollDistance) * UserSettings.ScrollExponentFactor) * UserSettings.ScrollFactor, parentBoard.MaxVScroll);
                 }
             }
         }
@@ -174,7 +183,15 @@ namespace HaCreator.MapEditor.Input
                 return UndoRedoManager.ItemMoved(item, new XNA.Point(item.X + posChange.X, item.Y + posChange.Y), new XNA.Point(item.X, item.Y));
         }
 
-        private void parentBoard_ShortcutKeyPressed(Board selectedBoard, bool ctrl, bool shift, bool alt, Keys key)
+        /// <summary>
+        /// Keyboard navigation on the MultiBoard
+        /// </summary>
+        /// <param name="selectedBoard"></param>
+        /// <param name="ctrl"></param>
+        /// <param name="shift"></param>
+        /// <param name="alt"></param>
+        /// <param name="key"></param>
+        private void ParentBoard_ShortcutKeyPressed(Board selectedBoard, bool ctrl, bool shift, bool alt, Keys key)
         {
             lock (parentBoard)
             {
@@ -185,40 +202,91 @@ namespace HaCreator.MapEditor.Input
                 if (key == Keys.ControlKey || key == Keys.ShiftKey || key == Keys.Menu /*ALT key*/)
                     return;
                 bool clearRedo = true;
+
+                const int navigationSHVScrollSpeed = 16;
+
                 switch (key)
                 {
                     case Keys.Left:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.X--;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(1, 0)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.X--;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(1, 0)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddHScrollbarValue(-navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Right:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.X++;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(-1, 0)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.X++;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(-1, 0)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddHScrollbarValue(navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Up:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.Y--;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, 1)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.Y--;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, 1)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddVScrollbarValue(-navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
                     case Keys.Down:
-                        foreach (BoardItem item in selectedBoard.SelectedItems)
-                            if (!item.BoundToSelectedItem(selectedBoard))
+                        {
+                            if (selectedBoard.SelectedItems.Count > 0)
                             {
-                                item.Y++;
-                                actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, -1)));
+                                foreach (BoardItem item in selectedBoard.SelectedItems)
+                                    if (!item.BoundToSelectedItem(selectedBoard))
+                                    {
+                                        item.Y++;
+                                        actions.Add(CreateItemUndoMoveAction(item, new XNA.Point(0, -1)));
+                                    }
                             }
-                        break;
+                            else // if no item is being selected, shift the view instead
+                            {
+                                selectedBoard.ParentControl.AddVScrollbarValue(navigationSHVScrollSpeed);
+                            }
+                            break;
+                        }
+
+                    case Keys.PageUp:
+                        {
+                            selectedBoard.ParentControl.AddVScrollbarValue(-999);
+                            break;
+                        }
+                    case Keys.PageDown:
+                        {
+                            selectedBoard.ParentControl.AddVScrollbarValue(999);
+                            break;
+                        }
+
                     case Keys.Delete:
                         switch (selectedBoard.Mouse.State)
                         {
@@ -272,10 +340,10 @@ namespace HaCreator.MapEditor.Input
                         {
                             foreach (BoardItem item in selectedBoard.SelectedItems)
                             {
-                                if (item is IFlippable)
+                                if (item is IFlippable flippable)
                                 {
-                                    ((IFlippable)item).Flip = !((IFlippable)item).Flip;
-                                    actions.Add(UndoRedoManager.ItemFlipped((IFlippable)item));
+                                    flippable.Flip = !flippable.Flip;
+                                    actions.Add(UndoRedoManager.ItemFlipped(flippable));
                                 }
                             }
                         }
@@ -527,14 +595,21 @@ namespace HaCreator.MapEditor.Input
                 if (mouseState == MouseState.Selection)
                 {
                     ClearBoundItems(selectedBoard);
-                    if (ClickOnMinimap(selectedBoard, realPosition)) return;
+                    if (ClickOnMinimap(selectedBoard, realPosition)) 
+                        return;
+
                     if (rightClickTarget == null)
                         return;
+
                     if (!rightClickTarget.Selected)
                         ClearSelectedItems(selectedBoard);
                     rightClickTarget.Selected = true;
                     BoardItemContextMenu bicm = new BoardItemContextMenu(parentBoard, selectedBoard, rightClickTarget);
-                    bicm.Menu.Show(parentBoard.PointToScreen(new System.Drawing.Point(realPosition.X, realPosition.Y)));
+
+                    // be warned when run under visual studio. it inherits VS's scaling and VS's window location
+                    System.Windows.Point point = parentBoard.PointToScreen(new System.Windows.Point(realPosition.X, realPosition.Y));
+
+                    bicm.Menu.Show(new System.Drawing.Point((int) (point.X), (int) (point.Y )));
                 }
                 else parentBoard.InvokeReturnToSelectionState();
             }
@@ -565,15 +640,22 @@ namespace HaCreator.MapEditor.Input
             }
         }
         
+        /// <summary>
+        /// Navigating around the editor via mouse clicks on the minimap.
+        /// </summary>
+        /// <param name="selectedBoard"></param>
+        /// <param name="realPosition"></param>
         private void HandleMinimapBrowse(Board selectedBoard, XNA.Point realPosition)
         {
-            int h = realPosition.X * selectedBoard.mag - parentBoard.Width / 2;
-            int v = realPosition.Y * selectedBoard.mag - parentBoard.Height / 2;
+            int h = realPosition.X * selectedBoard.mag - (int)parentBoard.ActualWidth / 2;
+            int v = realPosition.Y * selectedBoard.mag - (int)parentBoard.ActualHeight / 2;
             if (h < 0) selectedBoard.hScroll = 0;
-            else if (h > parentBoard.maxHScroll) selectedBoard.hScroll = parentBoard.maxHScroll;
+            else if (h > parentBoard.MaxHScroll) 
+                selectedBoard.hScroll = (int)parentBoard.MaxHScroll;
             else selectedBoard.hScroll = h;
             if (v < 0) selectedBoard.vScroll = 0;
-            else if (v > parentBoard.maxVScroll) selectedBoard.vScroll = parentBoard.maxVScroll;
+            else if (v > parentBoard.MaxVScroll) 
+                selectedBoard.vScroll = (int)parentBoard.MaxVScroll;
             else selectedBoard.vScroll = v;
         }
 
@@ -582,6 +664,7 @@ namespace HaCreator.MapEditor.Input
             lock (parentBoard)
             {
                 OnUserInteraction();
+                lastPhysicalPos = realPosition; // Initialize for auto-scroll direction detection
                 if (ClickOnMinimap(selectedBoard, realPosition) && selectedBoard.Mouse.State == MouseState.Selection)
                 {
                     //ClearSelectedItems(selectedBoard);

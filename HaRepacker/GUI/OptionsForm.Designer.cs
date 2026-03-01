@@ -32,9 +32,9 @@ namespace HaRepacker.GUI
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(OptionsForm));
             this.sortBox = new System.Windows.Forms.CheckBox();
+            this.loadRelated = new System.Windows.Forms.CheckBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
-            this.indentBox = new IntegerInput();
             this.label1 = new System.Windows.Forms.Label();
             this.lineBreakBox = new System.Windows.Forms.ComboBox();
             this.label2 = new System.Windows.Forms.Label();
@@ -43,9 +43,11 @@ namespace HaRepacker.GUI
             this.defXmlFolderBox = new System.Windows.Forms.TextBox();
             this.browse = new System.Windows.Forms.Button();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
-            this.autoUpdate = new System.Windows.Forms.CheckBox();
             this.themeColor__comboBox = new System.Windows.Forms.ComboBox();
             this.label3 = new System.Windows.Forms.Label();
+            this.panel1 = new System.Windows.Forms.Panel();
+            this.label5 = new System.Windows.Forms.Label();
+            this.panel1.SuspendLayout();
             this.SuspendLayout();
             // 
             // sortBox
@@ -53,6 +55,12 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.sortBox, "sortBox");
             this.sortBox.Name = "sortBox";
             this.sortBox.UseVisualStyleBackColor = true;
+            // 
+            // loadRelated
+            // 
+            resources.ApplyResources(this.loadRelated, "loadRelated");
+            this.loadRelated.Name = "loadRelated";
+            this.loadRelated.UseVisualStyleBackColor = true;
             // 
             // okButton
             // 
@@ -67,12 +75,6 @@ namespace HaRepacker.GUI
             this.cancelButton.Name = "cancelButton";
             this.cancelButton.UseVisualStyleBackColor = true;
             this.cancelButton.Click += new System.EventHandler(this.cancelButton_Click);
-            // 
-            // indentBox
-            // 
-            resources.ApplyResources(this.indentBox, "indentBox");
-            this.indentBox.Name = "indentBox";
-            this.indentBox.Value = 0;
             // 
             // label1
             // 
@@ -125,12 +127,6 @@ namespace HaRepacker.GUI
             this.autoAssociateBox.Name = "autoAssociateBox";
             this.autoAssociateBox.UseVisualStyleBackColor = true;
             // 
-            // autoUpdate
-            // 
-            resources.ApplyResources(this.autoUpdate, "autoUpdate");
-            this.autoUpdate.Name = "autoUpdate";
-            this.autoUpdate.UseVisualStyleBackColor = true;
-            // 
             // themeColor__comboBox
             // 
             this.themeColor__comboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
@@ -146,38 +142,51 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.label3, "label3");
             this.label3.Name = "label3";
             // 
+            // panel1
+            // 
+            this.panel1.Controls.Add(this.label5);
+            this.panel1.Controls.Add(this.sortBox);
+            this.panel1.Controls.Add(this.themeColor__comboBox);
+            this.panel1.Controls.Add(this.label1);
+            this.panel1.Controls.Add(this.label3);
+            this.panel1.Controls.Add(this.lineBreakBox);
+            this.panel1.Controls.Add(this.loadRelated);
+            this.panel1.Controls.Add(this.label2);
+            this.panel1.Controls.Add(this.autoAssociateBox);
+            this.panel1.Controls.Add(this.apngIncompEnable);
+            this.panel1.Controls.Add(this.browse);
+            this.panel1.Controls.Add(this.defXmlFolderEnable);
+            this.panel1.Controls.Add(this.defXmlFolderBox);
+            resources.ApplyResources(this.panel1, "panel1");
+            this.panel1.Name = "panel1";
+            // 
+            // label5
+            // 
+            resources.ApplyResources(this.label5, "label5");
+            this.label5.Name = "label5";
+            // 
             // OptionsForm
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.Controls.Add(this.themeColor__comboBox);
-            this.Controls.Add(this.label3);
-            this.Controls.Add(this.autoUpdate);
-            this.Controls.Add(this.autoAssociateBox);
-            this.Controls.Add(this.browse);
-            this.Controls.Add(this.defXmlFolderBox);
-            this.Controls.Add(this.defXmlFolderEnable);
-            this.Controls.Add(this.apngIncompEnable);
-            this.Controls.Add(this.label2);
-            this.Controls.Add(this.lineBreakBox);
-            this.Controls.Add(this.label1);
-            this.Controls.Add(this.indentBox);
+            this.Controls.Add(this.panel1);
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
-            this.Controls.Add(this.sortBox);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "OptionsForm";
+            this.panel1.ResumeLayout(false);
+            this.panel1.PerformLayout();
             this.ResumeLayout(false);
-            this.PerformLayout();
 
         }
 
         #endregion
 
         private System.Windows.Forms.CheckBox sortBox;
+        private System.Windows.Forms.CheckBox loadRelated;
         private System.Windows.Forms.Button okButton;
         private System.Windows.Forms.Button cancelButton;
-        private IntegerInput indentBox;
+        private IntegerInput indentBox = new IntegerInput();
         private System.Windows.Forms.Label label1;
         private System.Windows.Forms.ComboBox lineBreakBox;
         private System.Windows.Forms.Label label2;
@@ -186,8 +195,9 @@ namespace HaRepacker.GUI
         private System.Windows.Forms.TextBox defXmlFolderBox;
         private System.Windows.Forms.Button browse;
         private System.Windows.Forms.CheckBox autoAssociateBox;
-        private System.Windows.Forms.CheckBox autoUpdate;
         private System.Windows.Forms.ComboBox themeColor__comboBox;
         private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.Panel panel1;
+        private System.Windows.Forms.Label label5;
     }
 }

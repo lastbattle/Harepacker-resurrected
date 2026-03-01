@@ -1,17 +1,6 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework.Graphics;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.Instance
@@ -45,13 +34,20 @@ namespace HaCreator.MapEditor.Instance
                 // which will execute after we are finished.
                 X -= baseInfo.Width - 2 * baseInfo.Origin.X;
             }
+            this.hide = hide;
         }
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
         {
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
             //if (baseInfo.Texture == null) baseInfo.CreateTexture(sprite.GraphicsDevice);
-            sprite.Draw(BaseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 1f);
+            sprite.Draw(BaseInfo.GetTexture(sprite), destinationRectangle, 
+                null, 
+                color, 
+                0f, 
+                new XNA.Vector2(0f, 0f), 
+                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 
+                1f);
             base.Draw(sprite, color, xShift, yShift);
         }
 
@@ -63,11 +59,14 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
-                if ((flip == true) == value) return;
+                if ((flip == true) == value) 
+                    return;
                 flip = value;
                 int xFlipShift = Width - 2 * Origin.X;
-                if (flip == true) X -= xFlipShift;
-                else X += xFlipShift;
+                if (flip == true) 
+                    X -= xFlipShift;
+                else 
+                    X += xFlipShift;
             }
         }
 

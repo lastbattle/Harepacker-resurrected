@@ -122,7 +122,7 @@
     <value>75, 12</value>
   </data>
   <data name="nameBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>101, 22</value>
+    <value>186, 22</value>
   </data>
   <assembly alias="mscorlib" name="mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="nameBox.TabIndex" type="System.Int32, mscorlib">
@@ -142,6 +142,10 @@
   </data>
   <data name="label1.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
+  <data name="label1.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="label1.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 14</value>
@@ -170,8 +174,11 @@
   <data name="label2.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
+  <data name="label2.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="label2.Location" type="System.Drawing.Point, System.Drawing">
-    <value>178, 15</value>
+    <value>272, 17</value>
   </data>
   <data name="label2.Size" type="System.Drawing.Size, System.Drawing">
     <value>24, 13</value>
@@ -196,6 +203,9 @@
   </data>
   <data name="label3.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="label3.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="label3.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 39</value>
@@ -224,6 +234,9 @@
   <data name="regBox.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
+  <data name="regBox.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="regBox.Location" type="System.Drawing.Point, System.Drawing">
     <value>76, 38</value>
   </data>
@@ -250,6 +263,9 @@
   </data>
   <data name="listBox.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="listBox.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="listBox.Location" type="System.Drawing.Point, System.Drawing">
     <value>141, 38</value>
@@ -279,7 +295,7 @@
     <value>75, 61</value>
   </data>
   <data name="copyrightBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>205, 22</value>
+    <value>226, 22</value>
   </data>
   <data name="copyrightBox.TabIndex" type="System.Int32, mscorlib">
     <value>6</value>
@@ -301,6 +317,9 @@
   </data>
   <data name="label4.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="label4.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="label4.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 63</value>
@@ -326,8 +345,11 @@
   <data name="&gt;&gt;label4.ZOrder" xml:space="preserve">
     <value>7</value>
   </data>
+  <data name="okButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
+  </data>
   <data name="okButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>0, 149</value>
+    <value>1, 148</value>
   </data>
   <data name="okButton.Size" type="System.Drawing.Size, System.Drawing">
     <value>147, 38</value>
@@ -350,15 +372,14 @@
   <data name="&gt;&gt;okButton.ZOrder" xml:space="preserve">
     <value>6</value>
   </data>
-  <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="cancelButton.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
     <value>NoControl</value>
   </data>
   <data name="cancelButton.Location" type="System.Drawing.Point, System.Drawing">
-    <value>153, 149</value>
+    <value>148, 148</value>
   </data>
   <data name="cancelButton.Size" type="System.Drawing.Size, System.Drawing">
-    <value>139, 38</value>
+    <value>164, 38</value>
   </data>
   <data name="cancelButton.TabIndex" type="System.Int32, mscorlib">
     <value>9</value>
@@ -380,6 +401,9 @@
   </data>
   <data name="label5.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="label5.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="label5.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 90</value>
@@ -407,6 +431,9 @@
   </data>
   <data name="label6.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
+  </data>
+  <data name="label6.ImeMode" type="System.Windows.Forms.ImeMode, System.Windows.Forms">
+    <value>NoControl</value>
   </data>
   <data name="label6.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 118</value>
@@ -436,7 +463,7 @@
     <value>75, 87</value>
   </data>
   <data name="encryptionBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>205, 21</value>
+    <value>226, 21</value>
   </data>
   <data name="encryptionBox.TabIndex" type="System.Int32, mscorlib">
     <value>12</value>
@@ -452,30 +479,6 @@
   </data>
   <data name="&gt;&gt;encryptionBox.ZOrder" xml:space="preserve">
     <value>2</value>
-  </data>
-  <data name="versionBox.Location" type="System.Drawing.Point, System.Drawing">
-    <value>75, 114</value>
-  </data>
-  <data name="versionBox.Size" type="System.Drawing.Size, System.Drawing">
-    <value>51, 22</value>
-  </data>
-  <data name="versionBox.TabIndex" type="System.Int32, mscorlib">
-    <value>13</value>
-  </data>
-  <data name="versionBox.Text" xml:space="preserve">
-    <value>1</value>
-  </data>
-  <data name="&gt;&gt;versionBox.Name" xml:space="preserve">
-    <value>versionBox</value>
-  </data>
-  <data name="&gt;&gt;versionBox.Type" xml:space="preserve">
-    <value>HaRepacker.GUI.Input.IntegerInput, HaRepackerResurrected, Version=4.2.4.0, Culture=neutral, PublicKeyToken=null</value>
-  </data>
-  <data name="&gt;&gt;versionBox.Parent" xml:space="preserve">
-    <value>$this</value>
-  </data>
-  <data name="&gt;&gt;versionBox.ZOrder" xml:space="preserve">
-    <value>1</value>
   </data>
   <data name="radioButton_hotfix.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -507,6 +510,30 @@
   <data name="&gt;&gt;radioButton_hotfix.ZOrder" xml:space="preserve">
     <value>0</value>
   </data>
+  <data name="versionBox.Location" type="System.Drawing.Point, System.Drawing">
+    <value>75, 114</value>
+  </data>
+  <data name="versionBox.Size" type="System.Drawing.Size, System.Drawing">
+    <value>226, 22</value>
+  </data>
+  <data name="versionBox.TabIndex" type="System.Int32, mscorlib">
+    <value>13</value>
+  </data>
+  <data name="versionBox.Text" xml:space="preserve">
+    <value>1</value>
+  </data>
+  <data name="&gt;&gt;versionBox.Name" xml:space="preserve">
+    <value>versionBox</value>
+  </data>
+  <data name="&gt;&gt;versionBox.Type" xml:space="preserve">
+    <value>HaRepacker.GUI.Input.IntegerInput, HaRepackerResurrected, Version=4.2.4.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;versionBox.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;versionBox.ZOrder" xml:space="preserve">
+    <value>1</value>
+  </data>
   <metadata name="$this.Localizable" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
@@ -514,7 +541,7 @@
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>292, 187</value>
+    <value>313, 187</value>
   </data>
   <data name="$this.Font" type="System.Drawing.Font, System.Drawing">
     <value>Segoe UI, 8pt</value>

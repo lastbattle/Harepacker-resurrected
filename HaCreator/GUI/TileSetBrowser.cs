@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -15,7 +9,8 @@ using System.Windows.Forms;
 using System.Collections;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
-using HaCreator.ThirdParty;
+using HaCreator.CustomControls;
+using System.Diagnostics;
 
 namespace HaCreator.GUI
 {
@@ -24,36 +19,83 @@ namespace HaCreator.GUI
         private ListBox targetListBox;
         public ImageViewer selectedItem = null;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="target"></param>
         public TileSetBrowser(ListBox target)
         {
             InitializeComponent();
             targetListBox = target;
-            List<string> sortedTileSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
-                sortedTileSets.Add(tS.Key);
-            sortedTileSets.Sort();
-            foreach (string tS in sortedTileSets)
+
+            Load += TileSetBrowser_Load;
+        }
+
+        /// <summary>
+        /// On load
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void TileSetBrowser_Load(object sender, EventArgs e)
+        {
+            foreach (var tSKey in Program.InfoManager.TileSets.Keys.ToList())
             {
-                WzImage tSImage = Program.InfoManager.TileSets[tS];
-                if (!tSImage.Parsed) tSImage.ParseImage();
+                WzImage tSImage = Program.InfoManager.GetTileSet(tSKey);
+                if (tSImage == null)
+                    continue;
                 WzImageProperty enh0 = tSImage["enH0"];
-                if (enh0 == null) continue;
+                if (enh0 == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' missing 'enH0' property.");
+                    continue;
+                }
                 WzCanvasProperty image = (WzCanvasProperty)enh0["0"];
-                if (image == null) continue;
-                //image.PngProperty.GetPNG(true);
-                ImageViewer item = koolkLVContainer.Add(image.PngProperty.GetPNG(true), tS, true);
+                if (image == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' 'enH0' missing '0' property.");
+                    continue;
+                }
+
+                Bitmap bitmap = image.GetLinkedWzCanvasBitmap();
+                if (bitmap == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' bitmap is null.");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"TileSet '{tSKey}' loaded bitmap: {bitmap.Width}x{bitmap.Height}");
+                }
+
+                ImageViewer item = koolkLVContainer.Add(bitmap, tSKey, true);
                 item.MouseDown += new MouseEventHandler(item_Click);
                 item.MouseDoubleClick += new MouseEventHandler(item_DoubleClick);
+
+                // Add a visible border for debugging
+                item.BorderStyle = BorderStyle.FixedSingle;
+
+                // Log the control's size and location
+                System.Diagnostics.Debug.WriteLine($"Added ImageViewer for '{tSKey}' at size {item.Width}x{item.Height}");
             }
         }
 
+        /// <summary>
+        /// Tile item double click
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         void item_DoubleClick(object sender, MouseEventArgs e)
         {
-            if (selectedItem == null) return;
+            if (selectedItem == null) 
+                return;
             targetListBox.SelectedItem = selectedItem.Name;
             Close();
         }
 
+        /// <summary>
+        /// Tile itme click
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         void item_Click(object sender, MouseEventArgs e)
         {
             if (selectedItem != null)
@@ -62,6 +104,11 @@ namespace HaCreator.GUI
             selectedItem.IsActive = true;
         }
 
+        /// <summary>
+        /// On keydown
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void TileSetBrowser_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)

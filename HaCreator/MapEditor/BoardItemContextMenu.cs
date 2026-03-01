@@ -1,16 +1,11 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.Collections;
+﻿using HaCreator.Collections;
 using HaCreator.GUI;
 using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.UndoRedo;
 using HaCreator.Wz;
+using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -51,17 +46,28 @@ namespace HaCreator.MapEditor
         private void generateContextMenuStrip()
         {
             cms = new ContextMenuStrip();
-            List<ToolStripMenuItem> generalCategory = new List<ToolStripMenuItem>();
-            List<ToolStripMenuItem> zCategory = new List<ToolStripMenuItem>();
-            List<ToolStripMenuItem> platformCategory = new List<ToolStripMenuItem>();
+            List<ToolStripMenuItem> generalCategory = [];
+            List<ToolStripMenuItem> zCategory = new();
+            List<ToolStripMenuItem> platformCategory = new();
 
             ToolStripMenuItem editInstance = new ToolStripMenuItem("Edit this instance...");
             editInstance.Click += editInstance_Click;
             editInstance.Font = new System.Drawing.Font(editInstance.Font, System.Drawing.FontStyle.Bold);
             generalCategory.Add(editInstance);
+
+            // Portal
+            if (target is PortalInstance && ((PortalInstance)target).tm != MapConstants.MaxMap)
+            {
+                ToolStripMenuItem loadTargetMap = new ToolStripMenuItem("Load target map in a new tab");
+                loadTargetMap.Click += LoadPortalTargetMap_Click;
+                generalCategory.Add(loadTargetMap);
+            }
+
             /*ToolStripMenuItem baseInfo = new ToolStripMenuItem("Edit base info...");
             baseInfo.Click += new EventHandler(baseInfo_Click);
             cms.Items.Add(baseInfo);*/
+
+            // ToolTip
             if (target is ToolTipInstance && ((ToolTipInstance)target).CharacterToolTip == null)
             {
                 ToolStripMenuItem addChar = new ToolStripMenuItem("Add Character Tooltip");
@@ -69,6 +75,7 @@ namespace HaCreator.MapEditor
                 generalCategory.Add(addChar);
             }
 
+            // Background
             if (target is BackgroundInstance || target is LayeredItem)
             {
                 ToolStripMenuItem bringToFront = new ToolStripMenuItem("Bring to Front");
@@ -78,18 +85,23 @@ namespace HaCreator.MapEditor
                 sendToBack.Click += new EventHandler(sendToBack_Click);
                 zCategory.Add(sendToBack);
             }
+
+            // Foothold
             if (target is FootholdAnchor)
             {
                 ToolStripMenuItem selectPlat = new ToolStripMenuItem("Select Connected");
                 selectPlat.Click += selectPlat_Click;
                 platformCategory.Add(selectPlat);
             }
+
+            // Layer
             if (target is IContainsLayerInfo)
             {
                 ToolStripMenuItem moveLayer = new ToolStripMenuItem("Change Layer/Platform...");
                 moveLayer.Click += moveLayer_Click;
                 platformCategory.Add(moveLayer);
             }
+
             if (target is IContainsLayerInfo || (target is FootholdAnchor && getZmOfSelectedFoothold() != -1))
             {
                 ToolStripMenuItem selectZm = new ToolStripMenuItem("Select Platform");
@@ -116,6 +128,26 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// Load portal target map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        void LoadPortalTargetMap_Click(object sender, EventArgs e)
+        {
+            PortalInstance portal = (PortalInstance)target;
+
+            if (portal.tm != MapConstants.MaxMap)
+            {
+                multiboard.HaCreatorStateManager.LoadMap(portal.tm);
+            }
+        }
+
+        /// <summary>
+        /// Add character tooltip
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         void addChar_Click(object sender, EventArgs e)
         {
             ToolTipInstance tt = (ToolTipInstance)target;

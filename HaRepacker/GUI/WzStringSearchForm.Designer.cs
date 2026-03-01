@@ -86,7 +86,7 @@
             this.label5.AutoSize = true;
             this.label5.Location = new System.Drawing.Point(7, 198);
             this.label5.Name = "label5";
-            this.label5.Size = new System.Drawing.Size(44, 13);
+            this.label5.Size = new System.Drawing.Size(59, 21);
             this.label5.TabIndex = 10;
             this.label5.Text = "Integer";
             // 
@@ -96,7 +96,7 @@
             this.label6.AutoSize = true;
             this.label6.Location = new System.Drawing.Point(8, 233);
             this.label6.Name = "label6";
-            this.label6.Size = new System.Drawing.Size(29, 13);
+            this.label6.Size = new System.Drawing.Size(39, 21);
             this.label6.TabIndex = 12;
             this.label6.Text = "Hex:";
             // 
@@ -106,7 +106,7 @@
             this.checkBox_searchJobs.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchJobs.Location = new System.Drawing.Point(328, 73);
             this.checkBox_searchJobs.Name = "checkBox_searchJobs";
-            this.checkBox_searchJobs.Size = new System.Drawing.Size(59, 23);
+            this.checkBox_searchJobs.Size = new System.Drawing.Size(80, 32);
             this.checkBox_searchJobs.TabIndex = 27;
             this.checkBox_searchJobs.Text = "JOBS";
             this.checkBox_searchJobs.UseVisualStyleBackColor = true;
@@ -117,7 +117,7 @@
             this.checkBox_searcheq.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searcheq.Location = new System.Drawing.Point(234, 12);
             this.checkBox_searcheq.Name = "checkBox_searcheq";
-            this.checkBox_searcheq.Size = new System.Drawing.Size(46, 23);
+            this.checkBox_searcheq.Size = new System.Drawing.Size(63, 32);
             this.checkBox_searcheq.TabIndex = 13;
             this.checkBox_searcheq.Text = "EQ";
             this.checkBox_searcheq.UseVisualStyleBackColor = true;
@@ -128,7 +128,7 @@
             this.checkbox_searchSkill.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkbox_searchSkill.Location = new System.Drawing.Point(235, 73);
             this.checkbox_searchSkill.Name = "checkbox_searchSkill";
-            this.checkbox_searchSkill.Size = new System.Drawing.Size(64, 23);
+            this.checkbox_searchSkill.Size = new System.Drawing.Size(92, 32);
             this.checkbox_searchSkill.TabIndex = 26;
             this.checkbox_searchSkill.Text = "SKILLS";
             this.checkbox_searchSkill.UseVisualStyleBackColor = true;
@@ -139,7 +139,7 @@
             this.checkBox_searchuse.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchuse.Location = new System.Drawing.Point(306, 12);
             this.checkBox_searchuse.Name = "checkBox_searchuse";
-            this.checkBox_searchuse.Size = new System.Drawing.Size(51, 23);
+            this.checkBox_searchuse.Size = new System.Drawing.Size(71, 32);
             this.checkBox_searchuse.TabIndex = 14;
             this.checkBox_searchuse.Text = "USE";
             this.checkBox_searchuse.UseVisualStyleBackColor = true;
@@ -150,7 +150,7 @@
             this.checkBox_searchMaps.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchMaps.Location = new System.Drawing.Point(572, 43);
             this.checkBox_searchMaps.Name = "checkBox_searchMaps";
-            this.checkBox_searchMaps.Size = new System.Drawing.Size(64, 23);
+            this.checkBox_searchMaps.Size = new System.Drawing.Size(89, 32);
             this.checkBox_searchMaps.TabIndex = 25;
             this.checkBox_searchMaps.Text = "MAPS";
             this.checkBox_searchMaps.UseVisualStyleBackColor = true;
@@ -161,7 +161,7 @@
             this.checkBox_searchsetup.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchsetup.Location = new System.Drawing.Point(393, 12);
             this.checkBox_searchsetup.Name = "checkBox_searchsetup";
-            this.checkBox_searchsetup.Size = new System.Drawing.Size(66, 23);
+            this.checkBox_searchsetup.Size = new System.Drawing.Size(92, 32);
             this.checkBox_searchsetup.TabIndex = 15;
             this.checkBox_searchsetup.Text = "SETUP";
             this.checkBox_searchsetup.UseVisualStyleBackColor = true;
@@ -172,7 +172,7 @@
             this.checkBox_searchNPC.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchNPC.Location = new System.Drawing.Point(328, 43);
             this.checkBox_searchNPC.Name = "checkBox_searchNPC";
-            this.checkBox_searchNPC.Size = new System.Drawing.Size(55, 23);
+            this.checkBox_searchNPC.Size = new System.Drawing.Size(75, 32);
             this.checkBox_searchNPC.TabIndex = 24;
             this.checkBox_searchNPC.Text = "NPC";
             this.checkBox_searchNPC.UseVisualStyleBackColor = true;
@@ -183,7 +183,7 @@
             this.checkBox_searchetc.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchetc.Location = new System.Drawing.Point(495, 12);
             this.checkBox_searchetc.Name = "checkBox_searchetc";
-            this.checkBox_searchetc.Size = new System.Drawing.Size(50, 23);
+            this.checkBox_searchetc.Size = new System.Drawing.Size(69, 32);
             this.checkBox_searchetc.TabIndex = 16;
             this.checkBox_searchetc.Text = "ETC";
             this.checkBox_searchetc.UseVisualStyleBackColor = true;
@@ -194,7 +194,7 @@
             this.checkBox_searchquest.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchquest.Location = new System.Drawing.Point(234, 42);
             this.checkBox_searchquest.Name = "checkBox_searchquest";
-            this.checkBox_searchquest.Size = new System.Drawing.Size(69, 23);
+            this.checkBox_searchquest.Size = new System.Drawing.Size(96, 32);
             this.checkBox_searchquest.TabIndex = 23;
             this.checkBox_searchquest.Text = "QUEST";
             this.checkBox_searchquest.UseVisualStyleBackColor = true;
@@ -205,7 +205,7 @@
             this.checkBox_searchcash.Font = new System.Drawing.Font("Segoe UI Light", 10F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox_searchcash.Location = new System.Drawing.Point(574, 12);
             this.checkBox_searchcash.Name = "checkBox_searchcash";
-            this.checkBox_searchcash.Size = new System.Drawing.Size(62, 23);
+            this.checkBox_searchcash.Size = new System.Drawing.Size(87, 32);
             this.checkBox_searchcash.TabIndex = 17;
             this.checkBox_searchcash.Text = "CASH";
             this.checkBox_searchcash.UseVisualStyleBackColor = true;
@@ -217,7 +217,7 @@
             this.comboBox_hexlist.FormattingEnabled = true;
             this.comboBox_hexlist.Location = new System.Drawing.Point(2, 162);
             this.comboBox_hexlist.Name = "comboBox_hexlist";
-            this.comboBox_hexlist.Size = new System.Drawing.Size(840, 21);
+            this.comboBox_hexlist.Size = new System.Drawing.Size(840, 29);
             this.comboBox_hexlist.TabIndex = 22;
             this.comboBox_hexlist.SelectedIndexChanged += new System.EventHandler(this.comboBox_hexlist_SelectedIndexChanged);
             // 
@@ -227,7 +227,7 @@
             this.label11.ForeColor = System.Drawing.Color.Black;
             this.label11.Location = new System.Drawing.Point(12, 8);
             this.label11.Name = "label11";
-            this.label11.Size = new System.Drawing.Size(43, 13);
+            this.label11.Size = new System.Drawing.Size(60, 21);
             this.label11.TabIndex = 18;
             this.label11.Text = "Query: ";
             // 
@@ -237,7 +237,7 @@
             | System.Windows.Forms.AnchorStyles.Right)));
             this.textBox_itemidFind.Location = new System.Drawing.Point(88, 5);
             this.textBox_itemidFind.Name = "textBox_itemidFind";
-            this.textBox_itemidFind.Size = new System.Drawing.Size(754, 22);
+            this.textBox_itemidFind.Size = new System.Drawing.Size(754, 29);
             this.textBox_itemidFind.TabIndex = 19;
             this.textBox_itemidFind.Text = "Sword";
             this.textBox_itemidFind.TextChanged += new System.EventHandler(this.textBox_itemidFind_TextChanged);
@@ -247,7 +247,7 @@
             this.textBox5.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.textBox5.Location = new System.Drawing.Point(88, 233);
             this.textBox5.Name = "textBox5";
-            this.textBox5.Size = new System.Drawing.Size(754, 22);
+            this.textBox5.Size = new System.Drawing.Size(754, 29);
             this.textBox5.TabIndex = 11;
             this.textBox5.Text = "0xFF";
             // 
@@ -256,7 +256,7 @@
             this.textBox6.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Left | System.Windows.Forms.AnchorStyles.Right)));
             this.textBox6.Location = new System.Drawing.Point(88, 195);
             this.textBox6.Name = "textBox6";
-            this.textBox6.Size = new System.Drawing.Size(754, 22);
+            this.textBox6.Size = new System.Drawing.Size(754, 29);
             this.textBox6.TabIndex = 9;
             this.textBox6.Text = "0";
             this.textBox6.TextChanged += new System.EventHandler(this.in_textchanged);
@@ -291,9 +291,9 @@
             // 
             // WzStringSearchForm
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 21F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(849, 546);
+            this.ClientSize = new System.Drawing.Size(843, 529);
             this.Controls.Add(this.panel2);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.textBox6);

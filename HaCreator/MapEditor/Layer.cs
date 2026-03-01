@@ -1,15 +1,10 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.UndoRedo;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,17 +15,18 @@ namespace HaCreator.MapEditor
     public class Layer
     {
         private List<LayeredItem> items = new List<LayeredItem>(); //needed?
-        private SortedSet<int> zms = new SortedSet<int>();
-        private int num;
-        private Board board;
+        private readonly SortedSet<int> zms = new SortedSet<int>();
+        private readonly int num;
+        private readonly Board board;
         private string _tS = null;
 
         public Layer(Board board)
         {
             this.board = board;
-            if (board.Layers.Count == 10) throw new NotSupportedException("Cannot add more than 10 layers (why would you need that much anyway?)");
+            if (board.Layers.Count > MapConstants.MaxMapLayers) 
+                throw new NotSupportedException("Cannot add more than 10 layers (why would you need that much anyway?)");
+
             num = board.Layers.Count;
-            board.Layers.Add(this);
         }
 
         public List<LayeredItem> Items
@@ -53,6 +49,7 @@ namespace HaCreator.MapEditor
             }
         }
 
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public string tS
         {
             get { return _tS; }
@@ -115,9 +112,19 @@ namespace HaCreator.MapEditor
             }
         }
 
+        /// <summary>
+        /// zM
+        /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public int zMDefault { get { return board.SelectedPlatform == -1 ? zMList.ElementAt(0) : board.SelectedPlatform; } }
 
+
+        /// <summary>
+        /// zM List
+        /// </summary>
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Style", "IDE1006:Naming Styles", Justification = "<Pending>")]
         public SortedSet<int> zMList { get { return zms; } }
+
 
         public override string ToString()
         {

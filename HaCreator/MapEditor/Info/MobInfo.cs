@@ -1,30 +1,32 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaCreator.GUI;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
+using MapleLib.Img;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
-using System;
-using System.Collections.Generic;
+using MapleLib.WzLib.WzStructure.Data.MobStructure;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace HaCreator.MapEditor.Info
 {
     public class MobInfo : MapleExtractableInfo
     {
-        private string id;
-        private string name;
+        private readonly string id;
+        private readonly string name;
 
-        private WzImage LinkedImage;
+        private WzImage _LinkedWzImage;
+        private MobData _mobData;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="image"></param>
+        /// <param name="origin"></param>
+        /// <param name="id"></param>
+        /// <param name="name"></param>
+        /// <param name="parentObject"></param>
         public MobInfo(Bitmap image, System.Drawing.Point origin, string id, string name, WzObject parentObject)
             : base(image, origin, parentObject)
         {
@@ -37,8 +39,8 @@ namespace HaCreator.MapEditor.Info
             WzCanvasProperty mobImage = WzInfoTools.GetMobImage(image);
             if (mobImage != null)
             {
-                Image = mobImage.PngProperty.GetPNG(false);
-                Origin = WzInfoTools.VectorToSystemPoint((WzVectorProperty)mobImage["origin"]);
+                Image = mobImage.GetLinkedWzCanvasBitmap();
+                Origin = WzInfoTools.PointFToSystemPoint(mobImage.GetCanvasOriginPosition());
             }
             else
             {
@@ -49,27 +51,43 @@ namespace HaCreator.MapEditor.Info
 
         public override void ParseImage()
         {
-            WzStringProperty link = (WzStringProperty)((WzSubProperty)((WzImage)ParentObject)["info"])["link"];
-            if (link != null)
-            {
-                LinkedImage = (WzImage)Program.WzManager["mob"][link.Value + ".img"];
-                ExtractPNGFromImage(LinkedImage);
-            }
+            if (LinkedWzImage != null) // load from here too
+                ExtractPNGFromImage(_LinkedWzImage);
             else
-            {
                 ExtractPNGFromImage((WzImage)ParentObject);
-            }
         }
 
+        /// <summary>
+        /// Get monster by ID
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         public static MobInfo Get(string id)
         {
-            WzImage mobImage = (WzImage)Program.WzManager["mob"][id + ".img"];
+            string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+
+            WzImage mobImage = null;
+
+            // Try IDataSource first
+            if (Program.DataSource != null)
+            {
+                mobImage = Program.DataSource.GetImage("Mob", imgName);
+            }
+            // Fall back to WzManager
+            if (mobImage == null && Program.WzManager != null)
+            {
+                mobImage = (WzImage)Program.WzManager.FindWzImageByName("mob", imgName);
+            }
+
             if (mobImage == null)
                 return null;
+
             if (!mobImage.Parsed)
                 mobImage.ParseImage();
             if (mobImage.HCTag == null)
+            {
                 mobImage.HCTag = MobInfo.Load(mobImage);
+            }
             MobInfo result = (MobInfo)mobImage.HCTag;
             result.ParseImageIfNeeded();
             return result;
@@ -77,32 +95,87 @@ namespace HaCreator.MapEditor.Info
 
         private static MobInfo Load(WzImage parentObject)
         {
-            string id = WzInfoTools.RemoveExtension(parentObject.Name);
-            return new MobInfo(null, new System.Drawing.Point(), id, WzInfoTools.GetMobNameById(id), parentObject);
+            string id = WzInfoTools.RemoveExtension(parentObject.Name).TrimStart('0'); // remove '0' padding from the start of the mobid
+            string mobName = Program.InfoManager.MobNameCache.ContainsKey(id) ? Program.InfoManager.MobNameCache[id] : "";
+
+            return new MobInfo(null, new System.Drawing.Point(), id, mobName, parentObject);
         }
 
         public override BoardItem CreateInstance(Layer layer, Board board, int x, int y, int z, bool flip)
         {
-            if (Image == null) ParseImage();
+            if (Image == null)
+                ParseImage();
+
             return new MobInstance(this, board, x, y, UserSettings.Mobrx0Offset, UserSettings.Mobrx1Offset, 20, null, UserSettings.defaultMobTime, flip, false, null, null);
         }
 
         public BoardItem CreateInstance(Board board, int x, int y, int rx0Shift, int rx1Shift, int yShift, string limitedname, int? mobTime, MapleBool flip, MapleBool hide, int? info, int? team)
         {
-            if (Image == null) ParseImage();
+            if (Image == null)
+                ParseImage();
+
             return new MobInstance(this, board, x, y, rx0Shift, rx1Shift, yShift, limitedname, mobTime, flip, hide, info, team);
         }
 
         public string ID
         {
             get { return id; }
-            set { this.id = value; }
+            private set { }
         }
 
         public string Name
         {
             get { return name; }
-            set { this.name = value; }
+            private set { }
+        }
+
+        /// <summary>
+        /// The source WzImage of the reactor
+        /// </summary>
+        public WzImage LinkedWzImage
+        {
+            get
+            {
+                if (_LinkedWzImage == null) {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+
+                    WzImage mobImage = Program.FindImage("Mob", imgName); // default;
+
+                    WzStringProperty link = (WzStringProperty)mobImage?["info"]?["link"];
+                    if (link != null) {
+                        string linkImgName = WzInfoTools.AddLeadingZeros(link.Value, 7) + ".img";
+                        WzImage linkedImage = Program.FindImage("Mob", linkImgName);
+
+                        _LinkedWzImage = linkedImage ?? mobImage; // fallback to mobImage if linkedimage isnt available
+                    }
+                    else {
+                        _LinkedWzImage = mobImage;
+                    }
+                }
+                return _LinkedWzImage;
+            }
+            set { this._LinkedWzImage = value; }
+        }
+
+        /// <summary>
+        /// Parsed mob data (lazy loaded, cached for all instances of same mob ID)
+        /// Contains stats, flags, attack data, skill data, etc.
+        /// </summary>
+        public MobData MobData
+        {
+            get
+            {
+                if (_mobData == null)
+                {
+                    string imgName = WzInfoTools.AddLeadingZeros(id, 7) + ".img";
+                    WzImage mobImage = Program.FindImage("Mob", imgName);
+                    if (mobImage != null && !mobImage.Parsed)
+                        mobImage.ParseImage();
+                    int mobId = int.TryParse(id, out int parsedId) ? parsedId : 0;
+                    _mobData = MobData.Parse(mobImage, mobId);
+                }
+                return _mobData;
+            }
         }
     }
 }

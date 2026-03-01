@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance.Shapes;
+﻿using HaCreator.MapEditor.Instance.Shapes;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,8 +13,8 @@ namespace HaCreator.Collections
         private bool started = false;
         private FootholdAnchor first;
         private FootholdAnchor curr;
-        private HashSet<FootholdAnchor> visited = new HashSet<FootholdAnchor>();
-        private Stack<FootholdAnchor> toVisit = new Stack<FootholdAnchor>();
+        private readonly HashSet<FootholdAnchor> visited = new HashSet<FootholdAnchor>();
+        private readonly Stack<FootholdAnchor> toVisit = new Stack<FootholdAnchor>();
 
 
         public AnchorEnumerator(FootholdAnchor start)

@@ -44,8 +44,8 @@ namespace HaRepacker.GUI
             this.label5 = new System.Windows.Forms.Label();
             this.label6 = new System.Windows.Forms.Label();
             this.encryptionBox = new System.Windows.Forms.ComboBox();
-            this.versionBox = new HaRepacker.GUI.Input.IntegerInput();
             this.radioButton_hotfix = new System.Windows.Forms.RadioButton();
+            this.versionBox = new HaRepacker.GUI.Input.IntegerInput();
             this.SuspendLayout();
             // 
             // nameBox
@@ -82,7 +82,7 @@ namespace HaRepacker.GUI
             resources.ApplyResources(this.listBox, "listBox");
             this.listBox.Name = "listBox";
             this.listBox.UseVisualStyleBackColor = true;
-            this.listBox.CheckedChanged += new System.EventHandler(this.listwz_CheckedChanged);
+            this.listBox.CheckedChanged += new System.EventHandler(this.Listwz_CheckedChanged);
             // 
             // copyrightBox
             // 
@@ -120,16 +120,11 @@ namespace HaRepacker.GUI
             // 
             // encryptionBox
             // 
+            this.encryptionBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.encryptionBox.FormattingEnabled = true;
             resources.ApplyResources(this.encryptionBox, "encryptionBox");
             this.encryptionBox.Name = "encryptionBox";
-            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.encryptionBox_SelectionChanged);
-            // 
-            // versionBox
-            // 
-            resources.ApplyResources(this.versionBox, "versionBox");
-            this.versionBox.Name = "versionBox";
-            this.versionBox.Value = 1;
+            this.encryptionBox.SelectedIndexChanged += new System.EventHandler(this.EncryptionBox_SelectionChanged);
             // 
             // radioButton_hotfix
             // 
@@ -137,6 +132,12 @@ namespace HaRepacker.GUI
             this.radioButton_hotfix.Name = "radioButton_hotfix";
             this.radioButton_hotfix.UseVisualStyleBackColor = true;
             this.radioButton_hotfix.CheckedChanged += new System.EventHandler(this.DataWZ_CheckedChanged);
+            // 
+            // versionBox
+            // 
+            resources.ApplyResources(this.versionBox, "versionBox");
+            this.versionBox.Name = "versionBox";
+            this.versionBox.Value = 1;
             // 
             // NewForm
             // 

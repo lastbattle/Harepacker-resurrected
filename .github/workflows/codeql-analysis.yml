@@ -1,0 +1,61 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    - cron: '35 2 * * 6'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'cpp', 'csharp' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          10.0.x
+        dotnet-quality: 'preview'
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v2
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Restore NuGet packages
+      run: |
+        nuget restore MapleHaSuite.sln
+        dotnet restore MapleHaSuite.sln
+
+    - name: Build Solution
+      run: |
+        if [ "${{ matrix.language }}" == "csharp" ]; then
+          dotnet build MapleHaSuite.sln -c Release
+        else
+          msbuild MapleHaSuite.sln /p:Configuration=Release /p:Platform="x64" /p:RestorePackages=false
+        fi
+      shell: bash
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3

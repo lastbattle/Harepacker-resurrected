@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.Exceptions;
+﻿using HaCreator.Exceptions;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using MapleLib.WzLib;
@@ -24,7 +18,6 @@ namespace HaCreator.MapEditor
     public class UserObjectsManager
     {
         public const string oS = "haha01haha01";
-        public const string l0 = "HaCreator";
         public const string l1 = "userObjs";
 
         private MultiBoard multiBoard;
@@ -52,11 +45,11 @@ namespace HaCreator.MapEditor
                 Program.InfoManager.ObjectSets[oS].Changed = true;
             }
             WzImage osimg = Program.InfoManager.ObjectSets[oS];
-            if (osimg[l0] == null)
+            if (osimg[Program.APP_NAME] == null)
             {
-                osimg[l0] = new WzSubProperty();
+                osimg[Program.APP_NAME] = new WzSubProperty();
             }
-            WzImageProperty l0prop = osimg[l0];
+            WzImageProperty l0prop = osimg[Program.APP_NAME];
             if (l0prop[l1] == null)
             {
                 l0prop[l1] = new WzSubProperty();
@@ -81,12 +74,12 @@ namespace HaCreator.MapEditor
             WzSubProperty prop = new WzSubProperty();
             WzCanvasProperty canvasProp = new WzCanvasProperty();
             canvasProp.PngProperty = new WzPngProperty();
-            canvasProp.PngProperty.SetPNG(bmp);
+            canvasProp.PngProperty.PNG = bmp;
             canvasProp["origin"] = new WzVectorProperty("", new WzIntProperty("X", origin.X), new WzIntProperty("Y", origin.Y));
             canvasProp["z"] = new WzIntProperty("", 0);
             prop["0"] = canvasProp;
 
-            ObjectInfo oi = new ObjectInfo(bmp, origin, oS, l0, l1, name, prop);
+            ObjectInfo oi = new ObjectInfo(bmp, origin, oS, Program.APP_NAME, l1, name, prop);
             newObjects.Add(oi);
             newObjectsData.Add(name, SaveImageToBytes(bmp));
             SerializeObjects();
@@ -113,7 +106,7 @@ namespace HaCreator.MapEditor
                     if (li is ObjectInstance)
                     {
                         ObjectInfo oi = (ObjectInfo)li.BaseInfo;
-                        if (oi.oS == oS && oi.l0 == l0 && oi.l1 == l1 && oi.l2 == l2)
+                        if (oi.oS == oS && oi.l0 == Program.APP_NAME && oi.l1 == l1 && oi.l2 == l2)
                         {
                             li.RemoveItem(null);
                             i--;
@@ -152,7 +145,7 @@ namespace HaCreator.MapEditor
         {
             if (newObjects.Count == 0)
                 return;
-            WzDirectory objsDir = (WzDirectory)Program.WzManager["map"]["Obj"];
+            WzDirectory objsDir = (WzDirectory)Program.WzManager["map"]["Obj"]; // "obj' is in Map.wz or Map2.wz (TODO)
             if (objsDir[oS + ".img"] == null)
                 objsDir[oS + ".img"] = Program.InfoManager.ObjectSets[oS];
             SetOsUpdated();
@@ -181,7 +174,9 @@ namespace HaCreator.MapEditor
 
         private void SetOsUpdated()
         {
-            Program.WzManager.SetUpdated("map", Program.InfoManager.ObjectSets[oS]);
+            Program.WzManager.SetWzFileUpdated( 
+                "map", // "obj' is in Map.wz or Map2.wz (TODO)
+                Program.InfoManager.ObjectSets[oS]);
         }
 
         private bool IsNameValid(string name)

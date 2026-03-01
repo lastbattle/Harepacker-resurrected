@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using MapleLib.WzLib.WzStructure.Data;
+﻿using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -17,11 +11,11 @@ namespace HaCreator.Wz
 {
     public class PortalGameImageInfo
     {
-        private Bitmap defaultImage;
+        private readonly Bitmap defaultImage;
 
-        private Dictionary<string, Bitmap> imageList;
+        private readonly Dictionary<string, List<Bitmap>> imageList;
 
-        public PortalGameImageInfo(Bitmap defaultImage, Dictionary<string, Bitmap> imageList)
+        public PortalGameImageInfo(Bitmap defaultImage, Dictionary<string, List<Bitmap>> imageList)
         {
             this.defaultImage = defaultImage;
             this.imageList = imageList;
@@ -32,10 +26,12 @@ namespace HaCreator.Wz
             get { return defaultImage; }
         }
 
-        public Bitmap this[string name]
+        public List<Bitmap> this[string name]
         {
             get
             {
+                if (!imageList.ContainsKey(name))
+                    return imageList["default"];
                 return imageList[name];
             }
         }

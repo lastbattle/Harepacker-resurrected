@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,13 +13,17 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.Collections;
+using HaCreator.MapSimulator;
+using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.Wz
 {
     public class MapSaver
     {
-        Board board;
-        WzImage image;
+        private Board board;
+        private WzImage image;
+
         public MapSaver(Board board)
         {
             this.board = board;
@@ -33,7 +31,7 @@ namespace HaCreator.Wz
 
         private void CreateImage()
         {
-            string name = "";
+            string name;
             switch (board.MapInfo.mapType)
             {
                 case MapType.RegularMap:
@@ -41,81 +39,134 @@ namespace HaCreator.Wz
                     break;
                 case MapType.MapLogin:
                 case MapType.CashShopPreview:
+                case MapType.ITCPreview:
                     name = board.MapInfo.strMapName;
                     break;
                 default:
                     throw new Exception("Unknown map type");
             }
-            this.image = new WzImage(name + ".img");
-            this.image.Parsed = true;
+            this.image = new WzImage(name + ".img")
+            {
+                Parsed = true
+            };
         }
 
         private void InsertImage()
         {
+            // Check if we're using IMG filesystem mode
+            if (Program.DataSource != null && Program.WzManager == null)
+            {
+                InsertImageToImgFileSystem();
+                return;
+            }
+
+            // Legacy WZ file mode
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                string cat = "Map" + image.Name.Substring(0, 1);
-                WzDirectory mapDir = (WzDirectory)Program.WzManager["map"]["Map"];
-                WzDirectory catDir = (WzDirectory)mapDir[cat];
-                if (catDir == null)
-                {
-                    catDir = new WzDirectory(cat);
-                    mapDir.AddDirectory(catDir);
+                string mapId = image.Name.Replace(".img", string.Empty);
+
+                WzDirectory parent;
+                if (board.IsNewMapDesign) {
+                    parent = WzInfoTools.FindMapDirectoryParent(mapId, Program.WzManager);
+
+                    if (parent == null) {
+                        throw new Exception("Could not find a suitable Map.wz parent to place the new map into.");
+                    } else if (parent[image.Name] != null) {
+                        throw new Exception("Parent '"+ parent.FullPath+ "' contains an existing map, the new map [Name='"+ image.Name + "'] is attempting to override it.");
+                    }
                 }
-                WzImage mapImg = (WzImage)catDir[image.Name];
-                if (mapImg != null)
-                {
-                    mapImg.Remove();
+                else {
+                    WzObject mapImage = WzInfoTools.FindMapImage(mapId, Program.WzManager);
+                    if (mapImage == null)
+                        throw new Exception("Could not find a suitable Map.wz to place the new map into.");
+
+                    parent = (WzDirectory)mapImage.Parent;
+                    mapImage.Remove();
                 }
-                catDir.AddImage(image);
-                Program.WzManager.SetUpdated("map", image);
+                parent.AddImage(image);
+
+                Program.WzManager.SetWzFileUpdated(parent.GetTopMostWzDirectory().Name /* "map" */, image);
             }
             else
             {
-                WzDirectory mapDir = (WzDirectory)Program.WzManager["ui"];
+                WzDirectory mapDir = Program.WzManager["ui"];
                 WzImage mapImg = (WzImage)mapDir[image.Name];
                 if (mapImg != null)
                 {
                     mapImg.Remove();
                 }
                 mapDir.AddImage(image);
-                Program.WzManager.SetUpdated("ui", image);
+                Program.WzManager.SetWzFileUpdated("ui", image);
+            }
+        }
+
+        /// <summary>
+        /// Inserts the map image into the IMG filesystem
+        /// </summary>
+        private void InsertImageToImgFileSystem()
+        {
+            if (board.MapInfo.mapType == MapType.RegularMap)
+            {
+                // Determine the folder based on map ID
+                string mapId = image.Name.Replace(".img", string.Empty);
+                string folderNum = WzInfoTools.AddLeadingZeros(mapId, 9)[0].ToString();
+                string relativePath = $"Map/Map{folderNum}/{image.Name}";
+
+                // Save the image using the DataSource
+                if (!Program.DataSource.SaveImage("Map", image, relativePath))
+                {
+                    throw new Exception($"Failed to save map image to IMG filesystem: {relativePath}");
+                }
+            }
+            else
+            {
+                // UI map (login, cash shop preview, etc.)
+                if (!Program.DataSource.SaveImage("UI", image, image.Name))
+                {
+                    throw new Exception($"Failed to save UI map image to IMG filesystem: {image.Name}");
+                }
             }
         }
 
         private void SaveMapInfo()
         {
-            board.MapInfo.Save(image, board.VRRectangle == null ? (System.Drawing.Rectangle?)null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+            board.MapInfo.Save(image,
+                board.VRRectangle == null ? (System.Drawing.Rectangle?) null : new System.Drawing.Rectangle(board.VRRectangle.X, board.VRRectangle.Y, board.VRRectangle.Width, board.VRRectangle.Height));
+
             if (board.MapInfo.mapType == MapType.RegularMap)
             {
-                WzImage strMapImg = (WzImage)Program.WzManager.String["Map.img"];
+                // Use Program.FindImage for dual-mode support (IMG filesystem and WZ files)
+                WzImage strMapImg = Program.FindImage("String", "Map.img");
+                if (strMapImg == null)
+                    throw new Exception("Map.img not found in String data");
+
                 WzSubProperty strCatProp = (WzSubProperty)strMapImg[board.MapInfo.strCategoryName];
                 if (strCatProp == null)
                 {
                     strCatProp = new WzSubProperty();
                     strMapImg[board.MapInfo.strCategoryName] = strCatProp;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzSubProperty strMapProp = (WzSubProperty)strCatProp[board.MapInfo.id.ToString()];
                 if (strMapProp == null)
                 {
                     strMapProp = new WzSubProperty();
                     strCatProp[board.MapInfo.id.ToString()] = strMapProp;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzStringProperty strMapName = (WzStringProperty)strMapProp["mapName"];
                 if (strMapName == null)
                 {
                     strMapName = new WzStringProperty();
                     strMapProp["mapName"] = strMapName;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 WzStringProperty strStreetName = (WzStringProperty)strMapProp["streetName"];
                 if (strStreetName == null)
                 {
                     strStreetName = new WzStringProperty();
                     strMapProp["streetName"] = strStreetName;
-                    Program.WzManager.SetUpdated("string", strMapImg);
+                    Program.MarkImageUpdated("String", strMapImg);
                 }
                 UpdateString(strMapName, board.MapInfo.strMapName, strMapImg);
                 UpdateString(strStreetName, board.MapInfo.strStreetName, strMapImg);
@@ -127,7 +178,7 @@ namespace HaCreator.Wz
             if (strProp.Value != val)
             {
                 strProp.Value = val;
-                Program.WzManager.SetUpdated("string", img);
+                Program.MarkImageUpdated("String", img);
             }
         }
 
@@ -136,9 +187,11 @@ namespace HaCreator.Wz
             if (board.MiniMap != null && board.MinimapRectangle != null)
             {
                 WzSubProperty miniMap = new WzSubProperty();
-                WzCanvasProperty canvas = new WzCanvasProperty();
-                canvas.PngProperty = new WzPngProperty();
-                canvas.PngProperty.SetPNG(board.MiniMap);
+                WzCanvasProperty canvas = new WzCanvasProperty
+                {
+                    PngProperty = new WzPngProperty()
+                };
+                canvas.PngProperty.PNG = board.MiniMap;
                 miniMap["canvas"] = canvas;
                 miniMap["width"] = InfoTool.SetInt(board.MinimapRectangle.Width);
                 miniMap["height"] = InfoTool.SetInt(board.MinimapRectangle.Height);
@@ -151,14 +204,14 @@ namespace HaCreator.Wz
 
         public void SaveLayers()
         {
-            for (int layer = 0; layer <= 7; layer++)
+            for (int layer = 0; layer <= MapConstants.MaxMapLayers; layer++)
             {
                 WzSubProperty layerProp = new WzSubProperty();
                 WzSubProperty infoProp = new WzSubProperty();
-                
+
                 // Info
                 Layer l = board.Layers[layer];
-                if (l.tS != null) 
+                if (l.tS != null)
                 {
                     infoProp["tS"] = InfoTool.SetString(l.tS);
                 }
@@ -170,10 +223,10 @@ namespace HaCreator.Wz
                 int objIndex = 0;
                 foreach (LayeredItem item in l.Items)
                 {
-                    if (item is ObjectInstance)
+                    if (item is ObjectInstance instance)
                     {
                         WzSubProperty obj = new WzSubProperty();
-                        ObjectInstance objInst = (ObjectInstance)item;
+                        ObjectInstance objInst = instance;
                         ObjectInfo objInfo = (ObjectInfo)objInst.BaseInfo;
 
                         obj["x"] = InfoTool.SetInt(objInst.UnflippedX);
@@ -208,9 +261,9 @@ namespace HaCreator.Wz
                         objParent[objIndex.ToString()] = obj;
                         objIndex++;
                     }
-                    else if (item is TileInstance)
+                    else if (item is TileInstance instance1)
                     {
-                        tiles.Add((TileInstance)item);
+                        tiles.Add(instance1);
                     }
                     else
                     {
@@ -220,7 +273,7 @@ namespace HaCreator.Wz
                 layerProp["obj"] = objParent;
 
                 // Save tiles
-                tiles.Sort((a,b) => a.Z.CompareTo(b.Z));
+                tiles.Sort((a, b) => a.Z.CompareTo(b.Z));
                 WzSubProperty tileParent = new WzSubProperty();
                 for (int j = 0; j < tiles.Count; j++)
                 {
@@ -282,6 +335,9 @@ namespace HaCreator.Wz
 
         public void SavePortals()
         {
+            List<PortalInstance> portalInstanceSorted = new List<PortalInstance>(board.BoardItems.Portals);
+
+
             WzSubProperty portalParent = new WzSubProperty();
             for (int i = 0; i < board.BoardItems.Portals.Count; i++)
             {
@@ -337,14 +393,34 @@ namespace HaCreator.Wz
             }
             bool retainTooltipStrings = true;
             WzSubProperty tooltipParent = new WzSubProperty();
-            WzImage strTooltipImg = (WzImage)Program.WzManager.String["ToolTipHelp.img"];
+
+            WzImage strTooltipImg = null;
+
+            // Find the ToolTipHelp.img using dual-mode support
+            List<WzDirectory> stringWzDirs = Program.GetDirectories("string");
+            foreach (WzDirectory stringWzDir in stringWzDirs)
+            {
+                strTooltipImg = (WzImage)stringWzDir?["ToolTipHelp.img"];
+                if (strTooltipImg != null)
+                    break;// found
+            }
+
+            // If not found via directories, try direct image lookup
+            if (strTooltipImg == null)
+            {
+                strTooltipImg = Program.FindImage("String", "ToolTipHelp.img");
+            }
+
+            if (strTooltipImg == null)
+                throw new Exception("Unable to find ToolTipHelp.img in String data");
+
             WzSubProperty strTooltipCat = (WzSubProperty)strTooltipImg["Mapobject"];
             WzSubProperty strTooltipParent = (WzSubProperty)strTooltipCat[board.MapInfo.id.ToString()];
             if (strTooltipParent == null)
             {
                 strTooltipParent = new WzSubProperty();
                 strTooltipCat[board.MapInfo.id.ToString()] = strTooltipParent;
-                Program.WzManager.SetUpdated("string", strTooltipImg);
+                Program.MarkImageUpdated("String", strTooltipImg);
                 retainTooltipStrings = false;
             }
 
@@ -363,10 +439,10 @@ namespace HaCreator.Wz
                 }
             }
 
-            // If they do not, we need to update string.wz and rebuild the string tooltip props
+            // If they do not, we need to update string data and rebuild the string tooltip props
             if (!retainTooltipStrings)
             {
-                Program.WzManager.SetUpdated("string", strTooltipImg);
+                Program.MarkImageUpdated("String", strTooltipImg);
                 strTooltipParent.ClearProperties();
             }
 
@@ -391,17 +467,17 @@ namespace HaCreator.Wz
                         if (titleProp == null)
                         {
                             titleProp = new WzStringProperty();
-                            Program.WzManager.SetUpdated("string", strTooltipImg);
+                            Program.MarkImageUpdated("String", strTooltipImg);
                         }
                         UpdateString(titleProp, ttInst.Title, strTooltipImg);
-                    } 
+                    }
                     if (ttInst.Desc != null)
                     {
                         WzStringProperty descProp = (WzStringProperty)strTooltipProp["Desc"];
                         if (descProp == null)
                         {
                             descProp = new WzStringProperty();
-                            Program.WzManager.SetUpdated("string", strTooltipImg);
+                            Program.MarkImageUpdated("String", strTooltipImg);
                         }
                         UpdateString(descProp, ttInst.Desc, strTooltipImg);
                     }
@@ -447,9 +523,17 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
+                if (bgInst.screenMode != (int)RenderResolution.Res_All) // 0
+                    bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
+
+                if (bgInst.SpineAni != null) // dont put anything if null
+                    bgProp["spineAni"] = InfoTool.SetOptionalString(bgInst.SpineAni); // dont put anything if null
+                if (bgInst.SpineRandomStart) // dont put anything if false
+                    bgProp["spineRandomStart"] = InfoTool.SetOptionalBool(bgInst.SpineRandomStart);  // dont put anything if false
+
                 bgProp["f"] = InfoTool.SetOptionalBool(bgInst.Flip);
                 bgProp["bS"] = InfoTool.SetString(bgInfo.bS);
-                bgProp["ani"] = InfoTool.SetBool(bgInfo.ani);
+                bgProp["ani"] = InfoTool.SetBool(bgInfo.Type == BackgroundInfoType.Animation);
                 bgProp["no"] = InfoTool.SetInt(int.Parse(bgInfo.no));
                 bgParent[i.ToString()] = bgProp;
             }
@@ -499,7 +583,7 @@ namespace HaCreator.Wz
             else
             {
                 // Vertical foothold, search for near nonvertical foothold as orientation reference
-                
+
                 // Obtain vertical orientation of the foothold
                 FootholdAnchor top, bottom;
                 if (line.FirstDot.Y < line.SecondDot.Y)
@@ -698,6 +782,9 @@ namespace HaCreator.Wz
             image["foothold"] = fhParent;
         }
 
+        /// <summary>
+        /// Save life object (NPC, mobs)
+        /// </summary>
         public void SaveLife()
         {
             WzSubProperty lifeParent = new WzSubProperty();
@@ -708,7 +795,7 @@ namespace HaCreator.Wz
                 bool mob = i < mobCount;
                 LifeInstance lifeInst = mob ? (LifeInstance)board.BoardItems.Mobs[i] : (LifeInstance)board.BoardItems.NPCs[i - mobCount];
                 WzSubProperty lifeProp = new WzSubProperty();
-                
+
                 lifeProp["id"] = InfoTool.SetString(mob ? ((MobInfo)lifeInst.BaseInfo).ID : ((NpcInfo)lifeInst.BaseInfo).ID);
                 lifeProp["x"] = InfoTool.SetInt(lifeInst.UnflippedX);
                 lifeProp["y"] = InfoTool.SetInt(lifeInst.Y - lifeInst.yShift);
@@ -722,7 +809,7 @@ namespace HaCreator.Wz
                 lifeProp["hide"] = InfoTool.SetOptionalBool(lifeInst.Hide);
                 lifeProp["type"] = InfoTool.SetString(mob ? "m" : "n");
                 lifeProp["limitedname"] = InfoTool.SetOptionalString(lifeInst.LimitedName);
-                lifeProp["fh"] = InfoTool.SetInt(GetFootholdBelow(lifeInst.X, lifeInst.Y));
+                lifeProp["fh"] = InfoTool.SetInt(FindFootholdBelowAndAround(lifeInst.X, lifeInst.Y));
                 lifeParent[i.ToString()] = lifeProp;
             }
             image["life"] = lifeParent;
@@ -733,6 +820,7 @@ namespace HaCreator.Wz
             WzSubProperty areaParent = new WzSubProperty();
             WzSubProperty buffParent = new WzSubProperty();
             WzSubProperty swimParent = new WzSubProperty();
+
             foreach (BoardItem item in board.BoardItems.MiscItems)
             {
                 if (item is Clock)
@@ -819,6 +907,96 @@ namespace HaCreator.Wz
             }
         }
 
+        public void SaveMirrorFieldData()
+        {
+            if (board.BoardItems.MirrorFieldDatas.Count == 0)
+                return;
+
+            WzSubProperty mirrorFieldDataParent = new WzSubProperty();
+
+            int i = 0;
+            foreach (MirrorFieldDataType dataType in Enum.GetValues(typeof(MirrorFieldDataType))) // initial holder data, only run once
+            {
+                if (dataType == MirrorFieldDataType.NULL || dataType == MirrorFieldDataType.info)
+                    continue;
+
+                WzSubProperty holderProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0">
+                holderProp.Name = i.ToString(); // "0"
+
+                // Subproperty of holderProp
+                WzSubProperty InfoProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0"><imgdir name="info">
+                InfoProp.Name = "info"; // unused for now
+                holderProp.AddProperty(InfoProp);
+
+                WzSubProperty dataTypeProp = new WzSubProperty(); // <imgdir name="MirrorFieldData"><imgdir name="0"><imgdir name="mob">
+                dataTypeProp.Name = dataType.ToString(); // unused for now
+                holderProp.AddProperty(dataTypeProp);
+
+                // add to parent
+                mirrorFieldDataParent.AddProperty(holderProp);
+
+                i++;
+            }
+
+            // dumpppp
+            foreach (BoardItem item in board.BoardItems.MirrorFieldDatas)
+            {
+                if (item is MirrorFieldData)
+                {
+                    MirrorFieldData mirrorFieldData = (MirrorFieldData)item;
+                    string forTargetObject = mirrorFieldData.MirrorFieldDataType.ToString(); // <imgdir name="MirrorFieldData"><imgdir name="0">< imgdir name="info"/><imgdir name="mob" >
+
+                    WzImageProperty containsWzSubPropertyForTargetObj = mirrorFieldDataParent.WzProperties.FirstOrDefault(wzImg =>
+                    {
+                        return wzImg.WzProperties.FirstOrDefault(x => x.Name == forTargetObject) != null; // mob, user
+                    });
+
+                    if (containsWzSubPropertyForTargetObj != null)
+                    {
+                        WzImageProperty targetObjectWzProperty = containsWzSubPropertyForTargetObj[forTargetObject];
+
+                        WzSubProperty itemProp = new WzSubProperty(); // <imgdir name="0">
+                        itemProp.Name = targetObjectWzProperty.WzProperties.Count.ToString(); // "0"
+
+                        Microsoft.Xna.Framework.Rectangle rect = mirrorFieldData.Rectangle;
+                        /*
+                            int width = rb.X.Value - lt.X.Value;
+                            int height = rb.Y.Value - lt.Y.Value;
+                            Rectangle rectangle = new Rectangle(
+                                lt.X.Value - offset.X.Value,
+                                lt.Y.Value - offset.Y.Value,
+                                width,
+                                height);*/
+
+                        InfoTool.SetLtRbRectangle(itemProp,
+                            new System.Drawing.Rectangle(rect.X, rect.Y, rect.Width, rect.Height) // convert Microsoft.Xna.Framework.Rectangle to System.Drawing.Rectangle
+                            );
+
+                        itemProp["offset"] = InfoTool.SetVector(mirrorFieldData.Offset.X, mirrorFieldData.Offset.Y);
+                        itemProp["gradient"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Gradient);
+                        itemProp["alpha"] = InfoTool.SetInt(mirrorFieldData.ReflectionInfo.Alpha);
+                        itemProp["objectForOverlay"] = InfoTool.SetString(mirrorFieldData.ReflectionInfo.ObjectForOverlay);
+                        itemProp["reflection"] = InfoTool.SetBool(mirrorFieldData.ReflectionInfo.Reflection);
+                        itemProp["alphaTest"] = InfoTool.SetOptionalBool(mirrorFieldData.ReflectionInfo.AlphaTest);
+
+                        targetObjectWzProperty.WzProperties.Add(itemProp);
+                    }
+                    else
+                    {
+                        throw new Exception("Error saving mirror field data. Missing MirrorFieldDataType of " + forTargetObject);
+                    }
+                }
+            }
+
+            if (mirrorFieldDataParent.WzProperties.Count > 0)
+            {
+                image["MirrorFieldData"] = mirrorFieldDataParent;
+            }
+        }
+
+        /// <summary>
+        /// Saves the additional unsupported properties read from the map image.
+        /// </summary>
         private void SaveAdditionals()
         {
             foreach (WzImageProperty prop in board.MapInfo.additionalNonInfoProps)
@@ -842,6 +1020,7 @@ namespace HaCreator.Wz
             SaveFootholds();
             SaveLife();
             SaveMisc();
+            SaveMirrorFieldData();
             SaveAdditionals();
             InsertImage();
         }
@@ -851,6 +1030,12 @@ namespace HaCreator.Wz
             get { return image; }
         }
 
+        /// <summary>
+        /// Gets the precisely foothold below the specified x and y coordinates
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
         private int GetFootholdBelow(int x, int y)
         {
             double bestDistance = double.MaxValue;
@@ -874,6 +1059,37 @@ namespace HaCreator.Wz
             }
             if (bestFoothold == -1)
             {
+                // 0 stands in the game for flying or nonexistant foothold; I do not know what are the results of putting an NPC there,
+                // however, if the user puts an NPC with no floor under it he should expect weird things to happen.
+                return 0;
+            }
+            return bestFoothold;
+        }
+
+        /// <summary>
+        /// Finds a foothold around the x and y coordinates, or below
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        private int FindFootholdBelowAndAround(int x, int y, int yTolerance = 5) {
+            double bestDistance = double.MaxValue;
+            int bestFoothold = -1;
+            foreach (FootholdLine fh in board.BoardItems.FootholdLines) {
+                if (Math.Min(fh.FirstDot.X, fh.SecondDot.X) <= x && Math.Max(fh.FirstDot.X, fh.SecondDot.X) >= x) {
+                    double fhY = fh.CalculateY(x);
+                    // Check if the foothold is within 5 units above OR below the y-coordinate
+                    if (fhY >= y - yTolerance && (fhY - y) < bestDistance) {
+                        bestDistance = Math.Abs(fhY - y);
+                        bestFoothold = fh.num;
+                        if (bestDistance == 0) {
+                            // Not going to find anything better than 0
+                            return bestFoothold;
+                        }
+                    }
+                }
+            }
+            if (bestFoothold == -1) {
                 // 0 stands in the game for flying or nonexistant foothold; I do not know what are the results of putting an NPC there,
                 // however, if the user puts an NPC with no floor under it he should expect weird things to happen.
                 return 0;
@@ -913,7 +1129,7 @@ namespace HaCreator.Wz
         public void ActualizeFootholds()
         {
             board.BoardItems.FHAnchors.Sort(new Comparison<FootholdAnchor>(FootholdAnchor.FHAnchorSorter));
-            
+
             // Merge foothold anchors
             // This sorts out all foothold inconsistencies in all non-edU tiles
             for (int i = 0; i < board.BoardItems.FHAnchors.Count - 1; i++)
@@ -967,7 +1183,7 @@ namespace HaCreator.Wz
                     }*/
 
                     FootholdAnchor contAnchor = FindOptimalContinuationAnchor((tileInst.BoundItemsList[1].Y + tileInst.BoundItemsList[nitems - 2].Y) / 2,
-                        tileInst.BoundItemsList[1].X, tileInst.BoundItemsList[nitems - 2].X, tileInst.LayerNumber);
+                    tileInst.BoundItemsList[1].X, tileInst.BoundItemsList[nitems - 2].X, tileInst.LayerNumber);
                     if (contAnchor == null)
                     {
                         continue;
@@ -1099,7 +1315,8 @@ namespace HaCreator.Wz
 
         public void UpdateMapLists()
         {
-            Program.InfoManager.Maps[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] = board.MapInfo.strMapName;
+            Program.InfoManager.MapsNameCache[WzInfoTools.AddLeadingZeros(board.MapInfo.id.ToString(), 9)] =
+                new Tuple<string, string, string>(board.MapInfo.strStreetName, board.MapInfo.strMapName, board.MapInfo.strCategoryName);
         }
     }
 

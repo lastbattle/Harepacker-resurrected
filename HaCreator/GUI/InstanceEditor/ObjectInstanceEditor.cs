@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -39,20 +33,25 @@ namespace HaCreator.GUI.InstanceEditor
             yInput.Value = item.Y;
             zInput.Value = item.Z;
             rBox.Checked = item.r;
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            flipBox.Checked = item.Flip;
+            hideBox.Checked = !item.hide.HasValue ? false : item.hide.Value;
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
             if (item.Name != null)
             {
                 nameEnable.Checked = true;
                 nameBox.Text = item.Name;
             }
-            rBox.Checked = item.r;
             flowBox.Checked = item.flow;
             SetOptionalInt(rxInt, rxBox, item.rx);
             SetOptionalInt(ryInt, ryBox, item.ry);
             SetOptionalInt(cxInt, cxBox, item.cx);
             SetOptionalInt(cyInt, cyBox, item.cy);
-            if (item.tags == null) tagsEnable.Checked = false;
-            else { tagsEnable.Checked = true; tagsBox.Text = item.tags; }
+            if (item.tags == null) 
+                tagsEnable.Checked = false;
+            else { 
+                tagsEnable.Checked = true; tagsBox.Text = item.tags; 
+            }
+
             if (item.QuestInfo != null)
             {
                 questEnable.Checked = true;
@@ -93,6 +92,7 @@ namespace HaCreator.GUI.InstanceEditor
                 item.flow = flowBox.Checked;
                 item.reactor = reactorBox.Checked;
                 item.r = rBox.Checked;
+                item.Flip = flipBox.Checked;
                 item.hide = hideBox.Checked;
                 item.rx = GetOptionalInt(rxInt, rxBox);
                 item.ry = GetOptionalInt(ryInt, ryBox);

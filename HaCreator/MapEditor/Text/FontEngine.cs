@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,6 +6,7 @@ using System.Drawing;
 using Microsoft.Xna.Framework.Graphics;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.MapEditor.Text
 {
@@ -70,7 +65,7 @@ namespace HaCreator.MapEditor.Text
                 graphics.DrawString(text, font, brush, 0, 0, format);
             }
 
-            return new CharTexture(BoardItem.TextureFromBitmap(device, bitmap), width, height);
+            return new CharTexture(bitmap.ToTexture2D(device), width, height);
         }
 
 
@@ -92,6 +87,11 @@ namespace HaCreator.MapEditor.Text
             int xOffs = 0;
             foreach (char c in str.ToCharArray())
             {
+                if (c > 256)
+                {
+                    //hack to stop attempting to draw languages other than english
+                    return;
+                }
                 int w = characters[c].w;
                 int h = characters[c].h;
                 sprite.Draw(characters[c].texture, new Microsoft.Xna.Framework.Rectangle(position.X + xOffs, position.Y, w, h), color);

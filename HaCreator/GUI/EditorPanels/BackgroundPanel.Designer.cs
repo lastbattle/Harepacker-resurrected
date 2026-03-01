@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class BackgroundPanel
     {
@@ -28,131 +30,185 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.splitContainer6 = new System.Windows.Forms.SplitContainer();
-            this.splitContainer7 = new System.Windows.Forms.SplitContainer();
-            this.bgSetListBox = new System.Windows.Forms.ListBox();
-            this.bgBack = new System.Windows.Forms.RadioButton();
-            this.aniBg = new System.Windows.Forms.RadioButton();
-            this.bgImageContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).BeginInit();
-            this.splitContainer6.Panel1.SuspendLayout();
-            this.splitContainer6.Panel2.SuspendLayout();
-            this.splitContainer6.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer7)).BeginInit();
-            this.splitContainer7.Panel1.SuspendLayout();
-            this.splitContainer7.Panel2.SuspendLayout();
-            this.splitContainer7.SuspendLayout();
-            this.SuspendLayout();
+            splitContainer_all = new System.Windows.Forms.SplitContainer();
+            splitContainer7 = new System.Windows.Forms.SplitContainer();
+            bgSetListBox = new System.Windows.Forms.ListBox();
+            groupBox1 = new System.Windows.Forms.GroupBox();
+            aniBg = new System.Windows.Forms.RadioButton();
+            radioButton_spine = new System.Windows.Forms.RadioButton();
+            bgBack = new System.Windows.Forms.RadioButton();
+            bgImageContainer = new ThumbnailFlowLayoutPanel();
+            button_addImage = new System.Windows.Forms.Button();
+            ((System.ComponentModel.ISupportInitialize)splitContainer_all).BeginInit();
+            splitContainer_all.Panel1.SuspendLayout();
+            splitContainer_all.Panel2.SuspendLayout();
+            splitContainer_all.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)splitContainer7).BeginInit();
+            splitContainer7.Panel1.SuspendLayout();
+            splitContainer7.Panel2.SuspendLayout();
+            splitContainer7.SuspendLayout();
+            groupBox1.SuspendLayout();
+            SuspendLayout();
             // 
-            // splitContainer6
+            // splitContainer_all
             // 
-            this.splitContainer6.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer6.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer6.Name = "splitContainer6";
-            this.splitContainer6.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer_all.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer_all.Location = new System.Drawing.Point(0, 0);
+            splitContainer_all.Name = "splitContainer_all";
+            splitContainer_all.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
-            // splitContainer6.Panel1
+            // splitContainer_all.Panel1
             // 
-            this.splitContainer6.Panel1.Controls.Add(this.splitContainer7);
+            splitContainer_all.Panel1.Controls.Add(splitContainer7);
             // 
-            // splitContainer6.Panel2
+            // splitContainer_all.Panel2
             // 
-            this.splitContainer6.Panel2.Controls.Add(this.bgImageContainer);
-            this.splitContainer6.Size = new System.Drawing.Size(284, 435);
-            this.splitContainer6.SplitterDistance = 113;
-            this.splitContainer6.TabIndex = 2;
+            splitContainer_all.Panel2.Controls.Add(bgImageContainer);
+            splitContainer_all.Panel2.Controls.Add(button_addImage);
+            splitContainer_all.Size = new System.Drawing.Size(284, 658);
+            splitContainer_all.SplitterDistance = 170;
+            splitContainer_all.TabIndex = 2;
             // 
             // splitContainer7
             // 
-            this.splitContainer7.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.splitContainer7.Location = new System.Drawing.Point(0, 0);
-            this.splitContainer7.Name = "splitContainer7";
-            this.splitContainer7.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            splitContainer7.Dock = System.Windows.Forms.DockStyle.Fill;
+            splitContainer7.Location = new System.Drawing.Point(0, 0);
+            splitContainer7.Name = "splitContainer7";
+            splitContainer7.Orientation = System.Windows.Forms.Orientation.Horizontal;
             // 
             // splitContainer7.Panel1
             // 
-            this.splitContainer7.Panel1.Controls.Add(this.bgSetListBox);
+            splitContainer7.Panel1.Controls.Add(bgSetListBox);
             // 
             // splitContainer7.Panel2
             // 
-            this.splitContainer7.Panel2.Controls.Add(this.bgBack);
-            this.splitContainer7.Panel2.Controls.Add(this.aniBg);
-            this.splitContainer7.Panel2MinSize = 20;
-            this.splitContainer7.Size = new System.Drawing.Size(284, 113);
-            this.splitContainer7.SplitterDistance = 81;
-            this.splitContainer7.TabIndex = 1;
+            splitContainer7.Panel2.Controls.Add(groupBox1);
+            splitContainer7.Panel2MinSize = 20;
+            splitContainer7.Size = new System.Drawing.Size(284, 170);
+            splitContainer7.SplitterDistance = 121;
+            splitContainer7.TabIndex = 1;
             // 
             // bgSetListBox
             // 
-            this.bgSetListBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.bgSetListBox.FormattingEnabled = true;
-            this.bgSetListBox.Location = new System.Drawing.Point(0, 0);
-            this.bgSetListBox.Name = "bgSetListBox";
-            this.bgSetListBox.Size = new System.Drawing.Size(284, 81);
-            this.bgSetListBox.TabIndex = 0;
-            this.bgSetListBox.SelectedIndexChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
+            bgSetListBox.Dock = System.Windows.Forms.DockStyle.Fill;
+            bgSetListBox.FormattingEnabled = true;
+            bgSetListBox.ItemHeight = 13;
+            bgSetListBox.Location = new System.Drawing.Point(0, 0);
+            bgSetListBox.Name = "bgSetListBox";
+            bgSetListBox.Size = new System.Drawing.Size(284, 121);
+            bgSetListBox.TabIndex = 0;
+            bgSetListBox.SelectedIndexChanged += bgSetListBox_SelectedIndexChanged;
             // 
-            // bgBack
+            // groupBox1
             // 
-            this.bgBack.Checked = true;
-            this.bgBack.Location = new System.Drawing.Point(120, 3);
-            this.bgBack.Name = "bgBack";
-            this.bgBack.Size = new System.Drawing.Size(68, 18);
-            this.bgBack.TabIndex = 1;
-            this.bgBack.TabStop = true;
-            this.bgBack.Text = "Static";
-            this.bgBack.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
+            groupBox1.Controls.Add(aniBg);
+            groupBox1.Controls.Add(radioButton_spine);
+            groupBox1.Controls.Add(bgBack);
+            groupBox1.Location = new System.Drawing.Point(3, 3);
+            groupBox1.Name = "groupBox1";
+            groupBox1.Size = new System.Drawing.Size(278, 39);
+            groupBox1.TabIndex = 3;
+            groupBox1.TabStop = false;
+            groupBox1.Text = "Select";
             // 
             // aniBg
             // 
-            this.aniBg.Location = new System.Drawing.Point(3, 3);
-            this.aniBg.Name = "aniBg";
-            this.aniBg.Size = new System.Drawing.Size(67, 18);
-            this.aniBg.TabIndex = 0;
-            this.aniBg.Text = "Animated";
-            this.aniBg.CheckedChanged += new System.EventHandler(this.bgSetListBox_SelectedIndexChanged);
+            aniBg.Location = new System.Drawing.Point(6, 15);
+            aniBg.Name = "aniBg";
+            aniBg.Size = new System.Drawing.Size(67, 18);
+            aniBg.TabIndex = 0;
+            aniBg.Text = "Animated";
+            aniBg.CheckedChanged += bgSetListBox_SelectedIndexChanged;
+            // 
+            // radioButton_spine
+            // 
+            radioButton_spine.Location = new System.Drawing.Point(200, 15);
+            radioButton_spine.Name = "radioButton_spine";
+            radioButton_spine.Size = new System.Drawing.Size(68, 18);
+            radioButton_spine.TabIndex = 2;
+            radioButton_spine.Text = "Spine";
+            // 
+            // bgBack
+            // 
+            bgBack.Checked = true;
+            bgBack.Location = new System.Drawing.Point(103, 15);
+            bgBack.Name = "bgBack";
+            bgBack.Size = new System.Drawing.Size(68, 18);
+            bgBack.TabIndex = 1;
+            bgBack.TabStop = true;
+            bgBack.Text = "Static";
+            bgBack.CheckedChanged += bgSetListBox_SelectedIndexChanged;
             // 
             // bgImageContainer
             // 
-            this.bgImageContainer.AutoScroll = true;
-            this.bgImageContainer.BackColor = System.Drawing.Color.White;
-            this.bgImageContainer.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.bgImageContainer.Location = new System.Drawing.Point(0, 0);
-            this.bgImageContainer.Name = "bgImageContainer";
-            this.bgImageContainer.Size = new System.Drawing.Size(284, 318);
-            this.bgImageContainer.TabIndex = 0;
+            bgImageContainer.AutoScroll = true;
+            bgImageContainer.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            bgImageContainer.BackColor = System.Drawing.Color.White;
+            bgImageContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            bgImageContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
+            bgImageContainer.Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            bgImageContainer.Location = new System.Drawing.Point(0, 0);
+            bgImageContainer.Name = "bgImageContainer";
+            bgImageContainer.Size = new System.Drawing.Size(284, 461);
+            bgImageContainer.TabIndex = 0;
+            bgImageContainer.WrapContents = false;
+            // 
+            // button_addImage
+            // 
+            button_addImage.Dock = System.Windows.Forms.DockStyle.Bottom;
+            button_addImage.Location = new System.Drawing.Point(0, 461);
+            button_addImage.Name = "button_addImage";
+            button_addImage.Size = new System.Drawing.Size(284, 23);
+            button_addImage.TabIndex = 1;
+            button_addImage.Text = "Add image";
+            button_addImage.UseVisualStyleBackColor = true;
+            button_addImage.Click += button_addImage_Click;
             // 
             // BackgroundPanel
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(284, 435);
-            this.CloseButton = false;
-            this.CloseButtonVisible = false;
-            this.Controls.Add(this.splitContainer6);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
-            this.Name = "BackgroundPanel";
-            this.ShowIcon = false;
-            this.Text = "Background";
-            this.splitContainer6.Panel1.ResumeLayout(false);
-            this.splitContainer6.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer6)).EndInit();
-            this.splitContainer6.ResumeLayout(false);
-            this.splitContainer7.Panel1.ResumeLayout(false);
-            this.splitContainer7.Panel2.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.splitContainer7)).EndInit();
-            this.splitContainer7.ResumeLayout(false);
-            this.ResumeLayout(false);
-
+            AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
+            Controls.Add(splitContainer_all);
+            Font = new System.Drawing.Font("Segoe UI", 8.25F);
+            Name = "BackgroundPanel";
+            Size = new System.Drawing.Size(284, 658);
+            splitContainer_all.Panel1.ResumeLayout(false);
+            splitContainer_all.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer_all).EndInit();
+            splitContainer_all.ResumeLayout(false);
+            splitContainer7.Panel1.ResumeLayout(false);
+            splitContainer7.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer7).EndInit();
+            splitContainer7.ResumeLayout(false);
+            groupBox1.ResumeLayout(false);
+            ResumeLayout(false);
         }
 
         #endregion
 
-        private System.Windows.Forms.SplitContainer splitContainer6;
+        private global::System.Resources.ResourceManager resourceMan;
+        public global::System.Resources.ResourceManager ResourceManager
+        {
+            get
+            {
+                if (object.ReferenceEquals(resourceMan, null))
+                {
+                    string baseName = this.GetType().Namespace + "." + this.GetType().Name;
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager(baseName, this.GetType().Assembly);
+                    resourceMan = temp;
+                }
+                return resourceMan;
+            }
+        }
+
+        private System.Windows.Forms.SplitContainer splitContainer_all;
         private System.Windows.Forms.SplitContainer splitContainer7;
         private System.Windows.Forms.ListBox bgSetListBox;
         private System.Windows.Forms.RadioButton bgBack;
         private System.Windows.Forms.RadioButton aniBg;
-        private ThirdParty.ThumbnailFlowLayoutPanel bgImageContainer;
+        private ThumbnailFlowLayoutPanel bgImageContainer;
+        private System.Windows.Forms.GroupBox groupBox1;
+        private System.Windows.Forms.RadioButton radioButton_spine;
+        private System.Windows.Forms.Button button_addImage;
     }
 }

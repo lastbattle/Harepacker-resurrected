@@ -1,19 +1,11 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using XNA = Microsoft.Xna.Framework;
 
@@ -21,11 +13,11 @@ namespace HaCreator.GUI
 {
     public partial class New : Form
     {
-        private MultiBoard multiBoard;
-        private HaCreator.ThirdParty.TabPages.PageCollection Tabs;
-        private EventHandler[] rightClickHandler;
+        private readonly MultiBoard multiBoard;
+        private readonly System.Windows.Controls.TabControl Tabs;
+        private readonly System.Windows.RoutedEventHandler[] rightClickHandler;
 
-        public New(MultiBoard board, HaCreator.ThirdParty.TabPages.PageCollection Tabs, EventHandler[] rightClickHandler)
+        public New(MultiBoard board, System.Windows.Controls.TabControl Tabs, System.Windows.RoutedEventHandler[] rightClickHandler)
         {
             InitializeComponent();
             this.multiBoard = board;
@@ -33,16 +25,102 @@ namespace HaCreator.GUI
             this.rightClickHandler = rightClickHandler;
         }
 
+        /// <summary>
+        /// On Load
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void New_Load(object sender, EventArgs e)
+        {
+            newWidth.Text = ApplicationSettings.LastMapSize.Width.ToString();
+            newHeight.Text = ApplicationSettings.LastMapSize.Height.ToString();
+        }
+
+        #region Create new
+        /// <summary>
+        /// Creates a new default map to work from
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void newButton_Click(object sender, EventArgs e)
         {
-            MapLoader loader = new MapLoader();
             int w = int.Parse(newWidth.Text);
             int h = int.Parse(newHeight.Text);
-            loader.CreateMap("<Untitled>", "", loader.CreateStandardMapMenu(rightClickHandler), new XNA.Point(w, h), new XNA.Point(w / 2, h / 2), 8, Tabs, multiBoard);
+
+            MapLoader.CreateMap("", "<Untitled>", -1, "", true, MapLoader.CreateStandardMapMenu(rightClickHandler), new XNA.Point(w, h), new XNA.Point(w / 2, h / 2), Tabs, multiBoard);
             DialogResult = DialogResult.OK;
             Close();
         }
+        #endregion
 
+        #region Clone map
+        /// <summary>
+        /// Select a map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void button_SelectCloneMap_Click(object sender, EventArgs e)
+        {
+            LoadMapSelector selector = new LoadMapSelector(numericUpDown1);
+            selector.ShowDialog();
+        }
+
+        /// <summary>
+        /// On map id selection changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void numericUpDown1_ValueChanged(object sender, EventArgs e)
+        {
+            if (numericUpDown1.Value != -1)
+            {
+                buttonCreateFrmClone.Enabled = true; // enable the button after selecting a map
+            }
+        }
+
+
+        /// <summary>
+        /// Button on create map
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void buttonCreateFrmClone_Click(object sender, EventArgs e)
+        {
+            if (numericUpDown1.Value == -1)
+                return;
+
+            long mapid = (long) numericUpDown1.Value; // should be int, but anyway in case the future version uses more than 2.1b
+            string mapId_str = mapid.ToString();
+
+            WzImage mapImage = WzInfoTools.FindMapImage(mapId_str, Program.WzManager);
+            if (mapImage == null)
+            {
+                MessageBox.Show("Map is null.");
+                return;
+            }
+
+            string cloneMapName = "NO NAME";
+            string cloneStreetName = "NO NAME";
+            string cloneCategoryName = "NO NAME";
+
+            if (Program.InfoManager.MapsNameCache.ContainsKey(mapId_str))
+            {
+                var mapNames = Program.InfoManager.MapsNameCache[mapId_str];
+
+                cloneMapName = mapNames.Item1;
+                cloneStreetName = mapNames.Item2;
+                cloneCategoryName = mapNames.Item3;
+            }
+
+            MapInfo info = new MapInfo(mapImage, cloneMapName, cloneStreetName, cloneCategoryName);
+
+            MapLoader.CreateMapFromImage(-1 /*mapid*/, mapImage.DeepClone(), info, cloneMapName, cloneStreetName, cloneCategoryName, Tabs, multiBoard, rightClickHandler);
+
+            Close();
+        }
+        #endregion
+
+        #region Misc
         private void New_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Escape)
@@ -54,11 +132,6 @@ namespace HaCreator.GUI
                 newButton_Click(null, null);
             }
         }
-
-        private void New_Load(object sender, EventArgs e)
-        {
-            newWidth.Text = ApplicationSettings.LastMapSize.Width.ToString();
-            newHeight.Text = ApplicationSettings.LastMapSize.Height.ToString();
-        }
+        #endregion
     }
 }

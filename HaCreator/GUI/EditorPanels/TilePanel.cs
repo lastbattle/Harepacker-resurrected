@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -18,30 +12,136 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using System.Collections;
-using HaCreator.ThirdParty;
 using HaCreator.GUI;
 using MapleLib.WzLib.WzStructure;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.UndoRedo;
+using HaCreator.CustomControls;
+using HaCreator.Wz;
 
 namespace HaCreator.GUI.EditorPanels
 {
-    public partial class TilePanel : DockContent
+    public partial class TilePanel : UserControl
     {
         private HaCreatorStateManager hcsm;
+        private HotSwapRefreshService _hotSwapService;
 
-        public TilePanel(HaCreatorStateManager hcsm)
+        public TilePanel()
+        {
+            InitializeComponent();
+        }
+
+        #region Hot Swap
+        /// <summary>
+        /// Subscribes to hot swap events from the HotSwapRefreshService
+        /// </summary>
+        /// <param name="refreshService">The hot swap service to subscribe to</param>
+        public void SubscribeToHotSwap(HotSwapRefreshService refreshService)
+        {
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.TileSetChanged -= OnTileSetChanged;
+            }
+
+            _hotSwapService = refreshService;
+
+            if (_hotSwapService != null)
+            {
+                _hotSwapService.TileSetChanged += OnTileSetChanged;
+            }
+        }
+
+        /// <summary>
+        /// Handles tile set change events
+        /// </summary>
+        private void OnTileSetChanged(object sender, TileSetChangedEventArgs e)
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => HandleTileSetChange(e)));
+                return;
+            }
+            HandleTileSetChange(e);
+        }
+
+        /// <summary>
+        /// Handles the tile set change on the UI thread
+        /// </summary>
+        private void HandleTileSetChange(TileSetChangedEventArgs e)
+        {
+            switch (e.ChangeType)
+            {
+                case AssetChangeType.Added:
+                    // Add to tileset dropdown if not present
+                    if (!tileSetList.Items.Contains(e.SetName))
+                    {
+                        tileSetList.Items.Add(e.SetName);
+                        SortTileSetList();
+                    }
+                    break;
+
+                case AssetChangeType.Removed:
+                    // Remove from dropdown
+                    tileSetList.Items.Remove(e.SetName);
+                    // If currently selected, clear panel
+                    if (tileSetList.SelectedItem?.ToString() == e.SetName)
+                    {
+                        tileImagesContainer.Controls.Clear();
+                        if (tileSetList.Items.Count > 0)
+                        {
+                            tileSetList.SelectedIndex = 0;
+                        }
+                    }
+                    break;
+
+                case AssetChangeType.Modified:
+                    // If set doesn't exist in list, add it (Windows sometimes reports new files as Changed)
+                    if (!tileSetList.Items.Contains(e.SetName))
+                    {
+                        tileSetList.Items.Add(e.SetName);
+                        SortTileSetList();
+                    }
+                    else if (tileSetList.SelectedItem?.ToString() == e.SetName)
+                    {
+                        // Force reload from disk
+                        Program.InfoManager.RefreshTileSet(e.SetName);
+                        LoadTileSetList();
+                    }
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Sorts the tile set list alphabetically
+        /// </summary>
+        private void SortTileSetList()
+        {
+            var items = tileSetList.Items.Cast<string>().OrderBy(s => s).ToList();
+            var selected = tileSetList.SelectedItem;
+            tileSetList.Items.Clear();
+            foreach (var item in items)
+            {
+                tileSetList.Items.Add(item);
+            }
+            if (selected != null && tileSetList.Items.Contains(selected))
+            {
+                tileSetList.SelectedItem = selected;
+            }
+        }
+        #endregion
+
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="hcsm"></param>
+        public void Initialize(HaCreatorStateManager hcsm)
         {
             this.hcsm = hcsm;
             hcsm.SetTilePanel(this);
-            InitializeComponent();
 
-            List<string> sortedTileSets = new List<string>();
-            foreach (KeyValuePair<string, WzImage> tS in Program.InfoManager.TileSets)
-                sortedTileSets.Add(tS.Key);
-            sortedTileSets.Sort();
-            foreach (string tS in sortedTileSets)
-                tileSetList.Items.Add(tS);
+            foreach (string tileSetName in Program.InfoManager.TileSets.Keys) {
+                tileSetList.Items.Add(tileSetName);
+            }
         }
 
         private void searchResultsBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -59,6 +159,21 @@ namespace HaCreator.GUI.EditorPanels
             }
         }
 
+        /// <summary>
+        /// Sets the currently selected tileSet, and refresh the list of tiles
+        /// </summary>
+        /// <param name="tileSet"></param>
+        public void SetSelectedTileSet(string tileSet)
+        {
+            if (!Program.InfoManager.TileSets.ContainsKey(tileSet))
+                return;
+            else if ((string) tileSetList.SelectedItem == tileSet) // its the same.
+                return;
+            tileSetList.SelectedItem = tileSet;
+
+            LoadTileSetList();
+        }
+
         private void tileSetList_SelectedIndexChanged(object sender, EventArgs e)
         {
             LoadTileSetList();
@@ -68,21 +183,31 @@ namespace HaCreator.GUI.EditorPanels
         {
             lock (hcsm.MultiBoard)
             {
-                if (tileSetList.SelectedItem == null) return;
-                tileImagesContainer.Controls.Clear();
+                if (tileSetList.SelectedItem == null) 
+                    return;
+
                 string selectedSetName = (string)tileSetList.SelectedItem;
                 if (!Program.InfoManager.TileSets.ContainsKey(selectedSetName))
                     return;
-                WzImage tileSetImage = Program.InfoManager.TileSets[selectedSetName];
+
+                // Clear existing
+                tileImagesContainer.Controls.Clear();
+
+                WzImage tileSetImage = Program.InfoManager.GetTileSet(selectedSetName);
+                if (tileSetImage == null)
+                    return;
                 int? mag = InfoTool.GetOptionalInt(tileSetImage["info"]["mag"]);
+
                 foreach (WzSubProperty tCat in tileSetImage.WzProperties)
                 {
-                    if (tCat.Name == "info") continue;
+                    if (tCat.Name == "info") 
+                        continue;
                     if (ApplicationSettings.randomTiles)
                     {
                         WzCanvasProperty canvasProp = (WzCanvasProperty)tCat["0"];
-                        if (canvasProp == null) continue;
-                        ImageViewer item = tileImagesContainer.Add(canvasProp.PngProperty.GetPNG(false), tCat.Name, true);
+                        if (canvasProp == null) 
+                            continue;
+                        ImageViewer item = tileImagesContainer.Add(canvasProp.GetLinkedWzCanvasBitmap(), tCat.Name, true);
                         TileInfo[] randomInfos = new TileInfo[tCat.WzProperties.Count];
                         for (int i = 0; i < randomInfos.Length; i++)
                         {
@@ -96,7 +221,7 @@ namespace HaCreator.GUI.EditorPanels
                     {
                         foreach (WzCanvasProperty tile in tCat.WzProperties)
                         {
-                            ImageViewer item = tileImagesContainer.Add(tile.PngProperty.GetPNG(false), tCat.Name + "/" + tile.Name, true);
+                            ImageViewer item = tileImagesContainer.Add(tile.GetLinkedWzCanvasBitmap(), tCat.Name + "/" + tile.Name, true);
                             item.Tag = TileInfo.Get((string)tileSetList.SelectedItem, tCat.Name, tile.Name, mag);
                             item.MouseDown += new MouseEventHandler(tileItem_Click);
                             item.MouseUp += new MouseEventHandler(ImageViewer.item_MouseUp);

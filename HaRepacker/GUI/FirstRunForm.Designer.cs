@@ -30,7 +30,6 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FirstRunForm));
             this.button1 = new System.Windows.Forms.Button();
-            this.autoUpdate = new System.Windows.Forms.CheckBox();
             this.autoAssociateBox = new System.Windows.Forms.CheckBox();
             this.SuspendLayout();
             // 
@@ -40,14 +39,6 @@
             this.button1.Name = "button1";
             this.button1.UseVisualStyleBackColor = true;
             this.button1.Click += new System.EventHandler(this.button1_Click);
-            // 
-            // autoUpdate
-            // 
-            resources.ApplyResources(this.autoUpdate, "autoUpdate");
-            this.autoUpdate.Checked = true;
-            this.autoUpdate.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.autoUpdate.Name = "autoUpdate";
-            this.autoUpdate.UseVisualStyleBackColor = true;
             // 
             // autoAssociateBox
             // 
@@ -61,7 +52,6 @@
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.Controls.Add(this.autoUpdate);
             this.Controls.Add(this.autoAssociateBox);
             this.Controls.Add(this.button1);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
@@ -78,7 +68,6 @@
         #endregion
 
         private System.Windows.Forms.Button button1;
-        private System.Windows.Forms.CheckBox autoUpdate;
         private System.Windows.Forms.CheckBox autoAssociateBox;
     }
 }

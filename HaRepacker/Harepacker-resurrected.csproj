@@ -1,0 +1,90 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>HaRepacker</RootNamespace>
+    <AssemblyName>HaRepackerResurrected</AssemblyName>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+
+    <UseWindowsForms>True</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
+    
+    <!-- AOT and Trimming Configuration -->
+    <RuntimeIdentifiers>win-x64;win-x86;win-arm64</RuntimeIdentifiers>
+    <PublishAot>false</PublishAot>
+    <_SuppressWinFormsTrimError>true</_SuppressWinFormsTrimError>
+    <_SuppressWpfTrimError>true</_SuppressWpfTrimError>
+
+    <!-- Required for WinForms -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- x64-specific configuration -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+  <!-- x86-specific configuration -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x86'">
+    <PublishAot>false</PublishAot>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <StartupObject>HaRepacker.Program</StartupObject>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Remove="Resources\OrangeMushroom\**" />
+    <EmbeddedResource Remove="Resources\OrangeMushroom\**" />
+    <None Remove="Resources\OrangeMushroom\**" />
+    <Page Remove="Resources\OrangeMushroom\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="GUI\Input\DoubleInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="GUI\Input\IntegerInput.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Update="GUI\WzKeyBruteforceForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Update="TreeViewMS.cs">
+      <SubType>Component</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HaSharedLibrary\HaSharedLibrary.csproj" />
+    <ProjectReference Include="..\MapleLib\MapleLib\MapleLib.csproj" />
+    <ProjectReference Include="..\MapleLib\spine-runtimes-2.1.25\spine-csharp\spine-csharp 2.1.25.csproj" />
+    <ProjectReference Include="..\RealESRGAN_AI_Upscale\RealESRGAN_AI_Upscale.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Resources\arrow_left.png" />
+    <Content Include="Resources\arrow_right.png" />
+    <Content Include="Resources\Pause.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.0" />
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+    <PackageReference Include="Extended.Wpf.Toolkit" Version="5.0.0" />
+    <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.4.1" />
+    <PackageReference Include="SharpDX" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Direct3D9" Version="4.2.0" />
+    <PackageReference Include="SharpDX.DXGI" Version="4.2.0" />
+    <PackageReference Include="SharpDX.Mathematics" Version="4.2.0" />
+    <PackageReference Include="SharpDX.MediaFoundation" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XAudio2" Version="4.2.0" />
+    <PackageReference Include="SharpDX.XInput" Version="4.2.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="GUI\Resources.Designer.cs" />
+    <EmbeddedResource Remove="GUI\Input\DoubleInput.resx" />
+    <EmbeddedResource Remove="GUI\Input\FindInputBox.resx" />
+    <EmbeddedResource Remove="GUI\Input\IntegerInput.resx" />
+    <EmbeddedResource Remove="GUI\Resources.resx" />
+  </ItemGroup>
+</Project>

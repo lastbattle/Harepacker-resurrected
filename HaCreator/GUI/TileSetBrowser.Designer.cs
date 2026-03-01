@@ -1,7 +1,8 @@
-﻿namespace HaCreator.GUI
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI
 {
-    partial class TileSetBrowser
-    {
+    partial class TileSetBrowser {
         /// <summary>
         /// Required designer variable.
         /// </summary>
@@ -11,10 +12,8 @@
         /// Clean up any resources being used.
         /// </summary>
         /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null))
-            {
+        protected override void Dispose(bool disposing) {
+            if (disposing && (components != null)) {
                 components.Dispose();
             }
             base.Dispose(disposing);
@@ -26,9 +25,8 @@
         /// Required method for Designer support - do not modify
         /// the contents of this method with the code editor.
         /// </summary>
-        private void InitializeComponent()
-        {
-            this.koolkLVContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+        private void InitializeComponent() {
+            this.koolkLVContainer = new ThumbnailFlowLayoutPanel();
             this.SuspendLayout();
             // 
             // koolkLVContainer
@@ -60,6 +58,6 @@
 
         #endregion
 
-        private ThirdParty.ThumbnailFlowLayoutPanel koolkLVContainer;
+        private ThumbnailFlowLayoutPanel koolkLVContainer;
     }
 }

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -36,13 +30,16 @@ namespace HaCreator.GUI.InstanceEditor
             rx0Box.Value = item.rx0Shift;
             rx1Box.Value = item.rx1Shift;
             yShiftBox.Value = item.yShift;
+
             LoadOptionalInt(item.Info, infoEnable, infoBox);
             LoadOptionalInt(item.Team, teamEnable, teamBox);
             LoadOptionalInt(item.MobTime, mobTimeEnable, mobTimeBox);
             LoadOptionalStr(item.LimitedName, limitedNameEnable, limitedNameBox);
-            hideBox.Checked = item.Hide;
 
-            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item, "\r\n");
+            hideBox.Checked = item.Hide;
+            flipBox.Checked = item.Flip;
+
+            pathLabel.Text = HaCreatorStateManager.CreateItemDescription(item);
         }
 
         protected override void cancelButton_Click(object sender, EventArgs e)
@@ -70,7 +67,9 @@ namespace HaCreator.GUI.InstanceEditor
                 item.Team = GetOptionalInt(teamEnable, teamBox);
                 //item.TypeStr = GetOptionalStr(typeEnable, typeBox);
                 item.LimitedName = GetOptionalStr(limitedNameEnable, limitedNameBox);
+
                 item.Hide = hideBox.Checked;
+                item.Flip = flipBox.Checked; 
             }
             Close();
         }

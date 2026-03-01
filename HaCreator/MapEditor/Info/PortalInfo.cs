@@ -1,11 +1,6 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Instance;
+﻿using HaCreator.MapEditor.Instance;
 using HaCreator.Wz;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -21,9 +16,9 @@ namespace HaCreator.MapEditor.Info
 {
     public class PortalInfo : MapleDrawableInfo
     {
-        private string type;
+        private PortalType type;
 
-        public PortalInfo(string type, Bitmap image, System.Drawing.Point origin, WzObject parentObject)
+        public PortalInfo(PortalType type, Bitmap image, System.Drawing.Point origin, WzObject parentObject)
             : base(image, origin, parentObject)
         {
             this.type = type;
@@ -31,7 +26,22 @@ namespace HaCreator.MapEditor.Info
 
         public static PortalInfo Load(WzCanvasProperty parentObject)
         {
-            PortalInfo portal = new PortalInfo(parentObject.Name, parentObject.PngProperty.GetPNG(false), WzInfoTools.VectorToSystemPoint((WzVectorProperty)parentObject["origin"]), parentObject);
+            Bitmap bitmap = parentObject.GetLinkedWzCanvasBitmap();
+            // Create a placeholder if bitmap is null or invalid
+            if (bitmap == null)
+            {
+                bitmap = new Bitmap(20, 20);
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    g.Clear(Color.Magenta); // Placeholder color for missing portal image
+                }
+            }
+
+            PortalInfo portal = new(
+                PortalTypeExtensions.FromCode(parentObject.Name),
+                bitmap,
+                WzInfoTools.PointFToSystemPoint(parentObject.GetCanvasOriginPosition()), parentObject);
+
             Program.InfoManager.Portals.Add(portal.type, portal);
             return portal;
         }
@@ -40,30 +50,45 @@ namespace HaCreator.MapEditor.Info
         {
             switch (type)
             {
-                case PortalType.PORTALTYPE_STARTPOINT:
-                    return new PortalInstance(this, board, x, y, "sp", type, "", 999999999, null, null, null, null, null, null, null, null, null);
-                case PortalType.PORTALTYPE_INVISIBLE:
-                case PortalType.PORTALTYPE_VISIBLE:
-                case PortalType.PORTALTYPE_COLLISION:
-                case PortalType.PORTALTYPE_CHANGABLE:
-                case PortalType.PORTALTYPE_CHANGABLE_INVISIBLE:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, null, null, null, null, null, null, null, null, null);
-                case PortalType.PORTALTYPE_TOWNPORTAL_POINT:
-                    return new PortalInstance(this, board, x, y, "tp", type, "", 999999999, null, null, null, null, null, null, null, null, null);
-                case PortalType.PORTALTYPE_SCRIPT:
-                case PortalType.PORTALTYPE_SCRIPT_INVISIBLE:
-                case PortalType.PORTALTYPE_COLLISION_SCRIPT:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, null, null, null);
-                case PortalType.PORTALTYPE_HIDDEN:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, null, null, null, null, null, null, "", null, null);
-                case PortalType.PORTALTYPE_SCRIPT_HIDDEN:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, "", null, null);
-                case PortalType.PORTALTYPE_COLLISION_VERTICAL_JUMP:
-                case PortalType.PORTALTYPE_COLLISION_CUSTOM_IMPACT:
-                case PortalType.PORTALTYPE_COLLISION_UNKNOWN_PCIG:
-                    return new PortalInstance(this, board, x, y, "portal", type, "", 999999999, "script", null, null, null, null, null, "", null, null);
+                case PortalType.StartPoint:
+                    {
+                        return new PortalInstance(this, board, x, y, "sp", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
+                case PortalType.Invisible:
+                case PortalType.Visible:
+                case PortalType.Collision:
+                case PortalType.Changeable:
+                case PortalType.ChangeableInvisible:
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
+                case PortalType.TownPortalPoint:
+                    {
+                        return new PortalInstance(this, board, x, y, "tp", type, "", MapConstants.MaxMap, null, null, null, null, null, null, null, null, null);
+                    }
+                case PortalType.Script:
+                case PortalType.ScriptInvisible:
+                case PortalType.CollisionScript:
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, null, null, null);
+                    }
+                case PortalType.Hidden:
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, null, null, null, null, null, null, "", null, null);
+                    }
+                case PortalType.ScriptHidden:
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                    }
+                case PortalType.CollisionVerticalJump:
+                case PortalType.CollisionCustomImpact:
+                case PortalType.CollisionUnknownPcig:
+                    {
+                        return new PortalInstance(this, board, x, y, "portal", type, "", MapConstants.MaxMap, "script", null, null, null, null, null, "", null, null);
+                    }
+                case PortalType.ScriptHiddenUng: // TODO
                 default:
-                    throw new Exception("unknown pt @ CreateInstance");
+                    throw new Exception("unknown pt @ CreateInstance, type: " + type);
             }
         }
 
@@ -72,12 +97,12 @@ namespace HaCreator.MapEditor.Info
             return new PortalInstance(this, board, x, y, pn, type, tn, tm, script, delay, hideTooltip, onlyOnce, horizontalImpact, verticalImpact, image, hRange, vRange);
         }
 
-        public string Type
+        public PortalType Type
         {
             get { return type; }
         }
 
-        public static PortalInfo GetPortalInfoByType(string type)
+        public static PortalInfo GetPortalInfoByType(PortalType type)
         {
             return Program.InfoManager.Portals[type];
         }

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework.Graphics;
@@ -21,7 +15,7 @@ namespace HaCreator.MapEditor.Instance
     {
         private PortalInfo baseInfo;
         private string _pn;
-        private string _pt;
+        private PortalType _pt;
         private string _tn;
         private int _tm;
         private string _script;
@@ -34,29 +28,55 @@ namespace HaCreator.MapEditor.Instance
         private int? _hRange;
         private int? _vRange;
 
-        public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, string pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="baseInfo"></param>
+        /// <param name="board"></param>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="pn">Portal name</param>
+        /// <param name="pt">Portal type</param>
+        /// <param name="tn">Target name</param>
+        /// <param name="tm">To map</param>
+        /// <param name="script"></param>
+        /// <param name="delay"></param>
+        /// <param name="hideTooltip"></param>
+        /// <param name="onlyOnce"></param>
+        /// <param name="horizontalImpact"></param>
+        /// <param name="verticalImpact"></param>
+        /// <param name="image"></param>
+        /// <param name="hRange"></param>
+        /// <param name="vRange"></param>
+        public PortalInstance(PortalInfo baseInfo, Board board, int x, int y, string pn, PortalType pt, string tn, int tm, string script, int? delay, MapleBool hideTooltip, MapleBool onlyOnce, int? horizontalImpact, int? verticalImpact, string image, int? hRange, int? vRange)
             : base(board, x, y, -1)
         {
             this.baseInfo = baseInfo;
-            _pn = pn;
-            _pt = pt;
-            _tn = tn;
-            _tm = tm;
-            _script = script;
-            _delay = delay;
-            _hideTooltip = hideTooltip;
-            _onlyOnce = onlyOnce;
-            _horizontalImpact = horizontalImpact;
-            _verticalImpact = verticalImpact;
-            _image = image;
-            _hRange = hRange;
-            _vRange = vRange;
+            this._pn = pn;
+            this._pt = pt;
+            this._tn = tn;
+            this._tm = tm;
+            this._script = script;
+            this._delay = delay;
+            this._hideTooltip = hideTooltip;
+            this._onlyOnce = onlyOnce;
+            this._horizontalImpact = horizontalImpact;
+            this._verticalImpact = verticalImpact;
+            this._image = image;
+            this._hRange = hRange;
+            this._vRange = vRange;
         }
 
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
         {
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
-            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0f, 0f), SpriteEffects.None, 1f);
+            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, 
+                null, 
+                color, 
+                0f, 
+                new XNA.Vector2(0f, 0f), 
+                SpriteEffects.None, 
+                1f);
             base.Draw(sprite, color, xShift, yShift);
         }
 
@@ -96,6 +116,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// The image number in Map.wz/MapHelper.img/portal/game/(portal type)/(image number)
+        /// </summary>
         public string image
         {
             get { return _image; }
@@ -114,7 +137,10 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
-        public string pt
+        /// <summary>
+        /// The portal type
+        /// </summary>
+        public PortalType pt
         {
             get
             {
@@ -126,6 +152,7 @@ namespace HaCreator.MapEditor.Instance
                 baseInfo = PortalInfo.GetPortalInfoByType(value);
             }
         }
+
 
         public string tn
         {
@@ -139,6 +166,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// To map
+        /// </summary>
         public int tm
         {
             get
@@ -151,6 +181,9 @@ namespace HaCreator.MapEditor.Instance
             }
         }
 
+        /// <summary>
+        /// Portal script
+        /// </summary>
         public string script
         {
             get
@@ -258,7 +291,7 @@ namespace HaCreator.MapEditor.Instance
         {
             base.UpdateSerializedForm(result);
             result.pn = _pn;
-            result.pt = _pt;
+            result.pt = _pt.ToCode();
             result.tn = _tn;
             result.tm = _tm;
             result.script = _script;
@@ -276,7 +309,7 @@ namespace HaCreator.MapEditor.Instance
             : base(board, json)
         {
             _pn = json.pn;
-            _pt = json.pt;
+            _pt = PortalTypeExtensions.FromCode(json.pt);
             _tn = json.tn;
             _tm = json.tm;
             _script = json.script;

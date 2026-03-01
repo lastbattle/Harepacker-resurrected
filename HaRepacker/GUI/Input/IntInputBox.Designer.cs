@@ -29,18 +29,18 @@
         private void InitializeComponent()
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(IntInputBox));
-            this.label1 = new System.Windows.Forms.Label();
+            this.label_name = new System.Windows.Forms.Label();
             this.nameBox = new System.Windows.Forms.TextBox();
             this.okButton = new System.Windows.Forms.Button();
             this.cancelButton = new System.Windows.Forms.Button();
             this.label2 = new System.Windows.Forms.Label();
-            this.valueBox = new IntegerInput();
+            this.valueBox = new HaRepacker.GUI.Input.IntegerInput();
             this.SuspendLayout();
             // 
-            // label1
+            // label_name
             // 
-            resources.ApplyResources(this.label1, "label1");
-            this.label1.Name = "label1";
+            resources.ApplyResources(this.label_name, "label_name");
+            this.label_name.Name = "label_name";
             // 
             // nameBox
             // 
@@ -83,7 +83,7 @@
             this.Controls.Add(this.cancelButton);
             this.Controls.Add(this.okButton);
             this.Controls.Add(this.nameBox);
-            this.Controls.Add(this.label1);
+            this.Controls.Add(this.label_name);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedToolWindow;
             this.Name = "IntInputBox";
             this.KeyPress += new System.Windows.Forms.KeyPressEventHandler(this.nameBox_KeyPress);
@@ -94,7 +94,7 @@
 
         #endregion
 
-        private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.Label label_name;
         private System.Windows.Forms.TextBox nameBox;
         private System.Windows.Forms.Button okButton;
         private System.Windows.Forms.Button cancelButton;

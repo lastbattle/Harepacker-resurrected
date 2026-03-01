@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.MapEditor.Info;
+﻿using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Input;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
@@ -76,7 +70,8 @@ namespace HaCreator.MapEditor.Instance
             }
             set
             {
-                if (flip == value) return;
+                if (flip == value) 
+                    return;
                 flip = value;
                 int xFlipShift = Width - 2 * Origin.X;
                 if (flip) X -= xFlipShift;
@@ -106,7 +101,13 @@ namespace HaCreator.MapEditor.Instance
         public override void Draw(SpriteBatch sprite, XNA.Color color, int xShift, int yShift)
         {
             XNA.Rectangle destinationRectangle = new XNA.Rectangle((int)X + xShift - Origin.X, (int)Y + yShift - Origin.Y, Width, Height);
-            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, null, color, 0f, new XNA.Vector2(0, 0), Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0 /*Layer.LayerNumber / 10f + Z / 1000f*/);
+            
+            sprite.Draw(baseInfo.GetTexture(sprite), destinationRectangle, null, color, 
+                0f, 
+                new XNA.Vector2(0, 0), 
+                Flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 
+                0 /*Layer.LayerNumber / 10f + Z / 1000f*/);
+
             if (ApplicationSettings.InfoMode)
             {
                 int xBase = (int)X + xShift;

@@ -1,14 +1,9 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Drawing;
 using System.Linq;
 using System.Text;
-using System.Drawing;
 using System.Windows.Forms;
 
 namespace HaCreator.CustomControls
@@ -25,6 +20,7 @@ namespace HaCreator.CustomControls
             rect = new Rectangle(new Point(0, 0),new Size(Size.Width - 1, Size.Height - 1));
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public Color Color { get { return color; } set { color = value; brush = new SolidBrush(color); } }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -51,6 +47,7 @@ namespace HaCreator.CustomControls
             // 
             // AlphaColorPicker
             // 
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.MaximumSize = new System.Drawing.Size(16, 16);
             this.MinimumSize = new System.Drawing.Size(16, 16);
             this.Name = "AlphaColorPicker";

@@ -1,9 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaCreator.GUI.InstanceEditor;
 using HaCreator.MapEditor.Input;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -12,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Windows.Forms.Design.AxImporter;
 using XNA = Microsoft.Xna.Framework;
 
 namespace HaCreator.MapEditor.UndoRedo
@@ -140,6 +136,29 @@ namespace HaCreator.MapEditor.UndoRedo
                     IContainsLayerInfo target = (IContainsLayerInfo)ParamC;
                     target.PlatformNumber = zm_old;
                     break;
+                case UndoRedoType.BackgroundPropertiesChanged:
+                    BackgroundInstance bgItem = (BackgroundInstance)item;
+                    BackgroundStateBackup state = (BackgroundStateBackup)ParamA;
+                    bgItem.BaseX = state.BaseX;
+                    bgItem.BaseY = state.BaseY;
+                    bgItem.Z = state.Z;
+                    if (bgItem.front != state.Front)
+                    {
+                        (bgItem.front ? bgItem.Board.BoardItems.FrontBackgrounds : bgItem.Board.BoardItems.BackBackgrounds).Remove(bgItem);
+                        (state.Front ? bgItem.Board.BoardItems.FrontBackgrounds : bgItem.Board.BoardItems.BackBackgrounds).Add(bgItem);
+                        bgItem.front = state.Front;
+                        bgItem.Board.BoardItems.Sort();
+                    }
+                    bgItem.type = state.Type;
+                    bgItem.a = state.A;
+                    bgItem.rx = state.Rx;
+                    bgItem.ry = state.Ry;
+                    bgItem.cx = state.Cx;
+                    bgItem.cy = state.Cy;
+                    bgItem.screenMode = state.ScreenMode;
+                    bgItem.SpineAni = state.SpineAni;
+                    bgItem.SpineRandomStart = state.SpineRandomStart;
+                    break;
             }
         }
 
@@ -179,13 +198,12 @@ namespace HaCreator.MapEditor.UndoRedo
                     break;
                 case UndoRedoType.ItemsLayerChanged:
                 case UndoRedoType.ItemLayerPlatChanged:
-                case UndoRedoType.BackgroundMoved:
                 case UndoRedoType.ItemMoved:
                 case UndoRedoType.MapCenterChanged:
-                case UndoRedoType.ItemZChanged:
                 case UndoRedoType.VRChanged:
                 case UndoRedoType.LayerTSChanged:
                 case UndoRedoType.zMChanged:
+                case UndoRedoType.BackgroundPropertiesChanged: // Add new type
                     object ParamBTemp = ParamB;
                     object ParamATemp = ParamA;
                     ParamA = ParamBTemp;

@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -18,7 +12,7 @@ namespace HaCreator.MapEditor.UndoRedo
     {
         public List<UndoRedoBatch> UndoList = new List<UndoRedoBatch>();
         public List<UndoRedoBatch> RedoList = new List<UndoRedoBatch>();
-        private Board parentBoard;
+        private readonly Board parentBoard;
 
         public UndoRedoManager(Board parentBoard)
         {
@@ -87,6 +81,13 @@ namespace HaCreator.MapEditor.UndoRedo
             return new UndoRedoAction(tt, UndoRedoType.ToolTipUnlinked, ttc, null);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="item"></param>
+        /// <param name="oldPos"></param>
+        /// <param name="newPos"></param>
+        /// <returns></returns>
         public static UndoRedoAction BackgroundMoved(BackgroundInstance item, Point oldPos, Point newPos)
         {
             return new UndoRedoAction(item, UndoRedoType.BackgroundMoved, oldPos, newPos);

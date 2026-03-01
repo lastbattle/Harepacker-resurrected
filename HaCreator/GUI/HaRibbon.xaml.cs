@@ -1,14 +1,10 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using HaCreator.CustomControls;
+﻿using HaCreator.CustomControls;
 using HaCreator.MapEditor;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Text;
@@ -33,6 +29,13 @@ namespace HaCreator.GUI
         public HaRibbon()
         {
             InitializeComponent();
+
+#if DEBUG
+            debugTab.Visibility = Visibility.Visible;
+#else
+            debugTab.Visibility = Visibility.Collapsed;
+#endif
+
             this.PreviewMouseWheel += HaRibbon_PreviewMouseWheel;
         }
 
@@ -53,7 +56,7 @@ namespace HaCreator.GUI
         private int actualLayerIndex = 0;
         private int actualPlatform = 0;
         private int changingIndexCnt = 0;
-        private List<Layer> layers = null;
+        private ReadOnlyCollection<Layer> layers = null;
         private bool hasMinimap = false;
 
         private void Ribbon_Loaded(object sender, RoutedEventArgs e)
@@ -63,6 +66,30 @@ namespace HaCreator.GUI
             {
                 reducedHeight = (int)child.RowDefinitions[0].ActualHeight;
                 child.RowDefinitions[0].Height = new GridLength(0);
+            }
+
+            // Load map simulator resolutions
+            foreach (RenderResolution val in Enum.GetValues(typeof(RenderResolution)))
+            {
+                ComboBoxItem comboBoxItem = new ComboBoxItem
+                {
+                    Tag = val,
+                    Content = RenderResolutionExtensions.ToReadableString(val)
+                };
+
+                comboBox_Resolution.Items.Add(comboBoxItem);
+            }
+            //comboBox_Resolution.DisplayMemberPath = "Content";
+
+            int i = 0;
+            foreach (ComboBoxItem item in comboBox_Resolution.Items)
+            {
+                if ((RenderResolution)item.Tag == UserSettings.SimulateResolution)
+                {
+                    comboBox_Resolution.SelectedIndex = i;
+                    break;
+                }
+                i++;
             }
         }
 
@@ -120,6 +147,40 @@ namespace HaCreator.GUI
             new InputGestureCollection() { });
         public static readonly RoutedUICommand Export = new RoutedUICommand("Export", "Export", typeof(HaRibbon),
             new InputGestureCollection() { });
+        public static readonly RoutedUICommand PhysicsEdit = new RoutedUICommand("PhysicsEdit", "PhysicsEdit", typeof(HaRibbon),
+            new InputGestureCollection() { });
+
+        #region Etc
+        public static readonly RoutedUICommand ShowQuestEditorWindow = new RoutedUICommand("ShowQuestEditorWindow", "ShowQuestEditorWindow", typeof(HaRibbon),
+            new InputGestureCollection() { });
+
+        /// <summary>
+        /// Shows the quest editor window
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ShowQuestEditorWindow_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ShowQuestEditorWindowClicked != null)
+                ShowQuestEditorWindowClicked.Invoke();
+        }
+        #endregion
+
+        #region Debug Items
+        public static readonly RoutedUICommand ShowMapProperties = new RoutedUICommand("ShowMapProperties", "ShowMapProperties", typeof(HaRibbon),
+            new InputGestureCollection() { });
+
+        /// <summary>
+        /// Show map 'info' properties clicked
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void ShowMapProperties_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (ShowMapPropertiesClicked != null)
+                ShowMapPropertiesClicked.Invoke();
+        }
+        #endregion
 
         private void AlwaysExecute(object sender, CanExecuteRoutedEventArgs e)
         {
@@ -133,48 +194,56 @@ namespace HaCreator.GUI
 
         private void New_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (NewClicked != null)
                 NewClicked.Invoke();
         }
 
         private void Open_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (OpenClicked != null)
                 OpenClicked.Invoke();
         }
 
         private void Save_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (SaveClicked != null)
                 SaveClicked.Invoke();
         }
 
         private void Repack_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (RepackClicked != null)
                 RepackClicked.Invoke();
         }
 
         private void About_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (AboutClicked != null)
                 AboutClicked.Invoke();
         }
 
         private void Help_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (HelpClicked != null)
                 HelpClicked.Invoke();
         }
 
         private void Settings_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (SettingsClicked != null)
                 SettingsClicked.Invoke();
         }
 
         private void Exit_Executed(object sender, ExecutedRoutedEventArgs e)
         {
+            // Button events are handled at HaCreatorStateManager.cs
             if (ExitClicked != null)
                 ExitClicked.Invoke();
         }
@@ -182,7 +251,7 @@ namespace HaCreator.GUI
         private void ViewBoxes_Executed(object sender, ExecutedRoutedEventArgs e)
         {
             if (ViewToggled != null)
-                ViewToggled.Invoke(tilesCheck.IsChecked, objsCheck.IsChecked, npcsCheck.IsChecked, mobsCheck.IsChecked, reactCheck.IsChecked, portalCheck.IsChecked, fhCheck.IsChecked, ropeCheck.IsChecked, chairCheck.IsChecked, tooltipCheck.IsChecked, bgCheck.IsChecked, miscCheck.IsChecked);
+                ViewToggled.Invoke(tilesCheck.IsChecked, objsCheck.IsChecked, npcsCheck.IsChecked, mobsCheck.IsChecked, reactCheck.IsChecked, portalCheck.IsChecked, fhCheck.IsChecked, ropeCheck.IsChecked, chairCheck.IsChecked, tooltipCheck.IsChecked, bgCheck.IsChecked, miscCheck.IsChecked, mirrorFieldDataCheck.IsChecked);
         }
 
         private void Minimap_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -244,6 +313,18 @@ namespace HaCreator.GUI
             if (ExportClicked != null)
                 ExportClicked.Invoke();
         }
+
+        /// <summary>
+        /// Edit map physics
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void PhysicsEdit_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            if (MapPhysicsClicked != null)
+                MapPhysicsClicked.Invoke();
+        }
+
 
         #region Layer UI
         private void LayerUp_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -330,20 +411,24 @@ namespace HaCreator.GUI
             actualPlatform = platformBox.SelectedItem == null ? 0 : (int)platformBox.SelectedItem;
         }
 
-        private void UpdateRemoteLayerInfo()
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="tileSet">The tileSet name</param>
+        private void UpdateRemoteLayerInfo(string tileSet)
         {
             if (LayerViewChanged != null)
-                LayerViewChanged.Invoke(actualLayerIndex, actualPlatform, layerCheckbox.IsChecked.Value, (layerCheckbox.IsChecked.Value || platformCheckbox.IsChecked.Value));
+                LayerViewChanged.Invoke(actualLayerIndex, actualPlatform, layerCheckbox.IsChecked.Value, (layerCheckbox.IsChecked.Value || platformCheckbox.IsChecked.Value), tileSet);
         }
 
         private void AllLayerView_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            UpdateRemoteLayerInfo();
+            UpdateRemoteLayerInfo(null);
         }
 
         private void AllPlatformView_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            UpdateRemoteLayerInfo();
+            UpdateRemoteLayerInfo(null);
         }
 
         private void LoadPlatformsForLayer(SortedSet<int> zms)
@@ -364,9 +449,13 @@ namespace HaCreator.GUI
         {
             if (!isInternal)
             {
-                LoadPlatformsForLayer(layers[layerBox.SelectedIndex].zMList);
+                Layer layer = layers[layerBox.SelectedIndex];
+                var zmList = layer.zMList;
+                string tileSet = layer.tS;
+
+                LoadPlatformsForLayer(zmList);
                 UpdateLocalLayerInfo();
-                UpdateRemoteLayerInfo();
+                UpdateRemoteLayerInfo(tileSet);
             }
         }
 
@@ -375,7 +464,7 @@ namespace HaCreator.GUI
             if (!isInternal)
             {
                 UpdateLocalLayerInfo();
-                UpdateRemoteLayerInfo();
+                UpdateRemoteLayerInfo(null);
             }
         }
 
@@ -401,7 +490,7 @@ namespace HaCreator.GUI
             endInternalEditing();
         }
 
-        public void SetLayers(List<Layer> layers)
+        public void SetLayers(ReadOnlyCollection<Layer> layers)
         {
             beginInternalEditing();
 
@@ -427,12 +516,12 @@ namespace HaCreator.GUI
             endInternalEditing();
         }
 
-        #endregion
+#endregion
 
         public delegate void EmptyEvent();
-        public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc);
+        public delegate void ViewToggleEvent(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc, bool? mirrorField);
         public delegate void ToggleEvent(bool pressed);
-        public delegate void LayerViewChangedEvent(int layer, int platform, bool allLayers, bool allPlats);
+        public delegate void LayerViewChangedEvent(int layer, int platform, bool allLayers, bool allPlats, string tileSet);
 
         public event EmptyEvent NewClicked;
         public event EmptyEvent OpenClicked;
@@ -456,9 +545,12 @@ namespace HaCreator.GUI
         public event EmptyEvent ExportClicked;
         public event EmptyEvent NewPlatformClicked;
         public event EmptyEvent UserObjsClicked;
+        public event EmptyEvent MapPhysicsClicked;
+        public event EmptyEvent ShowQuestEditorWindowClicked;
+        public event EmptyEvent ShowMapPropertiesClicked;
         public event EventHandler<System.Windows.Forms.KeyEventArgs> RibbonKeyDown;
 
-        public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc)
+        public void SetVisibilityCheckboxes(bool? tiles, bool? objs, bool? npcs, bool? mobs, bool? reactors, bool? portals, bool? footholds, bool? ropes, bool? chairs, bool? tooltips, bool? backgrounds, bool? misc, bool? mirrorField)
         {
             tilesCheck.IsChecked = tiles;
             objsCheck.IsChecked = objs;
@@ -472,13 +564,13 @@ namespace HaCreator.GUI
             tooltipCheck.IsChecked = tooltips;
             bgCheck.IsChecked = backgrounds;
             miscCheck.IsChecked = misc;
+            mirrorFieldDataCheck.IsChecked = mirrorField;
         }
 
         public void SetEnabled(bool enabled)
         {
             viewTab.IsEnabled = enabled;
             toolsTab.IsEnabled = enabled;
-            statTab.IsEnabled = enabled;
             saveBtn.IsEnabled = enabled;
             exportBtn.IsEnabled = enabled;
             //resetLayerBoxIfNeeded();
@@ -493,17 +585,6 @@ namespace HaCreator.GUI
             infomodeBtn.IsChecked = infomode;
         }
 
-        public void SetMousePos(int virtualX, int virtualY, int physicalX, int physicalY)
-        {
-            this.virtualPos.Text = "X: " + virtualX.ToString() + "\nY: " + virtualY.ToString();
-            this.physicalPos.Text = "X: " + physicalX.ToString() + "\nY: " + physicalY.ToString();
-        }
-
-        public void SetItemDesc(string desc)
-        {
-            itemDesc.Text = desc;
-        }
-
         public void SetHasMinimap(bool hasMinimap)
         {
             this.hasMinimap = hasMinimap;
@@ -512,7 +593,7 @@ namespace HaCreator.GUI
         
         private void ChangeAllCheckboxes(bool? state)
         {
-            foreach (CheckBox cb in new CheckBox[] { tilesCheck, objsCheck, npcsCheck, mobsCheck, reactCheck, portalCheck, fhCheck, ropeCheck, chairCheck, tooltipCheck, bgCheck, miscCheck })
+            foreach (CheckBox cb in new CheckBox[] { tilesCheck, objsCheck, npcsCheck, mobsCheck, reactCheck, portalCheck, fhCheck, ropeCheck, chairCheck, tooltipCheck, bgCheck, miscCheck, mirrorFieldDataCheck })
             {
                 cb.IsChecked = state;
             }
@@ -541,6 +622,20 @@ namespace HaCreator.GUI
             {
                 RibbonKeyDown.Invoke(this, new System.Windows.Forms.KeyEventArgs((System.Windows.Forms.Keys)KeyInterop.VirtualKeyFromKey(e.Key)));
             }
+        }
+
+        /// <summary>
+        /// On simulator preview resolution changed
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void comboBox_Resolution_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (comboBox_Resolution.SelectedItem == null)
+                return;
+
+            RenderResolution selectedItem = (RenderResolution) (comboBox_Resolution.SelectedItem as ComboBoxItem).Tag;
+            UserSettings.SimulateResolution = selectedItem;  // combo box selection. 800x600, 1024x768, 1280x720, 1920x1080
         }
     }
 }

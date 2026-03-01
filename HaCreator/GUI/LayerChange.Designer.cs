@@ -58,6 +58,7 @@
             // 
             // layerBox
             // 
+            this.layerBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.layerBox.FormattingEnabled = true;
             this.layerBox.Location = new System.Drawing.Point(52, 12);
             this.layerBox.Name = "layerBox";
@@ -79,7 +80,7 @@
             this.label2.AutoSize = true;
             this.label2.Location = new System.Drawing.Point(24, 42);
             this.label2.Name = "label2";
-            this.label2.Size = new System.Drawing.Size(21, 13);
+            this.label2.Size = new System.Drawing.Size(22, 13);
             this.label2.TabIndex = 11;
             this.label2.Text = "zM";
             // 
@@ -93,8 +94,8 @@
             // 
             // LayerChange
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.ClientSize = new System.Drawing.Size(179, 104);
             this.Controls.Add(this.zmBox);
             this.Controls.Add(this.label2);

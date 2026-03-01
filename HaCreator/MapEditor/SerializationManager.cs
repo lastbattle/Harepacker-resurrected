@@ -1,12 +1,7 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-//#define SPEEDTEST
+﻿//#define SPEEDTEST
 
 using HaCreator.Collections;
+using HaCreator.GUI;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -148,7 +143,7 @@ namespace HaCreator.MapEditor
                 item.AddToBoard(null);
             }
             board.RegenerateMinimap();
-            board.TabPage.Text = board.MapInfo.strMapName;
+            ((TabItemContainer)board.TabPage.Tag).Text = board.MapInfo.strMapName;
             foreach (Layer l in board.Layers)
             {
                 l.RecheckTileSet();

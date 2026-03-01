@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2020 LastBattle
-* https://github.com/lastbattle/Harepacker-resurrected
-* 
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+﻿using HaRepacker.GUI.Controls;
 using HaRepacker.Utils;
 using System;
 using System.Collections.Generic;
@@ -22,15 +16,15 @@ namespace HaRepacker.Converter
 	/// </summary>
     public class VectorOriginPointFToMarginConverter : IValueConverter
 	{
-		private float fCrossHairWidthHeight = 10f / 2f;
+		private readonly float fCrossHairWidthHeight = 10f / 2f;
 
 		public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
 		{
-			PointF originValue = (PointF)value;
+			NotifyPointF originValue = (NotifyPointF)value;
 
 			// converted
 			// its always -50, as it is 50px wide, as specified in the xaml
-			Thickness margin = new Thickness((originValue.X) / ScreenDPI.GetScreenScaleFactor(), (originValue.Y - fCrossHairWidthHeight) / ScreenDPI.GetScreenScaleFactor(), 0, 0); // 20,75
+			Thickness margin = new Thickness((originValue.X) / ScreenDPIUtil.GetScreenScaleFactor(), (originValue.Y - fCrossHairWidthHeight) / ScreenDPIUtil.GetScreenScaleFactor(), 0, 0); // 20,75
 
 
 			return margin;
@@ -41,7 +35,7 @@ namespace HaRepacker.Converter
 			Thickness value_ = (Thickness)value;
 
 			// converted
-			PointF originValue = new PointF((float) ((value_.Left) * ScreenDPI.GetScreenScaleFactor()), (float) ((value_.Top + fCrossHairWidthHeight) *  ScreenDPI.GetScreenScaleFactor()));
+			PointF originValue = new NotifyPointF((float) ((value_.Left) * ScreenDPIUtil.GetScreenScaleFactor()), (float) ((value_.Top + fCrossHairWidthHeight) * ScreenDPIUtil.GetScreenScaleFactor()));
 			return originValue;
 		}
 	}

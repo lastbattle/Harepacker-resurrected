@@ -1,10 +1,4 @@
-﻿/* Copyright (C) 2015 haha01haha01
-
-* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,6 +9,9 @@ using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
+using MapleLib.WzLib.WzStructure;
+using HaSharedLibrary.Render.DX;
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.Collections
 {
@@ -38,16 +35,51 @@ namespace HaCreator.Collections
         public MapleList<BoardItem> MiscItems = new MapleList<BoardItem>(ItemTypes.Misc, true);
         public MapleList<MapleDot> SpecialDots = new MapleList<MapleDot>(ItemTypes.Misc, true);
 
+        public MapleList<MirrorFieldData> MirrorFieldDatas = new MapleList<MirrorFieldData>(ItemTypes.MirrorFieldData, true);
+        /// <summary>
+        /// Checks if a BaseDXDrawableItem is within any of the MirrorFieldData in the field.
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <param name="filter_objectForOverlay"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public MirrorFieldData CheckObjectWithinMirrorFieldDataBoundary(int x, int y, MirrorFieldDataType filter_objectForOverlay)
+        {
+            if (MirrorFieldDatas.Count == 0)
+                return null;
+
+            Microsoft.Xna.Framework.Point pos = new Microsoft.Xna.Framework.Point(x, y - 60);
+            MirrorFieldData reflectionBoundaryWithin = MirrorFieldDatas.FirstOrDefault(
+                mirror =>
+                {
+                    return mirror.Rectangle.Contains(pos) && mirror.MirrorFieldDataType == filter_objectForOverlay;
+                });
+
+            if (reflectionBoundaryWithin != null)
+                return reflectionBoundaryWithin;
+            return null;
+        }
+
+        /// <summary>
+        /// Map info
+        /// </summary>
+        public MapInfo MapInfo { get { return board.MapInfo; } }
+
         public List<Rope> Ropes = new List<Rope>();
         public IMapleList[] AllItemLists;
         public BoardItemsCollection Items;
         public MapleLinesCollection Lines;
 
-        private Board board;
+        private readonly Board board;
 
         public BoardItemsManager(Board board)
         {
-            AllItemLists = new IMapleList[] { BackBackgrounds, TileObjs, Mobs, NPCs, Reactors, Portals, FrontBackgrounds, FootholdLines, RopeLines, FHAnchors, RopeAnchors, Chairs, CharacterToolTips, ToolTips, ToolTipDots, MiscItems, SpecialDots };
+            AllItemLists = new IMapleList[] 
+            { 
+                BackBackgrounds, TileObjs, Mobs, NPCs, Reactors, Portals, FrontBackgrounds, FootholdLines, RopeLines, FHAnchors, 
+                RopeAnchors, Chairs, CharacterToolTips, ToolTips, ToolTipDots, MiscItems, SpecialDots, MirrorFieldDatas 
+            };
             this.board = board;
             Items = new BoardItemsCollection(this, true);
             Lines = new MapleLinesCollection(this, false);
@@ -112,15 +144,15 @@ namespace HaCreator.Collections
                     if (sort) 
                         Sort();
                 }
-                else if (item is BackgroundInstance)
+                else if (item is BackgroundInstance instance)
                 {
-                    if (((BackgroundInstance)item).front)
+                    if (instance.front)
                     {
-                        FrontBackgrounds.Add((BackgroundInstance)item);
+                        FrontBackgrounds.Add(instance);
                     }
                     else
                     {
-                        BackBackgrounds.Add((BackgroundInstance)item);
+                        BackBackgrounds.Add(instance);
                     }
                     if (sort) 
                         Sort();

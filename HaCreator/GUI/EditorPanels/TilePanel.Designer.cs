@@ -1,4 +1,6 @@
-﻿namespace HaCreator.GUI.EditorPanels
+﻿using HaCreator.CustomControls;
+
+namespace HaCreator.GUI.EditorPanels
 {
     partial class TilePanel
     {
@@ -32,7 +34,7 @@
             this.splitContainer2 = new System.Windows.Forms.SplitContainer();
             this.tileBrowse = new System.Windows.Forms.Button();
             this.tileSetList = new System.Windows.Forms.ListBox();
-            this.tileImagesContainer = new HaCreator.ThirdParty.ThumbnailFlowLayoutPanel();
+            this.tileImagesContainer = new ThumbnailFlowLayoutPanel();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
@@ -57,8 +59,8 @@
             // splitContainer1.Panel2
             // 
             this.splitContainer1.Panel2.Controls.Add(this.tileImagesContainer);
-            this.splitContainer1.Size = new System.Drawing.Size(284, 540);
-            this.splitContainer1.SplitterDistance = 151;
+            this.splitContainer1.Size = new System.Drawing.Size(284, 658);
+            this.splitContainer1.SplitterDistance = 183;
             this.splitContainer1.TabIndex = 3;
             // 
             // splitContainer2
@@ -75,8 +77,8 @@
             // splitContainer2.Panel2
             // 
             this.splitContainer2.Panel2.Controls.Add(this.tileSetList);
-            this.splitContainer2.Size = new System.Drawing.Size(284, 151);
-            this.splitContainer2.SplitterDistance = 35;
+            this.splitContainer2.Size = new System.Drawing.Size(284, 183);
+            this.splitContainer2.SplitterDistance = 42;
             this.splitContainer2.TabIndex = 1;
             // 
             // tileBrowse
@@ -84,7 +86,7 @@
             this.tileBrowse.Dock = System.Windows.Forms.DockStyle.Fill;
             this.tileBrowse.Location = new System.Drawing.Point(0, 0);
             this.tileBrowse.Name = "tileBrowse";
-            this.tileBrowse.Size = new System.Drawing.Size(284, 35);
+            this.tileBrowse.Size = new System.Drawing.Size(284, 42);
             this.tileBrowse.TabIndex = 0;
             this.tileBrowse.Text = "Browse...";
             this.tileBrowse.UseVisualStyleBackColor = true;
@@ -96,7 +98,7 @@
             this.tileSetList.FormattingEnabled = true;
             this.tileSetList.Location = new System.Drawing.Point(0, 0);
             this.tileSetList.Name = "tileSetList";
-            this.tileSetList.Size = new System.Drawing.Size(284, 112);
+            this.tileSetList.Size = new System.Drawing.Size(284, 137);
             this.tileSetList.TabIndex = 0;
             this.tileSetList.SelectedIndexChanged += new System.EventHandler(this.tileSetList_SelectedIndexChanged);
             // 
@@ -105,23 +107,21 @@
             this.tileImagesContainer.AutoScroll = true;
             this.tileImagesContainer.BackColor = System.Drawing.Color.White;
             this.tileImagesContainer.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.tileImagesContainer.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
             this.tileImagesContainer.Location = new System.Drawing.Point(0, 0);
             this.tileImagesContainer.Name = "tileImagesContainer";
-            this.tileImagesContainer.Size = new System.Drawing.Size(284, 385);
+            this.tileImagesContainer.Size = new System.Drawing.Size(284, 471);
             this.tileImagesContainer.TabIndex = 0;
+            this.tileImagesContainer.WrapContents = false;
             // 
             // TilePanel
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(284, 540);
-            this.CloseButton = false;
-            this.CloseButtonVisible = false;
+            this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Dpi;
             this.Controls.Add(this.splitContainer1);
-            this.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(177)));
+            this.Font = new System.Drawing.Font("Segoe UI", 8.25F);
             this.Name = "TilePanel";
-            this.ShowIcon = false;
-            this.Text = "Tiles";
+            this.Size = new System.Drawing.Size(284, 658);
             this.splitContainer1.Panel1.ResumeLayout(false);
             this.splitContainer1.Panel2.ResumeLayout(false);
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).EndInit();
@@ -140,10 +140,6 @@
         private System.Windows.Forms.SplitContainer splitContainer2;
         private System.Windows.Forms.Button tileBrowse;
         private System.Windows.Forms.ListBox tileSetList;
-        private ThirdParty.ThumbnailFlowLayoutPanel tileImagesContainer;
-
-
-
-
+        private ThumbnailFlowLayoutPanel tileImagesContainer;
     }
 }

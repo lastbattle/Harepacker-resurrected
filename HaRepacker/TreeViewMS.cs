@@ -1,8 +1,4 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
-* License, v. 2.0. If a copy of the MPL was not distributed with this
-* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-using System;
+﻿using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Drawing;
@@ -31,7 +27,8 @@ namespace HaRepacker
 			base.OnPaint(pe);
 		}
 
-		public ArrayList SelectedNodes
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public ArrayList SelectedNodes
 		{
 			get
 			{
@@ -234,7 +231,7 @@ namespace HaRepacker
 
                 WzNode node = (WzNode)n;
                 if (node.IsWzObjectAddedManually)
-                    n.ForeColor = WzNode.NewObjectForeColor;
+                    n.ForeColor = WzNode.CHANGED_NODE_FOREGROUND_COLOR;
                 else
                     n.ForeColor = fore;
 			}
