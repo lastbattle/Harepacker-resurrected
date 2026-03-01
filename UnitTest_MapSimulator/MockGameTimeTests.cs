@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Core;
 using System;
 using Xunit;
 
