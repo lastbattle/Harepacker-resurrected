@@ -13,7 +13,9 @@ namespace HaCreator.MapEditor.AI
     /// </summary>
     public static class OpenCodeToolGenerator
     {
-        private const string TOOL_IMPORT = "@opencode-ai/plugin/tool";
+        private const string TOOL_IMPORT = "@opencode-ai/plugin";
+        private const string GENERATOR_SIGNATURE = "OpenCodeToolGenerator:v2";
+        private const string OPENCODE_PLUGIN_VERSION = "latest";
 
         /// <summary>
         /// Generate all TypeScript tool files to the specified directory.
@@ -26,6 +28,8 @@ namespace HaCreator.MapEditor.AI
             {
                 Directory.CreateDirectory(outputDir);
             }
+
+            EnsureWorkspaceFiles(outputDir);
 
             // Generate the bridge file first
             GenerateBridgeFile(outputDir);
@@ -48,6 +52,71 @@ namespace HaCreator.MapEditor.AI
             }
 
             return count;
+        }
+
+        private static void EnsureWorkspaceFiles(string toolOutputDir)
+        {
+            var normalizedToolDir = Path.GetFullPath(toolOutputDir);
+            var workspaceDir = Directory.GetParent(normalizedToolDir)?.FullName;
+            if (string.IsNullOrWhiteSpace(workspaceDir))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(workspaceDir);
+
+            var gitignorePath = Path.Combine(workspaceDir, ".gitignore");
+            if (!File.Exists(gitignorePath))
+            {
+                File.WriteAllText(
+                    gitignorePath,
+                    "node_modules" + Environment.NewLine +
+                    "package.json" + Environment.NewLine +
+                    "bun.lock" + Environment.NewLine +
+                    ".gitignore" + Environment.NewLine,
+                    Encoding.UTF8);
+            }
+
+            var packageJsonPath = Path.Combine(workspaceDir, "package.json");
+            JObject packageJson;
+
+            if (File.Exists(packageJsonPath))
+            {
+                try
+                {
+                    packageJson = JObject.Parse(File.ReadAllText(packageJsonPath));
+                }
+                catch
+                {
+                    packageJson = new JObject();
+                }
+            }
+            else
+            {
+                packageJson = new JObject();
+            }
+
+            var dependencies = packageJson["dependencies"] as JObject ?? new JObject();
+            dependencies["@opencode-ai/plugin"] = OPENCODE_PLUGIN_VERSION;
+            packageJson["dependencies"] = dependencies;
+
+            File.WriteAllText(packageJsonPath, packageJson.ToString(Newtonsoft.Json.Formatting.Indented), Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Ensure the .opencode workspace files (package.json/.gitignore) exist for a project root.
+        /// </summary>
+        public static void EnsureWorkspaceScaffold(string projectRoot = null)
+        {
+            var root = ResolveProjectRoot(projectRoot);
+            var toolDir = Path.Combine(root, ".opencode", "tool");
+
+            if (!Directory.Exists(toolDir))
+            {
+                Directory.CreateDirectory(toolDir);
+            }
+
+            EnsureWorkspaceFiles(toolDir);
         }
 
         /// <summary>
@@ -318,29 +387,112 @@ export async function callHarepacker(toolName: string, args: Record<string, any>
         }
 
         /// <summary>
-        /// Find the project root based on executable location.
+        /// Resolve the OpenCode project root.
+        /// Prefers repo root (.sln/.git) and source folders over bin output folders.
+        /// </summary>
+        public static string ResolveProjectRoot(string preferredRoot = null)
+        {
+            if (!string.IsNullOrWhiteSpace(preferredRoot))
+            {
+                var expandedPreferred = Environment.ExpandEnvironmentVariables(preferredRoot.Trim());
+                var resolvedFromPreferred = ResolveProjectRootFromDirectory(expandedPreferred);
+                if (!string.IsNullOrWhiteSpace(resolvedFromPreferred))
+                {
+                    return resolvedFromPreferred;
+                }
+
+                return Path.GetFullPath(expandedPreferred);
+            }
+
+            var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            var exeDir = Path.GetDirectoryName(exePath);
+            var currentDir = string.IsNullOrWhiteSpace(exeDir) ? Directory.GetCurrentDirectory() : exeDir;
+            var resolved = ResolveProjectRootFromDirectory(currentDir);
+            return !string.IsNullOrWhiteSpace(resolved) ? resolved : currentDir;
+        }
+
+        private static string ResolveProjectRootFromDirectory(string startPath)
+        {
+            if (string.IsNullOrWhiteSpace(startPath))
+            {
+                return null;
+            }
+
+            DirectoryInfo dir;
+            try
+            {
+                var normalized = Path.GetFullPath(startPath);
+                if (File.Exists(normalized))
+                {
+                    dir = new FileInfo(normalized).Directory;
+                }
+                else
+                {
+                    dir = new DirectoryInfo(normalized);
+                    if (!dir.Exists)
+                    {
+                        dir = dir.Parent;
+                    }
+                }
+            }
+            catch
+            {
+                return null;
+            }
+
+            if (dir == null)
+            {
+                return null;
+            }
+
+            string firstProjectCandidate = null;
+            string openCodeWorkspaceCandidate = null;
+
+            while (dir != null)
+            {
+                // Prefer solution/git root if found.
+                if (File.Exists(Path.Combine(dir.FullName, "MapleHaSuite.sln")) ||
+                    Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                {
+                    return dir.FullName;
+                }
+
+                // Keep HaCreator folder as a fallback candidate if source tree is available.
+                if (firstProjectCandidate == null &&
+                    File.Exists(Path.Combine(dir.FullName, "HaCreator.csproj")))
+                {
+                    firstProjectCandidate = dir.FullName;
+                }
+
+                // Keep closest existing .opencode as a low-priority fallback.
+                if (openCodeWorkspaceCandidate == null &&
+                    Directory.Exists(Path.Combine(dir.FullName, ".opencode")))
+                {
+                    openCodeWorkspaceCandidate = dir.FullName;
+                }
+
+                dir = dir.Parent;
+            }
+
+            if (!string.IsNullOrWhiteSpace(firstProjectCandidate))
+            {
+                return firstProjectCandidate;
+            }
+
+            if (!string.IsNullOrWhiteSpace(openCodeWorkspaceCandidate))
+            {
+                return openCodeWorkspaceCandidate;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Find project root for tool generation.
         /// </summary>
         private static string FindProjectRoot()
         {
-            // Use the directory where HaCreator.exe is located
-            var exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            var exeDir = Path.GetDirectoryName(exePath);
-
-            // If running from bin/Debug or bin/Release, go up to find the actual project
-            if (!string.IsNullOrEmpty(exeDir))
-            {
-                // Check if .opencode exists here first
-                if (Directory.Exists(Path.Combine(exeDir, ".opencode")))
-                {
-                    return exeDir;
-                }
-
-                // Otherwise just use the exe directory (will create .opencode there)
-                return exeDir;
-            }
-
-            // Fallback to current directory
-            return Directory.GetCurrentDirectory();
+            return ResolveProjectRoot(null);
         }
 
         /// <summary>
@@ -399,10 +551,11 @@ export async function callHarepacker(toolName: string, args: Record<string, any>
             {
                 var tools = MapEditorFunctions.GetToolDefinitions();
                 var json = tools.ToString(Newtonsoft.Json.Formatting.None);
+                var payload = $"{GENERATOR_SIGNATURE}|{TOOL_IMPORT}|{json}";
 
                 using (var sha = System.Security.Cryptography.SHA256.Create())
                 {
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(payload);
                     var hash = sha.ComputeHash(bytes);
                     return Convert.ToBase64String(hash).Substring(0, 16);
                 }
