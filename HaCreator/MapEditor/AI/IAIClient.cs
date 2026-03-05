@@ -69,7 +69,8 @@ namespace HaCreator.MapEditor.AI
                         AISettings.OpenCodeHost,
                         AISettings.OpenCodePort,
                         AISettings.OpenCodeModel,
-                        AISettings.OpenCodeAutoStart);
+                        AISettings.OpenCodeAutoStart,
+                        AISettings.OpenCodeReasoningEffort);
 
                 case AIProvider.OpenRouter:
                 default:
@@ -90,9 +91,9 @@ namespace HaCreator.MapEditor.AI
         /// <summary>
         /// Create an OpenCode client with explicit configuration
         /// </summary>
-        public static IAIClient CreateOpenCode(string host, int port, string model = null, bool autoStart = true)
+        public static IAIClient CreateOpenCode(string host, int port, string model = null, bool autoStart = true, string reasoningEffort = null)
         {
-            return new OpenCodeClient(host, port, model, autoStart);
+            return new OpenCodeClient(host, port, model, autoStart, reasoningEffort);
         }
 
         /// <summary>
