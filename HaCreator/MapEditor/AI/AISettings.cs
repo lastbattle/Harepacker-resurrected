@@ -120,6 +120,8 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableModels = new[]
         {
             DEFAULT_MODEL,
+            "google/gemini-3.1-flash-lite-preview",
+            "google/gemini-3.1-pro-preview",
             "google/gemini-3-pro-preview",
             "openai/gpt-5.2",
             "anthropic/claude-sonnet-4.5",
