@@ -189,7 +189,9 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableOpenCodeModels = new[]
         {
             DEFAULT_OPENCODE_MODEL,
-            "claude-opus-4-5-20251101"
+            "claude-opus-4-5-20251101",
+            "openai/gpt-5.3-codex",
+            "openai/gpt-5.2"
         };
 
         /// <summary>
