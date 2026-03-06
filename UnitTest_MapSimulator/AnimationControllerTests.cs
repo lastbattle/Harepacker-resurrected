@@ -1,5 +1,4 @@
-using HaCreator.MapSimulator;
-using HaCreator.MapSimulator.Objects.FieldObject;
+using HaCreator.MapSimulator.Animation;
 using HaSharedLibrary.Render.DX;
 using Moq;
 using System.Collections.Generic;

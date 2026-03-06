@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.AI;
 using Xunit;
 
 namespace UnitTest_MapSimulator
@@ -11,7 +11,7 @@ namespace UnitTest_MapSimulator
         private MobAI CreateDefaultMobAI()
         {
             var ai = new MobAI();
-            ai.Initialize(maxHp: 100, level: 10, exp: 50, isBoss: false, isUndead: false);
+            ai.Initialize(maxHp: 100, level: 10, exp: 50, isBoss: false, isUndead: false, autoAggro: true);
             ai.SetAggroRange(200);
             ai.SetAttackRange(50);
             ai.AddAttack(1, "attack1", damage: 10, range: 50, cooldown: 1000);
@@ -124,7 +124,7 @@ namespace UnitTest_MapSimulator
         public void Boss_HasIncreasedAggroRange()
         {
             var ai = new MobAI();
-            ai.Initialize(maxHp: 1000, level: 50, exp: 500, isBoss: true, isUndead: false);
+            ai.Initialize(maxHp: 1000, level: 50, exp: 500, isBoss: true, isUndead: false, autoAggro: true);
             ai.SetAggroRange(400);
 
             ai.Update(1000, 100, 100, 400, 100);
