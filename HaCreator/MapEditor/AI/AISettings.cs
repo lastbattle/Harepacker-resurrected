@@ -127,7 +127,7 @@ namespace HaCreator.MapEditor.AI
             "google/gemini-3.1-pro-preview",
             "google/gemini-3-pro-preview",
             "openai/gpt-5.3-codex",
-            "openai/gpt-5.2",
+            "openai/gpt-5.4",
             "anthropic/claude-sonnet-4.5",
             "anthropic/claude-opus-4.5"
         };
@@ -194,6 +194,7 @@ namespace HaCreator.MapEditor.AI
         {
             DEFAULT_OPENCODE_MODEL,
             "claude-opus-4-5-20251101",
+            "openai/gpt-5.4",
             "openai/gpt-5.3-codex",
             "openai/gpt-5.2"
         };
