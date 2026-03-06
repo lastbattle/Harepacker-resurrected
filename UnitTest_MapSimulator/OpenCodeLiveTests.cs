@@ -69,6 +69,108 @@ namespace UnitTest_MapSimulator
             }
         }
 
+        [Fact]
+        public async Task Live_OpenCodeRunWithTools_InvokesRegisteredProjectTool()
+        {
+            if (!IsLiveTestEnabled())
+            {
+                return;
+            }
+
+            var model = Environment.GetEnvironmentVariable("OPENCODE_LIVE_MODEL");
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                model = "openai/gpt-5.3-codex";
+            }
+
+            var client = new OpenCodeClient(
+                host: "127.0.0.1",
+                port: 4096,
+                model: model,
+                autoStart: true,
+                reasoningEffort: "medium");
+
+            try
+            {
+                await client.EnsureServerAsync();
+                OpenCodeClient.ClearCollectedCommands();
+
+                var result = await client.RunWithToolsAsync(
+                    text: "Use remove_element exactly once with element_type='mob' x=10 y=20. After the tool returns, reply with done.",
+                    tools: MapEditorFunctions.GetToolDefinitions(),
+                    toolExecutor: (name, args) =>
+                    {
+                        return new JObject
+                        {
+                            ["unexpected_local_tool_executor"] = name
+                        };
+                    },
+                    systemPrompt: "You are running a tool invocation smoke test. You must use the provided tool when the user explicitly asks for a specific map edit action.",
+                    sessionTitle: "tool-smoke-test",
+                    maxIterations: 4,
+                    reasoningEffort: "low");
+
+                Assert.True(result.Success, result.Error ?? "OpenCode RunWithToolsAsync failed.");
+                Assert.NotNull(result.ToolCallsMade);
+                Assert.NotEmpty(result.ToolCallsMade);
+
+                var toolCall = Assert.Single(result.ToolCallsMade.Where(call => call.Name == "remove_element"));
+                Assert.False(toolCall.IsError);
+                Assert.Equal("mob", toolCall.Arguments["element_type"]?.ToString());
+                Assert.Equal("10", toolCall.Arguments["x"]?.ToString());
+                Assert.Equal("20", toolCall.Arguments["y"]?.ToString());
+                Assert.Contains("DELETE MOB at (10, 20)", OpenCodeClient.GetCollectedCommands());
+            }
+            finally
+            {
+                OpenCodeClient.StopServer();
+            }
+        }
+
+        [Fact]
+        public async Task Live_OpenCodeProcessInstructions_ReturnsServerSideCommand()
+        {
+            if (!IsLiveTestEnabled())
+            {
+                return;
+            }
+
+            var model = Environment.GetEnvironmentVariable("OPENCODE_LIVE_MODEL");
+            if (string.IsNullOrWhiteSpace(model))
+            {
+                model = "openai/gpt-5.3-codex";
+            }
+
+            var client = new OpenCodeClient(
+                host: "127.0.0.1",
+                port: 4096,
+                model: model,
+                autoStart: true,
+                reasoningEffort: "medium");
+
+            try
+            {
+                await client.EnsureServerAsync();
+
+                var mapContext =
+                    "# Map Summary" + Environment.NewLine +
+                    "Map: TestMap" + Environment.NewLine +
+                    "Content Bounds: X=[0 to 1000], Y=[0 to 1000]" + Environment.NewLine +
+                    "## Mobs" + Environment.NewLine +
+                    "- Mob at x=10, y=20";
+
+                var result = await client.ProcessInstructionsAsync(
+                    mapContext,
+                    "Remove the mob at x 10 y 20.");
+
+                Assert.Contains("DELETE MOB at (10, 20)", result);
+            }
+            finally
+            {
+                OpenCodeClient.StopServer();
+            }
+        }
+
         private static bool IsLiveTestEnabled()
         {
             var value = Environment.GetEnvironmentVariable("RUN_OPENCODE_LIVE_TEST");

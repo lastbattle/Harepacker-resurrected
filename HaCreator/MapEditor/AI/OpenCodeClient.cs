@@ -948,146 +948,142 @@ namespace HaCreator.MapEditor.AI
         /// </summary>
         public async Task<string> ProcessInstructionsAsync(string mapContext, string userInstructions)
         {
-            // Ensure OpenCode server is running (auto-start if needed)
             await EnsureServerAsync();
-
-            // Ensure AI Tool Server is running (handles callbacks from OpenCode's server-side tools)
             StartToolServer();
-
-            // Reset query tracker for this conversation
             _calledQueryFunctions.Clear();
+            ClearCollectedCommands();
 
-            // Create a session for this conversation
-            var session = await CreateSessionAsync("map-editor");
-            if (session == null || !session.ContainsKey("id"))
+            var systemPrompt = MapEditorPromptBuilder.LoadSystemPrompt();
+            var userMessage = MapEditorPromptBuilder.BuildUserMessage(mapContext, userInstructions);
+            var tools = MapEditorFunctions.GetToolDefinitions();
+            var localCommands = new List<string>();
+
+            Debug.WriteLine($"[OpenCode] User instructions: {userInstructions}");
+
+            var result = await RunWithToolsAsync(
+                text: userMessage,
+                tools: tools,
+                toolExecutor: (name, args) => ExecuteToolForProcessInstructions(name, args, localCommands),
+                systemPrompt: systemPrompt,
+                sessionTitle: "map-editor",
+                maxIterations: 40,
+                reasoningEffort: defaultReasoningEffort);
+
+            if (!result.Success)
             {
-                throw new Exception("Failed to create OpenCode session");
+                throw new Exception(result.Error ?? "OpenCode RunWithToolsAsync failed.");
             }
 
-            var sessionId = session["id"].ToString();
+            var allCommands = new List<string>();
+            AddUniqueCommands(allCommands, localCommands);
+            AddUniqueCommands(allCommands, GetCollectedCommands());
 
-            try
+            if (allCommands.Count == 0 && result.ToolCallsMade != null)
             {
-                var systemPrompt = MapEditorPromptBuilder.LoadSystemPrompt();
-                var userMessage = MapEditorPromptBuilder.BuildUserMessage(mapContext, userInstructions);
-                var tools = AIToolConverter.ToSimpleFormat(MapEditorFunctions.GetToolDefinitions());
-
-                Debug.WriteLine($"[OpenCode] User instructions: {userInstructions}");
-                Debug.WriteLine($"[OpenCode] Tools count: {tools.Count}");
-
-                var allCommands = new List<string>();
-                var assistantNarrative = new List<string>();
-                int maxTurns = 40;
-
-                for (int turn = 0; turn < maxTurns; turn++)
+                foreach (var toolCall in result.ToolCallsMade)
                 {
-                    Debug.WriteLine($"[OpenCode] Turn {turn + 1}/{maxTurns}");
-
-                    var response = await SendMessageAsync(
-                        sessionId,
-                        userMessage,
-                        tools,
-                        systemPrompt,
-                        turn == 0); // First turn requires tools
-
-                    // Log raw response for debugging
-                    Debug.WriteLine($"[OpenCode] Raw response: {response?.ToString(Formatting.None)?.Substring(0, Math.Min(2000, response?.ToString(Formatting.None)?.Length ?? 0))}");
-
-                    var turnText = NormalizeAssistantNarrative(ExtractTextContent(response));
-                    if (!string.IsNullOrWhiteSpace(turnText) &&
-                        !assistantNarrative.Contains(turnText, StringComparer.Ordinal))
+                    if (toolCall == null || toolCall.IsError || string.IsNullOrWhiteSpace(toolCall.Name))
                     {
-                        assistantNarrative.Add(turnText);
-                    }
-
-                    var (commands, toolResponses, hasQueryFunctions) = ParseResponseWithQueries(response);
-
-                    Debug.WriteLine($"[OpenCode] Parsed commands ({commands.Count}): {string.Join(" | ", commands)}");
-                    Debug.WriteLine($"[OpenCode] Tool responses: {toolResponses.Count}, HasQueryFunctions: {hasQueryFunctions}");
-
-                    // Add all action commands to the result
-                    allCommands.AddRange(commands);
-
-                    // If there were query function calls, continue the conversation
-                    if (hasQueryFunctions && toolResponses.Count > 0)
-                    {
-                        // Send tool results back
-                        foreach (var (toolCallId, result, isError) in toolResponses)
-                        {
-                            response = await SendToolResultAsync(sessionId, toolCallId, result, isError);
-                        }
-
-                        var followUpText = NormalizeAssistantNarrative(ExtractTextContent(response));
-                        if (!string.IsNullOrWhiteSpace(followUpText) &&
-                            !assistantNarrative.Contains(followUpText, StringComparer.Ordinal))
-                        {
-                            assistantNarrative.Add(followUpText);
-                        }
-
-                        // Parse the follow-up response
-                        var (followUpCommands, _, _) = ParseResponseWithQueries(response);
-                        allCommands.AddRange(followUpCommands);
-
-                        // Update user message to empty for continuation (context is in session)
-                        userMessage = "";
                         continue;
                     }
 
-                    // No query functions, we're done
-                    break;
-                }
-
-                if (allCommands.Count == 0)
-                {
-                    Debug.WriteLine("[OpenCode] No commands generated - model returned no actionable tool calls or command text");
-                    if (assistantNarrative.Count > 0)
+                    if (MapEditorFunctions.IsQueryFunction(toolCall.Name))
                     {
-                        return string.Join(Environment.NewLine + Environment.NewLine, assistantNarrative);
+                        continue;
                     }
 
-                    // Final fallback: request a direct natural-language response so chat UI
-                    // still shows meaningful output even when no tools/commands were emitted.
                     try
                     {
-                        var fallbackPrompt = BuildNoCommandFallbackPrompt(mapContext, userInstructions);
-                        var directResponse = await SendSimplePromptAsync(
-                            "You are assisting a MapleStory map editor user. If no executable commands are needed, respond conversationally and concisely.",
-                            fallbackPrompt);
-
-                        if (!string.IsNullOrWhiteSpace(directResponse))
+                        var args = toolCall.Arguments != null
+                            ? JObject.FromObject(toolCall.Arguments)
+                            : new JObject();
+                        var command = MapEditorFunctions.FunctionCallToCommand(toolCall.Name, args);
+                        if (!string.IsNullOrWhiteSpace(command))
                         {
-                            return directResponse.Trim();
+                            AddUniqueCommands(allCommands, new[] { command });
                         }
                     }
                     catch (Exception ex)
                     {
-                        Debug.WriteLine($"[OpenCode] Direct fallback response failed: {ex.Message}");
+                        Debug.WriteLine($"[OpenCode] Failed to reconstruct command for {toolCall.Name}: {ex.Message}");
                     }
-
-                    return "I could not generate executable map commands for that request. Try asking for specific map edits, or ask a follow-up question.";
                 }
-
-                var finalResult = string.Join(Environment.NewLine, allCommands);
-                if (assistantNarrative.Count > 0)
-                {
-                    finalResult = string.Join(
-                        Environment.NewLine + Environment.NewLine,
-                        assistantNarrative.Concat(new[] { finalResult }));
-                }
-
-                Debug.WriteLine($"[OpenCode] Final result ({allCommands.Count} commands):\n{finalResult}");
-                return finalResult;
             }
-            finally
+
+            if (allCommands.Count > 0)
             {
-                // Clean up session
-                try
+                var finalCommands = string.Join(Environment.NewLine, allCommands);
+                Debug.WriteLine($"[OpenCode] Final commands ({allCommands.Count}):\n{finalCommands}");
+                return finalCommands;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.Text))
+            {
+                return result.Text.Trim();
+            }
+
+            try
+            {
+                var fallbackPrompt = BuildNoCommandFallbackPrompt(mapContext, userInstructions);
+                var directResponse = await SendSimplePromptAsync(
+                    "You are assisting a MapleStory map editor user. If no executable commands are needed, respond conversationally and concisely.",
+                    fallbackPrompt);
+
+                if (!string.IsNullOrWhiteSpace(directResponse))
                 {
-                    await DeleteSessionAsync(sessionId);
+                    return directResponse.Trim();
                 }
-                catch
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OpenCode] Direct fallback response failed: {ex.Message}");
+            }
+
+            return "I could not generate executable map commands for that request. Try asking for specific map edits, or ask a follow-up question.";
+        }
+
+        private object ExecuteToolForProcessInstructions(string functionName, JObject arguments, List<string> localCommands)
+        {
+            arguments = arguments ?? new JObject();
+
+            if (MapEditorFunctions.IsQueryFunction(functionName))
+            {
+                _calledQueryFunctions.Add(functionName);
+                return MapEditorFunctions.ExecuteQueryFunction(functionName, arguments);
+            }
+
+            var requiredQuery = MapEditorFunctions.GetRequiredQuery(functionName);
+            if (requiredQuery != null && !_calledQueryFunctions.Contains(requiredQuery))
+            {
+                return MapEditorFunctions.GetQueryRequiredError(functionName, requiredQuery);
+            }
+
+            var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
+            if (!string.IsNullOrWhiteSpace(command))
+            {
+                localCommands.Add(command);
+            }
+
+            return $"Command queued: {functionName}";
+        }
+
+        private static void AddUniqueCommands(List<string> destination, IEnumerable<string> candidates)
+        {
+            if (destination == null || candidates == null)
+            {
+                return;
+            }
+
+            foreach (var candidate in candidates)
+            {
+                if (string.IsNullOrWhiteSpace(candidate))
                 {
-                    // Ignore cleanup errors
+                    continue;
+                }
+
+                if (!destination.Contains(candidate, StringComparer.Ordinal))
+                {
+                    destination.Add(candidate);
                 }
             }
         }

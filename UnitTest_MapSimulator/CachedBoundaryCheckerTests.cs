@@ -1,4 +1,4 @@
-using HaCreator.MapSimulator;
+using HaCreator.MapSimulator.Core;
 using HaSharedLibrary.Render;
 using Xunit;
 using XnaRectangle = Microsoft.Xna.Framework.Rectangle;
