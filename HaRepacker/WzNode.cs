@@ -6,11 +6,16 @@ using MapleLib.WzLib.WzProperties;
 using System.Collections;
 using System.Drawing;
 using HaRepacker.Comparer;
+using System.IO;
+using System.Linq;
 
 namespace HaRepacker
 {
     public class WzNode : TreeNode
     {
+        internal sealed class LazyLoadPlaceholder { }
+        internal static readonly LazyLoadPlaceholder LazyLoadPlaceholderTag = new LazyLoadPlaceholder();
+
         public delegate ContextMenuStrip ContextMenuBuilderDelegate(WzNode node, WzObject obj);
         public static ContextMenuBuilderDelegate ContextMenuBuilder = null;
 
@@ -47,10 +52,12 @@ namespace HaRepacker
             // Handle VirtualWzDirectory specifically (must check before WzDirectory since it inherits from it)
             if (SourceObject is VirtualWzDirectory virtualDir)
             {
-                foreach (WzDirectory dir in virtualDir.WzDirectories)
-                    Nodes.Add(new WzNode(dir));
-                foreach (WzImage img in virtualDir.WzImages)
-                    Nodes.Add(new WzNode(img));
+                // Lazy-load filesystem directories: expanding a big export should not recursively enumerate
+                // and parse every IMG file (can take minutes).
+                if (VirtualDirectoryMayHaveChildren(virtualDir))
+                {
+                    Nodes.Add(new TreeNode("...") { Tag = LazyLoadPlaceholderTag });
+                }
             }
             else if (SourceObject is WzDirectory wzDir)
             {
@@ -69,6 +76,32 @@ namespace HaRepacker
             {
                 foreach (WzImageProperty prop in container.WzProperties)
                     Nodes.Add(new WzNode(prop));
+            }
+        }
+
+        private static bool VirtualDirectoryMayHaveChildren(VirtualWzDirectory virtualDir)
+        {
+            try
+            {
+                if (virtualDir == null)
+                    return false;
+
+                string path = virtualDir.FilesystemPath;
+                if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+                    return false;
+
+                if (Directory.EnumerateDirectories(path).Take(1).Any())
+                    return true;
+
+                if (Directory.EnumerateFiles(path, "*.img").Take(1).Any())
+                    return true;
+
+                return false;
+            }
+            catch
+            {
+                // If we can't check quickly, assume it might have children so the user can try expanding.
+                return true;
             }
         }
 

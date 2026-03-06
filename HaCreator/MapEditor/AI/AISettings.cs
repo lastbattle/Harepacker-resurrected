@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json.Linq;
 
 namespace HaCreator.MapEditor.AI
@@ -17,6 +18,7 @@ namespace HaCreator.MapEditor.AI
         private const string DEFAULT_OPENCODE_HOST = "127.0.0.1";
         private const int DEFAULT_OPENCODE_PORT = 4096;
         private const string DEFAULT_OPENCODE_MODEL = "claude-opus-4-5-20251101";//"claude-sonnet-4-5-20250929";
+        private const string DEFAULT_OPENCODE_REASONING_EFFORT = "medium";
 
         // OpenRouter settings
         private static string _apiKey = string.Empty;
@@ -26,6 +28,7 @@ namespace HaCreator.MapEditor.AI
         private static string _openCodeHost = DEFAULT_OPENCODE_HOST;
         private static int _openCodePort = DEFAULT_OPENCODE_PORT;
         private static string _openCodeModel = DEFAULT_OPENCODE_MODEL;
+        private static string _openCodeReasoningEffort = DEFAULT_OPENCODE_REASONING_EFFORT;
         private static bool _openCodeAutoStart = true;
 
         // Provider selection
@@ -120,7 +123,10 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableModels = new[]
         {
             DEFAULT_MODEL,
+            "google/gemini-3.1-flash-lite-preview",
+            "google/gemini-3.1-pro-preview",
             "google/gemini-3-pro-preview",
+            "openai/gpt-5.3-codex",
             "openai/gpt-5.2",
             "anthropic/claude-sonnet-4.5",
             "anthropic/claude-opus-4.5"
@@ -187,8 +193,41 @@ namespace HaCreator.MapEditor.AI
         public static readonly string[] AvailableOpenCodeModels = new[]
         {
             DEFAULT_OPENCODE_MODEL,
-            "claude-opus-4-5-20251101"
+            "claude-opus-4-5-20251101",
+            "openai/gpt-5.3-codex",
+            "openai/gpt-5.2"
         };
+
+        /// <summary>
+        /// Available reasoning effort levels for OpenCode reasoning-capable models.
+        /// </summary>
+        public static readonly string[] AvailableOpenCodeReasoningEfforts = new[]
+        {
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+        };
+
+        /// <summary>
+        /// OpenCode reasoning effort level (low/medium/high/xhigh).
+        /// </summary>
+        public static string OpenCodeReasoningEffort
+        {
+            get
+            {
+                EnsureLoaded();
+                return _openCodeReasoningEffort;
+            }
+            set
+            {
+                var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+                _openCodeReasoningEffort = AvailableOpenCodeReasoningEfforts.Contains(normalized)
+                    ? normalized
+                    : DEFAULT_OPENCODE_REASONING_EFFORT;
+                Save();
+            }
+        }
 
         /// <summary>
         /// Whether to automatically start the OpenCode server if not running.
@@ -243,6 +282,11 @@ namespace HaCreator.MapEditor.AI
                     _openCodeHost = settings["openCodeHost"]?.ToString() ?? DEFAULT_OPENCODE_HOST;
                     _openCodePort = settings["openCodePort"]?.Value<int>() ?? DEFAULT_OPENCODE_PORT;
                     _openCodeModel = settings["openCodeModel"]?.ToString() ?? DEFAULT_OPENCODE_MODEL;
+                    _openCodeReasoningEffort = settings["openCodeReasoningEffort"]?.ToString() ?? DEFAULT_OPENCODE_REASONING_EFFORT;
+                    if (!AvailableOpenCodeReasoningEfforts.Contains(_openCodeReasoningEffort))
+                    {
+                        _openCodeReasoningEffort = DEFAULT_OPENCODE_REASONING_EFFORT;
+                    }
                     _openCodeAutoStart = settings["openCodeAutoStart"]?.Value<bool>() ?? true;
                 }
             }
@@ -276,6 +320,7 @@ namespace HaCreator.MapEditor.AI
                     ["openCodeHost"] = _openCodeHost,
                     ["openCodePort"] = _openCodePort,
                     ["openCodeModel"] = _openCodeModel,
+                    ["openCodeReasoningEffort"] = _openCodeReasoningEffort,
                     ["openCodeAutoStart"] = _openCodeAutoStart
                 };
 

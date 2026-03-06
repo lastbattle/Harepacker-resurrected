@@ -47,6 +47,11 @@ namespace HaCreator.GUI.Quest
         }
 
         /// <summary>
+        /// Preserve nested Say.img conversation shape used by MapleStory China v113 (for example: 0/0/0, 0/yes/0).
+        /// </summary>
+        public bool PreserveNestedLayout { get; set; }
+
+        /// <summary>
         /// If this is a Yes/No conversation as opposed to Next or NextPrev
         /// </summary>
         public bool IsYesNoConversation

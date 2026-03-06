@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -26,10 +28,47 @@ namespace HaCreator.MapEditor.AI
         private const int REQUEST_TIMEOUT_MS = 300000; // 5 minutes
         private const int MAX_OUTPUT_TOKENS = 16000;
         private const int SERVER_START_TIMEOUT_MS = 30000; // 30 seconds to start
+        private const int DEFAULT_POLL_TIMEOUT_SECONDS = 180;
+        private const int DEFAULT_POLL_INTERVAL_MS = 250;
+        private const int NPM_INSTALL_TIMEOUT_MS = 120000;
+
+        private static readonly string[] OPEN_CODE_BUILTIN_TOOL_DENYLIST =
+        {
+            "question",
+            "bash",
+            "read",
+            "glob",
+            "grep",
+            "edit",
+            "write",
+            "task",
+            "webfetch",
+            "todowrite",
+            "websearch",
+            "codesearch",
+            "skill",
+            "apply_patch"
+        };
+
+        private static readonly string[] OPEN_CODE_CLI_CANDIDATES =
+        {
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "opencode.cmd"),
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "opencode"),
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "opencode", "opencode.exe"),
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "opencode")
+        };
+
+        private static bool _definitionsRecordToolsPayloadSupported = true;
+        private static bool _definitionsArrayToolsPayloadSupported = true;
+        private static readonly object _toolSyncLock = new object();
+        private static DateTime _lastToolSyncUtc = DateTime.MinValue;
+        private const int TOOL_SYNC_COOLDOWN_SECONDS = 3;
 
         private readonly string host;
         private readonly int port;
         private readonly string model;
+        private readonly string defaultReasoningEffort;
+        private readonly string directory;
         private readonly string baseUrl;
         private readonly bool autoStart;
 
@@ -47,6 +86,34 @@ namespace HaCreator.MapEditor.AI
         // Collect commands received during a session for UI display
         private static List<string> _collectedCommands = new List<string>();
         private static readonly object _commandsLock = new object();
+
+        private sealed class ToolPayloadCandidate
+        {
+            public string Mode { get; set; }
+            public JToken Payload { get; set; }
+        }
+
+        private sealed class ServerToolCallRecord
+        {
+            public string Id { get; set; }
+            public string Name { get; set; }
+            public JObject Arguments { get; set; }
+            public JToken Result { get; set; }
+            public bool IsError { get; set; }
+        }
+
+        private sealed class OpenCodeApiException : Exception
+        {
+            public int? StatusCode { get; }
+            public string ResponseBody { get; }
+
+            public OpenCodeApiException(string message, int? statusCode = null, string responseBody = null, Exception innerException = null)
+                : base(message, innerException)
+            {
+                StatusCode = statusCode;
+                ResponseBody = responseBody;
+            }
+        }
 
         /// <summary>
         /// Event raised when a command is received from OpenCode's server-side tools.
@@ -88,18 +155,29 @@ namespace HaCreator.MapEditor.AI
         /// <param name="port">Server port (default: 4096)</param>
         /// <param name="model">Model to use (e.g., "anthropic/claude-sonnet-4-20250514")</param>
         /// <param name="autoStart">Whether to auto-start the server if not running (default: true)</param>
-        public OpenCodeClient(string host = null, int port = 0, string model = null, bool autoStart = true)
+        /// <param name="reasoningEffort">Optional default reasoning effort (low/medium/high/xhigh)</param>
+        public OpenCodeClient(string host = null, int port = 0, string model = null, bool autoStart = true, string reasoningEffort = null)
         {
             this.host = string.IsNullOrEmpty(host) ? DEFAULT_HOST : host;
             this.port = port > 0 ? port : DEFAULT_PORT;
             this.model = model;
+            this.defaultReasoningEffort = NormalizeReasoningEffort(reasoningEffort);
+            var configuredDirectory = Environment.GetEnvironmentVariable("OPENCODE_DIRECTORY");
+            var resolvedDirectory = OpenCodeToolGenerator.ResolveProjectRoot(configuredDirectory);
+            if (string.IsNullOrWhiteSpace(resolvedDirectory) || !System.IO.Directory.Exists(resolvedDirectory))
+            {
+                resolvedDirectory = OpenCodeToolGenerator.ResolveProjectRoot(null);
+            }
+
+            this.directory = resolvedDirectory;
             this.autoStart = autoStart;
             this.baseUrl = $"http://{this.host}:{this.port}";
+            Debug.WriteLine($"[OpenCode] Using project directory: {this.directory}");
 
             // Auto-regenerate TypeScript tools if C# definitions have changed
             try
             {
-                OpenCodeToolGenerator.AutoRegenerateIfNeeded(null);
+                SyncToolWrappers(forceRegenerate: false);
             }
             catch (Exception ex)
             {
@@ -109,6 +187,201 @@ namespace HaCreator.MapEditor.AI
 
             // Start the AI Tool Server so OpenCode's server-side tools can call back to HaCreator
             StartToolServer();
+        }
+
+        private void SyncToolWrappers(bool forceRegenerate)
+        {
+            lock (_toolSyncLock)
+            {
+                OpenCodeToolGenerator.EnsureWorkspaceScaffold(directory);
+
+                if (!forceRegenerate &&
+                    (DateTime.UtcNow - _lastToolSyncUtc).TotalSeconds < TOOL_SYNC_COOLDOWN_SECONDS)
+                {
+                    return;
+                }
+
+                if (forceRegenerate)
+                {
+                    var generated = OpenCodeToolGenerator.RegenerateTools(directory);
+                    Debug.WriteLine($"[OpenCode] Tool wrappers regenerated ({generated} files) in {directory}");
+                }
+                else
+                {
+                    var regenerated = OpenCodeToolGenerator.AutoRegenerateIfNeeded(directory);
+                    if (regenerated)
+                    {
+                        Debug.WriteLine($"[OpenCode] Tool wrappers synchronized in {directory}");
+                    }
+                }
+
+                EnsureToolDependenciesInstalled();
+
+                _lastToolSyncUtc = DateTime.UtcNow;
+            }
+        }
+
+        private void EnsureToolDependenciesInstalled()
+        {
+            var workspaceDir = System.IO.Path.Combine(directory, ".opencode");
+            var pluginModuleDir = System.IO.Path.Combine(workspaceDir, "node_modules", "@opencode-ai", "plugin");
+            EnsureWorkspacePackageJson(workspaceDir);
+
+            if (System.IO.Directory.Exists(pluginModuleDir))
+            {
+                return;
+            }
+
+            if (!IsNodeInstalled())
+            {
+                throw new Exception("Node.js is required to install OpenCode tool dependencies. Install Node.js from https://nodejs.org/");
+            }
+
+            if (!IsNpmInstalled())
+            {
+                throw new Exception("npm is required to install OpenCode tool dependencies. Ensure npm is available in PATH.");
+            }
+
+            if (!System.IO.Directory.Exists(workspaceDir))
+            {
+                System.IO.Directory.CreateDirectory(workspaceDir);
+            }
+
+            OnServerStatusChanged?.Invoke("Installing OpenCode tool dependencies...");
+            Debug.WriteLine($"[OpenCode] Installing tool dependencies in {workspaceDir}");
+
+            var npmInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c npm install --no-audit --no-fund",
+                WorkingDirectory = workspaceDir,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            using (var npm = Process.Start(npmInfo))
+            {
+                if (npm == null)
+                {
+                    throw new Exception("Failed to launch npm for OpenCode tool dependency installation.");
+                }
+
+                var stdout = npm.StandardOutput.ReadToEnd();
+                var stderr = npm.StandardError.ReadToEnd();
+
+                if (!npm.WaitForExit(NPM_INSTALL_TIMEOUT_MS))
+                {
+                    try { npm.Kill(); } catch { }
+                    throw new Exception("Timed out while installing OpenCode tool dependencies via npm.");
+                }
+
+                if (npm.ExitCode != 0)
+                {
+                    var details = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+                    throw new Exception($"npm install failed for OpenCode tools (exit {npm.ExitCode}). {details}");
+                }
+            }
+
+            if (!System.IO.Directory.Exists(pluginModuleDir))
+            {
+                throw new Exception("OpenCode tool dependencies were installed but '@opencode-ai/plugin' is still missing.");
+            }
+        }
+
+        private static void EnsureWorkspacePackageJson(string workspaceDir)
+        {
+            if (string.IsNullOrWhiteSpace(workspaceDir))
+            {
+                return;
+            }
+
+            System.IO.Directory.CreateDirectory(workspaceDir);
+
+            var packageJsonPath = System.IO.Path.Combine(workspaceDir, "package.json");
+            JObject packageJson;
+
+            if (System.IO.File.Exists(packageJsonPath))
+            {
+                try
+                {
+                    packageJson = JObject.Parse(System.IO.File.ReadAllText(packageJsonPath));
+                }
+                catch
+                {
+                    packageJson = new JObject();
+                }
+            }
+            else
+            {
+                packageJson = new JObject();
+            }
+
+            var dependencies = packageJson["dependencies"] as JObject ?? new JObject();
+            dependencies["@opencode-ai/plugin"] = "latest";
+            packageJson["dependencies"] = dependencies;
+
+            System.IO.File.WriteAllText(
+                packageJsonPath,
+                packageJson.ToString(Formatting.Indented),
+                Encoding.UTF8);
+        }
+
+        private static List<string> GetRequiredToolNames()
+        {
+            return MapEditorFunctions.GetToolDefinitions()
+                .OfType<JObject>()
+                .Select(tool => tool["function"]?["name"]?.ToString())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct()
+                .ToList();
+        }
+
+        private async Task EnsureServerToolSyncAsync()
+        {
+            var requiredToolNames = GetRequiredToolNames();
+            if (requiredToolNames.Count == 0)
+            {
+                return;
+            }
+
+            var registeredToolIds = await ListRegisteredToolIdsAsync();
+            if (registeredToolIds == null || registeredToolIds.Count == 0)
+            {
+                // Older OpenCode builds may not expose /experimental/tool/ids; local wrapper sync is still done.
+                return;
+            }
+
+            var registeredSet = new HashSet<string>(registeredToolIds, StringComparer.Ordinal);
+            var missing = requiredToolNames.Where(name => !registeredSet.Contains(name)).ToList();
+            if (missing.Count == 0)
+            {
+                return;
+            }
+
+            Debug.WriteLine($"[OpenCode] Missing registered tools detected ({missing.Count}). Forcing wrapper sync.");
+            OnServerStatusChanged?.Invoke("Synchronizing OpenCode tools...");
+            SyncToolWrappers(forceRegenerate: true);
+
+            if (IsManagedServerRunning)
+            {
+                Debug.WriteLine("[OpenCode] Restarting managed OpenCode server to reload synchronized tools.");
+                StopServer();
+                var restarted = await StartServerAsync();
+                if (restarted)
+                {
+                    registeredToolIds = await ListRegisteredToolIdsAsync();
+                    registeredSet = new HashSet<string>(registeredToolIds ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+                    missing = requiredToolNames.Where(name => !registeredSet.Contains(name)).ToList();
+                }
+            }
+
+            if (missing.Count > 0)
+            {
+                Debug.WriteLine($"[OpenCode] Tool registration still missing: {string.Join(", ", missing)}");
+                OnServerStatusChanged?.Invoke("OpenCode tools synchronized. Restart server to reload tool wrappers.");
+            }
         }
 
         /// <summary>
@@ -143,6 +416,8 @@ namespace HaCreator.MapEditor.AI
         /// <returns>True if server started successfully or was already running</returns>
         public async Task<bool> StartServerAsync()
         {
+            SyncToolWrappers(forceRegenerate: false);
+
             if (await IsServerRunningAsync())
             {
                 OnServerStatusChanged?.Invoke("Server already running");
@@ -157,10 +432,18 @@ namespace HaCreator.MapEditor.AI
                     return true;
                 }
 
-                // Check if Node.js is installed (required for OpenCode)
-                if (!IsNodeInstalled())
+                var cliPath = ResolveOpenCodeCliPath();
+                if (string.IsNullOrWhiteSpace(cliPath))
                 {
-                    OnServerStatusChanged?.Invoke("Node.js is not installed. OpenCode requires Node.js to run. Please install from https://nodejs.org/");
+                    OnServerStatusChanged?.Invoke(
+                        "OpenCode CLI not found. Set OPENCODE_CLI_PATH or install with: npm install -g opencode");
+                    return false;
+                }
+
+                if (IsNodeRequiredForCli(cliPath) && !IsNodeInstalled())
+                {
+                    OnServerStatusChanged?.Invoke(
+                        $"Node.js is required to run OpenCode CLI at '{cliPath}'. Install Node.js from https://nodejs.org/");
                     return false;
                 }
 
@@ -168,15 +451,7 @@ namespace HaCreator.MapEditor.AI
 
                 try
                 {
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "opencode",
-                        Arguments = $"serve --port {port} --hostname {host}",
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true
-                    };
+                    var startInfo = BuildOpenCodeStartInfo(cliPath);
 
                     _serverProcess = Process.Start(startInfo);
 
@@ -196,10 +471,31 @@ namespace HaCreator.MapEditor.AI
                             _serverProcess = null;
                         }
                     };
+
+                    try
+                    {
+                        _serverProcess.OutputDataReceived += (s, e) =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(e.Data))
+                                Debug.WriteLine($"[OpenCode][stdout] {e.Data}");
+                        };
+                        _serverProcess.ErrorDataReceived += (s, e) =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(e.Data))
+                                Debug.WriteLine($"[OpenCode][stderr] {e.Data}");
+                        };
+                        _serverProcess.BeginOutputReadLine();
+                        _serverProcess.BeginErrorReadLine();
+                    }
+                    catch
+                    {
+                        // Non-fatal; server may still run even if async output hooks fail.
+                    }
                 }
                 catch (System.ComponentModel.Win32Exception)
                 {
-                    OnServerStatusChanged?.Invoke("OpenCode CLI not found. Install with: npm install -g opencode\nSee https://opencode.ai/docs/server/");
+                    OnServerStatusChanged?.Invoke(
+                        "OpenCode CLI launch failed. Set OPENCODE_CLI_PATH or install with: npm install -g opencode");
                     return false;
                 }
                 catch (Exception ex)
@@ -211,6 +507,146 @@ namespace HaCreator.MapEditor.AI
 
             // Wait for server to become ready
             return await WaitForServerAsync();
+        }
+
+        private ProcessStartInfo BuildOpenCodeStartInfo(string cliPath)
+        {
+            var escapedCliPath = cliPath.Contains(" ") ? $"\"{cliPath}\"" : cliPath;
+            var serveArgs = $"serve --port {port} --hostname {host}";
+            var extension = System.IO.Path.GetExtension(cliPath) ?? string.Empty;
+
+            var startInfo = new ProcessStartInfo
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            var serverCwd = Environment.GetEnvironmentVariable("OPENCODE_SERVER_CWD");
+            if (string.IsNullOrWhiteSpace(serverCwd))
+            {
+                serverCwd = System.IO.Path.Combine(directory, ".opencode");
+            }
+
+            if (!string.IsNullOrWhiteSpace(serverCwd))
+            {
+                if (!System.IO.Directory.Exists(serverCwd))
+                {
+                    System.IO.Directory.CreateDirectory(serverCwd);
+                }
+                startInfo.WorkingDirectory = serverCwd;
+            }
+
+            if (extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase) ||
+                extension.Equals(".bat", StringComparison.OrdinalIgnoreCase))
+            {
+                startInfo.FileName = "cmd.exe";
+                startInfo.Arguments = $"/c {escapedCliPath} {serveArgs}";
+            }
+            else
+            {
+                startInfo.FileName = cliPath;
+                startInfo.Arguments = serveArgs;
+            }
+
+            return startInfo;
+        }
+
+        private static bool IsNodeRequiredForCli(string cliPath)
+        {
+            var extension = (System.IO.Path.GetExtension(cliPath) ?? string.Empty).ToLowerInvariant();
+            if (extension == ".cmd" || extension == ".bat" || extension == ".js")
+                return true;
+
+            var lower = cliPath.ToLowerInvariant();
+            return lower.Contains(@"\npm\") || lower.EndsWith("/npm/opencode", StringComparison.Ordinal);
+        }
+
+        private static string ResolveOpenCodeCliPath()
+        {
+            bool IsPreferredCliPath(string path)
+            {
+                var ext = (System.IO.Path.GetExtension(path) ?? string.Empty).ToLowerInvariant();
+                return ext == ".cmd" || ext == ".bat" || ext == ".exe";
+            }
+
+            var envPath = (Environment.GetEnvironmentVariable("OPENCODE_CLI_PATH") ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(envPath))
+            {
+                if (System.IO.File.Exists(envPath))
+                {
+                    if (!IsPreferredCliPath(envPath))
+                    {
+                        var cmdCandidate = envPath + ".cmd";
+                        if (System.IO.File.Exists(cmdCandidate))
+                            return cmdCandidate;
+                    }
+                    return envPath;
+                }
+
+                var expanded = Environment.ExpandEnvironmentVariables(envPath);
+                if (System.IO.File.Exists(expanded))
+                {
+                    if (!IsPreferredCliPath(expanded))
+                    {
+                        var cmdCandidate = expanded + ".cmd";
+                        if (System.IO.File.Exists(cmdCandidate))
+                            return cmdCandidate;
+                    }
+                    return expanded;
+                }
+            }
+
+            try
+            {
+                var whereInfo = new ProcessStartInfo
+                {
+                    FileName = "where.exe",
+                    Arguments = "opencode",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(whereInfo))
+                {
+                    if (process != null)
+                    {
+                        var output = process.StandardOutput.ReadToEnd();
+                        process.WaitForExit(3000);
+                        if (process.ExitCode == 0)
+                        {
+                            var candidates = output
+                                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(line => line.Trim())
+                                .Where(line => !string.IsNullOrWhiteSpace(line) && System.IO.File.Exists(line))
+                                .ToList();
+
+                            var preferred = candidates.FirstOrDefault(IsPreferredCliPath);
+                            if (!string.IsNullOrWhiteSpace(preferred))
+                                return preferred;
+
+                            var fallback = candidates.FirstOrDefault();
+                            if (!string.IsNullOrWhiteSpace(fallback))
+                                return fallback;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore PATH probe failures and continue with known candidates.
+            }
+
+            foreach (var candidate in OPEN_CODE_CLI_CANDIDATES)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && System.IO.File.Exists(candidate))
+                    return candidate;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -266,13 +702,45 @@ namespace HaCreator.MapEditor.AI
             }
         }
 
+        private static bool IsNpmInstalled()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c npm --version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process == null) return false;
+                    process.WaitForExit(5000);
+                    return process.ExitCode == 0;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>
         /// Ensure the server is running, starting it if necessary.
         /// </summary>
         public async Task EnsureServerAsync()
         {
+            SyncToolWrappers(forceRegenerate: false);
+
             if (await IsServerRunningAsync())
+            {
+                await EnsureServerToolSyncAsync();
                 return;
+            }
 
             if (autoStart)
             {
@@ -283,6 +751,8 @@ namespace HaCreator.MapEditor.AI
                         $"OpenCode server not running at {baseUrl} and failed to auto-start. " +
                         "Please run 'opencode serve' manually. See https://opencode.ai/docs/server/");
                 }
+
+                await EnsureServerToolSyncAsync();
             }
             else
             {
@@ -335,6 +805,25 @@ namespace HaCreator.MapEditor.AI
         }
 
         /// <summary>
+        /// Directory used for OpenCode project-scoped requests (directory query parameter).
+        /// </summary>
+        public string ProjectDirectory => directory;
+
+        /// <summary>
+        /// List registered OpenCode tool IDs for the current project directory.
+        /// Returns null when the server build does not expose /experimental/tool/ids.
+        /// </summary>
+        public async Task<List<string>> GetRegisteredToolIdsForCurrentDirectoryAsync(bool ensureServer = true)
+        {
+            if (ensureServer)
+            {
+                await EnsureServerAsync();
+            }
+
+            return await ListRegisteredToolIdsAsync();
+        }
+
+        /// <summary>
         /// Start the AI Tool Server that handles callbacks from OpenCode's server-side tools.
         /// The server listens on port 19840 for tool execution requests.
         /// </summary>
@@ -348,21 +837,38 @@ namespace HaCreator.MapEditor.AI
                     return;
                 }
 
-                _toolServer = new AIToolServer();
-                _toolServer.CommandReceived += (sender, command) =>
+                try
                 {
-                    Debug.WriteLine($"[OpenCode] Tool command received: {command}");
-
-                    // Collect command for UI display
-                    lock (_commandsLock)
+                    _toolServer = new AIToolServer();
+                    _toolServer.CommandReceived += (sender, command) =>
                     {
-                        _collectedCommands.Add(command);
+                        Debug.WriteLine($"[OpenCode] Tool command received: {command}");
+
+                        // Collect command for UI display
+                        lock (_commandsLock)
+                        {
+                            _collectedCommands.Add(command);
+                        }
+
+                        OnToolCommandReceived?.Invoke(sender, command);
+                    };
+                    _toolServer.Start();
+                    Debug.WriteLine($"[OpenCode] Tool server started on port {_toolServer.Port}");
+                }
+                catch (Exception ex)
+                {
+                    // If another HaCreator instance already owns the tool callback port,
+                    // keep OpenCode usable for prompt/session operations in this process.
+                    if (ex.Message != null &&
+                        ex.Message.IndexOf("conflicts with an existing registration", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        _toolServer = null;
+                        Debug.WriteLine("[OpenCode] Tool server port is already registered by another process. Continuing without local callback server.");
+                        return;
                     }
 
-                    OnToolCommandReceived?.Invoke(sender, command);
-                };
-                _toolServer.Start();
-                Debug.WriteLine($"[OpenCode] Tool server started on port {_toolServer.Port}");
+                    throw;
+                }
             }
         }
 
@@ -470,6 +976,7 @@ namespace HaCreator.MapEditor.AI
                 Debug.WriteLine($"[OpenCode] Tools count: {tools.Count}");
 
                 var allCommands = new List<string>();
+                var assistantNarrative = new List<string>();
                 int maxTurns = 40;
 
                 for (int turn = 0; turn < maxTurns; turn++)
@@ -485,6 +992,13 @@ namespace HaCreator.MapEditor.AI
 
                     // Log raw response for debugging
                     Debug.WriteLine($"[OpenCode] Raw response: {response?.ToString(Formatting.None)?.Substring(0, Math.Min(2000, response?.ToString(Formatting.None)?.Length ?? 0))}");
+
+                    var turnText = NormalizeAssistantNarrative(ExtractTextContent(response));
+                    if (!string.IsNullOrWhiteSpace(turnText) &&
+                        !assistantNarrative.Contains(turnText, StringComparer.Ordinal))
+                    {
+                        assistantNarrative.Add(turnText);
+                    }
 
                     var (commands, toolResponses, hasQueryFunctions) = ParseResponseWithQueries(response);
 
@@ -503,6 +1017,13 @@ namespace HaCreator.MapEditor.AI
                             response = await SendToolResultAsync(sessionId, toolCallId, result, isError);
                         }
 
+                        var followUpText = NormalizeAssistantNarrative(ExtractTextContent(response));
+                        if (!string.IsNullOrWhiteSpace(followUpText) &&
+                            !assistantNarrative.Contains(followUpText, StringComparer.Ordinal))
+                        {
+                            assistantNarrative.Add(followUpText);
+                        }
+
                         // Parse the follow-up response
                         var (followUpCommands, _, _) = ParseResponseWithQueries(response);
                         allCommands.AddRange(followUpCommands);
@@ -518,11 +1039,42 @@ namespace HaCreator.MapEditor.AI
 
                 if (allCommands.Count == 0)
                 {
-                    Debug.WriteLine("[OpenCode] No commands generated");
-                    return "# No commands generated";
+                    Debug.WriteLine("[OpenCode] No commands generated - model returned no actionable tool calls or command text");
+                    if (assistantNarrative.Count > 0)
+                    {
+                        return string.Join(Environment.NewLine + Environment.NewLine, assistantNarrative);
+                    }
+
+                    // Final fallback: request a direct natural-language response so chat UI
+                    // still shows meaningful output even when no tools/commands were emitted.
+                    try
+                    {
+                        var fallbackPrompt = BuildNoCommandFallbackPrompt(mapContext, userInstructions);
+                        var directResponse = await SendSimplePromptAsync(
+                            "You are assisting a MapleStory map editor user. If no executable commands are needed, respond conversationally and concisely.",
+                            fallbackPrompt);
+
+                        if (!string.IsNullOrWhiteSpace(directResponse))
+                        {
+                            return directResponse.Trim();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OpenCode] Direct fallback response failed: {ex.Message}");
+                    }
+
+                    return "I could not generate executable map commands for that request. Try asking for specific map edits, or ask a follow-up question.";
                 }
 
                 var finalResult = string.Join(Environment.NewLine, allCommands);
+                if (assistantNarrative.Count > 0)
+                {
+                    finalResult = string.Join(
+                        Environment.NewLine + Environment.NewLine,
+                        assistantNarrative.Concat(new[] { finalResult }));
+                }
+
                 Debug.WriteLine($"[OpenCode] Final result ({allCommands.Count} commands):\n{finalResult}");
                 return finalResult;
             }
@@ -562,6 +1114,567 @@ namespace HaCreator.MapEditor.AI
             await SendRequestAsync("DELETE", $"/session/{sessionId}");
         }
 
+        private static bool GetEnvBool(string name, bool defaultValue)
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            if (string.IsNullOrWhiteSpace(raw))
+                return defaultValue;
+
+            switch (raw.Trim().ToLowerInvariant())
+            {
+                case "1":
+                case "true":
+                case "yes":
+                case "y":
+                case "on":
+                    return true;
+                case "0":
+                case "false":
+                case "no":
+                case "n":
+                case "off":
+                    return false;
+                default:
+                    return defaultValue;
+            }
+        }
+
+        private static int GetEnvInt(string name, int defaultValue)
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            return int.TryParse(raw, out var parsed) ? parsed : defaultValue;
+        }
+
+        private static double GetEnvDouble(string name, double defaultValue)
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : defaultValue;
+        }
+
+        private static HashSet<string> GetEnvCsvSet(string name, string defaultValue)
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            if (string.IsNullOrWhiteSpace(raw))
+                raw = defaultValue;
+
+            return new HashSet<string>(
+                raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(item => item.Trim())
+                    .Where(item => !string.IsNullOrEmpty(item)),
+                StringComparer.Ordinal);
+        }
+
+        private static JObject BuildModelSpecObject(string rawModel)
+        {
+            if (string.IsNullOrWhiteSpace(rawModel))
+                return null;
+
+            var trimmed = rawModel.Trim();
+            string providerId;
+            string modelId;
+
+            if (trimmed.Contains("/"))
+            {
+                var split = trimmed.Split(new[] { '/' }, 2);
+                providerId = split[0];
+                modelId = split[1];
+            }
+            else
+            {
+                var lower = trimmed.ToLowerInvariant();
+                if (lower.StartsWith("gpt-") || lower.StartsWith("o1") || lower.StartsWith("o3") || lower.StartsWith("o4"))
+                    providerId = "openai";
+                else if (lower.Contains("gemini"))
+                    providerId = "google";
+                else if (lower.Contains("claude"))
+                    providerId = "anthropic";
+                else if (lower.Contains("grok"))
+                    providerId = "xai";
+                else
+                    providerId = "anthropic";
+
+                modelId = trimmed;
+            }
+
+            return new JObject
+            {
+                ["providerID"] = providerId,
+                ["modelID"] = modelId
+            };
+        }
+
+        private static string NormalizeReasoningEffort(string reasoningEffort)
+        {
+            if (string.IsNullOrWhiteSpace(reasoningEffort))
+                return null;
+
+            var normalized = reasoningEffort.Trim().ToLowerInvariant();
+            switch (normalized)
+            {
+                case "low":
+                case "medium":
+                case "high":
+                case "xhigh":
+                    return normalized;
+                default:
+                    return null;
+            }
+        }
+
+        private void ApplyCommonMessageOptions(JObject body, string systemPrompt, float? temperature, int? thinkingBudget, string reasoningEffort)
+        {
+            if (temperature.HasValue)
+            {
+                body["temperature"] = temperature.Value;
+            }
+
+            if (thinkingBudget.HasValue && thinkingBudget.Value > 0)
+            {
+                body["thinking"] = new JObject
+                {
+                    ["type"] = "enabled",
+                    ["budgetTokens"] = thinkingBudget.Value
+                };
+            }
+
+            var effectiveReasoningEffort = NormalizeReasoningEffort(reasoningEffort) ?? defaultReasoningEffort;
+            if (!string.IsNullOrWhiteSpace(effectiveReasoningEffort))
+            {
+                body["reasoningEffort"] = effectiveReasoningEffort;
+            }
+
+            if (!string.IsNullOrWhiteSpace(model))
+            {
+                var modelSpec = BuildModelSpecObject(model);
+                if (modelSpec != null)
+                {
+                    body["model"] = modelSpec;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(systemPrompt))
+            {
+                body["system"] = systemPrompt;
+            }
+        }
+
+        private static JObject ConvertToolsToPermissionsMap(JArray tools)
+        {
+            var permissions = AIToolConverter.ToOpenCodeBooleanFormat(tools ?? new JArray());
+
+            if (GetEnvBool("OPENCODE_DISABLE_BUILTIN_TOOLS", true))
+            {
+                foreach (var builtinTool in OPEN_CODE_BUILTIN_TOOL_DENYLIST)
+                {
+                    permissions[builtinTool] = false;
+                }
+            }
+
+            return permissions;
+        }
+
+        private static JObject ConvertToolsToDefinitionRecord(JArray tools)
+        {
+            var result = new JObject();
+            var simpleTools = AIToolConverter.ToSimpleFormat(tools ?? new JArray());
+
+            for (var i = 0; i < simpleTools.Count; i++)
+            {
+                var tool = simpleTools[i] as JObject;
+                if (tool == null)
+                    continue;
+
+                var toolName = tool["name"]?.ToString();
+                if (string.IsNullOrWhiteSpace(toolName))
+                {
+                    toolName = $"tool_{i}";
+                }
+
+                var def = new JObject();
+                if (tool["description"] != null)
+                    def["description"] = tool["description"];
+                if (tool["parameters"] != null)
+                    def["parameters"] = tool["parameters"];
+                if (tool["inputSchema"] != null)
+                    def["inputSchema"] = tool["inputSchema"];
+                if (tool["required"] is JArray required)
+                    def["required"] = required;
+                if (tool["strict"]?.Type == JTokenType.Boolean)
+                    def["strict"] = tool["strict"];
+
+                if (!def.HasValues)
+                {
+                    def["enabled"] = true;
+                }
+
+                result[toolName] = def;
+            }
+
+            return result;
+        }
+
+        private static JObject BuildAllowlistedPermissionsMap(JObject basePermissions, IEnumerable<string> allowedToolNames, IEnumerable<string> registeredToolNames)
+        {
+            var permissions = new JObject();
+            foreach (var property in (basePermissions ?? new JObject()).Properties())
+            {
+                permissions[property.Name] = property.Value.Type == JTokenType.Boolean && property.Value.Value<bool>();
+            }
+
+            var allowed = new HashSet<string>(
+                (allowedToolNames ?? Enumerable.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.Ordinal);
+
+            foreach (var registeredTool in (registeredToolNames ?? Enumerable.Empty<string>()))
+            {
+                if (string.IsNullOrWhiteSpace(registeredTool))
+                    continue;
+                permissions[registeredTool] = allowed.Contains(registeredTool);
+            }
+
+            foreach (var allowedTool in allowed)
+            {
+                permissions[allowedTool] = true;
+            }
+
+            return permissions;
+        }
+
+        private static List<ToolPayloadCandidate> BuildToolsPayloadCandidates(JArray tools)
+        {
+            var simpleTools = AIToolConverter.ToSimpleFormat(tools ?? new JArray());
+
+            var permissions = new ToolPayloadCandidate
+            {
+                Mode = "permissions",
+                Payload = ConvertToolsToPermissionsMap(simpleTools)
+            };
+
+            var definitionsRecord = new ToolPayloadCandidate
+            {
+                Mode = "definitions_record",
+                Payload = ConvertToolsToDefinitionRecord(simpleTools)
+            };
+
+            var definitionsArray = new ToolPayloadCandidate
+            {
+                Mode = "definitions_array",
+                Payload = simpleTools
+            };
+
+            var payloadMode = (Environment.GetEnvironmentVariable("OPENCODE_TOOLS_PAYLOAD_MODE") ?? "permissions")
+                .Trim()
+                .ToLowerInvariant();
+
+            if (payloadMode != "definitions" && payloadMode != "permissions" && payloadMode != "auto")
+            {
+                payloadMode = "auto";
+            }
+
+            var candidates = new List<ToolPayloadCandidate>();
+            if (payloadMode == "permissions")
+            {
+                candidates.Add(permissions);
+                candidates.Add(definitionsRecord);
+                if (simpleTools.Count > 0)
+                    candidates.Add(definitionsArray);
+            }
+            else if (payloadMode == "definitions")
+            {
+                candidates.Add(definitionsRecord);
+                if (simpleTools.Count > 0)
+                    candidates.Add(definitionsArray);
+                candidates.Add(permissions);
+            }
+            else
+            {
+                candidates.Add(definitionsRecord);
+                candidates.Add(permissions);
+                if (simpleTools.Count > 0)
+                    candidates.Add(definitionsArray);
+            }
+
+            if (!_definitionsRecordToolsPayloadSupported)
+            {
+                candidates = candidates.Where(candidate => candidate.Mode != "definitions_record").ToList();
+            }
+
+            if (!_definitionsArrayToolsPayloadSupported)
+            {
+                candidates = candidates.Where(candidate => candidate.Mode != "definitions_array").ToList();
+            }
+
+            return candidates.Count > 0 ? candidates : new List<ToolPayloadCandidate> { permissions };
+        }
+
+        private static bool IsRetryableToolPayloadStatus(int? statusCode)
+        {
+            if (!statusCode.HasValue)
+                return false;
+
+            return statusCode.Value == 400 || statusCode.Value == 404 || statusCode.Value == 405 || statusCode.Value == 422;
+        }
+
+        private static void UpdateToolPayloadSupportFlags(ToolPayloadCandidate candidate, OpenCodeApiException apiException)
+        {
+            if (candidate == null || apiException == null || !apiException.StatusCode.HasValue || apiException.StatusCode.Value != 400)
+                return;
+
+            var payloadText = (apiException.ResponseBody ?? apiException.Message ?? string.Empty).ToLowerInvariant();
+
+            if (candidate.Mode == "definitions_record" && payloadText.Contains("expected boolean, received object"))
+            {
+                _definitionsRecordToolsPayloadSupported = false;
+            }
+
+            if (candidate.Mode == "definitions_array" && payloadText.Contains("expected record, received array"))
+            {
+                _definitionsArrayToolsPayloadSupported = false;
+            }
+        }
+
+        private async Task<List<string>> ListRegisteredToolIdsAsync()
+        {
+            try
+            {
+                var response = await SendRequestAsync("GET", "/experimental/tool/ids");
+                var items = response?["items"] as JArray;
+                if (items == null)
+                    return null;
+
+                var ids = new List<string>();
+                foreach (var item in items)
+                {
+                    if (item.Type == JTokenType.String)
+                    {
+                        var toolId = item.ToString().Trim();
+                        if (!string.IsNullOrEmpty(toolId))
+                            ids.Add(toolId);
+                    }
+                }
+                return ids;
+            }
+            catch (OpenCodeApiException apiEx) when (apiEx.StatusCode == 400 || apiEx.StatusCode == 404 || apiEx.StatusCode == 405 || apiEx.StatusCode == 422 || apiEx.StatusCode == 501)
+            {
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private async Task<JArray> ListMessagesAsync(string sessionId, int limit = 50)
+        {
+            var endpoint = $"/session/{sessionId}/message?limit={Math.Max(1, limit)}";
+            var response = await SendRequestAsync("GET", endpoint);
+
+            if (response?["items"] is JArray items)
+                return items;
+
+            if (response?["messages"] is JArray messages)
+                return messages;
+
+            return new JArray();
+        }
+
+        private async Task<HashSet<string>> CaptureMessageIdsAsync(string sessionId, int limit = 100)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            var messages = await ListMessagesAsync(sessionId, limit);
+            foreach (var message in messages.OfType<JObject>())
+            {
+                var id = message["info"]?["id"]?.ToString();
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    ids.Add(id);
+                }
+            }
+            return ids;
+        }
+
+        private async Task<JObject> WaitForMessageAfterPromptAsync(string sessionId, HashSet<string> previousIds, int timeoutSeconds = 0)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return null;
+
+            var pollTimeoutSeconds = timeoutSeconds > 0 ? timeoutSeconds : GetEnvInt("OPENCODE_POLL_TIMEOUT_SECONDS", DEFAULT_POLL_TIMEOUT_SECONDS);
+            var pollIntervalSeconds = GetEnvDouble("OPENCODE_POLL_INTERVAL_SECONDS", 0.25);
+            var pollIntervalMs = Math.Max(50, (int)(pollIntervalSeconds * 1000));
+            var deadline = DateTime.UtcNow.AddSeconds(pollTimeoutSeconds);
+            JObject lastAssistantMessage = null;
+
+            while (DateTime.UtcNow < deadline)
+            {
+                JArray messages;
+                try
+                {
+                    messages = await ListMessagesAsync(sessionId, 100);
+                }
+                catch
+                {
+                    await Task.Delay(pollIntervalMs);
+                    continue;
+                }
+
+                foreach (var message in messages.OfType<JObject>().Reverse())
+                {
+                    var info = message["info"] as JObject;
+                    if (info?["role"]?.ToString() != "assistant")
+                        continue;
+
+                    var id = info["id"]?.ToString();
+                    if (!string.IsNullOrEmpty(id) && previousIds != null && previousIds.Contains(id))
+                        continue;
+
+                    lastAssistantMessage = message;
+                    var parts = message["parts"] as JArray;
+                    if ((parts != null && parts.Count > 0) || info["error"] != null)
+                    {
+                        return message;
+                    }
+                }
+
+                await Task.Delay(pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL_MS);
+            }
+
+            return lastAssistantMessage;
+        }
+
+        private static bool ResponseHasAssistantPayload(JObject response)
+        {
+            if (response == null)
+                return false;
+
+            var parts = response["parts"] as JArray;
+            if (parts != null && parts.Count > 0)
+                return true;
+
+            var toolCalls = response["tool_calls"] as JArray;
+            return toolCalls != null && toolCalls.Count > 0;
+        }
+
+        private async Task<JObject> SendSessionMessageWithRecoveryAsync(string sessionId, JObject body)
+        {
+            HashSet<string> previousIds = null;
+            try
+            {
+                previousIds = await CaptureMessageIdsAsync(sessionId, 100);
+            }
+            catch
+            {
+                // Message-listing is best effort only.
+            }
+
+            try
+            {
+                var response = await SendRequestAsync("POST", $"/session/{sessionId}/message", body);
+                if (ResponseHasAssistantPayload(response))
+                    return response;
+
+                var recovered = await WaitForMessageAfterPromptAsync(sessionId, previousIds);
+                if (recovered != null)
+                    return recovered;
+
+                var pollTimeoutSeconds = GetEnvInt("OPENCODE_POLL_TIMEOUT_SECONDS", DEFAULT_POLL_TIMEOUT_SECONDS);
+                throw new OpenCodeApiException(
+                    $"No assistant response received within polling window ({pollTimeoutSeconds}s). " +
+                    "This may indicate a slow model response or OpenCode server timeout.");
+            }
+            catch (Exception ex) when (previousIds != null)
+            {
+                var recoverTimeout = GetEnvInt("OPENCODE_NETWORK_RECOVER_POLL_TIMEOUT_SECONDS", GetEnvInt("OPENCODE_POLL_TIMEOUT_SECONDS", DEFAULT_POLL_TIMEOUT_SECONDS));
+                var recovered = await WaitForMessageAfterPromptAsync(sessionId, previousIds, recoverTimeout);
+                if (recovered != null)
+                {
+                    Debug.WriteLine($"[OpenCode] Recovered assistant response after failed /message POST: {ex.Message}");
+                    return recovered;
+                }
+                throw;
+            }
+        }
+
+        private async Task<JObject> SendMessageWithToolPayloadFallbackAsync(string sessionId, JObject bodyBase, JArray tools)
+        {
+            if (tools == null || tools.Count == 0)
+            {
+                return await SendSessionMessageWithRecoveryAsync(sessionId, bodyBase);
+            }
+
+            var toolCandidates = BuildToolsPayloadCandidates(tools);
+            var simpleTools = AIToolConverter.ToSimpleFormat(tools);
+            var allowedToolNames = simpleTools.OfType<JObject>()
+                .Select(tool => tool["name"]?.ToString())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct()
+                .ToList();
+
+            var registeredToolIds = await ListRegisteredToolIdsAsync();
+            if (registeredToolIds != null && registeredToolIds.Count > 0)
+            {
+                foreach (var candidate in toolCandidates.Where(candidate => candidate.Mode == "permissions"))
+                {
+                    if (candidate.Payload is JObject basePermissions)
+                    {
+                        candidate.Payload = BuildAllowlistedPermissionsMap(basePermissions, allowedToolNames, registeredToolIds);
+                    }
+                }
+            }
+
+            OpenCodeApiException lastApiError = null;
+            Exception lastError = null;
+
+            for (int i = 0; i < toolCandidates.Count; i++)
+            {
+                var candidate = toolCandidates[i];
+                var body = (JObject)bodyBase.DeepClone();
+                body["tools"] = candidate.Payload;
+
+                try
+                {
+                    var response = await SendSessionMessageWithRecoveryAsync(sessionId, body);
+                    if (i > 0)
+                    {
+                        Debug.WriteLine($"[OpenCode] Tool payload fallback succeeded using mode '{candidate.Mode}'");
+                    }
+                    return response;
+                }
+                catch (OpenCodeApiException apiEx)
+                {
+                    lastApiError = apiEx;
+                    lastError = apiEx;
+                    UpdateToolPayloadSupportFlags(candidate, apiEx);
+
+                    var isLast = i >= toolCandidates.Count - 1;
+                    if (!isLast && IsRetryableToolPayloadStatus(apiEx.StatusCode))
+                    {
+                        var nextMode = toolCandidates[i + 1].Mode;
+                        Debug.WriteLine($"[OpenCode] Tool payload mode '{candidate.Mode}' rejected (status={apiEx.StatusCode}), retrying with '{nextMode}'");
+                        continue;
+                    }
+
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    if (i < toolCandidates.Count - 1)
+                    {
+                        Debug.WriteLine($"[OpenCode] Tool payload mode '{candidate.Mode}' failed: {ex.Message}. Retrying with fallback.");
+                        continue;
+                    }
+                }
+            }
+
+            if (lastApiError != null)
+                throw lastApiError;
+            if (lastError != null)
+                throw lastError;
+
+            throw new Exception("Failed to send OpenCode message: no tool payload mode was accepted");
+        }
+
         /// <summary>
         /// Send a message to a session with tools.
         /// </summary>
@@ -570,7 +1683,10 @@ namespace HaCreator.MapEditor.AI
             string text,
             JArray tools,
             string systemPrompt = null,
-            bool requireTools = false)
+            bool requireTools = false,
+            float? temperature = null,
+            int? thinkingBudget = null,
+            string reasoningEffort = null)
         {
             var parts = new JArray
             {
@@ -586,53 +1702,13 @@ namespace HaCreator.MapEditor.AI
                 ["parts"] = parts,
                 ["maxOutputTokens"] = MAX_OUTPUT_TOKENS
             };
-
-            // OpenCode's tools parameter enables server-side tools defined in .opencode/tool/ directory.
-            // We pass boolean flags to enable our custom TypeScript tools.
-            // The TypeScript tools call back to AIToolServer running in this application.
-            if (tools != null && tools.Count > 0)
-            {
-                Debug.WriteLine($"[OpenCode] Enabling {tools.Count} server-side tools");
-
-                // Convert to boolean format: {"tool_name": true, ...}
-                var toolsObject = AIToolConverter.ToOpenCodeBooleanFormat(tools);
-                Debug.WriteLine($"[OpenCode] Tools enabled: {toolsObject.ToString(Formatting.None)}");
-                body["tools"] = toolsObject;
-            }
-
-            if (!string.IsNullOrEmpty(model))
-            {
-                // OpenCode expects model as object: { providerID: string, modelID: string }
-                string providerId, modelId;
-                if (model.Contains("/"))
-                {
-                    var parts2 = model.Split(new[] { '/' }, 2);
-                    providerId = parts2[0];
-                    modelId = parts2[1];
-                }
-                else
-                {
-                    providerId = "anthropic";
-                    modelId = model;
-                }
-
-                body["model"] = new JObject
-                {
-                    ["providerID"] = providerId,
-                    ["modelID"] = modelId
-                };
-            }
-
-            if (!string.IsNullOrEmpty(systemPrompt))
-            {
-                body["system"] = systemPrompt;
-            }
+            ApplyCommonMessageOptions(body, systemPrompt, temperature, thinkingBudget, reasoningEffort);
 
             // Log the full request (truncated for readability)
             var bodyStr = body.ToString(Formatting.None);
             Debug.WriteLine($"[OpenCode] Request body (first 3000 chars): {bodyStr.Substring(0, Math.Min(3000, bodyStr.Length))}");
 
-            return await SendRequestAsync("POST", $"/session/{sessionId}/message", body);
+            return await SendMessageWithToolPayloadFallbackAsync(sessionId, body, tools);
         }
 
         /// <summary>
@@ -644,23 +1720,64 @@ namespace HaCreator.MapEditor.AI
             string result,
             bool isError = false)
         {
-            var parts = new JArray
+            var candidateParts = new List<JArray>
             {
-                new JObject
+                new JArray
                 {
-                    ["type"] = "tool_result",
-                    ["tool_use_id"] = toolCallId,
-                    ["content"] = result,
-                    ["is_error"] = isError
+                    new JObject
+                    {
+                        ["type"] = "tool_result",
+                        ["tool_use_id"] = toolCallId,
+                        ["tool_call_id"] = toolCallId,
+                        ["content"] = result,
+                        ["is_error"] = isError
+                    }
+                },
+                new JArray
+                {
+                    new JObject
+                    {
+                        ["type"] = "tool-result",
+                        ["toolUseID"] = toolCallId,
+                        ["toolCallID"] = toolCallId,
+                        ["content"] = result,
+                        ["isError"] = isError
+                    }
+                },
+                new JArray
+                {
+                    new JObject
+                    {
+                        ["type"] = "tool",
+                        ["id"] = toolCallId,
+                        ["content"] = result,
+                        ["is_error"] = isError
+                    }
                 }
             };
 
-            var body = new JObject
+            Exception lastError = null;
+            foreach (var parts in candidateParts)
             {
-                ["parts"] = parts
-            };
+                var body = new JObject
+                {
+                    ["parts"] = parts
+                };
 
-            return await SendRequestAsync("POST", $"/session/{sessionId}/message", body);
+                try
+                {
+                    var response = await SendSessionMessageWithRecoveryAsync(sessionId, body);
+                    Debug.WriteLine($"[OpenCode] send_tool_result accepted payload type '{parts[0]?["type"]}' for call_id={toolCallId}");
+                    return response;
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    Debug.WriteLine($"[OpenCode] send_tool_result payload type '{parts[0]?["type"]}' failed for call_id={toolCallId}: {ex.Message}");
+                }
+            }
+
+            throw lastError ?? new Exception($"Failed to send tool result for call_id={toolCallId}");
         }
 
         /// <summary>
@@ -677,18 +1794,34 @@ namespace HaCreator.MapEditor.AI
             if (response == null)
                 return (new List<string> { "# No response from AI" }, toolResponses, false);
 
-            // OpenCode returns: { "info": {...}, "parts": [...] }
             var parts = response["parts"] as JArray;
-            if (parts == null || parts.Count == 0)
+            if (parts != null)
             {
-                // Check for error
+                foreach (var part in parts.OfType<JObject>())
+                {
+                    if (part["type"]?.ToString() != "text")
+                        continue;
+
+                    var text = part["text"]?.ToString();
+                    if (!string.IsNullOrEmpty(text) && !text.StartsWith("#") && text.Length > 10)
+                    {
+                        commands.Add($"# {text.Substring(0, Math.Min(100, text.Length))}...");
+                    }
+                }
+            }
+
+            var toolCalls = ExtractToolCalls(response, null, true);
+            if (toolCalls.Count == 0)
+            {
                 var error = response["error"]?.ToString();
                 if (!string.IsNullOrEmpty(error))
                 {
                     return (new List<string> { $"# Error: {error}" }, toolResponses, false);
                 }
 
-                // Check for direct text content (fallback)
+                if (commands.Count > 0)
+                    return (commands, toolResponses, false);
+
                 var text = ExtractTextContent(response);
                 if (!string.IsNullOrEmpty(text))
                 {
@@ -698,92 +1831,99 @@ namespace HaCreator.MapEditor.AI
                 return (commands, toolResponses, false);
             }
 
-            Debug.WriteLine($"[OpenCode] Parsing {parts.Count} parts");
-
-            foreach (var part in parts)
+            foreach (var toolCall in toolCalls)
             {
-                var partType = part["type"]?.ToString();
-                Debug.WriteLine($"[OpenCode] Part type: {partType}");
+                var toolCallId = toolCall.Id ?? Guid.NewGuid().ToString();
+                var functionName = toolCall.Name;
+                var arguments = toolCall.RawArguments ?? new JObject();
 
-                if (partType == "text")
+                Debug.WriteLine($"[OpenCode] Tool call: {functionName}, args: {arguments.ToString(Formatting.None)}");
+
+                if (string.IsNullOrWhiteSpace(functionName))
+                    continue;
+
+                try
                 {
-                    // Text content - might contain reasoning
-                    var text = part["text"]?.ToString();
-                    Debug.WriteLine($"[OpenCode] Text part: {text?.Substring(0, Math.Min(200, text?.Length ?? 0))}");
-                    if (!string.IsNullOrEmpty(text) && !text.StartsWith("#"))
+                    if (MapEditorFunctions.IsQueryFunction(functionName))
                     {
-                        // Only add non-empty text as comments
-                        if (text.Length > 10)
+                        hasQueryFunctions = true;
+                        _calledQueryFunctions.Add(functionName);
+                        commands.Add($"# QUERY: {functionName} called");
+                        var queryResult = MapEditorFunctions.ExecuteQueryFunction(functionName, arguments);
+                        Debug.WriteLine($"[OpenCode] Query {functionName} result: {queryResult?.Substring(0, Math.Min(500, queryResult?.Length ?? 0))}");
+                        toolResponses.Add((toolCallId, queryResult, false));
+                    }
+                    else
+                    {
+                        var requiredQuery = MapEditorFunctions.GetRequiredQuery(functionName);
+                        var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
+
+                        if (requiredQuery != null && !_calledQueryFunctions.Contains(requiredQuery))
                         {
-                            commands.Add($"# {text.Substring(0, Math.Min(100, text.Length))}...");
-                        }
-                    }
-                }
-                else if (partType == "tool_use" || partType == "tool-invocation")
-                {
-                    // Tool call from the AI
-                    var toolCallId = part["id"]?.ToString() ?? Guid.NewGuid().ToString();
-                    var functionName = part["name"]?.ToString();
-                    var arguments = part["input"] as JObject ?? part["args"] as JObject ?? part["arguments"] as JObject;
-
-                    Debug.WriteLine($"[OpenCode] Tool call: {functionName}, args: {arguments?.ToString(Formatting.None)}");
-
-                    if (string.IsNullOrEmpty(functionName))
-                    {
-                        Debug.WriteLine($"[OpenCode] WARNING: Tool call with no function name, part: {part?.ToString(Formatting.None)}");
-                        continue;
-                    }
-
-                    if (arguments == null)
-                    {
-                        Debug.WriteLine($"[OpenCode] WARNING: Tool call {functionName} has no arguments, part: {part?.ToString(Formatting.None)}");
-                        // Try to create empty arguments
-                        arguments = new JObject();
-                    }
-
-                    try
-                    {
-                        // Check if this is a query function
-                        if (MapEditorFunctions.IsQueryFunction(functionName))
-                        {
-                            hasQueryFunctions = true;
-                            _calledQueryFunctions.Add(functionName);
-                            commands.Add($"# QUERY: {functionName} called");
-                            var result = MapEditorFunctions.ExecuteQueryFunction(functionName, arguments);
-                            Debug.WriteLine($"[OpenCode] Query {functionName} result: {result?.Substring(0, Math.Min(500, result?.Length ?? 0))}");
-                            toolResponses.Add((toolCallId, result, false));
+                            commands.Add($"# WARNING: {functionName} called without {requiredQuery}");
+                            commands.Add(command);
+                            toolResponses.Add((toolCallId, $"Command queued: {functionName} (WARNING: {requiredQuery} was not called first)", false));
                         }
                         else
                         {
-                            // Check if this action function requires a query
-                            var requiredQuery = MapEditorFunctions.GetRequiredQuery(functionName);
-                            if (requiredQuery != null && !_calledQueryFunctions.Contains(requiredQuery))
-                            {
-                                commands.Add($"# WARNING: {functionName} called without {requiredQuery}");
-                                var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
-                                Debug.WriteLine($"[OpenCode] Generated command (with warning): {command}");
-                                commands.Add(command);
-                                toolResponses.Add((toolCallId, $"Command queued: {functionName} (WARNING: {requiredQuery} was not called first)", false));
-                            }
-                            else
-                            {
-                                var command = MapEditorFunctions.FunctionCallToCommand(functionName, arguments);
-                                Debug.WriteLine($"[OpenCode] Generated command: {command}");
-                                commands.Add(command);
-                                toolResponses.Add((toolCallId, $"Command queued: {functionName}", false));
-                            }
+                            commands.Add(command);
+                            toolResponses.Add((toolCallId, $"Command queued: {functionName}", false));
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[OpenCode] ERROR parsing {functionName}: {ex.Message}\n{ex.StackTrace}");
-                        commands.Add($"# Error parsing {functionName}: {ex.Message}");
-                        toolResponses.Add((toolCallId, $"Error: {ex.Message}", true));
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[OpenCode] ERROR parsing {functionName}: {ex.Message}\n{ex.StackTrace}");
+                    commands.Add($"# Error parsing {functionName}: {ex.Message}");
+                    toolResponses.Add((toolCallId, $"Error: {ex.Message}", true));
                 }
             }
 
             return (commands, toolResponses, hasQueryFunctions);
+        }
+
+        private string NormalizeAssistantNarrative(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            var lines = text
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Where(line =>
+                    !line.StartsWith("ADD ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("SET ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("DELETE ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("MOVE ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("TILE ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("CLEAR ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("FLIP ", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("# QUERY:", StringComparison.OrdinalIgnoreCase) &&
+                    !line.StartsWith("# WARNING:", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (lines.Count == 0)
+                return null;
+
+            return string.Join(Environment.NewLine, lines);
+        }
+
+        private string BuildNoCommandFallbackPrompt(string mapContext, string userInstructions)
+        {
+            var context = string.IsNullOrWhiteSpace(mapContext)
+                ? "(map context unavailable)"
+                : mapContext;
+
+            var request = string.IsNullOrWhiteSpace(userInstructions)
+                ? "(no user instruction provided)"
+                : userInstructions;
+
+            return
+                "The map-edit tool pipeline did not produce any executable commands.\n" +
+                "Provide a helpful direct response to the user instead.\n\n" +
+                "User request:\n" + request + "\n\n" +
+                "Current map context:\n" + context;
         }
 
         /// <summary>
@@ -875,34 +2015,8 @@ namespace HaCreator.MapEditor.AI
                     ["maxOutputTokens"] = MAX_OUTPUT_TOKENS
                 };
 
-                if (!string.IsNullOrEmpty(model))
-                {
-                    string providerId, modelId;
-                    if (model.Contains("/"))
-                    {
-                        var modelParts = model.Split(new[] { '/' }, 2);
-                        providerId = modelParts[0];
-                        modelId = modelParts[1];
-                    }
-                    else
-                    {
-                        providerId = "anthropic";
-                        modelId = model;
-                    }
-
-                    body["model"] = new JObject
-                    {
-                        ["providerID"] = providerId,
-                        ["modelID"] = modelId
-                    };
-                }
-
-                if (!string.IsNullOrEmpty(systemPrompt))
-                {
-                    body["system"] = systemPrompt;
-                }
-
-                var response = await SendRequestAsync("POST", $"/session/{sessionId}/message", body);
+                ApplyCommonMessageOptions(body, systemPrompt, temperature: null, thinkingBudget: null, reasoningEffort: null);
+                var response = await SendSessionMessageWithRecoveryAsync(sessionId, body);
                 return ExtractTextContent(response) ?? "";
             }
             finally
@@ -918,12 +2032,30 @@ namespace HaCreator.MapEditor.AI
             }
         }
 
+        private string AppendDirectoryQuery(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint) || endpoint.Contains("directory=", StringComparison.OrdinalIgnoreCase))
+                return endpoint;
+
+            if (endpoint.StartsWith("/global/", StringComparison.OrdinalIgnoreCase) ||
+                endpoint.StartsWith("/auth/", StringComparison.OrdinalIgnoreCase))
+            {
+                return endpoint;
+            }
+
+            var encodedDirectory = Uri.EscapeDataString(directory ?? string.Empty);
+            return endpoint.Contains("?")
+                ? $"{endpoint}&directory={encodedDirectory}"
+                : $"{endpoint}?directory={encodedDirectory}";
+        }
+
         /// <summary>
         /// Make HTTP request to OpenCode server.
         /// </summary>
         private async Task<JObject> SendRequestAsync(string method, string endpoint, JObject body = null)
         {
-            var url = $"{baseUrl}{endpoint}";
+            var endpointWithDirectory = AppendDirectoryQuery(endpoint);
+            var url = $"{baseUrl}{endpointWithDirectory}";
             string responseContent = null;
 
             try
@@ -961,7 +2093,10 @@ namespace HaCreator.MapEditor.AI
                     {
                         errorDetail = responseContent;
                     }
-                    throw new Exception($"OpenCode API error: {response.StatusCode} - {errorDetail}");
+                    throw new OpenCodeApiException(
+                        $"OpenCode API error: {response.StatusCode} - {errorDetail}",
+                        (int)response.StatusCode,
+                        responseContent);
                 }
 
                 // Handle empty responses
@@ -987,7 +2122,7 @@ namespace HaCreator.MapEditor.AI
                 }
 
                 // Handle numeric responses
-                if (double.TryParse(trimmed, out var numValue))
+                if (double.TryParse(trimmed, NumberStyles.Float, CultureInfo.InvariantCulture, out var numValue))
                 {
                     return new JObject { ["value"] = numValue };
                 }
@@ -1008,18 +2143,18 @@ namespace HaCreator.MapEditor.AI
             }
             catch (TaskCanceledException)
             {
-                throw new Exception($"OpenCode request timed out after {REQUEST_TIMEOUT_MS / 1000} seconds");
+                throw new OpenCodeApiException($"OpenCode request timed out after {REQUEST_TIMEOUT_MS / 1000} seconds");
             }
             catch (HttpRequestException ex)
             {
-                throw new Exception($"OpenCode connection failed: {ex.Message}. Is the server running at {baseUrl}?");
+                throw new OpenCodeApiException($"OpenCode connection failed: {ex.Message}. Is the server running at {baseUrl}?", null, null, ex);
             }
             catch (JsonReaderException ex)
             {
                 // Log and include the actual response for debugging
                 Debug.WriteLine($"[OpenCode] JSON parse error: {ex.Message}");
                 Debug.WriteLine($"[OpenCode] Response content: {responseContent}");
-                throw new Exception($"OpenCode returned invalid JSON: {ex.Message}. Response was: {responseContent?.Substring(0, Math.Min(500, responseContent?.Length ?? 0))}");
+                throw new OpenCodeApiException($"OpenCode returned invalid JSON: {ex.Message}. Response was: {responseContent?.Substring(0, Math.Min(500, responseContent?.Length ?? 0))}", null, responseContent, ex);
             }
         }
 
@@ -1027,43 +2162,253 @@ namespace HaCreator.MapEditor.AI
 
         /// <summary>
         /// Extract tool calls from an OpenCode response.
-        /// Handles both tool_use and tool-invocation part types.
+        /// Handles multiple provider/tool-call shapes, including OpenCode server-side records.
         /// </summary>
         /// <param name="response">The raw response from OpenCode</param>
+        /// <param name="allowedToolNames">Optional allowlist of tool names</param>
+        /// <param name="allowTextFallback">Whether to parse text-form tool call fallback blocks</param>
         /// <returns>List of extracted tool calls</returns>
-        public List<OpenCodeToolCall> ExtractToolCalls(JObject response)
+        public List<OpenCodeToolCall> ExtractToolCalls(
+            JObject response,
+            IEnumerable<string> allowedToolNames = null,
+            bool allowTextFallback = true)
         {
             var toolCalls = new List<OpenCodeToolCall>();
+            if (response == null)
+                return toolCalls;
 
-            var parts = response?["parts"] as JArray;
-            if (parts == null) return toolCalls;
+            var allowed = new HashSet<string>(
+                (allowedToolNames ?? Enumerable.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.Ordinal);
 
-            foreach (var part in parts)
+            bool IsAllowed(string toolName)
             {
-                var partType = part["type"]?.ToString();
-                if (partType == "tool_use" || partType == "tool-invocation")
+                return allowed.Count == 0 || allowed.Contains(toolName);
+            }
+
+            void AddToolCall(string id, string name, JToken argumentsToken)
+            {
+                if (string.IsNullOrWhiteSpace(name) || !IsAllowed(name))
+                    return;
+
+                var rawArgs = CoerceToolArguments(argumentsToken);
+
+                var toolCall = new OpenCodeToolCall
                 {
-                    var rawArgs = part["input"] as JObject ?? part["args"] as JObject ?? part["arguments"] as JObject ?? new JObject();
+                    Id = string.IsNullOrWhiteSpace(id) ? Guid.NewGuid().ToString() : id,
+                    Name = name,
+                    RawArguments = rawArgs,
+                    Arguments = new Dictionary<string, object>()
+                };
 
-                    var toolCall = new OpenCodeToolCall
-                    {
-                        Id = part["id"]?.ToString() ?? Guid.NewGuid().ToString(),
-                        Name = part["name"]?.ToString() ?? "unknown",
-                        RawArguments = rawArgs,
-                        Arguments = new Dictionary<string, object>()
-                    };
+                foreach (var prop in rawArgs.Properties())
+                {
+                    toolCall.Arguments[prop.Name] = prop.Value.ToObject<object>();
+                }
 
-                    // Convert JObject to Dictionary
-                    foreach (var prop in rawArgs.Properties())
+                toolCalls.Add(toolCall);
+            }
+
+            if (response["tool_calls"] is JArray directCalls)
+            {
+                foreach (var call in directCalls.OfType<JObject>())
+                {
+                    var function = call["function"] as JObject;
+                    var name = call["name"]?.ToString() ?? function?["name"]?.ToString();
+                    var argsToken = call["arguments"] ?? function?["arguments"];
+                    AddToolCall(call["id"]?.ToString(), name, argsToken);
+                }
+
+                if (toolCalls.Count > 0)
+                    return toolCalls;
+            }
+
+            var parts = response["parts"] as JArray;
+            if (parts != null)
+            {
+                foreach (var part in parts.OfType<JObject>())
+                {
+                    var partType = (part["type"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
+                    var function = part["function"] as JObject;
+
+                    switch (partType)
                     {
-                        toolCall.Arguments[prop.Name] = prop.Value.ToObject<object>();
+                        case "tool_use":
+                        case "tool-use":
+                            AddToolCall(part["id"]?.ToString(), part["name"]?.ToString(), part["input"] ?? part["arguments"]);
+                            break;
+                        case "tool-invocation":
+                        case "tool_invocation":
+                        case "tool_call":
+                        case "tool-call":
+                            AddToolCall(part["id"]?.ToString(), part["name"]?.ToString() ?? function?["name"]?.ToString(),
+                                part["args"] ?? part["arguments"] ?? function?["arguments"]);
+                            break;
+                        case "function_call":
+                            AddToolCall(part["id"]?.ToString(), part["name"]?.ToString() ?? function?["name"]?.ToString(),
+                                part["arguments"] ?? function?["arguments"]);
+                            break;
+                        case "tool":
+                            var state = part["state"] as JObject;
+                            AddToolCall(
+                                part["callID"]?.ToString() ?? part["call_id"]?.ToString() ?? part["id"]?.ToString(),
+                                part["tool"]?.ToString() ?? part["name"]?.ToString(),
+                                state?["input"] ?? part["input"] ?? part["arguments"]);
+                            break;
                     }
-
-                    toolCalls.Add(toolCall);
                 }
             }
 
+            if (toolCalls.Count > 0 || !allowTextFallback)
+                return toolCalls;
+
+            var textParts = new List<string>();
+            foreach (var part in parts?.OfType<JObject>() ?? Enumerable.Empty<JObject>())
+            {
+                if (part["type"]?.ToString() == "text")
+                {
+                    var text = part["text"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        textParts.Add(text);
+                }
+            }
+
+            if (textParts.Count == 0)
+                return toolCalls;
+
+            foreach (var fallbackCall in ExtractTextFallbackToolCalls(string.Join("\n", textParts), allowed))
+            {
+                toolCalls.Add(fallbackCall);
+            }
+
             return toolCalls;
+        }
+
+        private static JObject CoerceToolArguments(JToken argumentsToken)
+        {
+            if (argumentsToken == null || argumentsToken.Type == JTokenType.Null)
+                return new JObject();
+
+            if (argumentsToken is JObject obj)
+                return (JObject)obj.DeepClone();
+
+            if (argumentsToken.Type == JTokenType.String)
+            {
+                var raw = argumentsToken.ToString().Trim();
+                if (string.IsNullOrWhiteSpace(raw))
+                    return new JObject();
+
+                try
+                {
+                    var parsed = JToken.Parse(raw);
+                    if (parsed is JObject parsedObj)
+                        return parsedObj;
+                }
+                catch
+                {
+                    // Continue with key/value fallback parsing.
+                }
+
+                var fallback = new JObject();
+                foreach (Match match in Regex.Matches(raw, "([A-Za-z0-9_]+)\\s*:\\s*(\".*?\"|'.*?'|[^,\\n]+)"))
+                {
+                    var key = match.Groups[1].Value.Trim();
+                    var value = match.Groups[2].Value.Trim().Trim('"', '\'');
+                    if (!string.IsNullOrWhiteSpace(key))
+                    {
+                        fallback[key] = value;
+                    }
+                }
+                return fallback;
+            }
+
+            if (argumentsToken.Type == JTokenType.Object)
+            {
+                return (JObject)argumentsToken;
+            }
+
+            return new JObject();
+        }
+
+        private static List<OpenCodeToolCall> ExtractTextFallbackToolCalls(string text, HashSet<string> allowedToolNames)
+        {
+            var calls = new List<OpenCodeToolCall>();
+            if (string.IsNullOrWhiteSpace(text))
+                return calls;
+
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            int i = 0;
+            int sequence = 0;
+
+            bool IsAllowed(string name)
+            {
+                return allowedToolNames == null || allowedToolNames.Count == 0 || allowedToolNames.Contains(name);
+            }
+
+            while (i < lines.Length)
+            {
+                var raw = lines[i].Trim();
+                var toolMatch = Regex.Match(raw, "^`?([A-Za-z_][A-Za-z0-9_-]*)`?$");
+                if (!toolMatch.Success)
+                {
+                    i++;
+                    continue;
+                }
+
+                var toolName = toolMatch.Groups[1].Value;
+                if (!IsAllowed(toolName))
+                {
+                    i++;
+                    continue;
+                }
+
+                var args = new JObject();
+                i++;
+
+                while (i < lines.Length)
+                {
+                    var current = lines[i].Trim();
+                    if (string.IsNullOrEmpty(current))
+                    {
+                        i++;
+                        if (args.HasValues)
+                            break;
+                        continue;
+                    }
+
+                    if (Regex.IsMatch(current, "^`?[A-Za-z_][A-Za-z0-9_-]*`?$"))
+                    {
+                        break;
+                    }
+
+                    var kv = Regex.Match(current, "^-?\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*:\\s*(.*)$");
+                    if (kv.Success)
+                    {
+                        var key = kv.Groups[1].Value.Trim();
+                        var value = kv.Groups[2].Value.Trim();
+                        if ((value.StartsWith("`") && value.EndsWith("`")) || (value.StartsWith("\"") && value.EndsWith("\"")))
+                        {
+                            value = value.Substring(1, Math.Max(0, value.Length - 2)).Trim();
+                        }
+                        args[key] = value;
+                    }
+
+                    i++;
+                }
+
+                sequence++;
+                var toolCall = new OpenCodeToolCall
+                {
+                    Id = $"text_call_{sequence}",
+                    Name = toolName,
+                    RawArguments = args,
+                    Arguments = args.Properties().ToDictionary(prop => prop.Name, prop => prop.Value.ToObject<object>())
+                };
+                calls.Add(toolCall);
+            }
+
+            return calls;
         }
 
         /// <summary>
@@ -1075,7 +2420,9 @@ namespace HaCreator.MapEditor.AI
         /// <param name="tools">Optional tools to enable (in simple or OpenAI format)</param>
         /// <param name="images">Optional list of image file paths to include</param>
         /// <param name="systemPrompt">Optional system prompt</param>
+        /// <param name="temperature">Optional temperature setting</param>
         /// <param name="thinkingBudget">Optional thinking budget for extended thinking (Claude)</param>
+        /// <param name="reasoningEffort">Optional reasoning effort for OpenAI/Grok reasoning models</param>
         /// <returns>Raw response from OpenCode</returns>
         public async Task<JObject> SendPromptWithImagesAsync(
             string sessionId,
@@ -1083,7 +2430,9 @@ namespace HaCreator.MapEditor.AI
             JArray tools = null,
             List<string> images = null,
             string systemPrompt = null,
-            int? thinkingBudget = null)
+            float? temperature = null,
+            int? thinkingBudget = null,
+            string reasoningEffort = null)
         {
             var parts = new JArray();
 
@@ -1118,45 +2467,93 @@ namespace HaCreator.MapEditor.AI
                 ["parts"] = parts,
                 ["maxOutputTokens"] = MAX_OUTPUT_TOKENS
             };
+            ApplyCommonMessageOptions(body, systemPrompt, temperature, thinkingBudget, reasoningEffort);
 
-            // Add thinking budget if specified
-            if (thinkingBudget.HasValue && thinkingBudget.Value > 0)
+            return await SendMessageWithToolPayloadFallbackAsync(sessionId, body, tools);
+        }
+
+        /// <summary>
+        /// Extract server-side tool call records from session message history.
+        /// Some OpenCode builds execute tools on the server and only expose calls in timeline parts of type "tool".
+        /// </summary>
+        private async Task<List<ServerToolCallRecord>> ExtractServerToolCallsFromSessionAsync(
+            string sessionId,
+            IEnumerable<string> allowedToolNames = null,
+            int limit = 100)
+        {
+            var records = new List<ServerToolCallRecord>();
+            var allowed = new HashSet<string>(
+                (allowedToolNames ?? Enumerable.Empty<string>())
+                    .Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            JArray messages;
+            try
             {
-                body["thinking"] = new JObject
-                {
-                    ["type"] = "enabled",
-                    ["budgetTokens"] = thinkingBudget.Value
-                };
+                messages = await ListMessagesAsync(sessionId, limit);
+            }
+            catch
+            {
+                return records;
             }
 
-            // Add tools if specified
-            // OpenCode supports two modes:
-            // 1. Server-side tools: {"tool_name": true} - enables TypeScript tools in .opencode/tool/
-            // 2. Client-side tools: [{"name": "...", "description": "...", "parameters": {...}}] - full definitions
-            // We use client-side mode here for function calling
-            if (tools != null && tools.Count > 0)
+            foreach (var message in messages.OfType<JObject>())
             {
-                var simpleTools = AIToolConverter.ToSimpleFormat(tools);
-                body["tools"] = simpleTools;
-            }
+                var info = message["info"] as JObject;
+                if (info?["role"]?.ToString() != "assistant")
+                    continue;
 
-            // Add model specification
-            if (!string.IsNullOrEmpty(model))
-            {
-                var modelSpec = OpenCodeModelSpec.Parse(model);
-                if (modelSpec != null)
+                if (!(message["parts"] is JArray parts))
+                    continue;
+
+                foreach (var part in parts.OfType<JObject>())
                 {
-                    body["model"] = modelSpec.ToJson();
+                    var partType = (part["type"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
+                    if (partType != "tool")
+                        continue;
+
+                    var toolName = part["tool"]?.ToString() ?? part["name"]?.ToString();
+                    if (string.IsNullOrWhiteSpace(toolName))
+                        continue;
+
+                    if (allowed.Count > 0 && !allowed.Contains(toolName))
+                        continue;
+
+                    var state = part["state"] as JObject;
+                    var args = CoerceToolArguments(state?["input"] ?? part["input"] ?? part["arguments"]);
+                    var callId = part["callID"]?.ToString()
+                        ?? part["call_id"]?.ToString()
+                        ?? part["tool_call_id"]?.ToString()
+                        ?? part["id"]?.ToString()
+                        ?? $"server_call_{records.Count + 1}";
+                    var dedupeKey = $"{callId}|{toolName}|{args.ToString(Formatting.None)}";
+                    if (!seen.Add(dedupeKey))
+                        continue;
+
+                    var status = (state?["status"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
+                    var isError = status == "error" || (state?["error"] != null);
+
+                    JToken result = null;
+                    if (state?["output"] != null)
+                        result = state["output"];
+                    else if (state?["result"] != null)
+                        result = state["result"];
+                    else if (state?["error"] != null)
+                        result = new JObject { ["error"] = state["error"] };
+
+                    records.Add(new ServerToolCallRecord
+                    {
+                        Id = callId,
+                        Name = toolName,
+                        Arguments = args,
+                        Result = result,
+                        IsError = isError
+                    });
                 }
             }
 
-            // Add system prompt
-            if (!string.IsNullOrEmpty(systemPrompt))
-            {
-                body["system"] = systemPrompt;
-            }
-
-            return await SendRequestAsync("POST", $"/session/{sessionId}/message", body);
+            return records;
         }
 
         /// <summary>
@@ -1171,6 +2568,8 @@ namespace HaCreator.MapEditor.AI
         /// <param name="sessionTitle">Title for the session (for debugging)</param>
         /// <param name="maxIterations">Maximum tool call iterations</param>
         /// <param name="thinkingBudget">Optional thinking budget for Claude's extended thinking</param>
+        /// <param name="temperature">Optional temperature setting</param>
+        /// <param name="reasoningEffort">Optional reasoning effort for OpenAI/Grok reasoning models</param>
         /// <returns>Result containing final text and all tool calls made</returns>
         public async Task<RunWithToolsResult> RunWithToolsAsync(
             string text,
@@ -1180,7 +2579,9 @@ namespace HaCreator.MapEditor.AI
             string systemPrompt = null,
             string sessionTitle = "tool-session",
             int maxIterations = 10,
-            int? thinkingBudget = null)
+            int? thinkingBudget = null,
+            float? temperature = null,
+            string reasoningEffort = null)
         {
             // Ensure server is running
             await EnsureServerAsync();
@@ -1189,6 +2590,18 @@ namespace HaCreator.MapEditor.AI
             {
                 ToolCallsMade = new List<OpenCodeToolCallResult>()
             };
+
+            var simpleTools = AIToolConverter.ToSimpleFormat(tools ?? new JArray());
+            var allowedToolNames = simpleTools
+                .OfType<JObject>()
+                .Select(tool => tool["name"]?.ToString())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct()
+                .ToList();
+            var allowedToolNameSet = new HashSet<string>(allowedToolNames, StringComparer.Ordinal);
+            var ignoredUnlistedTools = GetEnvCsvSet("OPENCODE_IGNORED_UNLISTED_TOOLS", "invalid");
+            var strictAllowedToolCalls = GetEnvBool("OPENCODE_STRICT_ALLOWED_TOOL_CALLS", true);
+            var allowServerToolErrors = GetEnvBool("OPENCODE_ALLOW_SERVER_TOOL_ERRORS", false);
 
             // Create session
             var session = await CreateSessionAsync(sessionTitle);
@@ -1205,14 +2618,95 @@ namespace HaCreator.MapEditor.AI
             {
                 // Send initial prompt with tools
                 var response = await SendPromptWithImagesAsync(
-                    sessionId, text, tools, images, systemPrompt, thinkingBudget);
+                    sessionId,
+                    text,
+                    simpleTools,
+                    images,
+                    systemPrompt,
+                    temperature,
+                    thinkingBudget,
+                    reasoningEffort);
 
                 Debug.WriteLine($"[OpenCode] RunWithTools initial response received");
+
+                bool foundToolCalls = false;
 
                 // Tool execution loop
                 for (int iteration = 0; iteration < maxIterations; iteration++)
                 {
-                    var toolCalls = ExtractToolCalls(response);
+                    var toolCalls = ExtractToolCalls(response, allowedToolNames, allowTextFallback: false);
+
+                    if (toolCalls.Count == 0)
+                    {
+                        var serverToolCallsAll = await ExtractServerToolCallsFromSessionAsync(sessionId, null, 100);
+                        if (serverToolCallsAll.Count > 0)
+                        {
+                            var disallowedServerCalls = serverToolCallsAll
+                                .Where(call => !string.IsNullOrWhiteSpace(call.Name)
+                                    && !allowedToolNameSet.Contains(call.Name)
+                                    && !ignoredUnlistedTools.Contains(call.Name))
+                                .ToList();
+                            if (strictAllowedToolCalls && disallowedServerCalls.Count > 0)
+                            {
+                                var disallowedNames = string.Join(", ", disallowedServerCalls.Select(call => call.Name).Distinct());
+                                throw new Exception($"OpenCode executed disallowed server-side tools: {disallowedNames}");
+                            }
+                        }
+
+                        var allowedServerCalls = serverToolCallsAll
+                            .Where(call => !string.IsNullOrWhiteSpace(call.Name) && allowedToolNameSet.Contains(call.Name))
+                            .ToList();
+
+                        if (allowedServerCalls.Count > 0)
+                        {
+                            var serverErrorCalls = allowedServerCalls.Where(call => call.IsError).ToList();
+                            if (!allowServerToolErrors && serverErrorCalls.Count > 0)
+                            {
+                                var failingNames = string.Join(", ", serverErrorCalls.Select(call => call.Name).Distinct());
+                                var firstError = serverErrorCalls[0].Result?["error"]?.ToString()
+                                    ?? serverErrorCalls[0].Result?["message"]?.ToString()
+                                    ?? serverErrorCalls[0].Result?.ToString();
+                                throw new Exception(
+                                    $"OpenCode server-side tool execution failed for: {failingNames}" +
+                                    (string.IsNullOrWhiteSpace(firstError) ? string.Empty : $" (sample error: {firstError})"));
+                            }
+
+                            foreach (var serverCall in allowedServerCalls)
+                            {
+                                result.ToolCallsMade.Add(new OpenCodeToolCallResult
+                                {
+                                    Name = serverCall.Name,
+                                    Arguments = serverCall.Arguments.Properties().ToDictionary(prop => prop.Name, prop => prop.Value.ToObject<object>()),
+                                    Result = serverCall.Result?.ToObject<object>(),
+                                    IsError = serverCall.IsError
+                                });
+                            }
+
+                            result.Iterations = iteration + 1;
+                            break;
+                        }
+
+                        toolCalls = ExtractToolCalls(response, allowedToolNames, allowTextFallback: true);
+                    }
+
+                    if (toolCalls.Count > 0 && allowedToolNameSet.Count > 0)
+                    {
+                        var disallowedToolCalls = toolCalls
+                            .Where(call => !string.IsNullOrWhiteSpace(call.Name)
+                                && !allowedToolNameSet.Contains(call.Name)
+                                && !ignoredUnlistedTools.Contains(call.Name))
+                            .ToList();
+
+                        if (strictAllowedToolCalls && disallowedToolCalls.Count > 0)
+                        {
+                            var disallowedNames = string.Join(", ", disallowedToolCalls.Select(call => call.Name).Distinct());
+                            throw new Exception($"OpenCode requested disallowed tools: {disallowedNames}");
+                        }
+
+                        toolCalls = toolCalls
+                            .Where(call => !string.IsNullOrWhiteSpace(call.Name) && allowedToolNameSet.Contains(call.Name))
+                            .ToList();
+                    }
 
                     if (toolCalls.Count == 0)
                     {
@@ -1222,6 +2716,7 @@ namespace HaCreator.MapEditor.AI
                     }
 
                     Debug.WriteLine($"[OpenCode] RunWithTools iteration {iteration + 1}: {toolCalls.Count} tool calls");
+                    foundToolCalls = true;
 
                     // Execute each tool call and send results
                     foreach (var toolCall in toolCalls)
@@ -1263,6 +2758,10 @@ namespace HaCreator.MapEditor.AI
                 // Extract final text response
                 result.Text = ExtractTextContent(response) ?? "";
                 result.Success = true;
+                if (!foundToolCalls && result.Iterations == 0)
+                {
+                    result.Iterations = 1;
+                }
             }
             catch (Exception ex)
             {
@@ -1298,7 +2797,9 @@ namespace HaCreator.MapEditor.AI
             string systemPrompt = null,
             string sessionTitle = "tool-session",
             int maxIterations = 10,
-            int? thinkingBudget = null)
+            int? thinkingBudget = null,
+            float? temperature = null,
+            string reasoningEffort = null)
         {
             // Wrap sync executor in async
             return await RunWithToolsAsync(
@@ -1309,7 +2810,9 @@ namespace HaCreator.MapEditor.AI
                 systemPrompt,
                 sessionTitle,
                 maxIterations,
-                thinkingBudget);
+                thinkingBudget,
+                temperature,
+                reasoningEffort);
         }
 
         /// <summary>
@@ -1409,12 +2912,21 @@ namespace HaCreator.MapEditor.AI
             JArray tools = null,
             List<string> images = null,
             string systemPrompt = null,
-            int? thinkingBudget = null)
+            int? thinkingBudget = null,
+            float? temperature = null,
+            string reasoningEffort = null)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(OpenCodeSession));
 
             return await _client.SendPromptWithImagesAsync(
-                _sessionId, text, tools, images, systemPrompt, thinkingBudget);
+                _sessionId,
+                text,
+                tools,
+                images,
+                systemPrompt,
+                temperature,
+                thinkingBudget,
+                reasoningEffort);
         }
 
         /// <summary>

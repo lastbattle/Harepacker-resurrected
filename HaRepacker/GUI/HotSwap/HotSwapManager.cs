@@ -327,12 +327,8 @@ namespace HaRepacker.GUI.HotSwap
                     // Refresh the virtual directory
                     virtualDir.Refresh();
 
-                    // Refresh tree node
-                    node.Nodes.Clear();
-                    foreach (WzDirectory dir in virtualDir.WzDirectories)
-                        node.Nodes.Add(new WzNode(dir));
-                    foreach (WzImage img in virtualDir.WzImages)
-                        node.Nodes.Add(new WzNode(img));
+                    // Refresh tree node (lazy re-population on expand)
+                    node.Reparse();
 
                     ImgFileReloaded?.Invoke(this, new ImgFileReloadedEventArgs(filePath, node));
                 }
@@ -368,9 +364,12 @@ namespace HaRepacker.GUI.HotSwap
                 for (int i = parentNode.Nodes.Count - 1; i >= 0; i--)
                 {
                     if (parentNode.Nodes[i] is WzNode childNode &&
-                        childNode.Tag is WzImage img &&
-                        (img.Name?.Equals(fileName, StringComparison.OrdinalIgnoreCase) == true ||
-                         childNode.Text.Equals(fileName, StringComparison.OrdinalIgnoreCase)))
+                        ((childNode.Tag is WzImage img &&
+                          (img.Name?.Equals(fileName, StringComparison.OrdinalIgnoreCase) == true ||
+                           childNode.Text.Equals(fileName, StringComparison.OrdinalIgnoreCase))) ||
+                         (childNode.Tag is ImgFileWzImageReference imgRef &&
+                          (imgRef.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase) ||
+                           childNode.Text.Equals(fileName, StringComparison.OrdinalIgnoreCase)))))
                     {
                         childNode.Remove();
                         break;
@@ -400,14 +399,14 @@ namespace HaRepacker.GUI.HotSwap
 
                     // Find and add the new image node
                     string fileName = Path.GetFileName(filePath);
-                    var newImage = virtualDir.WzImages.FirstOrDefault(img =>
-                        img?.Name != null && img.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
 
-                    if (newImage != null)
+                    // If the directory node is already expanded/populated, add it immediately.
+                    // Otherwise we rely on lazy population when the user expands it.
+                    if (parentNode.Nodes.Count > 0 &&
+                        !(parentNode.Nodes.Count == 1 && parentNode.Nodes[0].Tag is WzNode.LazyLoadPlaceholder))
                     {
-                        var newNode = new WzNode(newImage);
+                        var newNode = new WzNode(new ImgFileWzImageReference(virtualDir, fileName));
                         parentNode.Nodes.Add(newNode);
-
                         ImgFileAddedToTree?.Invoke(this, new ImgFileAddedEventArgs(filePath, newNode));
                     }
                 }
@@ -469,6 +468,8 @@ namespace HaRepacker.GUI.HotSwap
                     foreach (WzNode child in parent.Nodes)
                     {
                         if (child.Tag is WzImage img && img.Name?.Equals(fileName, StringComparison.OrdinalIgnoreCase) == true)
+                            return child;
+                        if (child.Tag is ImgFileWzImageReference imgRef && imgRef.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase))
                             return child;
                     }
                 }

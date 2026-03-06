@@ -85,6 +85,8 @@
     <GenerateManifests>true</GenerateManifests>
     <FileVersion>7.1.1</FileVersion>
     <PackAsTool>False</PackAsTool>
+    <ApplicationIcon>logo.ico</ApplicationIcon>
+    <PackageIcon>logo.png</PackageIcon>
   </PropertyGroup>
   <ItemGroup>
     <Compile Update="CustomControls\WatermarkTextBox.cs">
@@ -230,6 +232,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Content Include="logo.ico" />
     <Content Include="MapEditor\AI\Prompts\BackgroundAgentPrompt.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <TargetPath>AI\Prompts\BackgroundAgentPrompt.txt</TargetPath>
@@ -273,6 +276,10 @@
 
     <Resource Include="Images\Quest\2022240_buff_icon.png" />
     <Content Include="Images\Quest\BtMarkNpc.png" />
+    <None Include="..\logo.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
     <Resource Include="Images\Quest\shop.meso.png" />
     <Resource Include="Images\Quest\QuestIcon.0.5.png" />
     <Resource Include="Images\Quest\QuestIcon.1.0.png" />

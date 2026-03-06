@@ -11,6 +11,9 @@ namespace HaCreator.GUI.EditorPanels
     /// </summary>
     public class AISettingsDialog : Form
     {
+        private const string OPENCODE_MANUAL_START_HINT =
+            "Hint: Run in CMD: opencode serve --port 4096 --hostname 127.0.0.1";
+
         // Provider selection
         private ComboBox cboProvider;
 
@@ -25,6 +28,7 @@ namespace HaCreator.GUI.EditorPanels
         private TextBox txtOpenCodeHost;
         private NumericUpDown numOpenCodePort;
         private ComboBox cboOpenCodeModel;
+        private ComboBox cboOpenCodeReasoningEffort;
         private CheckBox chkAutoStart;
         private LinkLabel lnkOpenCodeHelp;
 
@@ -46,7 +50,7 @@ namespace HaCreator.GUI.EditorPanels
         private void InitializeComponent()
         {
             this.Text = "AI Settings";
-            this.Size = new Size(520, 380);
+            this.Size = new Size(520, 410);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -127,7 +131,7 @@ namespace HaCreator.GUI.EditorPanels
             pnlOpenCode = new Panel
             {
                 Location = new Point(10, 55),
-                Size = new Size(485, 200),
+                Size = new Size(485, 225),
                 Visible = false
             };
 
@@ -193,18 +197,34 @@ namespace HaCreator.GUI.EditorPanels
             cboOpenCodeModel.Items.AddRange(AISettings.AvailableOpenCodeModels);
             cboOpenCodeModel.TextChanged += OnSettingsChanged;
 
+            var lblOpenCodeReasoning = new Label
+            {
+                Text = "Reasoning Effort:",
+                Location = new Point(10, 150),
+                Size = new Size(150, 20)
+            };
+
+            cboOpenCodeReasoningEffort = new ComboBox
+            {
+                Location = new Point(10, 172),
+                Size = new Size(120, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cboOpenCodeReasoningEffort.Items.AddRange(AISettings.AvailableOpenCodeReasoningEfforts);
+            cboOpenCodeReasoningEffort.SelectedIndexChanged += OnSettingsChanged;
+
             chkAutoStart = new CheckBox
             {
                 Text = "Auto-start server if not running",
-                Location = new Point(10, 155),
-                Size = new Size(250, 20),
+                Location = new Point(155, 175),
+                Size = new Size(220, 20),
                 Checked = true
             };
 
             var lblOpenCodeNote = new Label
             {
                 Text = "Note: OpenCode uses OAuth authentication. Run 'opencode auth' first.",
-                Location = new Point(10, 180),
+                Location = new Point(10, 200),
                 Size = new Size(460, 20),
                 ForeColor = Color.Gray
             };
@@ -212,7 +232,7 @@ namespace HaCreator.GUI.EditorPanels
             var btnRegenTools = new Button
             {
                 Text = "Regenerate Tools",
-                Location = new Point(280, 152),
+                Location = new Point(350, 170),
                 Size = new Size(120, 25)
             };
             btnRegenTools.Click += BtnRegenTools_Click;
@@ -223,6 +243,7 @@ namespace HaCreator.GUI.EditorPanels
                 lblOpenCodePort, numOpenCodePort,
                 lnkOpenCodeHelp,
                 lblOpenCodeModel, cboOpenCodeModel,
+                lblOpenCodeReasoning, cboOpenCodeReasoningEffort,
                 chkAutoStart, btnRegenTools,
                 lblOpenCodeNote
             });
@@ -231,7 +252,7 @@ namespace HaCreator.GUI.EditorPanels
             btnTest = new Button
             {
                 Text = "Test Connection",
-                Location = new Point(20, 265),
+                Location = new Point(20, 290),
                 Size = new Size(130, 28)
             };
             btnTest.Click += BtnTest_Click;
@@ -239,7 +260,7 @@ namespace HaCreator.GUI.EditorPanels
             lblStatus = new Label
             {
                 Text = "",
-                Location = new Point(160, 270),
+                Location = new Point(160, 295),
                 Size = new Size(340, 20),
                 ForeColor = Color.Gray
             };
@@ -247,7 +268,7 @@ namespace HaCreator.GUI.EditorPanels
             btnSave = new Button
             {
                 Text = "Save",
-                Location = new Point(310, 305),
+                Location = new Point(310, 335),
                 Size = new Size(90, 30),
                 DialogResult = DialogResult.OK,
                 Enabled = false // Disabled until connection is tested
@@ -257,7 +278,7 @@ namespace HaCreator.GUI.EditorPanels
             btnCancel = new Button
             {
                 Text = "Cancel",
-                Location = new Point(410, 305),
+                Location = new Point(410, 335),
                 Size = new Size(80, 30),
                 DialogResult = DialogResult.Cancel
             };
@@ -299,6 +320,9 @@ namespace HaCreator.GUI.EditorPanels
             txtOpenCodeHost.Text = AISettings.OpenCodeHost;
             numOpenCodePort.Value = AISettings.OpenCodePort;
             cboOpenCodeModel.Text = AISettings.OpenCodeModel;
+            cboOpenCodeReasoningEffort.SelectedItem = AISettings.OpenCodeReasoningEffort;
+            if (cboOpenCodeReasoningEffort.SelectedIndex < 0 && cboOpenCodeReasoningEffort.Items.Count > 0)
+                cboOpenCodeReasoningEffort.SelectedIndex = 1; // medium
             chkAutoStart.Checked = AISettings.OpenCodeAutoStart;
 
             UpdatePanelVisibility();
@@ -377,7 +401,12 @@ namespace HaCreator.GUI.EditorPanels
                         lblStatus.Refresh();
                     }
 
-                    var client = new OpenCodeClient(host, port, cboOpenCodeModel.Text, autoStart);
+                    var client = new OpenCodeClient(
+                        host,
+                        port,
+                        cboOpenCodeModel.Text,
+                        autoStart,
+                        cboOpenCodeReasoningEffort.SelectedItem?.ToString());
                     success = await client.TestConnectionAsync();
 
                     if (success)
@@ -393,8 +422,8 @@ namespace HaCreator.GUI.EditorPanels
                     else
                     {
                         lblStatus.Text = autoStart
-                            ? $"Failed to start/connect to OpenCode. Is 'opencode' installed?"
-                            : $"Cannot connect to OpenCode at {host}:{port}. Is 'opencode serve' running?";
+                            ? $"Failed to start/connect to OpenCode. Is 'opencode' installed? {OPENCODE_MANUAL_START_HINT}"
+                            : $"Cannot connect to OpenCode at {host}:{port}. Is 'opencode serve' running? {OPENCODE_MANUAL_START_HINT}";
                         lblStatus.ForeColor = Color.Red;
                         _connectionTested = false;
                         btnSave.Enabled = false;
@@ -431,7 +460,15 @@ namespace HaCreator.GUI.EditorPanels
             }
             catch (Exception ex)
             {
-                lblStatus.Text = $"Error: {ex.Message}";
+                var errorMessage = $"Error: {ex.Message}";
+                if (cboProvider.SelectedIndex == 1 &&
+                    chkAutoStart.Checked &&
+                    IsOpenCodeAutoStartFailure(ex.Message))
+                {
+                    errorMessage += $" {OPENCODE_MANUAL_START_HINT}";
+                }
+
+                lblStatus.Text = errorMessage;
                 lblStatus.ForeColor = Color.Red;
                 _connectionTested = false;
                 btnSave.Enabled = false;
@@ -440,6 +477,22 @@ namespace HaCreator.GUI.EditorPanels
             {
                 btnTest.Enabled = true;
             }
+        }
+
+        private static bool IsOpenCodeAutoStartFailure(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            var m = message.ToLowerInvariant();
+            return m.Contains("failed to auto-start")
+                || m.Contains("open code server not running")
+                || m.Contains("opencode server not running")
+                || m.Contains("start with: opencode serve")
+                || m.Contains("opencode cli not found")
+                || (m.Contains("opencode") && m.Contains("not running"));
         }
 
         private void BtnRegenTools_Click(object sender, EventArgs e)
@@ -493,6 +546,7 @@ namespace HaCreator.GUI.EditorPanels
                 AISettings.OpenCodeHost = txtOpenCodeHost.Text.Trim();
                 AISettings.OpenCodePort = (int)numOpenCodePort.Value;
                 AISettings.OpenCodeModel = cboOpenCodeModel.Text.Trim();
+                AISettings.OpenCodeReasoningEffort = cboOpenCodeReasoningEffort.SelectedItem?.ToString();
                 AISettings.OpenCodeAutoStart = chkAutoStart.Checked;
             }
             else

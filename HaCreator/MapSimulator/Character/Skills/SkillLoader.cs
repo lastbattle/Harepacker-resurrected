@@ -584,6 +584,51 @@ namespace HaCreator.MapSimulator.Character.Skills
             return book;
         }
 
+        /// <summary>
+        /// Load skills for exactly one job (no "job path" / advancements).
+        /// </summary>
+        public List<SkillData> LoadSkillsForJob(int jobId)
+        {
+            // Some jobs are "wrappers" over another skill book (e.g. SuperGM 910 uses GM 900 skills too).
+            // Keep this narrow to avoid returning to "load everything" behavior.
+            var bookJobIds = GetSkillBookJobIdsForJob(jobId);
+
+            var skills = new List<SkillData>();
+            foreach (int bookJobId in bookJobIds)
+            {
+                var book = LoadJobSkills(bookJobId);
+                if (book != null && book.Skills.Count > 0)
+                {
+                    skills.AddRange(book.Skills.Values);
+                }
+            }
+
+            if (skills.Count == 0)
+                return skills;
+
+            // De-dupe by skillId while preserving order.
+            var seen = new HashSet<int>();
+            var result = new List<SkillData>(skills.Count);
+            foreach (var s in skills)
+            {
+                if (s == null) continue;
+                if (seen.Add(s.SkillId))
+                    result.Add(s);
+            }
+
+            return result;
+        }
+
+        private static IReadOnlyList<int> GetSkillBookJobIdsForJob(int jobId)
+        {
+            return jobId switch
+            {
+                // SuperGM shares/extends GM skills in many data sets.
+                910 => new[] { 900, 910 },
+                _ => new[] { jobId }
+            };
+        }
+
         private string GetJobName(int jobId)
         {
             return jobId switch
@@ -630,6 +675,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 520 => "Gunslinger",
                 521 => "Outlaw",
                 522 => "Corsair",
+                900 => "GM",
+                910 => "SuperGM",
                 _ => $"Job {jobId}"
             };
         }

@@ -1,4 +1,4 @@
-﻿using HaRepacker.GUI;
+using HaRepacker.GUI;
 using HaRepacker.GUI.Input;
 using HaRepacker.GUI.Panels;
 using MapleLib.Img;
@@ -570,6 +570,19 @@ namespace HaRepacker
 
             try
             {
+                if (tag is ImgFileWzImageReference imgRef)
+                {
+                    // Resolve to an actual WzImage so Save works as expected if the image was edited.
+                    // (If it was never loaded/changed, this will effectively be a no-op save.)
+                    var resolved = imgRef.Resolve();
+                    if (resolved != null)
+                    {
+                        resolved.HRTag = node;
+                        node.Tag = resolved;
+                        tag = resolved;
+                    }
+                }
+
                 if (tag is WzImage image)
                 {
                     // Save single image
@@ -715,7 +728,14 @@ namespace HaRepacker
         {
             WzObject tag = (WzObject)node.Tag;
 
-            if (tag is not WzImage image)
+            WzImage image = tag as WzImage;
+            if (image == null && tag is ImgFileWzImageReference imgRef)
+            {
+                // Keep deletion cheap: we only need a name for the prompt and relative path construction.
+                image = new WzImage(imgRef.FileName) { Changed = false };
+            }
+
+            if (image == null)
             {
                 MessageBox.Show("Please select an IMG file to delete.",
                     "Cannot Delete", MessageBoxButtons.OK, MessageBoxIcon.Warning);

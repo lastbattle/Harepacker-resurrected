@@ -70,7 +70,9 @@ Notes:
 - Avoid broad formatting-only edits.
 - Preserve existing WinForms/WPF patterns and project structure.
 - Do not change framework/runtime targets or package baselines unless requested.
-- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes.
+- When committing, include only files added or modified by the agent in this task; do not include unrelated pre-existing uncommitted changes; include a short commit message description/body of what changed in addition to the title/subject line.
+- For commits that include `HaCreator` changes, prefix the commit subject with `[HaCreator] ` (example: `[HaCreator] Update minimap render bounds`).
+- For commits that include `HaRepacker` changes, prefix the commit subject with `[HaRepacker] ` (example: `[HaRepacker] Fix IMG node rename validation`).
 - When changing packing/extraction/parsing logic, prefer adding or updating tests in related test projects.
 - For UI behavior changes, include manual verification steps in your summary.
 

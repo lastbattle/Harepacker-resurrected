@@ -1472,6 +1472,174 @@ namespace HaCreator.GUI.Quest
         /// <param name="questSayStart0Prop"></param>
         /// <param name="quest"></param>
         /// <returns></returns>
+        private static void parseQuestYesNoResponses(WzImageProperty questConversationProp, QuestEditorSayModel questEditorSayModel)
+        {
+            if (questEditorSayModel == null)
+                return;
+
+            bool isYesConversation = questConversationProp.Name == "yes";
+            bool isNoConversation = questConversationProp.Name == "no";
+            if (!isYesConversation && !isNoConversation)
+                return;
+
+            for (int a = 0; ; a++)
+            {
+                WzImageProperty textProp = questConversationProp[a.ToString()];
+                if (textProp == null)
+                    break;
+
+                string text = parseQuestConversationText(textProp);
+                if (text == null)
+                    continue;
+
+                if (isYesConversation)
+                    questEditorSayModel.YesResponses.Add(new QuestEditorSayResponseModel() { Text = text });
+                else
+                    questEditorSayModel.NoResponses.Add(new QuestEditorSayResponseModel() { Text = text });
+            }
+        }
+
+        private static void parseQuestStopConversation(
+            WzImageProperty questStopContainer,
+            ObservableCollection<QuestEditorSayEndQuestModel> sayStop,
+            QuestEditorModel quest)
+        {
+            foreach (WzImageProperty questStopProp in questStopContainer.WzProperties)
+            {
+                if (questStopProp.Name == "item" || // if not enough item
+                        questStopProp.Name == "mob" || questStopProp.Name == "monster" || // if the hunt amount have not reached threshold
+                        questStopProp.Name == "npc" || // if npc is not in the map, or the user talks to the NPC that issued the quest and not the one required to complete it.
+                        questStopProp.Name == "quest" || // if quest pre-requisite requirement has not reached 
+                        questStopProp.Name == "default" || // 'everything else chat' if any of the  pre-requisite requirement has not reached [i.e not enough ETC slot]
+                        questStopProp.Name == "info")
+                {
+                    for (int a = 0; a < questStopProp.WzProperties.Count; a++) // this has to be parsed by its order!! whatever comes first parses first
+                    {
+                        // Quest_000.wz\Say.img\57106\1\stop\default\illustration
+                        // sometimes may be a WzSubProperty in the later version of MapleStory. (v170++)
+                        string questStopPropItem = parseQuestConversationText(questStopProp.WzProperties[a]);
+                        if (questStopPropItem == null)
+                            continue;
+
+                        if (Enum.TryParse(StringUtility.CapitalizeFirstCharacter(questStopProp.Name), true, out QuestEditorStopConversationType conversationType))
+                        {
+                            QuestEditorSayEndQuestModel toAddTo = sayStop.Where(x => x.ConversationType == conversationType).FirstOrDefault();
+                            if (toAddTo == null)
+                            {
+                                toAddTo = new QuestEditorSayEndQuestModel()
+                                {
+                                    ConversationType = conversationType,
+                                };
+                                sayStop.Add(toAddTo);
+                            }
+                            toAddTo.Responses.Add(new QuestEditorSayResponseModel() { Text = questStopPropItem });
+                        }
+                        else
+                        {
+                            // ERROR
+                            string error = string.Format("[QuestEditor] Missing enum entry in QuestEditorStopConversationType. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
+                            ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                        }
+                    }
+                }
+                else if (questStopProp.Name == "yes" || questStopProp.Name == "no") // an askYesNo conversation after stop, then more embedded 'stop'
+                {
+                    // TODO
+                    /**
+                     * <imgdir name="stop">
+                     * <imgdir name="yes">
+                     * <string name="0" value="I appreciated how you gave me an update on him last time, and now ... wow... thank you so much. With this, I should be good enough to go and tell his story to the queen."/>
+                     * </imgdir>
+                     * <imgdir name="stop">
+                     * <imgdir name="npc">
+                     * <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
+                     * </imgdir>
+                     * <imgdir name="item">
+                     * <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
+                     * </imgdir>
+                     * </imgdir>
+                     * </imgdir>*/
+                }
+                else if (questStopProp.Name == "stop")
+                {
+                    // TODO
+                    // there's also embedded stop
+                    /*
+                     *                <imgdir name="stop">
+                     *                <imgdir name="npc">
+                     *                <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
+                     *                </imgdir>
+                     *                <imgdir name="item">
+                     *                <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
+                     *                </imgdir>
+                     *                </imgdir>*/
+                }
+                else
+                {
+                    int intProp = -1;
+                    if (int.TryParse(questStopProp.Name, out intProp))
+                    {
+                        // 0 1 2 3 4 5
+                        /*
+                         * <imgdir name="stop">
+                         * <imgdir name="0">
+                         * <int name="answer" value="1"/>
+                         * </imgdir>
+                         * <imgdir name="1">
+                         * <int name="answer" value="1"/>
+                         * </imgdir>
+                         * </imgdir>*/
+                    }
+                    else
+                    {
+                        string error = string.Format("[QuestEditor] Unhandled quest stop type. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
+                        ErrorLogger.Log(ErrorLevel.MissingFeature, error);
+                    }
+                }
+            }
+        }
+
+        private static string parseQuestConversationText(WzImageProperty questConversationProp)
+        {
+            if (questConversationProp == null)
+            {
+                return null;
+            }
+
+            if (questConversationProp is WzStringProperty stringProp)
+            {
+                return stringProp.Value ?? string.Empty;
+            }
+
+            // MapleStory China v113 can store quest say text under nested imgdirs (for example: 0/0/0).
+            WzImageProperty firstChild = questConversationProp["0"];
+            if (firstChild != null)
+            {
+                string nestedText = parseQuestConversationText(firstChild);
+                if (nestedText != null)
+                {
+                    return nestedText;
+                }
+            }
+
+            WzPropertyCollection childProperties = questConversationProp.WzProperties;
+            if (childProperties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in childProperties)
+            {
+                string nestedText = parseQuestConversationText(child);
+                if (nestedText != null)
+                {
+                    return nestedText;
+                }
+            }
+
+            return null;
+        }
+
         private static Tuple<
             ObservableCollection<QuestEditorSayModel>, 
             ObservableCollection<QuestEditorSayEndQuestModel>> parseQuestSayConversations(WzSubProperty questSayStart0Prop, QuestEditorModel quest)
@@ -1490,9 +1658,45 @@ namespace HaCreator.GUI.Quest
                 if (int.TryParse(questConvProp.Name, out questConvName) && questConvName < 200) // is conversation property "0" "1" "2" "3"
                 {
                     questEditorSayModel = new QuestEditorSayModel();
-                    questEditorSayModel.NpcConversation = (questConvProp as WzStringProperty).Value;
+                    questEditorSayModel.NpcConversation = parseQuestConversationText(questConvProp) ?? string.Empty;
 
                     sayInfo.Add(questEditorSayModel);
+
+                    bool hasNestedConversationMetadata = false;
+                    WzPropertyCollection nestedConversationProperties = questConvProp.WzProperties;
+                    if (nestedConversationProperties != null)
+                    {
+                        foreach (WzImageProperty nestedConversationProp in nestedConversationProperties)
+                        {
+                            if (nestedConversationProp.Name == "yes" || nestedConversationProp.Name == "no")
+                            {
+                                parseQuestYesNoResponses(nestedConversationProp, questEditorSayModel);
+                                hasNestedConversationMetadata = true;
+                            }
+                            else if (nestedConversationProp.Name == "ask")
+                            {
+                                if (nestedConversationProp is WzIntProperty nestedAskProp)
+                                    quest.IsAskConversation = nestedAskProp.Value > 0;
+                                hasNestedConversationMetadata = true;
+                            }
+                            else if (nestedConversationProp.Name == "lost")
+                            {
+                                // TODO
+                                hasNestedConversationMetadata = true;
+                            }
+                            else if (nestedConversationProp.Name == "stop")
+                            {
+                                parseQuestStopConversation(nestedConversationProp, sayStop, quest);
+                                hasNestedConversationMetadata = true;
+                            }
+                        }
+                    }
+
+                    if (hasNestedConversationMetadata)
+                    {
+                        // MapleStory China v113 can nest say metadata under the numbered conversation container.
+                        questEditorSayModel.PreserveNestedLayout = true;
+                    }
                 }
                 else
                 {
@@ -1501,26 +1705,7 @@ namespace HaCreator.GUI.Quest
                         if (questEditorSayModel == null)
                             continue; // wz formatting error
 
-                        if (questConvProp.Name == "yes")
-                        {
-                            int a = 0;
-                            WzStringProperty textProp;
-                            while ((textProp = questConvProp[a.ToString()] as WzStringProperty) != null)
-                            {
-                                questEditorSayModel.YesResponses.Add(new QuestEditorSayResponseModel() { Text = textProp.Value });
-                                a++;
-                            }
-                        }
-                        else if (questConvProp.Name == "no")
-                        {
-                            int a = 0;
-                            WzStringProperty textProp;
-                            while ((textProp = questConvProp[a.ToString()] as WzStringProperty) != null)
-                            {
-                                questEditorSayModel.NoResponses.Add(new QuestEditorSayResponseModel() { Text = textProp.Value });
-                                a++;
-                            }
-                        }
+                        parseQuestYesNoResponses(questConvProp, questEditorSayModel);
                     }
                     else if (questConvProp.Name == "ask")
                     {
@@ -1539,101 +1724,10 @@ namespace HaCreator.GUI.Quest
                          * </imgdir>
                          * </imgdir>
                          */
-                        }
+                    }
                     else if (questConvProp.Name == "stop") // | stop is the options for ask.
                     {
-                        // TODO
-                        foreach (WzImageProperty questStopProp in questConvProp.WzProperties)
-                        {
-                            if (questStopProp.Name == "item" || // if not enough item
-                                    questStopProp.Name == "mob" || questStopProp.Name == "monster" || // if the hunt amount have not reached threshold
-                                    questStopProp.Name == "npc" || // if npc is not in the map, or the user talks to the NPC that issued the quest and not the one required to complete it.
-                                    questStopProp.Name == "quest" || // if quest pre-requisite requirement has not reached 
-                                    questStopProp.Name == "default" || // 'everything else chat' if any of the  pre-requisite requirement has not reached [i.e not enough ETC slot]
-                                    questStopProp.Name == "info")
-                                    {
-                                for (int a = 0; a < questStopProp.WzProperties.Count; a++) // this has to be parsed by its order!! whatever comes first parses first
-                                {
-                                    // TODO
-                                    // Quest_000.wz\Say.img\57106\1\stop\default\illustration 
-                                    // sometimes may be a WzSubProperty in the later version of MapleStory. (v170++)
-                                    WzStringProperty questStopPropItem = questStopProp.WzProperties[a] as WzStringProperty;
-
-                                    if (Enum.TryParse(StringUtility.CapitalizeFirstCharacter(questStopProp.Name), true, out QuestEditorStopConversationType conversationType))
-                                    {
-                                        QuestEditorSayEndQuestModel toAddTo = sayStop.Where(x => x.ConversationType == conversationType).FirstOrDefault();
-                                        if (toAddTo == null)
-                                        {
-                                            toAddTo = new QuestEditorSayEndQuestModel()
-                                            {
-                                                ConversationType = conversationType,
-                                            };
-                                            sayStop.Add(toAddTo);
-                                        }
-                                        toAddTo.Responses.Add(new QuestEditorSayResponseModel() { Text = questStopPropItem.Value });
-                                    } else
-                                    {
-                                        // ERROR
-                                        string error = string.Format("[QuestEditor] Missing enum entry in QuestEditorStopConversationType. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
-                                        ErrorLogger.Log(ErrorLevel.MissingFeature, error);
-                                    }
-                                }
-                            }
-                            else if (questStopProp.Name == "yes" || questStopProp.Name == "no") // an askYesNo conversation after stop, then more embedded 'stop'
-                            {
-                                // TODO
-                                /**
-                                 * <imgdir name="stop">
-                                 * <imgdir name="yes">
-                                 * <string name="0" value="I appreciated how you gave me an update on him last time, and now ... wow... thank you so much. With this, I should be good enough to go and tell his story to the queen."/>
-                                 * </imgdir>
-                                 * <imgdir name="stop">
-                                 * <imgdir name="npc">
-                                 * <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
-                                 * </imgdir>
-                                 * <imgdir name="item">
-                                 * <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
-                                 * </imgdir>
-                                 * </imgdir>
-                                 * </imgdir>*/
-                            }
-                            else if (questStopProp.Name == "stop")
-                            {
-                                // TODO
-                                // there's also embedded stop
-                                /*                
-                                 *                <imgdir name="stop">
-                                 *                <imgdir name="npc">
-                                 *                <string name="0" value="You haven&apos;t met my sister yet? Please get #b20 #t4000331#s#k for her, okay?"/>
-                                 *                </imgdir>
-                                 *                <imgdir name="item">
-                                 *                <string name="0" value="You&apos;re the one that came here last time to give me a word on #p2101001#. What brought you back here...? If you&apos;re here to meet the queen, please be careful."/>
-                                 *                </imgdir>
-                                 *                </imgdir>*/
-                            }
-                            else
-                            {   
-                                int intProp = -1;
-                                if (int.TryParse(questStopProp.Name, out intProp))
-                                {
-                                    // 0 1 2 3 4 5
-                                    /* 
-                                     * <imgdir name="stop">
-                                     * <imgdir name="0">
-                                     * <int name="answer" value="1"/>
-                                     * </imgdir>
-                                     * <imgdir name="1">
-                                     * <int name="answer" value="1"/>
-                                     * </imgdir>
-                                     * </imgdir>*/
-                                }
-                                else
-                                {
-                                    string error = string.Format("[QuestEditor] Unhandled quest stop type. Name='{0}', QuestId={1}", questStopProp.Name, quest.Id);
-                                    ErrorLogger.Log(ErrorLevel.MissingFeature, error);
-                                }
-                            }
-                        }
+                        parseQuestStopConversation(questConvProp, sayStop, quest);
                     }
                 }
 
@@ -3274,6 +3368,31 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
+        private static WzImage resolveQuestParentImage(
+            WzSubProperty directReference,
+            IDictionary<string, WzSubProperty> questCollection,
+            string fallbackImageName)
+        {
+            WzImage parentImage = directReference?.ParentImage;
+            if (parentImage != null)
+                return parentImage;
+
+            foreach (KeyValuePair<string, WzSubProperty> kvp in questCollection)
+            {
+                parentImage = kvp.Value?.ParentImage;
+                if (parentImage != null)
+                    return parentImage;
+            }
+
+            // Fallback for cases where quest sub-properties become detached from parent
+            // after save/update operations in the data source layer.
+            parentImage = Program.FindImage("Quest", fallbackImageName);
+            if (parentImage != null)
+                return parentImage;
+
+            return null;
+        }
+
         private void button_saveQuest_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedQuest == null)
@@ -3288,22 +3407,30 @@ namespace HaCreator.GUI.Quest
 
             Tuple<WzSubProperty, WzSubProperty, WzSubProperty, WzSubProperty> questExportedProperties = saveQuestAsWzImage(quest);
 
+            WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()];
+            WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
+            WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null;
+            WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null;
+
+            WzImage questInfoParentImg = resolveQuestParentImage(questWzSubProperty_original, Program.InfoManager.QuestInfos, "QuestInfo.img");
+            WzImage questSayParentImg = resolveQuestParentImage(oldSayWzProp, Program.InfoManager.QuestSays, "Say.img");
+            WzImage questActParentImg = resolveQuestParentImage(questAct_SubPropOriginal, Program.InfoManager.QuestActs, "Act.img");
+            WzImage questCheckParentImg = resolveQuestParentImage(questCheck_SubPropOriginal, Program.InfoManager.QuestChecks, "Check.img");
+            if (questInfoParentImg == null || questSayParentImg == null || questActParentImg == null || questCheckParentImg == null)
+            {
+                MessageBox.Show(
+                    $"Unable to resolve one or more quest parent images while saving quest {quest.Id}. Save was cancelled to prevent corruption.",
+                    "Save Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
             // QuestInfo.img
             {
-                WzSubProperty questWzSubProperty_original = Program.InfoManager.QuestInfos[quest.Id.ToString()]; // may be null, but shouldnt be for QuestInfo.img at the very least
-                                                                                                                 // remove the original image
-                WzImage questInfoParentImg;
-                if (questWzSubProperty_original != null)
-                {
-                    questInfoParentImg = questWzSubProperty_original.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questWzSubProperty_original.Remove();
-                }
-                else
-                {
-                    questInfoParentImg = Program.InfoManager.QuestInfos.FirstOrDefault().Value?.Parent as WzImage; // select any random "info" sub item and get its parent instead
-                }
+                // remove previous quest wzImage
+                questWzSubProperty_original?.Remove();
+                questInfoParentImg.RemoveProperty(quest.Id.ToString());
 
                 // replace the old 
                 Program.InfoManager.QuestInfos[quest.Id.ToString()] = questExportedProperties.Item1;
@@ -3318,21 +3445,9 @@ namespace HaCreator.GUI.Quest
 
             // Say.img
             {
-                WzSubProperty oldSayWzProp = Program.InfoManager.QuestSays.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestSays[quest.Id.ToString()] : null;
-
-                // select any parent node
-                WzImage questSayParentImg; // this may be null, since not all quest contains Say.img sub property
-                if (oldSayWzProp != null)
-                {
-                    questSayParentImg = oldSayWzProp?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    oldSayWzProp.Remove();
-                }
-                else
-                {
-                    questSayParentImg = Program.InfoManager.QuestSays.FirstOrDefault().Value?.Parent as WzImage; // select any random "say" sub item and get its parent instead
-                }
+                // remove previous quest wzImage
+                oldSayWzProp?.Remove();
+                questSayParentImg.RemoveProperty(quest.Id.ToString());
 
                 questSayParentImg.AddProperty(questExportedProperties.Item2); // add new to the parent
 
@@ -3346,19 +3461,9 @@ namespace HaCreator.GUI.Quest
 
             // Act.img
             {
-                WzSubProperty questAct_SubPropOriginal = Program.InfoManager.QuestActs.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestActs[quest.Id.ToString()] : null; // old quest "Act" to reference
-
-                // select any parent node
-                WzImage questActParentImg;
-                if (questAct_SubPropOriginal != null)
-                {
-                    questActParentImg = questAct_SubPropOriginal?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questAct_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
-                }
-                else
-                    questActParentImg = Program.InfoManager.QuestActs.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+                // remove previous quest wzImage
+                questAct_SubPropOriginal?.Remove(); // this has to be called to remove the property from its parent
+                questActParentImg.RemoveProperty(quest.Id.ToString());
 
                 questActParentImg.AddProperty(questExportedProperties.Item3); // add new to the parent
 
@@ -3372,19 +3477,9 @@ namespace HaCreator.GUI.Quest
 
             // Check.img
             {
-                WzSubProperty questCheck_SubPropOriginal = Program.InfoManager.QuestChecks.ContainsKey(quest.Id.ToString()) ? Program.InfoManager.QuestChecks[quest.Id.ToString()] : null; // old quest "Check" to reference
-
-                // select any parent node
-                WzImage questCheckParentImg;
-                if (questCheck_SubPropOriginal != null)
-                {
-                    questCheckParentImg = questCheck_SubPropOriginal?.Parent as WzImage;
-
-                    // remove previous quest wzImage
-                    questCheck_SubPropOriginal.Remove(); // this has to be called to remove the property from its parent
-                }
-                else
-                    questCheckParentImg = Program.InfoManager.QuestChecks.FirstOrDefault().Value?.Parent as WzImage; // select any random "act" sub item and get its parent instead
+                // remove previous quest wzImage
+                questCheck_SubPropOriginal?.Remove(); // this has to be called to remove the property from its parent
+                questCheckParentImg.RemoveProperty(quest.Id.ToString());
 
                 questCheckParentImg.AddProperty(questExportedProperties.Item4); // add new to the parent
 
@@ -4227,6 +4322,36 @@ namespace HaCreator.GUI.Quest
         /// </summary>
         /// <param name="questSayItems"></param>
         /// <param name="questSaySubProperty"></param>
+        private static void addYesNoResponsesToConversationProperty(QuestEditorSayModel sayModel, WzSubProperty targetConversationProperty)
+        {
+            if (!sayModel.IsYesNoConversation)
+                return;
+
+            if (sayModel.YesResponses.Count > 0)
+            {
+                WzSubProperty yesResponseSubWzProp = new WzSubProperty("yes");
+                int z = 0;
+                foreach (QuestEditorSayResponseModel sayRespModel in sayModel.YesResponses)
+                {
+                    yesResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                    z++;
+                }
+                targetConversationProperty.AddProperty(yesResponseSubWzProp);
+            }
+
+            if (sayModel.NoResponses.Count > 0)
+            {
+                WzSubProperty noResponseSubWzProp = new WzSubProperty("no");
+                int z = 0;
+                foreach (QuestEditorSayResponseModel sayRespModel in sayModel.NoResponses)
+                {
+                    noResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
+                    z++;
+                }
+                targetConversationProperty.AddProperty(noResponseSubWzProp);
+            }
+        }
+
         private void saveQuestSayConversation(ObservableCollection<QuestEditorSayModel> questSayItems, WzSubProperty questSaySubProperty)
         {
             bool bContainsAskConversation = false;
@@ -4234,34 +4359,19 @@ namespace HaCreator.GUI.Quest
             int i = 0;
             foreach (QuestEditorSayModel sayModel in questSayItems)
             {
-                // the main conversation
-                questSaySubProperty.AddProperty(new WzStringProperty(i.ToString(), sayModel.NpcConversation));
-
-                if (sayModel.IsYesNoConversation) // if there's nothing after a YesNo conversation, it is okay.. 
+                if (sayModel.PreserveNestedLayout)
                 {
-                    // yes/ no if any
-                    if (sayModel.YesResponses.Count > 0)
-                    {
-                        WzSubProperty yesResponseSubWzProp = new WzSubProperty("yes");
-                        int z = 0;
-                        foreach (QuestEditorSayResponseModel sayRespModel in sayModel.YesResponses)
-                        {
-                            yesResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
-                            z++;
-                        }
-                        questSaySubProperty.AddProperty(yesResponseSubWzProp);
-                    }
-                    if (sayModel.NoResponses.Count > 0)
-                    {
-                        WzSubProperty noResponseSubWzProp = new WzSubProperty("no");
-                        int z = 0;
-                        foreach (QuestEditorSayResponseModel sayRespModel in sayModel.NoResponses)
-                        {
-                            noResponseSubWzProp.AddProperty(new WzStringProperty(z.ToString(), sayRespModel.Text));
-                            z++;
-                        }
-                        questSaySubProperty.AddProperty(noResponseSubWzProp);
-                    }
+                    // Preserve nested v113 conversation shape: <imgdir name="{i}"><string name="0"/>...</imgdir>
+                    WzSubProperty nestedConversationSubWzProp = new WzSubProperty(i.ToString());
+                    nestedConversationSubWzProp.AddProperty(new WzStringProperty("0", sayModel.NpcConversation));
+                    addYesNoResponsesToConversationProperty(sayModel, nestedConversationSubWzProp);
+                    questSaySubProperty.AddProperty(nestedConversationSubWzProp);
+                }
+                else
+                {
+                    // the main conversation (legacy flat layout)
+                    questSaySubProperty.AddProperty(new WzStringProperty(i.ToString(), sayModel.NpcConversation));
+                    addYesNoResponsesToConversationProperty(sayModel, questSaySubProperty);
                 }
 
                 if (sayModel.NpcConversation.Contains("#L0#") || (sayModel.NpcConversation.Contains("#L1#") || sayModel.NpcConversation.Contains("#L2#") || sayModel.NpcConversation.Contains("#L3#")) 

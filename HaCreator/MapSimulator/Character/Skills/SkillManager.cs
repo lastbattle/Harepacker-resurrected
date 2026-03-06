@@ -81,7 +81,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public void LoadSkillsForJob(int jobId)
         {
-            _availableSkills = _loader.LoadSkillsForJobPath(jobId);
+            // Only load skills for the current job. Loading the entire advancement path
+            // scales poorly on newer versions with far more jobs/skills.
+            _availableSkills = _loader.LoadSkillsForJob(jobId);
 
             // Initialize skill levels to 0 (unlearned)
             foreach (var skill in _availableSkills)

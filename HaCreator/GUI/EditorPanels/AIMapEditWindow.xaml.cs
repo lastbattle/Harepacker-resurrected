@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
@@ -17,7 +19,12 @@ namespace HaCreator.GUI.EditorPanels
     /// </summary>
     public partial class AIMapEditWindow : Window
     {
+        private const string OPENCODE_MANUAL_START_HINT =
+            "Hint: Run in CMD: opencode serve --port 4096 --hostname 127.0.0.1";
+
         private static readonly Dictionary<Board, AIMapEditWindow> instances = new Dictionary<Board, AIMapEditWindow>();
+        private static readonly object openCodeStartupLock = new object();
+        private static Task openCodeStartupTask = Task.CompletedTask;
 
         private readonly Board board;
         private readonly ChatSession _chatSession;
@@ -116,8 +123,47 @@ namespace HaCreator.GUI.EditorPanels
                 window.Show();
             }
 
+            // If OpenCode is selected, warm up the server in the background when opening AI Map Editor.
+            TryAutoStartOpenCodeServer();
+
             // Auto-load map context every time the window is shown/focused
             window.LoadMapContext();
+        }
+
+        private static void TryAutoStartOpenCodeServer()
+        {
+            if (AISettings.Provider != AIProvider.OpenCode || !AISettings.OpenCodeAutoStart)
+            {
+                return;
+            }
+
+            lock (openCodeStartupLock)
+            {
+                if (openCodeStartupTask != null && !openCodeStartupTask.IsCompleted)
+                {
+                    return;
+                }
+
+                openCodeStartupTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var client = new OpenCodeClient(
+                            AISettings.OpenCodeHost,
+                            AISettings.OpenCodePort,
+                            AISettings.OpenCodeModel,
+                            AISettings.OpenCodeAutoStart,
+                            AISettings.OpenCodeReasoningEffort);
+
+                        await client.EnsureServerAsync();
+                        Debug.WriteLine("[AIMapEditWindow] OpenCode server is ready.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[AIMapEditWindow] OpenCode auto-start failed: {ex.Message}");
+                    }
+                });
+            }
         }
 
         /// <summary>
@@ -298,9 +344,9 @@ namespace HaCreator.GUI.EditorPanels
                 var (explanation, commands) = ParseAIResponse(result);
 
                 // Update assistant message
-                assistantMessage.Content = explanation;
-                assistantMessage.CommandsContent = commands;
                 assistantMessage.IsProcessing = false;
+                await StreamAssistantTextAsync(assistantMessage, explanation, CancellationToken.None);
+                assistantMessage.CommandsContent = commands;
             }
             catch (Exception ex)
             {
@@ -308,7 +354,7 @@ namespace HaCreator.GUI.EditorPanels
                 {
                     _chatSession.LastAssistantMessage.IsProcessing = false;
                     _chatSession.LastAssistantMessage.HasError = true;
-                    _chatSession.LastAssistantMessage.ErrorMessage = $"Error: {ex.Message}";
+                    _chatSession.LastAssistantMessage.ErrorMessage = BuildAIErrorMessage(ex);
                 }
             }
             finally
@@ -328,7 +374,7 @@ namespace HaCreator.GUI.EditorPanels
             // Commands are lines starting with these prefixes
             var commandPrefixes = new[] {
                 "ADD ", "SET ", "DELETE ", "MOVE ", "TILE ", "CLEAR ", "FLIP ",
-                "# QUERY:", "# WARNING:", "# "
+                "# QUERY:", "# WARNING:"
             };
 
             var explanationLines = new List<string>();
@@ -523,9 +569,9 @@ namespace HaCreator.GUI.EditorPanels
 
                 // Parse and update assistant message
                 var (explanation, commands) = ParseAIResponse(result);
-                assistantMessage.Content = explanation;
-                assistantMessage.CommandsContent = commands;
                 assistantMessage.IsProcessing = false;
+                await StreamAssistantTextAsync(assistantMessage, explanation, CancellationToken.None);
+                assistantMessage.CommandsContent = commands;
 
                 // Calculate and display test score
                 var testResults = CalculateTestScore(commands);
@@ -537,7 +583,7 @@ namespace HaCreator.GUI.EditorPanels
                 {
                     _chatSession.LastAssistantMessage.IsProcessing = false;
                     _chatSession.LastAssistantMessage.HasError = true;
-                    _chatSession.LastAssistantMessage.ErrorMessage = $"Test error: {ex.Message}";
+                    _chatSession.LastAssistantMessage.ErrorMessage = BuildAIErrorMessage(ex, "Test error");
                 }
             }
             finally
@@ -686,6 +732,71 @@ namespace HaCreator.GUI.EditorPanels
             if (results.TooltipAdded) count++;
             if (results.BgmSet) count++;
             return count;
+        }
+
+        private static string BuildAIErrorMessage(Exception ex, string prefix = "Error")
+        {
+            var message = $"{prefix}: {ex.Message}";
+
+            if (AISettings.Provider == AIProvider.OpenCode &&
+                AISettings.OpenCodeAutoStart &&
+                IsOpenCodeAutoStartFailure(ex?.Message))
+            {
+                message += Environment.NewLine + OPENCODE_MANUAL_START_HINT;
+            }
+
+            return message;
+        }
+
+        private static bool IsOpenCodeAutoStartFailure(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            var m = message.ToLowerInvariant();
+            return m.Contains("failed to auto-start")
+                || m.Contains("open code server not running")
+                || m.Contains("opencode server not running")
+                || m.Contains("start with: opencode serve")
+                || m.Contains("opencode cli not found")
+                || (m.Contains("opencode") && m.Contains("not running"));
+        }
+
+        private async Task StreamAssistantTextAsync(ChatMessage message, string text, CancellationToken cancellationToken)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                message.Content = text ?? string.Empty;
+                return;
+            }
+
+            var fullText = text;
+            var length = fullText.Length;
+            var updatesTarget = 60;
+            var chunkSize = Math.Max(1, length / updatesTarget);
+            var delayMs = length > 1500 ? 8 : 14;
+
+            message.Content = string.Empty;
+
+            for (int i = chunkSize; i < length; i += chunkSize)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                message.Content = fullText.Substring(0, i);
+                await Task.Delay(delayMs, cancellationToken);
+            }
+
+            message.Content = fullText;
         }
 
         private class TestResults

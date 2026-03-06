@@ -132,7 +132,9 @@ namespace HaCreator.MapEditor.AI
                 {
                     return plan.DirectResponse;
                 }
-                return "# No agents selected for this request";
+
+                ReportProgress("Planner returned no agents; falling back to direct execution.");
+                return await ProcessDirectFallbackAsync(mapContext, userInstructions);
             }
 
             ReportProgress($"Plan: {plan.Reasoning}");
@@ -215,7 +217,9 @@ namespace HaCreator.MapEditor.AI
                     }
                     return plan.DirectResponse;
                 }
-                return "# Error: No agents were selected for this request. Please try rephrasing your instruction.";
+
+                ReportProgress("Planner returned no agents; falling back to direct execution.");
+                return await ProcessDirectFallbackAsync(contextWithHistory, latestUserMessage);
             }
 
             ReportProgress($"Plan: {plan.Reasoning}");
@@ -308,6 +312,30 @@ namespace HaCreator.MapEditor.AI
             context.AppendLine(latestMessage);
 
             return context.ToString();
+        }
+
+        /// <summary>
+        /// Fallback path when planner fails to select agents.
+        /// Sends the request directly to the configured provider.
+        /// </summary>
+        private async Task<string> ProcessDirectFallbackAsync(string mapContext, string userInstructions)
+        {
+            try
+            {
+                var client = CreateClient();
+                var response = await client.ProcessInstructionsAsync(mapContext, userInstructions);
+
+                if (!string.IsNullOrWhiteSpace(response))
+                {
+                    return response;
+                }
+
+                return "# Error: AI did not return a response.";
+            }
+            catch (Exception ex)
+            {
+                return $"# Error: Fallback execution failed: {ex.Message}";
+            }
         }
 
         /// <summary>
@@ -413,7 +441,9 @@ namespace HaCreator.MapEditor.AI
             var openCodeClient = new OpenCodeClient(
                 AISettings.OpenCodeHost,
                 AISettings.OpenCodePort,
-                orchestratorModel);
+                orchestratorModel,
+                AISettings.OpenCodeAutoStart,
+                AISettings.OpenCodeReasoningEffort);
 
             // For planning, we use a simple prompt without function calling
             // The orchestrator prompt asks for JSON output with agent assignments
@@ -475,7 +505,8 @@ namespace HaCreator.MapEditor.AI
                         AISettings.OpenCodeHost,
                         AISettings.OpenCodePort,
                         agentModel,
-                        AISettings.OpenCodeAutoStart);
+                        AISettings.OpenCodeAutoStart,
+                        AISettings.OpenCodeReasoningEffort);
 
                 case AIProvider.OpenRouter:
                 default:

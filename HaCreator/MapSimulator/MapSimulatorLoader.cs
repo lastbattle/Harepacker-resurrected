@@ -21,6 +21,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using HaSharedLibrary.Wz;
 using MapleLib.Helpers;
@@ -33,6 +34,25 @@ using HaSharedLibrary.Render;
 
 namespace HaCreator.MapSimulator {
     public class MapSimulatorLoader {
+        private sealed class TransparentTextureHolder {
+            public Texture2D Texture;
+        }
+
+        // Cache one transparent texture per GraphicsDevice without preventing device GC.
+        private static readonly ConditionalWeakTable<GraphicsDevice, TransparentTextureHolder> _transparentTextureByDevice = new();
+
+        private static Texture2D GetTransparentTexture(GraphicsDevice device) {
+            if (device == null) return null;
+
+            TransparentTextureHolder holder = _transparentTextureByDevice.GetOrCreateValue(device);
+            if (holder.Texture == null || holder.Texture.IsDisposed) {
+                Texture2D tex = new Texture2D(device, 1, 1);
+                // Use "transparent white" to avoid black fringing when bilinear sampling blends into transparent pixels.
+                tex.SetData(new[] { new Microsoft.Xna.Framework.Color(255, 255, 255, 0) });
+                holder.Texture = tex;
+            }
+            return holder.Texture;
+        }
 
         // Constants
         private const string GLOBAL_FONT = "Arial";
@@ -128,7 +148,7 @@ namespace HaCreator.MapSimulator {
                 }
                 else // fallback
                 {
-                    Texture2D texture = Properties.Resources.placeholder.ToTexture2D(device);
+                    Texture2D texture = GetTransparentTexture(device);
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
 
                     frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
@@ -171,10 +191,15 @@ namespace HaCreator.MapSimulator {
                                     frameProp.MSTag = textureFromCache;
                                 }
                                 else {
-                                    frameProp.MSTag = frameProp.GetLinkedWzCanvasBitmap().ToTexture2D(device);
+                                    var bitmap = frameProp.GetLinkedWzCanvasBitmap();
+                                    if (bitmap != null) {
+                                        frameProp.MSTag = bitmap.ToTexture2D(device);
+                                    }
 
                                     // add to cache
-                                    texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
+                                    if (frameProp.MSTag != null) {
+                                        texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
+                                    }
                                 }
                             }
                         }
@@ -193,7 +218,7 @@ namespace HaCreator.MapSimulator {
                             frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
                         }
                         else {
-                            Texture2D texture = Properties.Resources.placeholder.ToTexture2D(device);
+                            Texture2D texture = GetTransparentTexture(device);
                             System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
 
                             frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
