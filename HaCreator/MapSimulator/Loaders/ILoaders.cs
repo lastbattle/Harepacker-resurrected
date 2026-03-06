@@ -2,6 +2,7 @@ using HaCreator.MapEditor;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
@@ -22,7 +23,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Creates a MobItem with animations from WZ data
         /// </summary>
         MobItem CreateMob(TexturePool texturePool, MobInstance mobInstance,
-            float userScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps);
+            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps);
 
         /// <summary>
         /// Creates an NpcItem with animations from WZ data
@@ -142,10 +143,10 @@ namespace HaCreator.MapSimulator.Loaders
     internal class LifeLoaderImpl : ILifeLoader
     {
         public MobItem CreateMob(TexturePool texturePool, MobInstance mobInstance,
-            float userScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps)
+            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps)
         {
             return LifeLoader.CreateMobFromProperty(texturePool, mobInstance,
-                userScreenScaleFactor, device, ref usedProps);
+                userScreenScaleFactor, device, soundManager, ref usedProps);
         }
 
         public NpcItem CreateNpc(TexturePool texturePool, NpcInstance npcInstance,

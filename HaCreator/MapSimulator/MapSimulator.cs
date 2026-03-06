@@ -21,6 +21,7 @@ using MapleLib.WzLib.Spine;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Audio;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
@@ -159,9 +160,10 @@ namespace HaCreator.MapSimulator
         private MouseCursorItem mouseCursor { get => _uiManager.MouseCursor; set => _uiManager.MouseCursor = value; }
 
         // Audio
-        private WzSoundResourceStreamer _audio;
+        private MonoGameBgmPlayer _audio;
         private SoundManager _soundManager; // Manages sound effects with concurrent playback support
         private string _currentBgmName = null; // Track current BGM to avoid reloading same BGM on map change
+        private bool _isBgmPausedForFocusLoss = false;
 
         // Etc
         private Board _mapBoard; // Not readonly - can be replaced during seamless map transitions
@@ -512,11 +514,8 @@ namespace HaCreator.MapSimulator
             if (Program.InfoManager.BGMs.ContainsKey(_mapBoard.MapInfo.bgm))
             {
                 _currentBgmName = _mapBoard.MapInfo.bgm;
-                _audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[_mapBoard.MapInfo.bgm], true);
-                if (_audio != null)
-                {
-                    _audio.Play();
-                }
+                _audio = new MonoGameBgmPlayer(Program.InfoManager.BGMs[_mapBoard.MapInfo.bgm], true);
+                StartBgmForCurrentFocusState();
             }
 
             // Sound effects from Sound.wz/Game.img - using SoundManager for concurrent playback
@@ -654,7 +653,7 @@ namespace HaCreator.MapSimulator
                     if (mob.Hide)
                         continue;
 
-                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, ref usedProps);
 
                     mapObjects_Mobs.Add(npcItem);
                 }
@@ -1222,12 +1221,13 @@ namespace HaCreator.MapSimulator
                 if (Program.InfoManager.BGMs.ContainsKey(newBgmName))
                 {
                     _currentBgmName = newBgmName;
-                    _audio = new WzSoundResourceStreamer(Program.InfoManager.BGMs[newBgmName], true);
-                    _audio?.Play();
+                    _audio = new MonoGameBgmPlayer(Program.InfoManager.BGMs[newBgmName], true);
+                    StartBgmForCurrentFocusState();
                 }
                 else
                 {
                     _currentBgmName = null;
+                    _isBgmPausedForFocusLoss = false;
                 }
             }
             // If same BGM, just keep playing - no changes needed
@@ -1313,7 +1313,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (mob.Hide)
                         continue;
-                    MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, ref usedProps);
                     mapObjects_Mobs.Add(mobItem);
                 }
             });
@@ -1899,6 +1899,8 @@ namespace HaCreator.MapSimulator
         /// <param name="gameTime"></param>
         protected override void Update(GameTime gameTime)
         {
+            SyncBgmPlaybackToWindowFocus();
+
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             currTickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
@@ -2588,6 +2590,51 @@ namespace HaCreator.MapSimulator
             _soundManager?.Update();
 
             base.Update(gameTime);
+        }
+
+        private void SyncBgmPlaybackToWindowFocus()
+        {
+            _soundManager?.SetFocusActive(IsActive);
+
+            if (_audio == null)
+            {
+                _isBgmPausedForFocusLoss = false;
+                return;
+            }
+
+            if (IsActive)
+            {
+                if (_isBgmPausedForFocusLoss)
+                {
+                    _audio.Resume();
+                    _isBgmPausedForFocusLoss = false;
+                }
+
+                return;
+            }
+
+            if (!_isBgmPausedForFocusLoss)
+            {
+                _audio.Pause();
+                _isBgmPausedForFocusLoss = true;
+            }
+        }
+
+        private void StartBgmForCurrentFocusState()
+        {
+            _isBgmPausedForFocusLoss = false;
+
+            if (_audio == null)
+            {
+                return;
+            }
+
+            _audio.Play();
+            if (!IsActive)
+            {
+                _audio.Pause();
+                _isBgmPausedForFocusLoss = true;
+            }
         }
 
         /// <summary>

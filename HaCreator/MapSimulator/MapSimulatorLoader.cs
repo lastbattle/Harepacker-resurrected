@@ -4,6 +4,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaCreator.Wz;
@@ -395,8 +396,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps) {
-            return LifeLoader.CreateMobFromProperty(texturePool, mobInstance, UserScreenScaleFactor, device, ref usedProps);
+        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps) {
+            return LifeLoader.CreateMobFromProperty(texturePool, mobInstance, UserScreenScaleFactor, device, soundManager, ref usedProps);
         }
 
         /// <summary>

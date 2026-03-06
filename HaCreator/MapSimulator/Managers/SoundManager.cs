@@ -8,24 +8,22 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Threading;
 using MapleLib.WzLib.WzProperties;
-using NAudio.Wave;
+using Microsoft.Xna.Framework.Audio;
 
 namespace HaCreator.MapSimulator.Managers
 {
     /// <summary>
-    /// Manages sound effect playback with support for multiple simultaneous instances.
-    /// Uses a pool of WaveOutEvent instances to allow overlapping sound effects.
+    /// Manages MonoGame sound effect playback with support for multiple simultaneous instances.
     /// </summary>
     public class SoundManager : IDisposable
     {
-        private readonly ConcurrentDictionary<string, WzBinaryProperty> _soundSources;
+        private readonly ConcurrentDictionary<string, SoundEffect> _soundSources;
         private readonly List<OneShotSound> _activeSounds;
         private readonly object _lock = new object();
         private float _volume = 0.5f;
         private bool _disposed;
+        private bool _focusActive = true;
 
         // Maximum concurrent sounds per effect type to prevent resource exhaustion
         private const int MaxConcurrentSoundsPerType = 8;
@@ -33,7 +31,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public SoundManager()
         {
-            _soundSources = new ConcurrentDictionary<string, WzBinaryProperty>();
+            _soundSources = new ConcurrentDictionary<string, SoundEffect>();
             _activeSounds = new List<OneShotSound>();
             _activeSoundCounts = new ConcurrentDictionary<string, int>();
         }
@@ -55,7 +53,10 @@ namespace HaCreator.MapSimulator.Managers
         public void RegisterSound(string name, WzBinaryProperty sound)
         {
             if (sound == null) return;
-            _soundSources[name] = sound;
+            _soundSources.AddOrUpdate(
+                name,
+                _ => MonoGameAudioFactory.CreateSoundEffect(sound),
+                (_, existing) => existing);
             _activeSoundCounts[name] = 0;
         }
 
@@ -66,6 +67,7 @@ namespace HaCreator.MapSimulator.Managers
         public void PlaySound(string name)
         {
             if (_disposed) return;
+            if (!_focusActive) return;
 
             if (!_soundSources.TryGetValue(name, out var soundSource))
             {
@@ -96,6 +98,31 @@ namespace HaCreator.MapSimulator.Managers
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SoundManager] Failed to play sound '{name}': {ex.Message}");
+            }
+        }
+
+        public void SetFocusActive(bool isActive)
+        {
+            if (_disposed || _focusActive == isActive)
+            {
+                return;
+            }
+
+            _focusActive = isActive;
+
+            lock (_lock)
+            {
+                foreach (var sound in _activeSounds)
+                {
+                    if (isActive)
+                    {
+                        sound.Resume();
+                    }
+                    else
+                    {
+                        sound.Pause();
+                    }
+                }
             }
         }
 
@@ -163,88 +190,78 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         /// <summary>
-        /// Represents a single one-shot sound playback instance.
-        /// Uses WaveOutEvent for more reliable playback compared to WaveOut with FunctionCallback.
+        /// Represents a single one-shot sound playback instance backed by MonoGame.
         /// </summary>
         private class OneShotSound : IDisposable
         {
-            private readonly Stream _byteStream;
-            private readonly Mp3FileReader _mpegStream;
-            private readonly WaveOutEvent _wavePlayer;
+            private readonly SoundEffectInstance _instance;
             private readonly Action<OneShotSound> _onCompleted;
-            private int _disposed; // Use int for Interlocked
-            private int _completed;
+            private bool _disposed;
+            private bool _completed;
 
             public string SoundName { get; }
-            public bool IsCompleted => Interlocked.CompareExchange(ref _completed, 0, 0) == 1 ||
-                                       Interlocked.CompareExchange(ref _disposed, 0, 0) == 1;
+            public bool IsCompleted => _completed || _disposed;
 
-            public OneShotSound(WzBinaryProperty sound, string soundName, float volume, Action<OneShotSound> onCompleted)
+            public OneShotSound(SoundEffect sound, string soundName, float volume, Action<OneShotSound> onCompleted)
             {
                 SoundName = soundName;
                 _onCompleted = onCompleted;
-
-                // Use WaveOutEvent instead of WaveOut(FunctionCallback) for more reliable playback
-                _wavePlayer = new WaveOutEvent();
-
-                if (sound.WavFormat.Encoding == WaveFormatEncoding.MpegLayer3)
-                {
-                    _byteStream = new MemoryStream(sound.GetBytes(false));
-                    _mpegStream = new Mp3FileReader(_byteStream);
-                    _wavePlayer.Init(_mpegStream);
-                }
-                else if (sound.WavFormat.Encoding == WaveFormatEncoding.Pcm)
-                {
-                    throw new NotSupportedException("PCM format not currently supported");
-                }
-                else
-                {
-                    throw new NotSupportedException($"Unsupported audio format: {sound.WavFormat.Encoding}");
-                }
-
-                _wavePlayer.Volume = volume;
-                _wavePlayer.PlaybackStopped += WavePlayer_PlaybackStopped;
-            }
-
-            private void WavePlayer_PlaybackStopped(object sender, StoppedEventArgs e)
-            {
-                Interlocked.Exchange(ref _completed, 1);
-                _onCompleted?.Invoke(this);
+                _instance = sound.CreateInstance();
+                _instance.Volume = volume;
             }
 
             public void Play()
             {
-                if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
-                _wavePlayer.Play();
+                if (_disposed) return;
+                _instance.Play();
+            }
+
+            public void Pause()
+            {
+                if (_disposed || _instance.State != SoundState.Playing) return;
+                _instance.Pause();
+            }
+
+            public void Resume()
+            {
+                if (_disposed || _instance.State != SoundState.Paused) return;
+                _instance.Resume();
             }
 
             public void Stop()
             {
-                if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
+                if (_disposed || _instance.State == SoundState.Stopped) return;
                 try
                 {
-                    _wavePlayer.Stop();
+                    _instance.Stop();
                 }
                 catch { }
             }
 
+            public void Update()
+            {
+                if (_disposed || _completed)
+                {
+                    return;
+                }
+
+                if (_instance.State == SoundState.Stopped)
+                {
+                    _completed = true;
+                    _onCompleted?.Invoke(this);
+                }
+            }
+
             public void Dispose()
             {
-                if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-                Interlocked.Exchange(ref _completed, 1);
+                if (_disposed) return;
+                _disposed = true;
+                _completed = true;
 
                 try
                 {
-                    _wavePlayer.PlaybackStopped -= WavePlayer_PlaybackStopped;
-                    _wavePlayer.Stop();
-                    _wavePlayer.Dispose();
-                }
-                catch { }
-
-                try
-                {
-                    _mpegStream?.Dispose();
-                    _byteStream?.Dispose();
+                    _instance.Stop();
+                    _instance.Dispose();
                 }
                 catch { }
             }

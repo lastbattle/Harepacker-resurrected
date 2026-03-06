@@ -3,6 +3,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -31,7 +32,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static MobItem CreateMobFromProperty(
             TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor,
-            GraphicsDevice device, ref List<WzObject> usedProps)
+            GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps)
         {
             MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
             WzImage source = mobInfo.LinkedWzImage;
@@ -114,7 +115,8 @@ namespace HaCreator.MapSimulator.Loaders
             var mobItem = new MobItem(mobInstance, animationSet, nameTooltip);
 
             // Load mob-specific sounds from Sound.wz/Mob.img/{mobId}/
-            LoadMobSounds(mobItem, mobInfo.ID);
+            mobItem.SetSoundManager(soundManager);
+            LoadMobSounds(mobItem, mobInfo.ID, soundManager);
 
             return mobItem;
         }
@@ -122,7 +124,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>
         /// Loads mob-specific sounds from Sound.wz/Mob.img/{mobId}/
         /// </summary>
-        private static void LoadMobSounds(MobItem mobItem, string mobId)
+        private static void LoadMobSounds(MobItem mobItem, string mobId, SoundManager soundManager)
         {
             if (string.IsNullOrEmpty(mobId))
             {
@@ -145,22 +147,22 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // Load Damage sound
-            WzSoundResourceStreamer damageSE = LoadSoundFromProperty(mobSounds["Damage"]);
+            string damageSE = RegisterSoundFromProperty(soundManager, mobId, "Damage", mobSounds["Damage"]);
 
             // Load Die sound
-            WzSoundResourceStreamer dieSE = LoadSoundFromProperty(mobSounds["Die"]);
+            string dieSE = RegisterSoundFromProperty(soundManager, mobId, "Die", mobSounds["Die"]);
 
             // Load Attack1 sound
-            WzSoundResourceStreamer attack1SE = LoadSoundFromProperty(mobSounds["Attack1"]);
+            string attack1SE = RegisterSoundFromProperty(soundManager, mobId, "Attack1", mobSounds["Attack1"]);
 
             // Load Attack2 sound
-            WzSoundResourceStreamer attack2SE = LoadSoundFromProperty(mobSounds["Attack2"]);
+            string attack2SE = RegisterSoundFromProperty(soundManager, mobId, "Attack2", mobSounds["Attack2"]);
 
             // Load CharDam1 sound (character damage when mob hits player)
-            WzSoundResourceStreamer charDam1SE = LoadSoundFromProperty(mobSounds["CharDam1"]);
+            string charDam1SE = RegisterSoundFromProperty(soundManager, mobId, "CharDam1", mobSounds["CharDam1"]);
 
             // Load CharDam2 sound
-            WzSoundResourceStreamer charDam2SE = LoadSoundFromProperty(mobSounds["CharDam2"]);
+            string charDam2SE = RegisterSoundFromProperty(soundManager, mobId, "CharDam2", mobSounds["CharDam2"]);
 
             // Set sounds on mob item
             if (damageSE != null || dieSE != null)
@@ -182,9 +184,9 @@ namespace HaCreator.MapSimulator.Loaders
         /// <summary>
         /// Helper method to load a sound from a WZ property (handles UOL links)
         /// </summary>
-        private static WzSoundResourceStreamer LoadSoundFromProperty(WzImageProperty prop)
+        private static string RegisterSoundFromProperty(SoundManager soundManager, string mobId, string soundName, WzImageProperty prop)
         {
-            if (prop == null)
+            if (prop == null || soundManager == null)
                 return null;
 
             WzBinaryProperty soundProp = prop as WzBinaryProperty
@@ -192,7 +194,9 @@ namespace HaCreator.MapSimulator.Loaders
 
             if (soundProp != null)
             {
-                return new WzSoundResourceStreamer(soundProp, false);
+                string soundKey = $"Mob:{mobId}:{soundName}";
+                soundManager.RegisterSound(soundKey, soundProp);
+                return soundKey;
             }
             return null;
         }

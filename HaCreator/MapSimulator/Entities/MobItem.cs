@@ -2,6 +2,7 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -71,37 +72,44 @@ namespace HaCreator.MapSimulator.Entities
         /// <summary>
         /// Sound effect for when mob takes damage
         /// </summary>
-        public WzSoundResourceStreamer DamageSE { get; private set; }
+        public string DamageSE { get; private set; }
 
         /// <summary>
         /// Sound effect for when mob dies
         /// </summary>
-        public WzSoundResourceStreamer DieSE { get; private set; }
+        public string DieSE { get; private set; }
 
         /// <summary>
         /// Sound effect for mob attack 1
         /// </summary>
-        public WzSoundResourceStreamer Attack1SE { get; private set; }
+        public string Attack1SE { get; private set; }
 
         /// <summary>
         /// Sound effect for mob attack 2
         /// </summary>
-        public WzSoundResourceStreamer Attack2SE { get; private set; }
+        public string Attack2SE { get; private set; }
 
         /// <summary>
         /// Sound effect for when mob hits player (character damage 1)
         /// </summary>
-        public WzSoundResourceStreamer CharDam1SE { get; private set; }
+        public string CharDam1SE { get; private set; }
 
         /// <summary>
         /// Sound effect for when mob hits player (character damage 2)
         /// </summary>
-        public WzSoundResourceStreamer CharDam2SE { get; private set; }
+        public string CharDam2SE { get; private set; }
+
+        private SoundManager _soundManager;
 
         /// <summary>
         /// Sets the mob's sound effects (damage and die)
         /// </summary>
-        public void SetSounds(WzSoundResourceStreamer damageSE, WzSoundResourceStreamer dieSE)
+        public void SetSoundManager(SoundManager soundManager)
+        {
+            _soundManager = soundManager;
+        }
+
+        public void SetSounds(string damageSE, string dieSE)
         {
             DamageSE = damageSE;
             DieSE = dieSE;
@@ -110,7 +118,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <summary>
         /// Sets the mob's attack sound effects
         /// </summary>
-        public void SetAttackSounds(WzSoundResourceStreamer attack1SE, WzSoundResourceStreamer attack2SE)
+        public void SetAttackSounds(string attack1SE, string attack2SE)
         {
             Attack1SE = attack1SE;
             Attack2SE = attack2SE;
@@ -119,7 +127,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <summary>
         /// Sets the mob's character damage sound effects (when mob hits player)
         /// </summary>
-        public void SetCharDamSounds(WzSoundResourceStreamer charDam1SE, WzSoundResourceStreamer charDam2SE)
+        public void SetCharDamSounds(string charDam1SE, string charDam2SE)
         {
             CharDam1SE = charDam1SE;
             CharDam2SE = charDam2SE;
@@ -131,7 +139,7 @@ namespace HaCreator.MapSimulator.Entities
         public void PlayDamageSound()
         {
             Debug.WriteLine(DamageSE != null ? "[MobItem] DamageSE not null - playing" : "[MobItem] DamageSE is null");
-            DamageSE?.Play();
+            PlaySound(DamageSE);
         }
 
         /// <summary>
@@ -140,7 +148,7 @@ namespace HaCreator.MapSimulator.Entities
         public void PlayDieSound()
         {
             Debug.WriteLine(DieSE != null ? "[MobItem] DieSE not null - playing" : "[MobItem] DieSE is null");
-            DieSE?.Play();
+            PlaySound(DieSE);
         }
 
         /// <summary>
@@ -151,11 +159,11 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (attackNum == 2 && Attack2SE != null)
             {
-                Attack2SE.Play();
+                PlaySound(Attack2SE);
             }
             else if (Attack1SE != null)
             {
-                Attack1SE.Play();
+                PlaySound(Attack1SE);
             }
         }
 
@@ -167,11 +175,19 @@ namespace HaCreator.MapSimulator.Entities
         {
             if (damNum == 2 && CharDam2SE != null)
             {
-                CharDam2SE.Play();
+                PlaySound(CharDam2SE);
             }
             else if (CharDam1SE != null)
             {
-                CharDam1SE.Play();
+                PlaySound(CharDam1SE);
+            }
+        }
+
+        private void PlaySound(string soundName)
+        {
+            if (!string.IsNullOrEmpty(soundName))
+            {
+                _soundManager?.PlaySound(soundName);
             }
         }
 
