@@ -628,13 +628,9 @@ namespace HaCreator.MapSimulator.Managers
             _effectManager.Animation?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
                 context.GameTime, context.DebugTexture, context.MapShiftX, context.MapShiftY, context.TickCount);
 
-            // Draw combat effects
-            var mapBoard = _getMapBoard();
-            if (mapBoard != null)
-            {
-                _effectManager.Combat?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
-                    context.MapShiftX, context.MapShiftY, mapBoard.CenterPoint.X, mapBoard.CenterPoint.Y);
-            }
+            // Draw combat effects using the same center/shift values as the rest of this render pass.
+            _effectManager.Combat?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
+                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY);
 
             // Draw particles
             _effectManager.Particles?.Draw(context.SpriteBatch, context.DebugTexture,

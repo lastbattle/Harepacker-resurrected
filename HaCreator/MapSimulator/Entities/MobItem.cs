@@ -242,6 +242,28 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
+        /// Gets an approximate visual height for the mob's current frame.
+        /// This is used for effects that need to appear above the mob instead of at its feet.
+        /// </summary>
+        public int GetVisualHeight(int fallbackHeight = 60)
+        {
+            var currentFrame = GetCurrentFrame();
+            return currentFrame != null && currentFrame.Height > 0
+                ? currentFrame.Height
+                : fallbackHeight;
+        }
+
+        /// <summary>
+        /// Gets a world-space anchor point for damage numbers above the mob.
+        /// </summary>
+        public Vector2 GetDamageNumberAnchor(int verticalPadding = 12)
+        {
+            float x = CurrentX;
+            float y = CurrentY - GetVisualHeight() - verticalPadding;
+            return new Vector2(x, y);
+        }
+
+        /// <summary>
         /// Gets the hit effect frames for a specific attack action.
         /// These frames are displayed on the player when hit by this mob's attack.
         /// </summary>

@@ -138,11 +138,13 @@ namespace HaCreator.MapSimulator.Character
 
         private DamageResult CalculateDamage(MobItem mob)
         {
+            Vector2 damageAnchor = mob?.GetDamageNumberAnchor() ?? Vector2.Zero;
+
             var result = new DamageResult
             {
                 Target = mob,
-                HitX = mob.MovementInfo?.X ?? 0,
-                HitY = mob.MovementInfo?.Y ?? 0,
+                HitX = damageAnchor.X,
+                HitY = damageAnchor.Y,
                 KnockbackDirection = _player.FacingRight ? 1 : -1
             };
 

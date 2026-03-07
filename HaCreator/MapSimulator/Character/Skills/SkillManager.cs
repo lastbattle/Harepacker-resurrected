@@ -547,13 +547,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (_combatEffects != null)
                 {
+                    Vector2 damageAnchor = mob.GetDamageNumberAnchor();
+
                     // Notify HP bar system
                     _combatEffects.OnMobDamaged(mob, currentTime);
 
                     _combatEffects.AddDamageNumber(
                         damage,
-                        mob.MovementInfo?.X ?? 0,
-                        (mob.MovementInfo?.Y ?? 0) - 30,
+                        damageAnchor.X,
+                        damageAnchor.Y,
                         damage > 100,
                         false,
                         currentTime,
@@ -693,13 +695,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (_combatEffects != null)
             {
+                Vector2 damageAnchor = closestMob.GetDamageNumberAnchor();
+
                 // Notify HP bar system
                 _combatEffects.OnMobDamaged(closestMob, currentTime);
 
                 _combatEffects.AddDamageNumber(
                     damage,
-                    closestMob.MovementInfo?.X ?? 0,
-                    (closestMob.MovementInfo?.Y ?? 0) - 30,
+                    damageAnchor.X,
+                    damageAnchor.Y,
                     isCritical,
                     false,
                     currentTime,
@@ -832,10 +836,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     // Show damage number
                     if (_combatEffects != null)
                     {
+                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
+
                         _combatEffects.AddDamageNumber(
                             damage,
-                            mob.MovementInfo?.X ?? 0,
-                            (mob.MovementInfo?.Y ?? 0) - 30,
+                            damageAnchor.X,
+                            damageAnchor.Y,
                             damage > levelData.Damage,
                             false,
                             currentTime,
@@ -1017,10 +1023,12 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     if (_combatEffects != null)
                     {
+                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
+
                         _combatEffects.AddDamageNumber(
                             damage,
-                            mob.MovementInfo?.X ?? 0,
-                            (mob.MovementInfo?.Y ?? 0) - 30,
+                            damageAnchor.X,
+                            damageAnchor.Y,
                             false,
                             false,
                             currentTime,

@@ -828,11 +828,12 @@ namespace HaCreator.MapSimulator.Character
                     {
                         int damage = CalculateBasicDamage();
                         mob.ApplyDamage(damage, currentTime, damage > 100, Player.X, Player.Y);
+                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
 
                         _combatEffects?.AddDamageNumber(
                             damage,
-                            mob.MovementInfo?.X ?? 0,
-                            (mob.MovementInfo?.Y ?? 0) - 30,
+                            damageAnchor.X,
+                            damageAnchor.Y,
                             damage > 100,
                             false,
                             currentTime,
@@ -910,11 +911,12 @@ namespace HaCreator.MapSimulator.Character
                     if (isCritical) damage = (int)(damage * 1.5f);
 
                     closestMob.ApplyDamage(damage, currentTime, isCritical, Player.X, Player.Y);
+                    Vector2 damageAnchor = closestMob.GetDamageNumberAnchor();
 
                     _combatEffects?.AddDamageNumber(
                         damage,
-                        closestMob.MovementInfo?.X ?? 0,
-                        (closestMob.MovementInfo?.Y ?? 0) - 30,
+                        damageAnchor.X,
+                        damageAnchor.Y,
                         isCritical,
                         false,
                         currentTime,
