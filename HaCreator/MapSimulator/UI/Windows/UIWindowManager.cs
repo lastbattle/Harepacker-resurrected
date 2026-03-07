@@ -294,15 +294,15 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="tickCount">Current tick count</param>
         /// <param name="chatIsActive">Whether the chat input is active (blocks hotkeys)</param>
         /// <returns>True if ESC was pressed and windows were closed (to prevent simulator from closing)</returns>
-        public bool Update(GameTime gameTime, int tickCount, bool chatIsActive = false)
+        public bool Update(GameTime gameTime, int tickCount, bool chatIsActive = false, bool inputActive = true)
         {
             bool escHandled = false;
 
             // Handle keyboard shortcuts
             KeyboardState keyState = Keyboard.GetState();
 
-            // Skip all hotkey processing when chat is active
-            if (!chatIsActive)
+            // Skip hotkey handling while chat is active or the simulator window is unfocused.
+            if (inputActive && !chatIsActive)
             {
                 // ESC key closes the topmost visible window (one at a time)
                 if (keyState.IsKeyDown(Keys.Escape) && !_previousKeyState.IsKeyDown(Keys.Escape))

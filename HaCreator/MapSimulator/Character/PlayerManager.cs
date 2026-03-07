@@ -407,12 +407,16 @@ namespace HaCreator.MapSimulator.Character
         /// <param name="currentTime">Current tick count</param>
         /// <param name="deltaTime">Delta time in seconds</param>
         /// <param name="chatIsActive">Whether chat input is active (blocks player input)</param>
-        public void Update(int currentTime, float deltaTime, bool chatIsActive = false)
+        public void Update(int currentTime, float deltaTime, bool chatIsActive = false, bool inputActive = true)
         {
-            // Update input only if chat is not active
-            if (!chatIsActive)
+            // Keep input state synchronized even while unfocused so focus changes don't create false edges.
+            if (inputActive && !chatIsActive)
             {
                 Input.Update();
+            }
+            else
+            {
+                Input.SyncState();
             }
 
             if (Player == null)
@@ -426,7 +430,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Apply input to player only if chat is not active
-            if (IsPlayerControlEnabled && !chatIsActive)
+            if (IsPlayerControlEnabled && inputActive && !chatIsActive)
             {
                 Input.ApplyToPlayer(Player);
 

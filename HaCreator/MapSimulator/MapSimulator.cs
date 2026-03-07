@@ -1904,6 +1904,7 @@ namespace HaCreator.MapSimulator
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             currTickCount = Environment.TickCount;
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
+            bool isWindowActive = IsActive;
             KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
             MouseState newMouseState = mouseCursor.MouseState;
 
@@ -1912,7 +1913,7 @@ namespace HaCreator.MapSimulator
             bool uiWindowsHandledEsc = false;
             if (uiWindowManager != null)
             {
-                uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive);
+                uiWindowsHandledEsc = uiWindowManager.Update(gameTime, currTickCount, _chat.IsActive, isWindowActive);
             }
 
             // Allows the game to exit via gamepad Back button only
@@ -1928,7 +1929,9 @@ namespace HaCreator.MapSimulator
             }
 #endif
             // Handle full screen
-            bool bIsAltEnterPressed = newKeyboardState.IsKeyDown(Keys.LeftAlt) && newKeyboardState.IsKeyDown(Keys.Enter);
+            bool bIsAltEnterPressed = isWindowActive &&
+                                      newKeyboardState.IsKeyDown(Keys.LeftAlt) &&
+                                      newKeyboardState.IsKeyDown(Keys.Enter);
             if (bIsAltEnterPressed)
             {
                 _DxDeviceManager.IsFullScreen = !_DxDeviceManager.IsFullScreen;
@@ -1937,7 +1940,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Handle print screen
-            if (newKeyboardState.IsKeyDown(Keys.PrintScreen))
+            if (isWindowActive && newKeyboardState.IsKeyDown(Keys.PrintScreen))
             {
                 if (!_screenshotManager.TakeScreenshot && _screenshotManager.IsComplete)
                 {
@@ -1956,7 +1959,10 @@ namespace HaCreator.MapSimulator
             HandlePortalDoubleClick(newMouseState);
 
             // Handle portal UP key interaction (player presses UP near portal)
-            HandlePortalUpInteract();
+            if (isWindowActive)
+            {
+                HandlePortalUpInteract();
+            }
 
             // Handle same-map portal teleport with delay (no fade, just wait for delay)
             if (_sameMapTeleportPending)
@@ -2093,10 +2099,11 @@ namespace HaCreator.MapSimulator
             }
 
             // Handle chat input (returns true if chat consumed the input)
-            bool chatConsumedInput = _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);
+            bool chatConsumedInput = isWindowActive &&
+                                     _chat.HandleInput(newKeyboardState, _oldKeyboardState, currTickCount);
 
             // Skip navigation and other key handlers if chat is active
-            if (!chatConsumedInput && !_chat.IsActive)
+            if (isWindowActive && !chatConsumedInput && !_chat.IsActive)
             {
                 // Navigate around the rendered object
                 bool bIsShiftPressed = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
@@ -2147,260 +2154,264 @@ namespace HaCreator.MapSimulator
             }
 
             // Debug keys
-            if (newKeyboardState.IsKeyUp(Keys.F5) && _oldKeyboardState.IsKeyDown(Keys.F5))
+            if (isWindowActive)
             {
-                this._gameState.ShowDebugMode = !this._gameState.ShowDebugMode;
-            }
-
-            // Toggle mob movement with F6
-            if (newKeyboardState.IsKeyUp(Keys.F6) && _oldKeyboardState.IsKeyDown(Keys.F6))
-            {
-                this._gameState.MobMovementEnabled = !this._gameState.MobMovementEnabled;
-            }
-
-            // Toggle player control mode with Tab (switch between player control and free camera)
-            /*if (newKeyboardState.IsKeyUp(Keys.Tab) && _oldKeyboardState.IsKeyDown(Keys.Tab))
-            {
-                _gameState.PlayerControlEnabled = !_gameState.PlayerControlEnabled;
-                Debug.WriteLine($"Player control: {(_gameState.PlayerControlEnabled ? "ENABLED" : "DISABLED (free camera)")}");
-            }*/
-
-            // Respawn player with R key at original spawn point (portal position)
-            if (newKeyboardState.IsKeyUp(Keys.R) && _oldKeyboardState.IsKeyDown(Keys.R))
-            {
-                _playerManager?.Respawn();
-                var pos = _playerManager?.GetPlayerPosition();
-                Debug.WriteLine($"Player respawned at spawn point ({pos?.X}, {pos?.Y})");
-            }
-
-            // Test screen tremble with F7 (for debugging effects)
-            if (newKeyboardState.IsKeyUp(Keys.F7) && _oldKeyboardState.IsKeyDown(Keys.F7))
-            {
-                _screenEffects.TriggerTremble(15, false, 0, 0, true, currTickCount);
-            }
-
-            // Test knockback on random mob with F8 (for debugging)
-            if (newKeyboardState.IsKeyUp(Keys.F8) && _oldKeyboardState.IsKeyDown(Keys.F8))
-            {
-                TestKnockbackRandomMob();
-            }
-
-            // Test motion blur with F9 (for debugging)
-            if (newKeyboardState.IsKeyUp(Keys.F9) && _oldKeyboardState.IsKeyDown(Keys.F9))
-            {
-                _screenEffects.HorizontalBlur(0.7f, true, 500, currTickCount);
-            }
-
-            // Test explosion effect with F10 (for debugging)
-            if (newKeyboardState.IsKeyUp(Keys.F10) && _oldKeyboardState.IsKeyDown(Keys.F10))
-            {
-                // Trigger explosion at center of screen (converted to map coordinates)
-                float explosionX = -mapShiftX + Width / 2;
-                float explosionY = -mapShiftY + Height / 2;
-                _screenEffects.FireExplosion(explosionX, explosionY, 200, 800, currTickCount);
-            }
-
-            // Test chain lightning with F11 (for debugging)
-            if (newKeyboardState.IsKeyUp(Keys.F11) && _oldKeyboardState.IsKeyDown(Keys.F11))
-            {
-                // Create chain lightning from left to right of screen
-                float startX = -mapShiftX + 100;
-                float endX = -mapShiftX + Width - 100;
-                float y = -mapShiftY + Height / 2;
-
-                var points = new System.Collections.Generic.List<Vector2>
+                // Debug keys
+                if (newKeyboardState.IsKeyUp(Keys.F5) && _oldKeyboardState.IsKeyDown(Keys.F5))
                 {
-                    new Vector2(startX, y),
-                    new Vector2(startX + (endX - startX) * 0.33f, y - 50),
-                    new Vector2(startX + (endX - startX) * 0.66f, y + 50),
-                    new Vector2(endX, y)
-                };
-                _animationEffects.AddChainLightning(points, new Color(100, 150, 255), 800, currTickCount, 4f, 10);
-            }
-
-            // Test falling animation with F12 (for debugging)
-            if (newKeyboardState.IsKeyUp(Keys.F12) && _oldKeyboardState.IsKeyDown(Keys.F12))
-            {
-                // Create burst of falling particles at screen center
-                TestFallingBurst(currTickCount);
-            }
-
-            // Weather controls: 1=Rain, 2=Snow, 3=Leaves, 0=Off
-            if (newKeyboardState.IsKeyUp(Keys.D1) && _oldKeyboardState.IsKeyDown(Keys.D1))
-            {
-                ToggleWeather(WeatherType.Rain);
-            }
-            if (newKeyboardState.IsKeyUp(Keys.D2) && _oldKeyboardState.IsKeyDown(Keys.D2))
-            {
-                ToggleWeather(WeatherType.Snow);
-            }
-            if (newKeyboardState.IsKeyUp(Keys.D3) && _oldKeyboardState.IsKeyDown(Keys.D3))
-            {
-                ToggleWeather(WeatherType.Leaves);
-            }
-            if (newKeyboardState.IsKeyUp(Keys.D0) && _oldKeyboardState.IsKeyDown(Keys.D0))
-            {
-                ToggleWeather(WeatherType.None);
-            }
-
-            // Toggle fear effect with 4
-            if (newKeyboardState.IsKeyUp(Keys.D4) && _oldKeyboardState.IsKeyDown(Keys.D4))
-            {
-                if (_fieldEffects.IsFearActive)
-                {
-                    _fieldEffects.StopFearEffect();
+                    this._gameState.ShowDebugMode = !this._gameState.ShowDebugMode;
                 }
-                else
+
+                // Toggle mob movement with F6
+                if (newKeyboardState.IsKeyUp(Keys.F6) && _oldKeyboardState.IsKeyDown(Keys.F6))
                 {
-                    _fieldEffects.InitFearEffect(0.7f, 10000, 5, currTickCount);
+                    this._gameState.MobMovementEnabled = !this._gameState.MobMovementEnabled;
                 }
-            }
 
-            // Test weather message with 5
-            if (newKeyboardState.IsKeyUp(Keys.D5) && _oldKeyboardState.IsKeyDown(Keys.D5))
-            {
-                _fieldEffects.OnBlowWeather(WeatherEffectType.Rain, null, "A gentle rain begins to fall...", 1f, 15000, currTickCount);
-                ToggleWeather(WeatherType.Rain);
-            }
-
-            // Test horizontal moving platform with 6
-            if (newKeyboardState.IsKeyUp(Keys.D6) && _oldKeyboardState.IsKeyDown(Keys.D6))
-            {
-                // Spawn platform at mouse position in map coordinates (same formula as portal detection)
-                float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
-                float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
-                _dynamicFootholds.CreateHorizontalPlatform(platX, platY, 100, 15, platX - 150, platX + 150, 80f, 500);
-            }
-
-            // Test vertical moving platform with 7
-            if (newKeyboardState.IsKeyUp(Keys.D7) && _oldKeyboardState.IsKeyDown(Keys.D7))
-            {
-                float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
-                float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
-                _dynamicFootholds.CreateVerticalPlatform(platX, platY, 80, 15, platY - 100, platY + 100, 60f, 300);
-            }
-
-            // Test timed spawn/despawn platform with 8
-            if (newKeyboardState.IsKeyUp(Keys.D8) && _oldKeyboardState.IsKeyDown(Keys.D8))
-            {
-                float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
-                float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
-                _dynamicFootholds.CreateTimedPlatform(platX, platY, 100, 15, 2000, 1500, 0);
-            }
-
-            // Test waypoint platform with 9
-            if (newKeyboardState.IsKeyUp(Keys.D9) && _oldKeyboardState.IsKeyDown(Keys.D9))
-            {
-                float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
-                float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
-                var waypoints = new System.Collections.Generic.List<Microsoft.Xna.Framework.Vector2>
+                // Toggle player control mode with Tab (switch between player control and free camera)
+                /*if (newKeyboardState.IsKeyUp(Keys.Tab) && _oldKeyboardState.IsKeyDown(Keys.Tab))
                 {
-                    new Microsoft.Xna.Framework.Vector2(platX, platY),
-                    new Microsoft.Xna.Framework.Vector2(platX + 100, platY - 50),
-                    new Microsoft.Xna.Framework.Vector2(platX + 200, platY),
-                    new Microsoft.Xna.Framework.Vector2(platX + 100, platY + 50)
-                };
-                _dynamicFootholds.CreateWaypointPlatform(80, 15, waypoints, 70f, true, 200);
-            }
+                    _gameState.PlayerControlEnabled = !_gameState.PlayerControlEnabled;
+                    Debug.WriteLine($"Player control: {(_gameState.PlayerControlEnabled ? "ENABLED" : "DISABLED (free camera)")}");
+                }*/
 
-            // Test limited view / fog of war with 0 (cycle through modes)
-            if (newKeyboardState.IsKeyUp(Keys.D0) && _oldKeyboardState.IsKeyDown(Keys.D0))
-            {
-                if (!_limitedViewField.Enabled)
+                // Respawn player with R key at original spawn point (portal position)
+                if (newKeyboardState.IsKeyUp(Keys.R) && _oldKeyboardState.IsKeyDown(Keys.R))
                 {
-                    // Start with circle mode
-                    _limitedViewField.EnableCircle(250f);
-                    System.Diagnostics.Debug.WriteLine("[LimitedView] Enabled: Circle mode, radius 250");
+                    _playerManager?.Respawn();
+                    var pos = _playerManager?.GetPlayerPosition();
+                    Debug.WriteLine($"Player respawned at spawn point ({pos?.X}, {pos?.Y})");
                 }
-                else
+
+                // Test screen tremble with F7 (for debugging effects)
+                if (newKeyboardState.IsKeyUp(Keys.F7) && _oldKeyboardState.IsKeyDown(Keys.F7))
                 {
-                    // Cycle through modes: Circle -> Rectangle -> Spotlight -> Disable
-                    switch (_limitedViewField.Mode)
+                    _screenEffects.TriggerTremble(15, false, 0, 0, true, currTickCount);
+                }
+
+                // Test knockback on random mob with F8 (for debugging)
+                if (newKeyboardState.IsKeyUp(Keys.F8) && _oldKeyboardState.IsKeyDown(Keys.F8))
+                {
+                    TestKnockbackRandomMob();
+                }
+
+                // Test motion blur with F9 (for debugging)
+                if (newKeyboardState.IsKeyUp(Keys.F9) && _oldKeyboardState.IsKeyDown(Keys.F9))
+                {
+                    _screenEffects.HorizontalBlur(0.7f, true, 500, currTickCount);
+                }
+
+                // Test explosion effect with F10 (for debugging)
+                if (newKeyboardState.IsKeyUp(Keys.F10) && _oldKeyboardState.IsKeyDown(Keys.F10))
+                {
+                    // Trigger explosion at center of screen (converted to map coordinates)
+                    float explosionX = -mapShiftX + Width / 2;
+                    float explosionY = -mapShiftY + Height / 2;
+                    _screenEffects.FireExplosion(explosionX, explosionY, 200, 800, currTickCount);
+                }
+
+                // Test chain lightning with F11 (for debugging)
+                if (newKeyboardState.IsKeyUp(Keys.F11) && _oldKeyboardState.IsKeyDown(Keys.F11))
+                {
+                    // Create chain lightning from left to right of screen
+                    float startX = -mapShiftX + 100;
+                    float endX = -mapShiftX + Width - 100;
+                    float y = -mapShiftY + Height / 2;
+
+                    var points = new System.Collections.Generic.List<Vector2>
                     {
-                        case LimitedViewField.ViewMode.Circle:
-                            _limitedViewField.EnableRectangle(400f, 300f);
-                            System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Rectangle mode 400x300");
+                        new Vector2(startX, y),
+                        new Vector2(startX + (endX - startX) * 0.33f, y - 50),
+                        new Vector2(startX + (endX - startX) * 0.66f, y + 50),
+                        new Vector2(endX, y)
+                    };
+                    _animationEffects.AddChainLightning(points, new Color(100, 150, 255), 800, currTickCount, 4f, 10);
+                }
+
+                // Test falling animation with F12 (for debugging)
+                if (newKeyboardState.IsKeyUp(Keys.F12) && _oldKeyboardState.IsKeyDown(Keys.F12))
+                {
+                    // Create burst of falling particles at screen center
+                    TestFallingBurst(currTickCount);
+                }
+
+                // Weather controls: 1=Rain, 2=Snow, 3=Leaves, 0=Off
+                if (newKeyboardState.IsKeyUp(Keys.D1) && _oldKeyboardState.IsKeyDown(Keys.D1))
+                {
+                    ToggleWeather(WeatherType.Rain);
+                }
+                if (newKeyboardState.IsKeyUp(Keys.D2) && _oldKeyboardState.IsKeyDown(Keys.D2))
+                {
+                    ToggleWeather(WeatherType.Snow);
+                }
+                if (newKeyboardState.IsKeyUp(Keys.D3) && _oldKeyboardState.IsKeyDown(Keys.D3))
+                {
+                    ToggleWeather(WeatherType.Leaves);
+                }
+                if (newKeyboardState.IsKeyUp(Keys.D0) && _oldKeyboardState.IsKeyDown(Keys.D0))
+                {
+                    ToggleWeather(WeatherType.None);
+                }
+
+                // Toggle fear effect with 4
+                if (newKeyboardState.IsKeyUp(Keys.D4) && _oldKeyboardState.IsKeyDown(Keys.D4))
+                {
+                    if (_fieldEffects.IsFearActive)
+                    {
+                        _fieldEffects.StopFearEffect();
+                    }
+                    else
+                    {
+                        _fieldEffects.InitFearEffect(0.7f, 10000, 5, currTickCount);
+                    }
+                }
+
+                // Test weather message with 5
+                if (newKeyboardState.IsKeyUp(Keys.D5) && _oldKeyboardState.IsKeyDown(Keys.D5))
+                {
+                    _fieldEffects.OnBlowWeather(WeatherEffectType.Rain, null, "A gentle rain begins to fall...", 1f, 15000, currTickCount);
+                    ToggleWeather(WeatherType.Rain);
+                }
+
+                // Test horizontal moving platform with 6
+                if (newKeyboardState.IsKeyUp(Keys.D6) && _oldKeyboardState.IsKeyDown(Keys.D6))
+                {
+                    // Spawn platform at mouse position in map coordinates (same formula as portal detection)
+                    float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+                    float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+                    _dynamicFootholds.CreateHorizontalPlatform(platX, platY, 100, 15, platX - 150, platX + 150, 80f, 500);
+                }
+
+                // Test vertical moving platform with 7
+                if (newKeyboardState.IsKeyUp(Keys.D7) && _oldKeyboardState.IsKeyDown(Keys.D7))
+                {
+                    float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+                    float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+                    _dynamicFootholds.CreateVerticalPlatform(platX, platY, 80, 15, platY - 100, platY + 100, 60f, 300);
+                }
+
+                // Test timed spawn/despawn platform with 8
+                if (newKeyboardState.IsKeyUp(Keys.D8) && _oldKeyboardState.IsKeyDown(Keys.D8))
+                {
+                    float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+                    float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+                    _dynamicFootholds.CreateTimedPlatform(platX, platY, 100, 15, 2000, 1500, 0);
+                }
+
+                // Test waypoint platform with 9
+                if (newKeyboardState.IsKeyUp(Keys.D9) && _oldKeyboardState.IsKeyDown(Keys.D9))
+                {
+                    float platX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+                    float platY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+                    var waypoints = new System.Collections.Generic.List<Microsoft.Xna.Framework.Vector2>
+                    {
+                        new Microsoft.Xna.Framework.Vector2(platX, platY),
+                        new Microsoft.Xna.Framework.Vector2(platX + 100, platY - 50),
+                        new Microsoft.Xna.Framework.Vector2(platX + 200, platY),
+                        new Microsoft.Xna.Framework.Vector2(platX + 100, platY + 50)
+                    };
+                    _dynamicFootholds.CreateWaypointPlatform(80, 15, waypoints, 70f, true, 200);
+                }
+
+                // Test limited view / fog of war with 0 (cycle through modes)
+                if (newKeyboardState.IsKeyUp(Keys.D0) && _oldKeyboardState.IsKeyDown(Keys.D0))
+                {
+                    if (!_limitedViewField.Enabled)
+                    {
+                        // Start with circle mode
+                        _limitedViewField.EnableCircle(250f);
+                        System.Diagnostics.Debug.WriteLine("[LimitedView] Enabled: Circle mode, radius 250");
+                    }
+                    else
+                    {
+                        // Cycle through modes: Circle -> Rectangle -> Spotlight -> Disable
+                        switch (_limitedViewField.Mode)
+                        {
+                            case LimitedViewField.ViewMode.Circle:
+                                _limitedViewField.EnableRectangle(400f, 300f);
+                                System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Rectangle mode 400x300");
+                                break;
+                            case LimitedViewField.ViewMode.Rectangle:
+                                _limitedViewField.EnableSpotlight(300f, true);
+                                System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Spotlight mode with pulse");
+                                break;
+                            case LimitedViewField.ViewMode.Spotlight:
+                                _limitedViewField.Disable();
+                                System.Diagnostics.Debug.WriteLine("[LimitedView] Disabled");
+                                break;
+                            default:
+                                _limitedViewField.DisableImmediate();
+                                break;
+                        }
+                    }
+                }
+
+                // Ship controls: [-] Start voyage, [=] Balrog/Skip/Reset
+                // Based on CField_ContiMove::OnContiMove packet handling:
+                // - Case 8: OnStartShipMoveField (LeaveShipMove when value==2)
+                // - Case 10: OnMoveField (AppearShip=4, DisappearShip=5)
+                // - Case 12: OnEndShipMoveField (EnterShipMove when value==6)
+                if (newKeyboardState.IsKeyUp(Keys.OemMinus) && _oldKeyboardState.IsKeyDown(Keys.OemMinus))
+                {
+                    // Load ship and Balrog textures if not already loaded
+                    if (!_transportField.HasShipTextures)
+                    {
+                        LoadTransportFieldTextures();
+                    }
+
+                    // Initialize and start a demo ship voyage at mouse position
+                    float shipX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+                    float shipY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+
+                    // Initialize using client-accurate parameters:
+                    // shipKind: 0 = regular ship (moves x0->x), 1 = Balrog type (appears/disappears)
+                    // x: docked position, y: ship height, x0: away position
+                    // f: flip (0=right, 1=left), tMove: movement duration in seconds
+                    _transportField.Initialize(
+                        shipKind: 0,           // Regular ship
+                        x: (int)shipX + 400,   // Dock position (right)
+                        y: (int)shipY,         // Y position
+                        x0: (int)shipX - 400,  // Away position (left)
+                        f: 0,                  // Face right
+                        tMove: 10              // 10 second movement
+                    );
+                    _transportField.SetBackgroundScroll(true, 30f);
+
+                    // Start with ship arriving (EnterShipMove - Case 12 value 6)
+                    _transportField.EnterShipMove();
+                }
+                if (newKeyboardState.IsKeyUp(Keys.OemPlus) && _oldKeyboardState.IsKeyDown(Keys.OemPlus))
+                {
+                    // Cycle through ship actions based on current state
+                    switch (_transportField.State)
+                    {
+                        case ShipState.Moving:
+                        case ShipState.InTransit:
+                            // Trigger Balrog attack during voyage
+                            _transportField.TriggerBalrogAttack(5000);
                             break;
-                        case LimitedViewField.ViewMode.Rectangle:
-                            _limitedViewField.EnableSpotlight(300f, true);
-                            System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Spotlight mode with pulse");
+                        case ShipState.Docked:
+                            // Ship is docked, start departure (LeaveShipMove - Case 8 value 2)
+                            _transportField.LeaveShipMove();
                             break;
-                        case LimitedViewField.ViewMode.Spotlight:
-                            _limitedViewField.Disable();
-                            System.Diagnostics.Debug.WriteLine("[LimitedView] Disabled");
+                        case ShipState.WaitingDeparture:
+                            // Skip waiting, force immediate departure
+                            _transportField.ForceDeparture();
                             break;
                         default:
-                            _limitedViewField.DisableImmediate();
+                            // Reset to idle
+                            _transportField.Reset();
                             break;
                     }
                 }
-            }
 
-            // Ship controls: [-] Start voyage, [=] Balrog/Skip/Reset
-            // Based on CField_ContiMove::OnContiMove packet handling:
-            // - Case 8: OnStartShipMoveField (LeaveShipMove when value==2)
-            // - Case 10: OnMoveField (AppearShip=4, DisappearShip=5)
-            // - Case 12: OnEndShipMoveField (EnterShipMove when value==6)
-            if (newKeyboardState.IsKeyUp(Keys.OemMinus) && _oldKeyboardState.IsKeyDown(Keys.OemMinus))
-            {
-                // Load ship and Balrog textures if not already loaded
-                if (!_transportField.HasShipTextures)
+                // Sparkle burst at mouse position with Space
+                if (newKeyboardState.IsKeyUp(Keys.Space) && _oldKeyboardState.IsKeyDown(Keys.Space))
                 {
-                    LoadTransportFieldTextures();
+                    float sparkleX = -mapShiftX + _oldMouseState.X;
+                    float sparkleY = -mapShiftY + _oldMouseState.Y;
+                    _particleSystem.CreateSparkleBurst(sparkleX, sparkleY, 30, Color.Gold, 1500);
                 }
-
-                // Initialize and start a demo ship voyage at mouse position
-                float shipX = _oldMouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
-                float shipY = _oldMouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
-
-                // Initialize using client-accurate parameters:
-                // shipKind: 0 = regular ship (moves x0->x), 1 = Balrog type (appears/disappears)
-                // x: docked position, y: ship height, x0: away position
-                // f: flip (0=right, 1=left), tMove: movement duration in seconds
-                _transportField.Initialize(
-                    shipKind: 0,           // Regular ship
-                    x: (int)shipX + 400,   // Dock position (right)
-                    y: (int)shipY,         // Y position
-                    x0: (int)shipX - 400,  // Away position (left)
-                    f: 0,                  // Face right
-                    tMove: 10              // 10 second movement
-                );
-                _transportField.SetBackgroundScroll(true, 30f);
-
-                // Start with ship arriving (EnterShipMove - Case 12 value 6)
-                _transportField.EnterShipMove();
-            }
-            if (newKeyboardState.IsKeyUp(Keys.OemPlus) && _oldKeyboardState.IsKeyDown(Keys.OemPlus))
-            {
-                // Cycle through ship actions based on current state
-                switch (_transportField.State)
-                {
-                    case ShipState.Moving:
-                    case ShipState.InTransit:
-                        // Trigger Balrog attack during voyage
-                        _transportField.TriggerBalrogAttack(5000);
-                        break;
-                    case ShipState.Docked:
-                        // Ship is docked, start departure (LeaveShipMove - Case 8 value 2)
-                        _transportField.LeaveShipMove();
-                        break;
-                    case ShipState.WaitingDeparture:
-                        // Skip waiting, force immediate departure
-                        _transportField.ForceDeparture();
-                        break;
-                    default:
-                        // Reset to idle
-                        _transportField.Reset();
-                        break;
-                }
-            }
-
-            // Sparkle burst at mouse position with Space
-            if (newKeyboardState.IsKeyUp(Keys.Space) && _oldKeyboardState.IsKeyDown(Keys.Space))
-            {
-                float sparkleX = -mapShiftX + _oldMouseState.X;
-                float sparkleY = -mapShiftY + _oldMouseState.Y;
-                _particleSystem.CreateSparkleBurst(sparkleX, sparkleY, 30, Color.Gold, 1500);
             }
 
             // Camera zoom controls (scroll wheel or keyboard)
@@ -2468,7 +2479,7 @@ namespace HaCreator.MapSimulator
             if (_playerManager != null)
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.PlayerControlEnabled;
-                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive);
+                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive, isWindowActive);
 
                 // Update camera controller based on player/camera mode
                 var player = _playerManager.Player;
@@ -2507,11 +2518,12 @@ namespace HaCreator.MapSimulator
                     else
                     {
                         // Free camera mode with smooth scrolling
-                        bool left = newKeyboardState.IsKeyDown(Keys.Left);
-                        bool right = newKeyboardState.IsKeyDown(Keys.Right);
-                        bool up = newKeyboardState.IsKeyDown(Keys.Up);
-                        bool down = newKeyboardState.IsKeyDown(Keys.Down);
-                        bool shift = newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift);
+                        bool left = isWindowActive && newKeyboardState.IsKeyDown(Keys.Left);
+                        bool right = isWindowActive && newKeyboardState.IsKeyDown(Keys.Right);
+                        bool up = isWindowActive && newKeyboardState.IsKeyDown(Keys.Up);
+                        bool down = isWindowActive && newKeyboardState.IsKeyDown(Keys.Down);
+                        bool shift = isWindowActive &&
+                                     (newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift));
                         int freeCamSpeed = shift ? 3000 : 1500; // pixels per second
 
                         _cameraController.UpdateFreeCamera(left, right, up, down, freeCamSpeed, deltaSeconds);
