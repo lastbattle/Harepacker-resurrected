@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Prevent redirected build/intermediate outputs under project-local artifacts/ from being compiled as source. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);**\artifacts\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

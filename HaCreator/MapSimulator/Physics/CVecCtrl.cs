@@ -980,12 +980,50 @@ namespace HaCreator.MapSimulator.Physics
         }
 
         /// <summary>
-        /// Release from ladder/rope
+        /// Release from ladder/rope into an airborne state.
         /// </summary>
-        public void ReleaseLadder()
+        /// <param name="initialVelocityY">Optional vertical velocity to apply immediately after release.</param>
+        /// <param name="yOverride">Optional Y override for top/bottom ladder exits.</param>
+        public void ReleaseLadder(double initialVelocityY = 0, double? yOverride = null)
         {
             IsOnLadderOrRope = false;
-            CurrentJumpState = JumpState.Falling;
+            CurrentFoothold = null;
+            FallStartFoothold = null;
+            IsJumpingDown = false;
+            VelocityY = initialVelocityY;
+
+            if (yOverride.HasValue)
+            {
+                Y = yOverride.Value;
+            }
+
+            CurrentJumpState = initialVelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            CurrentAction = initialVelocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
+
+            // Releasing from a ladder is a deliberate state transition, not a lingering hit reaction.
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
+        }
+
+        /// <summary>
+        /// Jump away from a ladder or rope using explicit launch velocities.
+        /// This mirrors the client flow more closely than releasing and then invoking the generic jump path.
+        /// </summary>
+        public void JumpOffLadder(double velocityX, double velocityY)
+        {
+            IsOnLadderOrRope = false;
+            CurrentFoothold = null;
+            FallStartFoothold = null;
+            IsJumpingDown = false;
+
+            VelocityX = velocityX;
+            VelocityY = velocityY;
+            CurrentJumpState = velocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            CurrentAction = velocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
+
+            // Voluntary ladder jumps should not inherit knockback restrictions.
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
         }
 
         /// <summary>

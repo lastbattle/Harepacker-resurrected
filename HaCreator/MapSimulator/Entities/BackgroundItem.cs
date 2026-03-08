@@ -236,6 +236,24 @@ namespace HaCreator.MapSimulator.Entities
             LastShiftIncreaseY = TickCount;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateMotionShift(int cx, int cy, int tickCount)
+        {
+            switch (_type)
+            {
+                case BackgroundType.HorizontalMoving:
+                case BackgroundType.HorizontalMovingHVTiling:
+                    if (cx > 0)
+                        IncreaseShiftX(cx, tickCount);
+                    break;
+                case BackgroundType.VerticalMoving:
+                case BackgroundType.VerticalMovingHVTiling:
+                    if (cy > 0)
+                        IncreaseShiftY(cy, tickCount);
+                    break;
+            }
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -253,6 +271,7 @@ namespace HaCreator.MapSimulator.Entities
 
             // Update tile cache if needed (only recalculates when dimensions change)
             UpdateTileCache(renderParameters.RenderWidth, renderParameters.RenderHeight, cx, cy);
+            UpdateMotionShift(cx, cy, TickCount);
 
             switch (_type)
             {
@@ -270,19 +289,15 @@ namespace HaCreator.MapSimulator.Entities
                     break;
                 case BackgroundType.HorizontalMoving:
                     DrawHorizontalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, X + (int)bgMoveShiftX, Y, cx, drawFrame);
-                    IncreaseShiftX(cx, TickCount);
                     break;
                 case BackgroundType.VerticalMoving:
                     DrawVerticalCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cy, drawFrame);
-                    IncreaseShiftY(cy, TickCount);
                     break;
                 case BackgroundType.HorizontalMovingHVTiling:
                     DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X + (int)bgMoveShiftX, Y, cx, cy, drawFrame);
-                    IncreaseShiftX(cx, TickCount);
                     break;
                 case BackgroundType.VerticalMovingHVTiling:
                     DrawHVCopies(sprite, skeletonMeshRenderer, gameTime, renderParameters.RenderWidth, renderParameters.RenderHeight, X, Y + (int)bgMoveShiftY, cx, cy, drawFrame);
-                    IncreaseShiftX(cy, TickCount);
                     break;
                 default:
                     break;

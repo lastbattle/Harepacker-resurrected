@@ -423,10 +423,8 @@ namespace HaCreator.MapSimulator.Character
                     // Check if at top of ladder/rope - exit onto platform
                     if (Physics.Y <= Physics.LadderTop)
                     {
-                        Physics.ReleaseLadder();
-                        // Move up slightly to land on platform above
-                        Physics.Y = Physics.LadderTop - 5;
-                        State = PlayerState.Falling;
+                        ExitLadderAtTop();
+                        return;
                     }
                     else
                     {
@@ -438,7 +436,7 @@ namespace HaCreator.MapSimulator.Character
                     // Check if at bottom of ladder/rope - drop down
                     if (Physics.Y >= Physics.LadderBottom)
                     {
-                        Physics.ReleaseLadder();
+                        Physics.ReleaseLadder(yOverride: Physics.LadderBottom + 1);
                         State = PlayerState.Falling;
                     }
                     else
@@ -455,23 +453,22 @@ namespace HaCreator.MapSimulator.Character
                 // Official behavior: reduced jump (50%) + horizontal force (130% walk speed)
                 if (_inputJump && (_inputLeft || _inputRight))
                 {
-                    Physics.ReleaseLadder();
-                    Physics.Jump();
-
-                    // Apply reduced vertical jump (50% of normal)
                     float jumpPower = (Build?.JumpPower ?? 100) / 100f;
-                    Physics.VelocityY = -CVecCtrl.JumpVelocity * jumpPower * 0.5f;
+                    double jumpVelocityY = -CVecCtrl.JumpVelocity * jumpPower * 0.5f;
 
                     // Apply horizontal force: walkSpeed * 1.3 in jump direction
                     // Character's Speed stat is the walk speed in px/s (100 = 100 px/s)
                     float direction = _inputRight ? 1f : -1f;
-                    float walkSpeed = Build?.Speed ?? 100f;  // Speed stat = walk speed in px/s
-                    Physics.VelocityX = walkSpeed * direction * 1.3f;
+                    double walkSpeed = Build?.Speed ?? 100f;  // Speed stat = walk speed in px/s
+                    double jumpVelocityX = walkSpeed * direction * 1.3f;
+                    Physics.JumpOffLadder(jumpVelocityX, jumpVelocityY);
 
                     // Set facing direction
                     FacingRight = _inputRight;
+                    Physics.FacingRight = FacingRight;
 
                     State = PlayerState.Jumping;
+                    _onJumpSound?.Invoke();
                     return; // Skip the facing direction code below
                 }
 
@@ -771,6 +768,26 @@ namespace HaCreator.MapSimulator.Character
                     State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
                 }
             }
+        }
+
+        private void ExitLadderAtTop()
+        {
+            double exitY = Physics.LadderTop - 4;
+            FootholdLine exitFoothold = _findFoothold?.Invoke(Physics.LadderX, (float)exitY, 24f);
+
+            Physics.ReleaseLadder(yOverride: exitY);
+
+            if (exitFoothold != null)
+            {
+                Physics.X = Physics.LadderX;
+                Physics.LandOnFoothold(exitFoothold);
+                Physics.VelocityX = 0;
+                Physics.CurrentAction = MoveAction.Stand;
+                State = PlayerState.Standing;
+                return;
+            }
+
+            State = PlayerState.Falling;
         }
 
         private void CheckFootholdLanding()
