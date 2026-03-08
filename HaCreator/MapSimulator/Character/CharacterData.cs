@@ -312,19 +312,59 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public CharacterAnimation GetAnimation(CharacterAction action)
         {
-            string actionName = GetActionString(action);
-            if (Animations.TryGetValue(actionName, out var anim))
-                return anim;
+            return GetAnimation(GetActionString(action));
+        }
 
-            // Fallback to stand1
-            if (Animations.TryGetValue("stand1", out anim))
-                return anim;
+        public CharacterAnimation GetAnimation(string actionName)
+        {
+            return FindAnimation(Animations, actionName);
+        }
 
-            // Any animation
-            foreach (var kv in Animations)
+        public static CharacterAnimation FindAnimation(IReadOnlyDictionary<string, CharacterAnimation> animations, string actionName)
+        {
+            if (animations == null)
+            {
+                return null;
+            }
+
+            foreach (string candidate in GetActionLookupStrings(actionName))
+            {
+                if (animations.TryGetValue(candidate, out var anim))
+                {
+                    return anim;
+                }
+            }
+
+            if (animations.TryGetValue("stand1", out var standAnimation))
+            {
+                return standAnimation;
+            }
+
+            foreach (var kv in animations)
+            {
                 return kv.Value;
+            }
 
             return null;
+        }
+
+        public static IEnumerable<string> GetActionLookupStrings(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            yield return actionName;
+
+            if (string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "fly";
+            }
+            else if (string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "swim";
+            }
         }
 
         public static string GetActionString(CharacterAction action)
@@ -699,7 +739,7 @@ namespace HaCreator.MapSimulator.Character
             "coat",
             "coatBelowArmoverMail",
             "mail",
-            "mailArm",
+            "mailChest",
             "weaponBelowArm",       // Weapon behind arm (moved here from after weapon)
             "arm",
             "armOverHair",
@@ -709,6 +749,7 @@ namespace HaCreator.MapSimulator.Character
             "handBelowWeapon",
             "handOverHair",
             "glove",
+            "mailArm",
             "gloveOverBody",
             "gloveOverHair",
             "gloveWristOverHair",

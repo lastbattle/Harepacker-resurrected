@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
+        private const int DefaultWizetHatId = 1002140;
+        private const int DefaultWizetSuitId = 1042003;
+        private const int DefaultWizetPantsId = 1062007;
+        private const int DefaultWizetSuitcaseId = 1322013;
         private const int DefaultBeginnerSwordId = 1302000;
         private const int DefaultBeginnerCoatId = 1040002;
         private const int DefaultBeginnerPantsId = 1060002;
@@ -35,7 +39,7 @@ namespace HaCreator.MapSimulator.Character
         private static readonly string[] StandardActions = new[]
         {
             "stand1", "stand2", "walk1", "walk2", "jump", "sit", "prone",
-            "ladder", "rope", "alert", "heal"
+            "ladder", "rope", "swim", "fly", "alert", "heal"
         };
 
         // Attack actions
@@ -1485,7 +1489,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "SuperGM"
             };
 
-            EquipDefaultBeginnerGear(build);
+            EquipDefaultSimulatorGear(build);
 
             return build;
         }
@@ -1509,7 +1513,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "SuperGM"
             };
 
-            EquipDefaultBeginnerGear(build);
+            EquipDefaultSimulatorGear(build);
 
             return build;
         }
@@ -1535,29 +1539,43 @@ namespace HaCreator.MapSimulator.Character
             };
         }
 
-        private void EquipDefaultBeginnerGear(CharacterBuild build)
+        private void EquipDefaultSimulatorGear(CharacterBuild build)
         {
             if (build == null)
                 return;
 
-            EquipDefaultItem(build, DefaultBeginnerCoatId, "coat");
-            EquipDefaultItem(build, DefaultBeginnerPantsId, "pants");
+            EquipDefaultItem(build, DefaultWizetHatId, "hat");
+            EquipDefaultItem(build, DefaultWizetSuitId, "coat", DefaultBeginnerCoatId);
+            EquipDefaultItem(build, DefaultWizetPantsId, "pants", DefaultBeginnerPantsId);
             EquipDefaultItem(build, DefaultBeginnerShoesId, "shoes");
-            EquipDefaultItem(build, DefaultBeginnerSwordId, "weapon");
+            EquipDefaultItem(build, DefaultWizetSuitcaseId, "weapon", DefaultBeginnerSwordId);
         }
 
-        private void EquipDefaultItem(CharacterBuild build, int itemId, string label)
+        private void EquipDefaultItem(CharacterBuild build, int itemId, string label, int? fallbackItemId = null)
         {
             var equipment = LoadEquipment(itemId);
             if (equipment != null)
             {
                 build.Equip(equipment);
                 System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Equipped default {label}: {equipment.Name} ({itemId})");
+                return;
             }
-            else
+
+            if (fallbackItemId.HasValue)
             {
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load default {label} {itemId}");
+                var fallback = LoadEquipment(fallbackItemId.Value);
+                if (fallback != null)
+                {
+                    build.Equip(fallback);
+                    System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Falling back to default {label}: {fallback.Name} ({fallbackItemId.Value})");
+                    return;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load default {label} {itemId} and fallback {fallbackItemId.Value}");
+                return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load default {label} {itemId}");
         }
 
         #endregion

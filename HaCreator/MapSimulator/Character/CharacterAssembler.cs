@@ -250,14 +250,15 @@ namespace HaCreator.MapSimulator.Character
                 System.Diagnostics.Debug.WriteLine($"[Assembler] Hair part: {_build.Hair != null}");
             }
 
+            Point? headOffset = null;
             if (headFrame != null)
             {
                 Point headNeck = headFrame.GetMapPoint(MAP_NECK);
-                Point headOffset = new Point(
+                headOffset = new Point(
                     baseOffset.X + bodyNeck.X - headNeck.X,
                     baseOffset.Y + bodyNeck.Y - headNeck.Y);
 
-                AddPart(parts, headFrame, headOffset, CharacterPartType.Head);
+                AddPart(parts, headFrame, headOffset.Value, CharacterPartType.Head);
 
                 // Add face - relative to head
                 var faceFrame = GetFaceFrame(_build.Face, frameIndex);
@@ -269,8 +270,8 @@ namespace HaCreator.MapSimulator.Character
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
                     Point faceBrow = faceFrame.GetMapPoint(MAP_BROW);
                     Point faceOffset = new Point(
-                        headOffset.X + headBrow.X - faceBrow.X,
-                        headOffset.Y + headBrow.Y - faceBrow.Y);
+                        headOffset.Value.X + headBrow.X - faceBrow.X,
+                        headOffset.Value.Y + headBrow.Y - faceBrow.Y);
 
                     AddPart(parts, faceFrame, faceOffset, CharacterPartType.Face);
                 }
@@ -293,8 +294,8 @@ namespace HaCreator.MapSimulator.Character
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
                     Point hairBrow = hairFrame.GetMapPoint(MAP_BROW);
                     Point hairOffset = new Point(
-                        headOffset.X + headBrow.X - hairBrow.X,
-                        headOffset.Y + headBrow.Y - hairBrow.Y);
+                        headOffset.Value.X + headBrow.X - hairBrow.X,
+                        headOffset.Value.Y + headBrow.Y - hairBrow.Y);
 
                     AddPart(parts, hairFrame, hairOffset, CharacterPartType.Hair);
                 }
@@ -302,16 +303,15 @@ namespace HaCreator.MapSimulator.Character
                 // Add back hair if exists
                 if (_build.Hair is HairPart hairPart && hairPart.HasBackHair)
                 {
-                    var backHairAnim = hairPart.BackHairAnimations.GetValueOrDefault(actionName)
-                                      ?? hairPart.BackHairAnimations.GetValueOrDefault("stand1");
+                    var backHairAnim = CharacterPart.FindAnimation(hairPart.BackHairAnimations, actionName);
                     if (backHairAnim != null && frameIndex < backHairAnim.Frames.Count)
                     {
                         var backHairFrame = backHairAnim.Frames[frameIndex];
                         Point headBrow = headFrame.GetMapPoint(MAP_BROW);
                         Point bhBrow = backHairFrame.GetMapPoint(MAP_BROW);
                         Point bhOffset = new Point(
-                            headOffset.X + headBrow.X - bhBrow.X,
-                            headOffset.Y + headBrow.Y - bhBrow.Y);
+                            headOffset.Value.X + headBrow.X - bhBrow.X,
+                            headOffset.Value.Y + headBrow.Y - bhBrow.Y);
 
                         AddPart(parts, backHairFrame, bhOffset, CharacterPartType.HairBelowBody, zOverride: 0);
                     }
@@ -324,7 +324,7 @@ namespace HaCreator.MapSimulator.Character
                 var equipFrame = GetPartFrame(kv.Value, actionName, frameIndex);
                 if (equipFrame == null) continue;
 
-                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, baseOffset, kv.Value.Type);
+                Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, kv.Value.Type);
                 AddPart(parts, equipFrame, equipOffset, kv.Value.Type);
             }
 
@@ -395,8 +395,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            var anim = part.Animations.GetValueOrDefault(actionName)
-                      ?? part.Animations.GetValueOrDefault("stand1");
+            var anim = part.GetAnimation(actionName);
 
             if (anim == null || anim.Frames.Count == 0)
                 return null;
@@ -432,8 +431,19 @@ namespace HaCreator.MapSimulator.Character
             return expr.Frames[idx];
         }
 
-        private Point CalculateEquipOffset(CharacterFrame equipFrame, CharacterFrame bodyFrame, Point baseOffset, CharacterPartType type)
+        private Point CalculateEquipOffset(
+            CharacterFrame equipFrame,
+            CharacterFrame bodyFrame,
+            CharacterFrame headFrame,
+            Point baseOffset,
+            Point? headOffset,
+            CharacterPartType type)
         {
+            if (TryCalculateHeadEquipOffset(equipFrame, headFrame, headOffset, type, out Point headBasedOffset))
+            {
+                return headBasedOffset;
+            }
+
             // Different equipment types connect at different map points
             string mapPoint = type switch
             {
@@ -509,6 +519,56 @@ namespace HaCreator.MapSimulator.Character
                 baseOffset.Y + bodyAnchor.Y - equipAnchor.Y);
         }
 
+        private bool TryCalculateHeadEquipOffset(
+            CharacterFrame equipFrame,
+            CharacterFrame headFrame,
+            Point? headOffset,
+            CharacterPartType type,
+            out Point offset)
+        {
+            offset = Point.Zero;
+
+            if (equipFrame == null || headFrame == null || !headOffset.HasValue)
+            {
+                return false;
+            }
+
+            string mapPoint = type switch
+            {
+                CharacterPartType.Cap or CharacterPartType.CapOverHair or CharacterPartType.CapBelowAccessory
+                    => MAP_BROW,
+                CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair or CharacterPartType.Face_Accessory
+                    => MAP_BROW,
+                CharacterPartType.Eye_Accessory => MAP_BROW,
+                CharacterPartType.Earrings => MAP_EAR,
+                _ => null
+            };
+
+            if (string.IsNullOrEmpty(mapPoint))
+            {
+                return false;
+            }
+
+            if (!headFrame.Map.ContainsKey(mapPoint) || !equipFrame.Map.ContainsKey(mapPoint))
+            {
+                if (mapPoint == MAP_EAR && headFrame.Map.ContainsKey(MAP_BROW) && equipFrame.Map.ContainsKey(MAP_BROW))
+                {
+                    mapPoint = MAP_BROW;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            Point headAnchor = headFrame.GetMapPoint(mapPoint);
+            Point equipAnchor = equipFrame.GetMapPoint(mapPoint);
+            offset = new Point(
+                headOffset.Value.X + headAnchor.X - equipAnchor.X,
+                headOffset.Value.Y + headAnchor.Y - equipAnchor.Y);
+            return true;
+        }
+
         private void CalculateBounds(AssembledFrame frame)
         {
             if (frame.Parts.Count == 0)
@@ -567,6 +627,8 @@ namespace HaCreator.MapSimulator.Character
             PreloadAnimation(CharacterAction.Jump);
             PreloadAnimation(CharacterAction.Ladder);
             PreloadAnimation(CharacterAction.Rope);
+            PreloadAnimation(CharacterAction.Swim);
+            PreloadAnimation(CharacterAction.Fly);
             PreloadAnimation(CharacterAction.Prone);
             PreloadAnimation(CharacterAction.Alert);
 
