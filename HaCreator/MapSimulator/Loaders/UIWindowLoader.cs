@@ -789,6 +789,14 @@ namespace HaCreator.MapSimulator.Loaders
                 // Clear any previously loaded skills.
                 skillWindow.ClearSkills();
 
+                // Seed the default beginner book so tabs without a dedicated skill book
+                // can still render the same fallback icon the client uses.
+                Texture2D defaultBookIcon = SkillDataLoader.LoadJobIcon(0, device);
+                if (defaultBookIcon != null)
+                {
+                    skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
+                }
+
                 int tabIndex = GetSkillTabFromJobId(jobId);
                 System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into tab {tabIndex}");
 

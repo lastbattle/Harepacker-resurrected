@@ -19,31 +19,53 @@ namespace HaCreator.MapSimulator.UI
     public class SkillUIBigBang : UIWindowBase
     {
         #region Constants
-        // From CUISkill::Draw binary analysis
+        // From v95 CUISkill::Draw / OnCreate / OnMouseMove analysis
         private const int SKILL_ICON_SIZE = 32;
-        private const int SKILL_ROW_HEIGHT = 40;      // Binary: 40px per row
-        private const int SKILL_ROW_WIDTH = 139;      // Binary: hit area width
-        private const int VISIBLE_SKILLS = 4;         // Binary: 4 visible rows
+        private const int SKILL_ROW_HEIGHT = 40;
+        private const int VISIBLE_SKILLS = 4;
 
         // Window dimensions (from UIWindow2.img/Skill/main/backgrnd)
         private const int WINDOW_WIDTH = 174;
         private const int WINDOW_HEIGHT = 299;
 
-        // Job header row positioning (first row shows job icon and name)
-        // Binary: first skill row at Y=112, job header is above that
-        private const int JOB_HEADER_X = 12;          // Binary: icon X = 12
-        private const int JOB_HEADER_Y = 72;          // 112 - 40 = job header row
+        // Book header positioning
+        private const int BOOK_ICON_X = 15;
+        private const int BOOK_ICON_Y = 55;
         private const int JOB_ICON_SIZE = 32;
+        private const int BOOK_NAME_CENTER_X = 104;
+        private const int BOOK_NAME_SINGLE_LINE_Y = 65;
+        private const int BOOK_NAME_MULTI_LINE_X = 50;
+        private const int BOOK_NAME_MULTI_LINE_FIRST_Y = 55;
+        private const int BOOK_NAME_MULTI_LINE_SECOND_Y = 69;
+        private const int BOOK_NAME_MAX_WIDTH = 110;
 
-        // Content area positioning - from CUISkill::Draw
-        // Binary: nTop starts at 112, increments by 40 (adjusted +20 for alignment)
-        private const int SKILL_LIST_X = 12;          // Binary: icon X = 12
-        private const int SKILL_LIST_Y = 132;         // Binary: 112 + 20 adjustment
-        private const int ICON_OFFSET_X = 0;          // Icon at X=12 directly
-        private const int ICON_OFFSET_Y = -17;        // Binary: nTop - 17
-        private const int TEXT_OFFSET_X = 38;         // Binary: name at X=50, so 50-12=38 from icon
-        private const int TEXT_OFFSET_Y = -18;        // Binary: nTop - 18
-        private const int LEVEL_OFFSET_Y = 0;         // Binary: level at nTop (baseline)
+        // Skill list positioning
+        private const int FIRST_ROW_TOP = 112;
+        private const int ICON_X = 12;
+        private const int ICON_Y_OFFSET = -17;
+        private const int NAME_X = 50;
+        private const int NAME_Y_OFFSET = -18;
+        private const int LEVEL_X = 50;
+        private const int LEVEL_Y_OFFSET = 0;
+        private const int BONUS_X = 65;
+        private const int ROW_BG_X = 10;
+        private const int ROW_BG_Y_OFFSET = -19;
+        private const int LINE_X = 10;
+        private const int LINE_Y_OFFSET = 18;
+
+        // SP display
+        private const int SP_DISPLAY_X_BASE = 104;
+        private const int SP_DISPLAY_Y = 256;
+
+        // Hit testing
+        private const int ICON_HIT_LEFT = 13;
+        private const int ICON_HIT_RIGHT = 45;
+        private const int ICON_HIT_TOP_OFFSET = -31;
+        private const int ICON_HIT_BOTTOM_OFFSET = 1;
+        private const int ROW_HIT_LEFT = 10;
+        private const int ROW_HIT_RIGHT = 149;
+        private const int ROW_HIT_TOP_OFFSET = -34;
+        private const int ROW_HIT_BOTTOM_OFFSET = 0;
 
         // Tab positioning (from WZ origin data)
         private const int TAB_Y = 27;
@@ -67,7 +89,7 @@ namespace HaCreator.MapSimulator.UI
         private IDXObject _skillListBackground;
         private Point _skillListBgOffset;
 
-        // Skill row backgrounds (alternating)
+        // Skill row backgrounds (normal / can-level-up)
         private Texture2D _skillRow0;
         private Texture2D _skillRow1;
         private Texture2D _skillRowLine;
@@ -320,7 +342,8 @@ namespace HaCreator.MapSimulator.UI
                     Color.White, false, drawReflectionInfo);
             }
 
-            // Draw foreground/labels BEFORE skill rows (backgrnd2 should be behind skills)
+            // Draw foreground/labels before custom skill content, matching the client
+            // where the base window chrome is already present before CUISkill::Draw runs.
             if (_foreground != null)
             {
                 _foreground.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
@@ -331,11 +354,14 @@ namespace HaCreator.MapSimulator.UI
             // Draw tab buttons
             DrawTabs(sprite, windowX, windowY);
 
-            // Draw job header row (shows job icon and name)
+            // Draw book header
             DrawJobHeader(sprite, windowX, windowY);
 
             // Draw skill rows
             DrawSkillRows(sprite, windowX, windowY);
+
+            // Draw SP count
+            DrawSkillPointCount(sprite, windowX, windowY);
         }
 
         /// <summary>
@@ -343,16 +369,6 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void DrawJobHeader(SpriteBatch sprite, int windowX, int windowY)
         {
-            int headerX = windowX + JOB_HEADER_X;
-            int headerY = windowY + JOB_HEADER_Y;
-
-            // Draw header row background (same as skill row)
-            Texture2D rowBg = _skillRow0;
-            if (rowBg != null)
-            {
-                sprite.Draw(rowBg, new Rectangle(headerX, headerY, SKILL_ROW_WIDTH, SKILL_ROW_HEIGHT), Color.White);
-            }
-
             // Get job icon and name for current tab
             Texture2D jobIcon = null;
             string jobName = "Beginner";
@@ -362,30 +378,20 @@ namespace HaCreator.MapSimulator.UI
             if (_jobNamesByTab.TryGetValue(_currentTab, out var name))
                 jobName = name;
 
-            // Draw job icon
-            int iconX = headerX + ICON_OFFSET_X;
-            int iconY = headerY + ICON_OFFSET_Y;
+            if (jobIcon == null)
+            {
+                _jobIconsByTab.TryGetValue(TAB_BEGINNER, out jobIcon);
+            }
 
             if (jobIcon != null)
             {
-                sprite.Draw(jobIcon, new Rectangle(iconX, iconY, JOB_ICON_SIZE, JOB_ICON_SIZE), Color.White);
-            }
-            else
-            {
-                // Draw placeholder if no icon
-                sprite.Draw(_debugPlaceholder, new Rectangle(iconX, iconY, JOB_ICON_SIZE, JOB_ICON_SIZE), new Color(80, 80, 120, 200));
+                sprite.Draw(
+                    jobIcon,
+                    new Rectangle(windowX + BOOK_ICON_X, windowY + BOOK_ICON_Y, JOB_ICON_SIZE, JOB_ICON_SIZE),
+                    Color.White);
             }
 
-            // Draw job name - black text like original client
-            if (_font != null)
-            {
-                sprite.DrawString(_font, jobName, new Vector2(headerX + TEXT_OFFSET_X, headerY + TEXT_OFFSET_Y), Color.Black);
-
-                // Draw SP count - black text
-                int sp = GetCurrentSkillPoints();
-                string spText = $"SP: {sp}";
-                sprite.DrawString(_font, spText, new Vector2(headerX + TEXT_OFFSET_X, headerY + LEVEL_OFFSET_Y), Color.Black);
-            }
+            DrawBookName(sprite, windowX, windowY, jobName);
         }
 
         /// <summary>
@@ -394,33 +400,23 @@ namespace HaCreator.MapSimulator.UI
         private void DrawSkillRows(SpriteBatch sprite, int windowX, int windowY)
         {
             var skills = CurrentSkills;
-            int startIndex = _scrollOffset;
-            int endIndex = Math.Min(startIndex + VISIBLE_SKILLS, skills.Count);
+            int availableSp = GetCurrentSkillPoints();
 
-            for (int i = startIndex; i < endIndex; i++)
+            for (int rowIndex = 0; rowIndex < VISIBLE_SKILLS; rowIndex++)
             {
-                int rowIndex = i - startIndex;
-                int rowX = windowX + SKILL_LIST_X;
-                int rowY = windowY + SKILL_LIST_Y + (rowIndex * SKILL_ROW_HEIGHT);
+                int skillIndex = _scrollOffset + rowIndex;
+                if (skillIndex >= skills.Count)
+                    break;
 
-                // Draw alternating row background
-                Texture2D rowBg = (rowIndex % 2 == 0) ? _skillRow0 : _skillRow1;
-                if (rowBg != null)
-                {
-                    sprite.Draw(rowBg, new Rectangle(rowX, rowY, SKILL_ROW_WIDTH, SKILL_ROW_HEIGHT), Color.White);
-                }
+                int nTop = FIRST_ROW_TOP + (rowIndex * SKILL_ROW_HEIGHT);
+                SkillDisplayData skill = skills[skillIndex];
+                bool canLevelUp = availableSp > 0 && skill.CurrentLevel < skill.MaxLevel;
 
-                // Draw separator line
-                if (_skillRowLine != null && rowIndex > 0)
-                {
-                    sprite.Draw(_skillRowLine, new Rectangle(rowX, rowY, SKILL_ROW_WIDTH, 1), Color.White);
-                }
+                DrawSkillEntry(sprite, skill, windowX, windowY, nTop, canLevelUp, skillIndex == _hoveredSkillIndex);
 
-                // Draw skill data
-                if (i < skills.Count)
+                if (_skillRowLine != null && rowIndex < VISIBLE_SKILLS - 1 && skillIndex + 1 < skills.Count)
                 {
-                    var skill = skills[i];
-                    DrawSkillEntry(sprite, skill, rowX, rowY, i == _hoveredSkillIndex);
+                    sprite.Draw(_skillRowLine, new Vector2(windowX + LINE_X, windowY + nTop + LINE_Y_OFFSET), Color.White);
                 }
             }
         }
@@ -428,46 +424,104 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Draw a single skill entry
         /// </summary>
-        private void DrawSkillEntry(SpriteBatch sprite, SkillDisplayData skill, int x, int y, bool isHovered)
+        private void DrawSkillEntry(
+            SpriteBatch sprite,
+            SkillDisplayData skill,
+            int windowX,
+            int windowY,
+            int nTop,
+            bool canLevelUp,
+            bool isHovered)
         {
-            // Draw skill icon - use IconTexture directly
-            Texture2D icon = skill.IconTexture;
-            int iconX = x + ICON_OFFSET_X;
-            int iconY = y + ICON_OFFSET_Y;
+            Texture2D rowBg = canLevelUp ? _skillRow1 : _skillRow0;
+            if (rowBg != null)
+            {
+                sprite.Draw(rowBg, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+            }
+
+            Texture2D icon = skill.GetIconForState(canLevelUp, isHovered);
+            int iconX = windowX + ICON_X;
+            int iconY = windowY + nTop + ICON_Y_OFFSET;
 
             if (icon != null)
             {
-                // Draw icon using Rectangle like tabs do (to match working behavior)
                 Rectangle iconRect = new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE);
                 sprite.Draw(icon, iconRect, Color.White);
             }
-            else
-            {
-                // Draw placeholder rectangle when icon is null
-                if (_debugPlaceholder != null)
-                {
-                    sprite.Draw(_debugPlaceholder, new Rectangle(iconX, iconY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.Red);
-                }
-            }
 
-            // Draw skill name if we have a font - use black text like original client
             if (_font != null)
             {
-                string displayName = skill.SkillName.Length > 12 ? skill.SkillName.Substring(0, 12) + "..." : skill.SkillName;
-                sprite.DrawString(_font, displayName, new Vector2(x + TEXT_OFFSET_X, y + TEXT_OFFSET_Y), Color.Black);
+                sprite.DrawString(
+                    _font,
+                    skill.SkillName ?? string.Empty,
+                    new Vector2(windowX + NAME_X, windowY + nTop + NAME_Y_OFFSET),
+                    Color.Black);
 
-                // Draw level - also black text
-                string levelText = $"Lv.{skill.CurrentLevel}/{skill.MaxLevel}";
-                sprite.DrawString(_font, levelText, new Vector2(x + TEXT_OFFSET_X, y + LEVEL_OFFSET_Y), Color.Black);
+                Color levelColor = canLevelUp ? new Color(0, 102, 255) : Color.Black;
+                sprite.DrawString(
+                    _font,
+                    skill.CurrentLevel.ToString(),
+                    new Vector2(windowX + LEVEL_X, windowY + nTop + LEVEL_Y_OFFSET),
+                    levelColor);
             }
 
-            // Draw SP+ button if skill can be leveled up
-            if (_spUpNormal != null && skill.CurrentLevel < skill.MaxLevel)
+            if (_spUpNormal != null && canLevelUp)
             {
-                int spBtnX = x + SKILL_ROW_WIDTH - 16;
-                int spBtnY = y + (SKILL_ROW_HEIGHT - 12) / 2;
-                sprite.Draw(_spUpNormal, new Rectangle(spBtnX, spBtnY, 12, 12), Color.White);
+                sprite.Draw(_spUpNormal, new Vector2(windowX + 135, windowY + nTop + 1), Color.White);
             }
+        }
+
+        private void DrawSkillPointCount(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (_font == null)
+                return;
+
+            string spText = GetCurrentSkillPoints().ToString();
+            float width = _font.MeasureString(spText).X;
+            sprite.DrawString(
+                _font,
+                spText,
+                new Vector2(windowX + SP_DISPLAY_X_BASE - width, windowY + SP_DISPLAY_Y),
+                Color.Black);
+        }
+
+        private void DrawBookName(SpriteBatch sprite, int windowX, int windowY, string jobName)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(jobName))
+                return;
+
+            float width = _font.MeasureString(jobName).X;
+            if (width <= BOOK_NAME_MAX_WIDTH)
+            {
+                sprite.DrawString(
+                    _font,
+                    jobName,
+                    new Vector2(windowX + BOOK_NAME_CENTER_X - (width / 2f), windowY + BOOK_NAME_SINGLE_LINE_Y),
+                    Color.Black);
+                return;
+            }
+
+            int splitIndex = jobName.LastIndexOf(' ');
+            if (splitIndex <= 0 || splitIndex >= jobName.Length - 1)
+            {
+                sprite.DrawString(
+                    _font,
+                    jobName,
+                    new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                    Color.Black);
+                return;
+            }
+
+            sprite.DrawString(
+                _font,
+                jobName.Substring(0, splitIndex),
+                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_FIRST_Y),
+                Color.Black);
+            sprite.DrawString(
+                _font,
+                jobName.Substring(splitIndex + 1),
+                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
+                Color.Black);
         }
 
         /// <summary>
@@ -609,22 +663,46 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public SkillDisplayData GetSkillAtPosition(int mouseX, int mouseY)
         {
-            int relX = mouseX - Position.X - SKILL_LIST_X;
-            int relY = mouseY - Position.Y - SKILL_LIST_Y;
-
-            if (relX < 0 || relX > SKILL_ROW_WIDTH || relY < 0)
+            int skillIndex = GetSkillIndexAtPosition(mouseX, mouseY);
+            if (skillIndex < 0)
                 return null;
 
-            int rowIndex = relY / SKILL_ROW_HEIGHT;
-            if (rowIndex >= VISIBLE_SKILLS)
-                return null;
-
-            int skillIndex = _scrollOffset + rowIndex;
             var skills = CurrentSkills;
-            if (skillIndex >= 0 && skillIndex < skills.Count)
-                return skills[skillIndex];
+            return skillIndex < skills.Count ? skills[skillIndex] : null;
+        }
 
-            return null;
+        private int GetSkillIndexAtPosition(int mouseX, int mouseY)
+        {
+            int relX = mouseX - Position.X;
+            int relY = mouseY - Position.Y;
+            var skills = CurrentSkills;
+
+            for (int rowIndex = 0; rowIndex < VISIBLE_SKILLS; rowIndex++)
+            {
+                int skillIndex = _scrollOffset + rowIndex;
+                if (skillIndex >= skills.Count)
+                    break;
+
+                int nTop = FIRST_ROW_TOP + (rowIndex * SKILL_ROW_HEIGHT);
+
+                bool hitIcon =
+                    relX >= ICON_HIT_LEFT &&
+                    relX <= ICON_HIT_RIGHT &&
+                    relY >= nTop + ICON_HIT_TOP_OFFSET &&
+                    relY <= nTop + ICON_HIT_BOTTOM_OFFSET;
+                if (hitIcon)
+                    return skillIndex;
+
+                bool hitRow =
+                    relX >= ROW_HIT_LEFT &&
+                    relX <= ROW_HIT_RIGHT &&
+                    relY >= nTop + ROW_HIT_TOP_OFFSET &&
+                    relY <= nTop + ROW_HIT_BOTTOM_OFFSET;
+                if (hitRow)
+                    return skillIndex;
+            }
+
+            return -1;
         }
         #endregion
 
@@ -662,14 +740,7 @@ namespace HaCreator.MapSimulator.UI
             int scrollDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
             if (scrollDelta != 0)
             {
-                // Check if mouse is over skill list area
-                Rectangle skillListRect = new Rectangle(
-                    Position.X + SKILL_LIST_X,
-                    Position.Y + SKILL_LIST_Y,
-                    SKILL_ROW_WIDTH,
-                    VISIBLE_SKILLS * SKILL_ROW_HEIGHT);
-
-                if (skillListRect.Contains(mouseState.X, mouseState.Y))
+                if (GetSkillIndexAtPosition(mouseState.X, mouseState.Y) >= 0)
                 {
                     if (scrollDelta > 0)
                         ScrollUp();
@@ -679,19 +750,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             // Update hovered skill index
-            _hoveredSkillIndex = -1;
-            int relX = mouseState.X - Position.X - SKILL_LIST_X;
-            int relY = mouseState.Y - Position.Y - SKILL_LIST_Y;
-            if (relX >= 0 && relX <= SKILL_ROW_WIDTH && relY >= 0)
-            {
-                int rowIndex = relY / SKILL_ROW_HEIGHT;
-                if (rowIndex < VISIBLE_SKILLS)
-                {
-                    int skillIndex = _scrollOffset + rowIndex;
-                    if (skillIndex < CurrentSkills.Count)
-                        _hoveredSkillIndex = skillIndex;
-                }
-            }
+            _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
 
             _previousMouseState = mouseState;
         }
