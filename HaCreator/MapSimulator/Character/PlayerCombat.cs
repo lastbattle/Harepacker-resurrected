@@ -340,7 +340,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
 
                 // Get mob body hitbox
-                var mobHitbox = GetMobBodyHitbox(mob);
+                var mobHitbox = GetMobBodyHitbox(mob, currentTime);
                 if (playerHitbox.Intersects(mobHitbox))
                 {
                     ProcessTouchDamage(mob, currentTime);
@@ -349,25 +349,12 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private Rectangle GetMobBodyHitbox(MobItem mob)
+        private Rectangle GetMobBodyHitbox(MobItem mob, int currentTime)
         {
-            if (mob?.MovementInfo == null)
+            if (mob == null)
                 return Rectangle.Empty;
 
-            float mobX = mob.MovementInfo.X;
-            float mobY = mob.MovementInfo.Y;
-
-            // Body hitbox based on mob size
-            int width = 40;
-            int height = 50;
-
-            // TODO: Get actual mob bounds from MobInfo
-
-            return new Rectangle(
-                (int)mobX - width / 2,
-                (int)mobY - height,
-                width,
-                height);
+            return mob.GetBodyHitbox(currentTime);
         }
 
         private void ProcessTouchDamage(MobItem mob, int currentTime)

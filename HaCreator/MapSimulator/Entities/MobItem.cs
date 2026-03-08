@@ -254,6 +254,48 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
+        /// Gets the mob's current body bounds in world space.
+        /// Uses the same live animation frame and flipped-origin normalization as rendering.
+        /// </summary>
+        public Rectangle GetBodyHitbox(int tickCount)
+        {
+            IDXObject frame = GetCurrentAnimationFrame(tickCount) ?? GetCurrentFrame();
+            if (frame == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int positionOffsetX = 0;
+            int positionOffsetY = 0;
+            if (MovementEnabled && MovementInfo != null)
+            {
+                positionOffsetX = (int)(MovementInfo.X - _mobInstance.X);
+                positionOffsetY = (int)(MovementInfo.Y - _mobInstance.Y);
+            }
+
+            int worldX = frame.X + positionOffsetX;
+            int worldY = frame.Y + positionOffsetY;
+
+            // Match the draw-time normalization for flipped mobs so contact checks align with the sprite.
+            var currentFrames = _animationController?.CurrentFrames;
+            if (flip && currentFrames != null && currentFrames.Count > 0)
+            {
+                IDXObject frame0 = currentFrames[0];
+                worldX += frame0.X - frame.X;
+            }
+
+            return new Rectangle(worldX, worldY, frame.Width, frame.Height);
+        }
+
+        /// <summary>
+        /// Gets the mob's current body bounds in world space using the current system tick.
+        /// </summary>
+        public Rectangle GetBodyHitbox()
+        {
+            return GetBodyHitbox(Environment.TickCount);
+        }
+
+        /// <summary>
         /// Gets a world-space anchor point for damage numbers above the mob.
         /// </summary>
         public Vector2 GetDamageNumberAnchor(int verticalPadding = 12)

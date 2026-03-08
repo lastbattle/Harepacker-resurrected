@@ -806,16 +806,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                // Get mob hitbox (estimate based on current frame)
-                var mobFrame = mob.GetCurrentFrame();
-                int mobWidth = mobFrame?.Width ?? 40;
-                int mobHeight = mobFrame?.Height ?? 40;
-
-                var mobRect = new Rectangle(
-                    (int)(mob.MovementInfo.X - mobWidth / 2),
-                    (int)(mob.MovementInfo.Y - mobHeight),
-                    mobWidth,
-                    mobHeight);
+                var mobRect = mob.GetBodyHitbox();
 
                 // Check intersection
                 if (playerRect.Intersects(mobRect))
@@ -856,15 +847,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (mob.MovementInfo == null)
                     continue;
 
-                var mobFrame = mob.GetCurrentFrame();
-                int mobWidth = mobFrame?.Width ?? 40;
-                int mobHeight = mobFrame?.Height ?? 40;
-
-                var mobRect = new Rectangle(
-                    (int)(mob.MovementInfo.X - mobWidth / 2),
-                    (int)(mob.MovementInfo.Y - mobHeight),
-                    mobWidth,
-                    mobHeight);
+                var mobRect = mob.GetBodyHitbox();
 
                 if (playerRect.Intersects(mobRect))
                 {
