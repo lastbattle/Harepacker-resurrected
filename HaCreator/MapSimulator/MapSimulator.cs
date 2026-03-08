@@ -4905,14 +4905,4 @@ namespace HaCreator.MapSimulator
         #endregion
     }
 
-    /// <summary>
-    /// Weather types for the map simulator
-    /// </summary>
-    public enum WeatherType
-    {
-        None,
-        Rain,
-        Snow,
-        Leaves
-    }
 }
