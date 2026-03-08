@@ -117,6 +117,19 @@ namespace HaCreator.MapSimulator.AI
         public int EffectAfter { get; set; }        // Effect delay (tEffectAfter)
         public int AttackAfter { get; set; }        // Attack delay (tAttackAfter)
         public string AnimationName { get; set; }   // Animation to play (e.g., "attack1")
+        public int BulletSpeed { get; set; }        // Projectile speed from Mob.wz info/attack
+        public int ProjectileCount { get; set; }    // Multi-ball count for boss/projectile attacks
+        public int AreaWidth { get; set; }          // Ground/AoE attack width
+        public int AreaHeight { get; set; }         // Ground/AoE attack height
+        public int RandomDelayWindow { get; set; }  // Additional delay window for area attacks
+        public bool HasRangeBounds { get; set; }    // True when attackN/info/range exists
+        public int RangeLeft { get; set; }          // Relative left bound from attack info
+        public int RangeTop { get; set; }           // Relative top bound from attack info
+        public int RangeRight { get; set; }         // Relative right bound from attack info
+        public int RangeBottom { get; set; }        // Relative bottom bound from attack info
+        public int AreaCount { get; set; }          // Number of possible area slots from attackN/info/range/areaCount
+        public int AttackCount { get; set; }        // Number of chosen area slots from attackN/info/range/attackCount
+        public int StartOffset { get; set; }        // Starting slot offset from attackN/info/range/start
 
         // Runtime state
         public int LastUseTime { get; set; }        // Tick when last used
@@ -437,7 +450,7 @@ namespace HaCreator.MapSimulator.AI
                     _autoAggro = false;  // Stop auto-aggroing
 
                     // Return to idle/patrol state
-                    if (_state == MobAIState.Chase || _state == MobAIState.Alert || _state == MobAIState.Attack)
+                    if (_state == MobAIState.Chase || _state == MobAIState.Alert || _state == MobAIState.Attack || _state == MobAIState.Skill)
                     {
                         SetState(MobAIState.Patrol, currentTick);
                     }
@@ -468,6 +481,10 @@ namespace HaCreator.MapSimulator.AI
 
                 case MobAIState.Attack:
                     UpdateAttackState(currentTick);
+                    break;
+
+                case MobAIState.Skill:
+                    UpdateSkillState(currentTick);
                     break;
 
                 case MobAIState.Hit:
@@ -592,28 +609,23 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
-            // In attack range - try to attack
-            if (_target.Distance <= _attackRange && _attacks.Count > 0)
-            {
-                // Find available attack
-                MobAttackEntry availableAttack = null;
-                int attackIndex = -1;
-                for (int i = 0; i < _attacks.Count; i++)
-                {
-                    if (!_attacks[i].IsOnCooldown(currentTick) && _target.Distance <= _attacks[i].Range)
-                    {
-                        availableAttack = _attacks[i];
-                        attackIndex = i;
-                        break;
-                    }
-                }
+            int availableSkillIndex = FindAvailableSkillIndex(currentTick);
+            int availableAttackIndex = FindAvailableAttackIndex(currentTick);
 
-                if (availableAttack != null)
-                {
-                    _currentAttackIndex = attackIndex;
-                    availableAttack.LastUseTime = currentTick;
-                    SetState(MobAIState.Attack, currentTick);
-                }
+            if (availableSkillIndex >= 0 &&
+                ShouldPreferSkill(_skills[availableSkillIndex], availableAttackIndex >= 0 ? _attacks[availableAttackIndex] : null))
+            {
+                _currentSkillIndex = availableSkillIndex;
+                _skills[availableSkillIndex].LastUseTime = currentTick;
+                SetState(MobAIState.Skill, currentTick);
+                return;
+            }
+
+            if (availableAttackIndex >= 0)
+            {
+                _currentAttackIndex = availableAttackIndex;
+                _attacks[availableAttackIndex].LastUseTime = currentTick;
+                SetState(MobAIState.Attack, currentTick);
             }
         }
 
@@ -630,6 +642,17 @@ namespace HaCreator.MapSimulator.AI
             // This ensures the mob finishes its attack animation before moving again.
         }
 
+        private void UpdateSkillState(int currentTick)
+        {
+            if (_currentSkillIndex < 0 || _currentSkillIndex >= _skills.Count)
+            {
+                SetState(MobAIState.Chase, currentTick);
+                return;
+            }
+
+            // Skill completion is animation-driven, mirroring attack handling.
+        }
+
         /// <summary>
         /// Called by MobItem when the attack animation has completed.
         /// This allows the AI to transition out of Attack state only after
@@ -637,7 +660,7 @@ namespace HaCreator.MapSimulator.AI
         /// </summary>
         public void NotifyAttackAnimationComplete(int currentTick)
         {
-            if (_state == MobAIState.Attack)
+            if (_state == MobAIState.Attack || _state == MobAIState.Skill)
             {
                 SetState(MobAIState.Chase, currentTick);
             }
@@ -723,7 +746,7 @@ namespace HaCreator.MapSimulator.AI
             }
 
             // Enter hit state (stun) unless boss or already attacking
-            if (!_isBoss && _state != MobAIState.Attack)
+            if (!_isBoss && _state != MobAIState.Attack && _state != MobAIState.Skill)
             {
                 SetState(MobAIState.Hit, currentTick);
             }
@@ -853,8 +876,22 @@ namespace HaCreator.MapSimulator.AI
                 return false;
 
             int elapsed = StateElapsed(currentTick);
-            // Deal damage once at the attack delay point
-            return elapsed >= attack.Delay && elapsed < attack.Delay + 50;
+            int triggerDelay = GetAttackTriggerDelay(attack);
+            return elapsed >= triggerDelay && elapsed < triggerDelay + 50;
+        }
+
+        /// <summary>
+        /// Check if mob skill effect should apply this frame (based on skill timing)
+        /// </summary>
+        public bool ShouldApplySkillEffect(int currentTick)
+        {
+            var skill = GetCurrentSkill();
+            if (skill == null)
+                return false;
+
+            int elapsed = StateElapsed(currentTick);
+            int triggerDelay = GetSkillTriggerDelay(skill);
+            return elapsed >= triggerDelay && elapsed < triggerDelay + 50;
         }
 
         private void AddDamageDisplay(int damage, int currentTick, bool isCritical)
@@ -892,6 +929,7 @@ namespace HaCreator.MapSimulator.AI
                 MobAIState.Alert => "stand",
                 MobAIState.Chase => "move",
                 MobAIState.Attack => GetCurrentAttack()?.AnimationName ?? "attack1",
+                MobAIState.Skill => GetCurrentSkill()?.AnimationName ?? "skill1",
                 MobAIState.Hit => "hit1",
                 MobAIState.Death => "die1",
                 MobAIState.Removed => "die1",
@@ -924,7 +962,11 @@ namespace HaCreator.MapSimulator.AI
         /// <summary>
         /// Check if mob is aggressive (chasing or attacking)
         /// </summary>
-        public bool IsAggressive => _state == MobAIState.Chase || _state == MobAIState.Attack || _state == MobAIState.Alert;
+        public bool IsAggressive =>
+            _state == MobAIState.Chase ||
+            _state == MobAIState.Attack ||
+            _state == MobAIState.Skill ||
+            _state == MobAIState.Alert;
 
         /// <summary>
         /// True if mob has been hit and is now aggroed
@@ -1016,7 +1058,7 @@ namespace HaCreator.MapSimulator.AI
             if (effect == MobStatusEffect.Stun || effect == MobStatusEffect.Freeze)
             {
                 // Stun/freeze interrupts current action
-                if (_state == MobAIState.Attack || _state == MobAIState.Chase)
+                if (_state == MobAIState.Attack || _state == MobAIState.Skill || _state == MobAIState.Chase)
                 {
                     SetState(MobAIState.Hit, currentTick);
                 }
@@ -1162,6 +1204,109 @@ namespace HaCreator.MapSimulator.AI
         public bool IsGuidedBy(int targetId)
         {
             return _isGuidedTarget && _guidedTargetId == targetId;
+        }
+        #endregion
+
+        #region Helpers
+        private int FindAvailableAttackIndex(int currentTick)
+        {
+            for (int i = 0; i < _attacks.Count; i++)
+            {
+                if (!_attacks[i].IsOnCooldown(currentTick) && _target.Distance <= _attacks[i].Range)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private int FindAvailableSkillIndex(int currentTick)
+        {
+            if (IsSealed)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < _skills.Count; i++)
+            {
+                if (!_skills[i].IsOnCooldown(currentTick) && _target.Distance <= _skills[i].Range)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private bool ShouldPreferSkill(MobSkillEntry skill, MobAttackEntry attack)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (attack == null)
+            {
+                return true;
+            }
+
+            if (_isBoss)
+            {
+                return true;
+            }
+
+            if (_target.Distance > attack.Range * 0.75f)
+            {
+                return true;
+            }
+
+            return Random.Shared.Next(100) < 35;
+        }
+
+        private static int GetAttackTriggerDelay(MobAttackEntry attack)
+        {
+            if (attack == null)
+            {
+                return 0;
+            }
+
+            if (attack.Delay > 0)
+            {
+                return attack.Delay;
+            }
+
+            if (attack.EffectAfter > 0)
+            {
+                return attack.EffectAfter;
+            }
+
+            if (attack.AttackAfter > 0)
+            {
+                return attack.AttackAfter;
+            }
+
+            return 200;
+        }
+
+        private static int GetSkillTriggerDelay(MobSkillEntry skill)
+        {
+            if (skill == null)
+            {
+                return 0;
+            }
+
+            if (skill.EffectAfter > 0)
+            {
+                return skill.EffectAfter;
+            }
+
+            if (skill.SkillAfter > 0)
+            {
+                return skill.SkillAfter;
+            }
+
+            return 250;
         }
         #endregion
     }

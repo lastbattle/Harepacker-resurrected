@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Loaders;
 using MapleLib.WzLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -54,6 +55,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Combat effects reference
         private CombatEffects _combatEffects;
+        private MobSkillEffectLoader _mobSkillEffectLoader;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -99,6 +101,9 @@ namespace HaCreator.MapSimulator.Character
                 SkillLoader = new SkillLoader(skillWz, _device, _texturePool);
                 System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillLoader created");
             }
+
+            _mobSkillEffectLoader = new MobSkillEffectLoader(_device, _texturePool);
+            _mobSkillEffectLoader.Initialize();
 
             Config.LoadAllPresets();
         }
@@ -246,6 +251,31 @@ namespace HaCreator.MapSimulator.Character
                 {
                     _combatEffects.AddAttackHitEffect(x, y, hitFrames, Environment.TickCount);
                 }
+            };
+
+            Combat.OnMobSkillHitPlayer = (x, y, skillId, skillLevel) =>
+            {
+                if (_combatEffects == null || _mobSkillEffectLoader == null)
+                {
+                    return;
+                }
+
+                var effectData = _mobSkillEffectLoader.LoadMobSkillEffect(skillId, skillLevel);
+                if (effectData?.HasAffectedEffect != true)
+                {
+                    return;
+                }
+
+                int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
+                _combatEffects.AddMobSkillHitEffect(
+                    x,
+                    y,
+                    effectData.AffectedFrames,
+                    skillId,
+                    skillLevel,
+                    Environment.TickCount,
+                    effectData.AffectedRepeat,
+                    duration);
             };
 
             // Create SkillManager if we have a SkillLoader

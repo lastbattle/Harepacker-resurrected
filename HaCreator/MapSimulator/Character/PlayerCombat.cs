@@ -221,24 +221,45 @@ namespace HaCreator.MapSimulator.Character
                 if (mob?.AI == null)
                     continue;
 
-                // Check for regular attack or skill attack
                 bool isAttacking = mob.AI.State == MobAIState.Attack;
                 bool isUsingSkill = mob.AI.State == MobAIState.Skill;
 
                 if (!isAttacking && !isUsingSkill)
                     continue;
 
-                // Check if mob's attack hitbox overlaps player
-                var mobAttackHitbox = GetMobAttackHitbox(mob);
+                MobAttackEntry currentAttack = mob.AI.GetCurrentAttack();
+                MobSkillEntry currentSkill = mob.AI.GetCurrentSkill();
+                bool attackTriggered = isAttacking && mob.AI.ShouldDealDamage(currentTime);
+                bool skillTriggered = isUsingSkill && mob.AI.ShouldApplySkillEffect(currentTime);
+
+                if (!attackTriggered && !skillTriggered)
+                    continue;
+
+                Rectangle mobAttackHitbox = GetMobAttackHitbox(mob, currentAttack, skillTriggered ? currentSkill : null);
                 if (playerHitbox.Intersects(mobAttackHitbox))
                 {
-                    ProcessPlayerHit(mob, currentTime, isUsingSkill);
+                    ProcessPlayerHit(mob, currentTime, currentAttack, skillTriggered ? currentSkill : null);
                     return; // Only take one hit per frame
                 }
             }
         }
 
-        private Rectangle GetMobAttackHitbox(MobItem mob)
+        public bool TryApplyMobHit(MobItem mob, Rectangle hitbox, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
+        {
+            if (mob?.AI == null || !_player.IsAlive)
+                return false;
+
+            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+                return false;
+
+            if (hitbox.IsEmpty || !_player.GetHitbox().Intersects(hitbox))
+                return false;
+
+            ProcessPlayerHit(mob, currentTime, attackOverride, skillOverride);
+            return true;
+        }
+
+        private Rectangle GetMobAttackHitbox(MobItem mob, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
             if (mob?.MovementInfo == null)
                 return Rectangle.Empty;
@@ -246,27 +267,60 @@ namespace HaCreator.MapSimulator.Character
             float mobX = mob.MovementInfo.X;
             float mobY = mob.MovementInfo.Y;
             bool facingRight = mob.MovementInfo.FlipX; // FlipX = true means facing right
+            var attack = attackOverride ?? mob.AI?.GetCurrentAttack();
 
-            // Attack extends in front of mob
-            var currentAttack = mob.AI?.GetCurrentAttack();
-            int range = currentAttack?.Range ?? 50;
-            int width = range;
-            int height = 60;
+            if (skillOverride == null && attack?.HasRangeBounds == true)
+            {
+                int left = attack.RangeLeft;
+                int right = attack.RangeRight;
+                if (facingRight)
+                {
+                    left = -attack.RangeRight;
+                    right = -attack.RangeLeft;
+                }
+
+                int top = attack.RangeTop;
+                int bottom = attack.RangeBottom;
+                int rangeWidth = Math.Max(1, right - left);
+                int rangeHeight = Math.Max(1, bottom - top);
+
+                return new Rectangle(
+                    (int)mobX + left,
+                    (int)mobY + top,
+                    rangeWidth,
+                    rangeHeight);
+            }
+
+            int range = skillOverride?.Range ?? attack?.Range ?? 50;
+            int width = Math.Max(50, range);
+            int height = skillOverride != null
+                ? 90
+                : Math.Max(60, attack?.AreaHeight ?? 60);
+
+            if (skillOverride != null && skillOverride.Range >= 180)
+            {
+                return new Rectangle(
+                    (int)mobX - width / 2,
+                    (int)mobY - height,
+                    width,
+                    height);
+            }
 
             return new Rectangle(
                 (int)mobX + (facingRight ? 0 : -width),
-                (int)mobY - 40,
+                (int)mobY - height + 20,
                 width,
                 height);
         }
 
-        private void ProcessPlayerHit(MobItem mob, int currentTime, bool isSkillAttack = false)
+        private void ProcessPlayerHit(MobItem mob, int currentTime, MobAttackEntry attackOverride = null, MobSkillEntry skillOverride = null)
         {
             _lastHitTime = currentTime;
+            bool isSkillAttack = skillOverride != null;
 
             // Calculate damage from mob
-            var currentAttack = mob.AI?.GetCurrentAttack();
-            int mobAttack = currentAttack?.Damage ?? 10;
+            var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
+            int mobAttack = currentAttack?.Damage ?? GetFallbackMobSkillDamage(mob);
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, mobAttack - playerDefense / 2);
@@ -288,9 +342,9 @@ namespace HaCreator.MapSimulator.Character
             OnDamageReceived?.Invoke(_player, damage, mob);
 
             // Trigger mob skill hit effect if this was a skill attack
-            if (isSkillAttack && mob.AI != null)
+            if (isSkillAttack)
             {
-                var currentSkill = mob.AI.GetCurrentSkill();
+                var currentSkill = skillOverride ?? mob.AI?.GetCurrentSkill();
                 if (currentSkill != null)
                 {
                     // Trigger the "affected" animation from MobSkill.img on the player
@@ -347,6 +401,13 @@ namespace HaCreator.MapSimulator.Character
                     return;
                 }
             }
+        }
+
+        private static int GetFallbackMobSkillDamage(MobItem mob)
+        {
+            int physical = mob?.MobData?.PADamage ?? 0;
+            int magical = mob?.MobData?.MADamage ?? 0;
+            return Math.Max(10, Math.Max(physical, magical));
         }
 
         private Rectangle GetMobBodyHitbox(MobItem mob, int currentTime)

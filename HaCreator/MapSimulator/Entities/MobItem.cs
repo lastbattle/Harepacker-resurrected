@@ -317,6 +317,35 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
+        /// Gets the projectile frames for a specific attack action.
+        /// These frames are displayed while a ranged mob attack is travelling.
+        /// </summary>
+        public List<IDXObject> GetAttackProjectileFrames(string attackAction)
+        {
+            return _animationSet?.GetAttackProjectileEffect(attackAction);
+        }
+
+        public List<IDXObject> GetAttackEffectFrames(string attackAction)
+        {
+            return _animationSet?.GetAttackEffect(attackAction);
+        }
+
+        public List<IDXObject> GetAttackWarningFrames(string attackAction)
+        {
+            return _animationSet?.GetAttackWarningEffect(attackAction);
+        }
+
+        public IReadOnlyList<MobAnimationSet.AttackEffectNode> GetAttackExtraEffects(string attackAction)
+        {
+            return _animationSet?.GetAttackExtraEffects(attackAction);
+        }
+
+        public MobAnimationSet.AttackInfoMetadata GetAttackInfo(string attackAction)
+        {
+            return _animationSet?.GetAttackInfoMetadata(attackAction);
+        }
+
+        /// <summary>
         /// Check if this mob has hit effect frames for a specific attack
         /// </summary>
         public bool HasAttackHitEffect(string attackAction)
@@ -509,21 +538,8 @@ namespace HaCreator.MapSimulator.Entities
                     AI.SetAttackRange(50);
                 }
 
-                // Add attacks based on available animations
-                int attackDamage = mobData.PADamage > 0 ? mobData.PADamage : 10;
-
-                if (_animationSet.HasAnimation("attack1"))
-                {
-                    AI.AddAttack(1, "attack1", attackDamage, 60, 1500);
-                }
-                if (_animationSet.HasAnimation("attack2"))
-                {
-                    AI.AddAttack(2, "attack2", (int)(attackDamage * 1.5f), 80, 2000);
-                }
-                if (_animationSet.HasAnimation("skill1"))
-                {
-                    AI.AddAttack(3, "skill1", attackDamage * 2, 150, 3000, isRanged: true);
-                }
+                InitializeAttackEntries(mobData, isBoss);
+                InitializeSkillEntries(mobData, isBoss);
             }
             else
             {
@@ -534,6 +550,288 @@ namespace HaCreator.MapSimulator.Entities
                     AI.AddAttack(1, "attack1", 10, 60, 1500);
                 }
             }
+        }
+
+        private void InitializeAttackEntries(MobData mobData, bool isBoss)
+        {
+            int basePhysicalDamage = mobData.PADamage > 0 ? mobData.PADamage : 10;
+            var usedAttackMetadata = new HashSet<int>();
+
+            for (int actionIndex = 1; actionIndex <= 9; actionIndex++)
+            {
+                string animationName = $"attack{actionIndex}";
+                if (!_animationSet.HasAnimation(animationName))
+                {
+                    continue;
+                }
+
+                MobAttackData attackMeta = GetAttackMetadataForAction(mobData, actionIndex, usedAttackMetadata);
+                var attackInfo = _animationSet.GetAttackInfoMetadata(animationName);
+                bool isRanged = (attackMeta?.BulletSpeed ?? 0) > 0 || (isBoss && actionIndex >= 2);
+                bool hasAreaWarning = attackInfo?.HasAreaWarning == true;
+                bool hasAreaSlots = (attackInfo?.AreaCount ?? 0) > 1;
+                bool hasPrimaryEffect = attackInfo?.HasPrimaryEffect == true;
+                bool hasAreaLikeMeta = isBoss &&
+                                       ((attackMeta?.DeadlyAttack ?? 0) > 0 ||
+                                        (attackMeta?.Magic ?? 0) > 0 ||
+                                        (attackMeta?.Disease ?? 0) > 0 ||
+                                        (attackMeta?.MpBurn ?? 0) > 0) &&
+                                       actionIndex >= 2;
+
+                // Client data like Pianus attack3 uses a source-anchored beam effect with a magic flag,
+                // but without areaWarning it should not be treated as a ground-targeted AoE.
+                bool isArea = hasAreaWarning || hasAreaSlots || (hasAreaLikeMeta && !hasPrimaryEffect);
+
+                int range = attackInfo?.HasRangeBounds == true
+                    ? Math.Max(
+                        Math.Max(System.Math.Abs(attackInfo.RangeBounds.Left), System.Math.Abs(attackInfo.RangeBounds.Right)),
+                        1)
+                    : DetermineAttackRange(attackMeta, actionIndex, isBoss, isRanged, isArea);
+                int cooldown = DetermineAttackCooldown(attackMeta, actionIndex, isBoss, isRanged, isArea);
+                int effectAfter = attackInfo?.EffectAfter > 0 ? attackInfo.EffectAfter : (isArea ? 380 : isRanged ? 300 : 220);
+                int attackAfter = attackInfo?.AttackAfter > 0 ? attackInfo.AttackAfter : (isArea ? 520 : effectAfter + 80);
+                int attackDelay = effectAfter > 0 ? effectAfter : (isArea ? 450 : isRanged ? 300 : 220);
+                int damage = basePhysicalDamage;
+                int areaWidth = attackInfo?.HasRangeBounds == true
+                    ? System.Math.Max(attackInfo.RangeBounds.Width, 1)
+                    : System.Math.Max(range, isBoss ? 180 : 120);
+                int areaHeight = attackInfo?.HasRangeBounds == true
+                    ? System.Math.Max(attackInfo.RangeBounds.Height, 1)
+                    : (isArea ? (isBoss ? 90 : 70) : 60);
+
+                if ((attackMeta?.Magic ?? 0) > 0 && mobData.MADamage > 0)
+                {
+                    damage = Math.Max(damage, mobData.MADamage);
+                }
+
+                if ((attackMeta?.DeadlyAttack ?? 0) > 0)
+                {
+                    damage = (int)(damage * 1.4f);
+                }
+                else if (actionIndex >= 2)
+                {
+                    damage = (int)(damage * 1.2f);
+                }
+
+                AI.AddAttack(new MobAttackEntry
+                {
+                    AttackId = actionIndex,
+                    AnimationName = animationName,
+                    Damage = Math.Max(1, damage),
+                    Range = range,
+                    Delay = attackDelay,
+                    Cooldown = cooldown,
+                    IsRanged = isRanged,
+                    IsAreaOfEffect = isArea,
+                    EffectAfter = effectAfter,
+                    AttackAfter = attackAfter,
+                    BulletSpeed = (attackMeta?.BulletSpeed ?? 0) > 0 ? attackMeta.BulletSpeed : (isRanged ? 320 : 0),
+                    ProjectileCount = isBoss && isRanged ? Math.Max(1, Math.Min(3, actionIndex)) : 1,
+                    AreaWidth = areaWidth,
+                    AreaHeight = areaHeight,
+                    RandomDelayWindow = isArea ? Math.Clamp(range, 120, 420) : 0,
+                    HasRangeBounds = attackInfo?.HasRangeBounds == true,
+                    RangeLeft = attackInfo?.RangeBounds.Left ?? 0,
+                    RangeTop = attackInfo?.RangeBounds.Top ?? 0,
+                    RangeRight = attackInfo?.RangeBounds.Right ?? 0,
+                    RangeBottom = attackInfo?.RangeBounds.Bottom ?? 0,
+                    AreaCount = attackInfo?.AreaCount ?? 0,
+                    AttackCount = attackInfo?.AttackCount ?? 0,
+                    StartOffset = attackInfo?.StartOffset ?? 0
+                });
+            }
+
+            if (!_animationSet.HasAnimation("attack1") && _animationSet.HasAnimation("skill1") && (mobData.SkillData == null || mobData.SkillData.Count == 0))
+            {
+                AI.AddAttack(new MobAttackEntry
+                {
+                    AttackId = 1,
+                    AnimationName = "skill1",
+                    Damage = Math.Max(1, basePhysicalDamage),
+                    Range = isBoss ? 220 : 160,
+                    Delay = 320,
+                    Cooldown = 2400,
+                    IsRanged = true,
+                    EffectAfter = 280,
+                    AttackAfter = 360,
+                    BulletSpeed = 320,
+                    ProjectileCount = isBoss ? 2 : 1,
+                    AreaWidth = isBoss ? 180 : 120,
+                    AreaHeight = 60
+                });
+            }
+        }
+
+        private void InitializeSkillEntries(MobData mobData, bool isBoss)
+        {
+            if (mobData.OnlyNormalAttack > 0 || mobData.SkillData == null || mobData.SkillData.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var skillData in mobData.SkillData)
+            {
+                string animationName = ResolveSkillAnimationName(skillData.Action);
+                if (animationName == null)
+                {
+                    continue;
+                }
+
+                int actionIndex = GetActionIndex(animationName);
+                AI.AddSkill(new MobSkillEntry
+                {
+                    SkillId = skillData.Skill,
+                    Level = skillData.Level > 0 ? skillData.Level : 1,
+                    ActionIndex = actionIndex,
+                    EffectAfter = skillData.EffectAfter > 0 ? skillData.EffectAfter : 250,
+                    SkillAfter = skillData.SkillAfter > 0 ? skillData.SkillAfter : 350,
+                    AnimationName = animationName,
+                    Range = DetermineSkillRange(skillData, isBoss),
+                    Cooldown = DetermineSkillCooldown(skillData, isBoss)
+                });
+            }
+        }
+
+        private MobAttackData GetAttackMetadataForAction(MobData mobData, int actionIndex, HashSet<int> usedAttackMetadata)
+        {
+            if (mobData?.AttackData == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < mobData.AttackData.Count; i++)
+            {
+                if (usedAttackMetadata.Contains(i))
+                {
+                    continue;
+                }
+
+                MobAttackData attackMeta = mobData.AttackData[i];
+                int attackNum = attackMeta.AttackNum;
+                if (attackMeta.Action == actionIndex || attackNum == actionIndex || attackNum + 1 == actionIndex)
+                {
+                    usedAttackMetadata.Add(i);
+                    return attackMeta;
+                }
+            }
+
+            for (int i = 0; i < mobData.AttackData.Count; i++)
+            {
+                if (usedAttackMetadata.Add(i))
+                {
+                    return mobData.AttackData[i];
+                }
+            }
+
+            return null;
+        }
+
+        private string ResolveSkillAnimationName(int preferredActionIndex)
+        {
+            if (preferredActionIndex > 0)
+            {
+                string preferredName = $"skill{preferredActionIndex}";
+                if (_animationSet.HasAnimation(preferredName))
+                {
+                    return preferredName;
+                }
+            }
+
+            for (int actionIndex = 1; actionIndex <= 9; actionIndex++)
+            {
+                string animationName = $"skill{actionIndex}";
+                if (_animationSet.HasAnimation(animationName))
+                {
+                    return animationName;
+                }
+            }
+
+            return null;
+        }
+
+        private static int DetermineAttackRange(MobAttackData attackMeta, int actionIndex, bool isBoss, bool isRanged, bool isArea)
+        {
+            if ((attackMeta?.BulletSpeed ?? 0) > 0)
+            {
+                return isBoss ? 260 : 180;
+            }
+
+            if (isArea)
+            {
+                return isBoss ? 220 : 140;
+            }
+
+            if (isRanged)
+            {
+                return isBoss ? 200 : 150;
+            }
+
+            return isBoss ? 120 + (actionIndex * 15) : 60 + (actionIndex * 20);
+        }
+
+        private static int DetermineAttackCooldown(MobAttackData attackMeta, int actionIndex, bool isBoss, bool isRanged, bool isArea)
+        {
+            int cooldown = 1200 + (actionIndex - 1) * 250;
+            if (isRanged)
+            {
+                cooldown += 400;
+            }
+
+            if (isArea)
+            {
+                cooldown += 500;
+            }
+
+            if (isBoss)
+            {
+                cooldown = Math.Max(1600, cooldown);
+            }
+
+            if ((attackMeta?.ConMP ?? 0) > 0)
+            {
+                cooldown += 200;
+            }
+
+            return cooldown;
+        }
+
+        private static int DetermineSkillRange(MobSkillData skillData, bool isBoss)
+        {
+            if (skillData.OnlyFsm)
+            {
+                return isBoss ? 500 : 320;
+            }
+
+            return isBoss ? 360 : 260;
+        }
+
+        private static int DetermineSkillCooldown(MobSkillData skillData, bool isBoss)
+        {
+            int cooldown = skillData.SkillAfter > 0 ? skillData.SkillAfter + 1500 : 4000;
+            if (skillData.PreSkillCount > 0)
+            {
+                cooldown += 300 * skillData.PreSkillCount;
+            }
+
+            if (isBoss)
+            {
+                cooldown = Math.Max(3500, cooldown);
+            }
+
+            return cooldown;
+        }
+
+        private static int GetActionIndex(string animationName)
+        {
+            if (string.IsNullOrEmpty(animationName))
+            {
+                return 1;
+            }
+
+            int suffixIndex = animationName.Length - 1;
+            return suffixIndex >= 0 && int.TryParse(animationName[suffixIndex].ToString(), out int actionIndex)
+                ? actionIndex
+                : 1;
         }
 
         /// <summary>
@@ -560,7 +858,8 @@ namespace HaCreator.MapSimulator.Entities
             bool isOneShot = action == AnimationKeys.Jump ||
                              action == AnimationKeys.Die1 || action == AnimationKeys.Die2 || action == AnimationKeys.Die ||
                              action == AnimationKeys.Hit1 || action == AnimationKeys.Hit2 || action == AnimationKeys.Hit ||
-                             action.StartsWith("attack");
+                             action.StartsWith("attack") ||
+                             action.StartsWith("skill");
 
             if (isOneShot)
             {
@@ -576,6 +875,10 @@ namespace HaCreator.MapSimulator.Entities
                 {
                     PlayAttackSound(2);
                 }
+                else if (action.StartsWith("skill"))
+                {
+                    PlayAttackSound(1);
+                }
             }
             else
             {
@@ -590,6 +893,8 @@ namespace HaCreator.MapSimulator.Entities
             get { return this._mobInstance; }
             private set { }
         }
+
+        public MobData MobData => _mobInstance.MobInfo?.MobData;
         #endregion
 
         /// <summary>
@@ -631,15 +936,17 @@ namespace HaCreator.MapSimulator.Entities
             {
                 AI.Update(tickCount, MovementInfo.X, MovementInfo.Y, playerX, playerY);
 
-                // AI-driven chase behavior - override movement direction when chasing
-                // Don't move while attacking
-                if (AI.State == MobAIState.Attack)
-                {
-                    // Stop movement during attack animation
-                    MovementInfo.Stop();
-                    UpdateAnimationAction(); // Update animation to show attack
+                bool isPerformingAction = AI.State == MobAIState.Attack || AI.State == MobAIState.Skill;
 
-                    // Check if attack animation has completed - notify AI to transition out of Attack state
+                // AI-driven chase behavior - override movement direction when chasing
+                // Don't move while attacking or casting
+                if (isPerformingAction)
+                {
+                    // Stop movement during attack/skill animation
+                    MovementInfo.Stop();
+                    UpdateAnimationAction(); // Update animation to show action
+
+                    // Check if action animation has completed - notify AI to transition back to chase
                     if (_animationController != null && _animationController.IsAnimationComplete)
                     {
                         AI.NotifyAttackAnimationComplete(tickCount);
@@ -722,7 +1029,8 @@ namespace HaCreator.MapSimulator.Entities
                 // Validate that the animation exists, fallback to stand if not
                 if (!_animationSet.HasAnimation(targetAction))
                 {
-                    targetAction = AI.State == MobAIState.Attack ? "attack1" : "stand";
+                    targetAction = AI.State == MobAIState.Skill ? "skill1" :
+                                   AI.State == MobAIState.Attack ? "attack1" : "stand";
 
                     if (!_animationSet.HasAnimation(targetAction))
                         targetAction = "stand";

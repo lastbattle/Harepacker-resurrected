@@ -41,6 +41,7 @@ using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Combat;
 
 namespace HaCreator.MapSimulator
 {
@@ -283,6 +284,7 @@ namespace HaCreator.MapSimulator
             public string Text;
             public bool IsValid;
         }
+
         private DebugDrawData[] _debugMobData;
         private DebugDrawData[] _debugNpcData;
         private DebugDrawData[] _debugPortalData;
@@ -298,6 +300,7 @@ namespace HaCreator.MapSimulator
         // Cached navigation help strings to avoid string.Format every frame
         private string _navHelpTextMobOn;
         private string _navHelpTextMobOff;
+        private readonly MobAttackSystem _mobAttackSystem = new MobAttackSystem();
 
         /// <summary>
         /// MapSimulator Constructor
@@ -356,6 +359,45 @@ namespace HaCreator.MapSimulator
                 () => Width,
                 () => Height);
             _renderingManager.Initialize(_effectManager, _gameState, _dynamicFootholds, _transportField, _limitedViewField);
+            _mobAttackSystem.SetGroundResolver((x, y) =>
+            {
+                var footholds = _mapBoard?.BoardItems?.FootholdLines;
+                if (footholds == null)
+                {
+                    return null;
+                }
+
+                FootholdLine bestFoothold = null;
+                float bestY = float.MinValue;
+                foreach (FootholdLine foothold in footholds)
+                {
+                    if (foothold.IsWall)
+                    {
+                        continue;
+                    }
+
+                    float minX = Math.Min(foothold.FirstDot.X, foothold.SecondDot.X);
+                    float maxX = Math.Max(foothold.FirstDot.X, foothold.SecondDot.X);
+                    if (x < minX || x > maxX)
+                    {
+                        continue;
+                    }
+
+                    float footholdY = Board.CalculateYOnFoothold(foothold, x);
+                    if (footholdY + 40f < y)
+                    {
+                        continue;
+                    }
+
+                    if (footholdY > bestY)
+                    {
+                        bestY = footholdY;
+                        bestFoothold = foothold;
+                    }
+                }
+
+                return bestFoothold != null ? Board.CalculateYOnFoothold(bestFoothold, x) : (float?)null;
+            });
         }
 
         #region Loading and unloading
@@ -1035,6 +1077,7 @@ namespace HaCreator.MapSimulator
 
             backgrounds_front.Clear();
             backgrounds_back.Clear();
+            _mobAttackSystem.Clear();
 
             _texturePool.Dispose();
 
@@ -1081,6 +1124,7 @@ namespace HaCreator.MapSimulator
 
             // Clear reactor pool
             _reactorPool?.Clear();
+            _mobAttackSystem.Clear();
 
             // Clear combat effects (only map-specific effects like mob HP bars)
             _combatEffects?.ClearMapState();
@@ -2900,6 +2944,7 @@ namespace HaCreator.MapSimulator
 
             int deltaTimeMs = (int)gameTime.ElapsedGameTime.TotalMilliseconds;
             int tickCount = Environment.TickCount;
+            float deltaSecondsLocal = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
             // Get actual player position from PlayerManager (not camera position)
             float? playerX = null;
@@ -2932,13 +2977,21 @@ namespace HaCreator.MapSimulator
                     // Player is dead and mob is not a boss - don't pass player position
                     mobItem.UpdateMovement(deltaTimeMs, tickCount, null, null);
                 }
+
+                _mobAttackSystem.QueueMobAttackActions(mobItem, tickCount, playerX, playerY);
             }
+
+            _mobAttackSystem.Update(
+                tickCount,
+                deltaSecondsLocal,
+                _playerManager,
+                _animationEffects,
+                t => _effectManager.Tremble(2, true, 0, 0, true, t));
 
             // Update mob pool for death animations, cleanup, and respawns
             _mobPool?.Update(tickCount);
 
             // Update drop pool for physics and expiration (frame-rate independent)
-            float deltaSecondsLocal = (float)gameTime.ElapsedGameTime.TotalSeconds;
             _dropPool?.Update(tickCount, deltaSecondsLocal);
 
             // Update portal pool for hidden portal visibility
@@ -4235,6 +4288,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawMapObjects(in renderContext); // tiles and objects
             _renderingManager.DrawMobs(in renderContext); // mobs - rendered behind portals
             DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
+            _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             _renderingManager.DrawDrops(in renderContext); // item/meso drops
             _renderingManager.DrawPortals(in renderContext); // portals
             _renderingManager.DrawReactors(in renderContext); // reactors
@@ -4573,7 +4627,6 @@ namespace HaCreator.MapSimulator
                 TickCount);
             }
 
-
             // UI Windows (Inventory, Equipment, Skills, Quest)
             // Toggle: I=Inventory, E=Equipment, S=Skills, Q=Quest
             // Handle mouse events for minimap and windows with proper priority
@@ -4651,9 +4704,6 @@ namespace HaCreator.MapSimulator
         // DrawScreenEffects, DrawPortalFadeOverlay, DrawExplosionRing, DrawThickLine,
         // DrawMotionBlurOverlay - All moved to RenderingManager
         #endregion
-
-        // NOTE: Screenshot functionality moved to ScreenshotManager
-        // NOTE: Screen effects drawing moved to RenderingManager
 
         #region Boundaries
         /// <summary>

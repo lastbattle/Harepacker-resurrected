@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -8,9 +9,11 @@ using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Pools;
+using Rectangle = Microsoft.Xna.Framework.Rectangle;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -79,6 +82,12 @@ namespace HaCreator.MapSimulator.Loaders
                                 if (actionName.StartsWith("attack"))
                                 {
                                     WzSubProperty infoNode = mobStateProperty["info"] as WzSubProperty;
+                                    var attackInfo = BuildAttackInfoMetadata(infoNode);
+                                    if (attackInfo != null)
+                                    {
+                                        animationSet.SetAttackInfoMetadata(actionName, attackInfo);
+                                    }
+
                                     WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
                                     if (hitNode != null)
                                     {
@@ -87,6 +96,50 @@ namespace HaCreator.MapSimulator.Loaders
                                         {
                                             animationSet.AddAttackHitEffect(actionName, hitFrames);
                                             System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {hitFrames.Count} hit effect frames for mob {mobInfo.ID} {actionName}");
+                                        }
+                                    }
+
+                                    WzImageProperty ballNode = infoNode?["ball"] ?? mobStateProperty["ball"];
+                                    if (ballNode != null)
+                                    {
+                                        List<IDXObject> ballFrames = MapSimulatorLoader.LoadFrames(texturePool, ballNode, 0, 0, device, ref usedProps);
+                                        if (ballFrames.Count > 0)
+                                        {
+                                            animationSet.AddAttackProjectileEffect(actionName, ballFrames);
+                                            System.Diagnostics.Debug.WriteLine($"[LifeLoader] Loaded {ballFrames.Count} projectile frames for mob {mobInfo.ID} {actionName}");
+                                        }
+                                    }
+
+                                    WzImageProperty effectNode = infoNode?["effect"];
+                                    if (effectNode != null)
+                                    {
+                                        List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, ref usedProps);
+                                        if (effectFrames.Count > 0)
+                                        {
+                                            animationSet.AddAttackEffect(actionName, effectFrames);
+                                        }
+                                    }
+
+                                    if (infoNode != null)
+                                    {
+                                        foreach (WzImageProperty infoChild in infoNode.WzProperties)
+                                        {
+                                            if (!TryBuildAttackEffectNode(texturePool, infoChild, device, ref usedProps, out var extraEffectNode))
+                                            {
+                                                continue;
+                                            }
+
+                                            animationSet.AddAttackExtraEffect(actionName, extraEffectNode);
+                                        }
+                                    }
+
+                                    WzImageProperty warningNode = infoNode?["areaWarning"];
+                                    if (warningNode != null)
+                                    {
+                                        List<IDXObject> warningFrames = MapSimulatorLoader.LoadFrames(texturePool, warningNode, 0, 0, device, ref usedProps);
+                                        if (warningFrames.Count > 0)
+                                        {
+                                            animationSet.AddAttackWarningEffect(actionName, warningFrames);
                                         }
                                     }
                                 }
@@ -199,6 +252,108 @@ namespace HaCreator.MapSimulator.Loaders
                 return soundKey;
             }
             return null;
+        }
+
+        private static MobAnimationSet.AttackInfoMetadata BuildAttackInfoMetadata(WzSubProperty infoNode)
+        {
+            if (infoNode == null)
+            {
+                return null;
+            }
+
+            var metadata = new MobAnimationSet.AttackInfoMetadata
+            {
+                EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
+                AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
+                HasPrimaryEffect = infoNode["effect"] != null,
+                HasAreaWarning = infoNode["areaWarning"] != null
+            };
+
+            WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;
+            if (rangeNode != null)
+            {
+                WzVectorProperty lt = rangeNode["lt"] as WzVectorProperty;
+                WzVectorProperty rb = rangeNode["rb"] as WzVectorProperty;
+                if (lt != null && rb != null)
+                {
+                    int left = System.Math.Min(lt.X.Value, rb.X.Value);
+                    int right = System.Math.Max(lt.X.Value, rb.X.Value);
+                    int top = System.Math.Min(lt.Y.Value, rb.Y.Value);
+                    int bottom = System.Math.Max(lt.Y.Value, rb.Y.Value);
+                    metadata.HasRangeBounds = true;
+                    metadata.RangeBounds = new Rectangle(left, top, System.Math.Max(1, right - left), System.Math.Max(1, bottom - top));
+                }
+
+                metadata.StartOffset = InfoTool.GetInt(rangeNode["start"], 0);
+                metadata.AreaCount = InfoTool.GetInt(rangeNode["areaCount"], 0);
+                metadata.AttackCount = InfoTool.GetInt(rangeNode["attackCount"], 0);
+            }
+
+            return metadata;
+        }
+
+        private static bool TryBuildAttackEffectNode(
+            TexturePool texturePool,
+            WzImageProperty infoChild,
+            GraphicsDevice device,
+            ref List<WzObject> usedProps,
+            out MobAnimationSet.AttackEffectNode effectNode)
+        {
+            effectNode = null;
+            if (infoChild == null || !infoChild.Name.StartsWith("effect", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string suffix = infoChild.Name.Substring("effect".Length);
+            if (!int.TryParse(suffix, out _))
+            {
+                return false;
+            }
+
+            WzSubProperty effectProperty = infoChild as WzSubProperty;
+            if (effectProperty == null)
+            {
+                return false;
+            }
+
+            effectNode = new MobAnimationSet.AttackEffectNode
+            {
+                Name = infoChild.Name,
+                EffectType = InfoTool.GetInt(effectProperty["effectType"], 0),
+                EffectDistance = InfoTool.GetInt(effectProperty["effectDistance"], 0),
+                RandomPos = InfoTool.GetInt(effectProperty["randomPos"], 0) > 0,
+                Delay = InfoTool.GetInt(effectProperty["delay"], 0)
+            };
+
+            WzVectorProperty lt = effectProperty["lt"] as WzVectorProperty;
+            WzVectorProperty rb = effectProperty["rb"] as WzVectorProperty;
+            if (lt != null && rb != null)
+            {
+                int left = Math.Min(lt.X.Value, rb.X.Value);
+                int right = Math.Max(lt.X.Value, rb.X.Value);
+                int top = Math.Min(lt.Y.Value, rb.Y.Value);
+                int bottom = Math.Max(lt.Y.Value, rb.Y.Value);
+                effectNode.HasRangeBounds = true;
+                effectNode.RangeBounds = new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
+            }
+
+            for (int sequenceIndex = 0; ; sequenceIndex++)
+            {
+                WzImageProperty sequenceProperty = effectProperty[sequenceIndex.ToString()];
+                if (sequenceProperty == null)
+                {
+                    break;
+                }
+
+                List<IDXObject> sequenceFrames = MapSimulatorLoader.LoadFrames(texturePool, sequenceProperty, 0, 0, device, ref usedProps);
+                if (sequenceFrames.Count > 0)
+                {
+                    effectNode.Sequences.Add(sequenceFrames);
+                }
+            }
+
+            return effectNode.Sequences.Count > 0;
         }
         #endregion
 

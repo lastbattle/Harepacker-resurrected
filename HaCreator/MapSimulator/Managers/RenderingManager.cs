@@ -626,7 +626,7 @@ namespace HaCreator.MapSimulator.Managers
 
             // Draw animation effects
             _effectManager.Animation?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
-                context.GameTime, context.DebugTexture, context.MapShiftX, context.MapShiftY, context.TickCount);
+                context.GameTime, context.DebugTexture, -(int)context.ShiftCenter.X, -(int)context.ShiftCenter.Y, context.TickCount);
 
             // Draw combat effects using the same center/shift values as the rest of this render pass.
             _effectManager.Combat?.Draw(context.SpriteBatch, context.SkeletonMeshRenderer,
