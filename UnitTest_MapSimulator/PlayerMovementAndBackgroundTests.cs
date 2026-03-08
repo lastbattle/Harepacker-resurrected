@@ -1,5 +1,8 @@
 using System;
+using System.Reflection;
+using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
@@ -12,6 +15,52 @@ namespace UnitTest_MapSimulator
 {
     public class PlayerMovementAndBackgroundTests
     {
+        private static FootholdLine CreateFoothold(int x1, int y1, int x2, int y2)
+        {
+            var first = new FootholdAnchor(board: null, x: x1, y: y1, layer: 0, zm: 0, user: true);
+            var second = new FootholdAnchor(board: null, x: x2, y: y2, layer: 0, zm: 0, user: true);
+            return new FootholdLine(board: null, first, second);
+        }
+
+        private static Func<float, float, float, FootholdLine> CreateFootholdLookup(params FootholdLine[] footholds)
+        {
+            return (x, y, searchRange) =>
+            {
+                FootholdLine bestFoothold = null;
+                float bestDistance = float.MaxValue;
+                const float upwardTolerance = 10f;
+
+                foreach (var foothold in footholds)
+                {
+                    float minX = Math.Min(foothold.FirstDot.X, foothold.SecondDot.X);
+                    float maxX = Math.Max(foothold.FirstDot.X, foothold.SecondDot.X);
+
+                    if (x < minX || x > maxX)
+                    {
+                        continue;
+                    }
+
+                    float dx = foothold.SecondDot.X - foothold.FirstDot.X;
+                    float dy = foothold.SecondDot.Y - foothold.FirstDot.Y;
+                    float t = dx != 0 ? (x - foothold.FirstDot.X) / dx : 0f;
+                    float footholdY = foothold.FirstDot.Y + t * dy;
+                    float distance = footholdY - y;
+                    float absDistance = Math.Abs(distance);
+
+                    if ((distance >= 0 && distance < searchRange) || (distance < 0 && -distance <= upwardTolerance))
+                    {
+                        if (absDistance < bestDistance)
+                        {
+                            bestDistance = absDistance;
+                            bestFoothold = foothold;
+                        }
+                    }
+                }
+
+                return bestFoothold;
+            };
+        }
+
         [Fact]
         public void JumpOffLadder_ClearsLadderStateAndSetsJumpMotion()
         {
@@ -64,6 +113,165 @@ namespace UnitTest_MapSimulator
             Assert.True(player.Physics.IsOnLadder());
             Assert.Equal(120, player.Physics.LadderX);
             Assert.Equal(120, player.X);
+        }
+
+        [Fact]
+        public void JumpInSwimArea_TransitionsIntoSwimmingWithoutGroundJumpLaunch()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+            player.SetSwimAreaCheck((x, y, range) => true);
+            player.SetInput(left: false, right: false, up: false, down: false, jump: true, attack: false, pickup: false);
+
+            player.Update(Environment.TickCount, 0.016f);
+
+            Assert.False(player.Physics.IsOnFoothold());
+            Assert.Equal(PlayerState.Swimming, player.State);
+            Assert.Equal(CharacterAction.Swim, player.CurrentAction);
+            Assert.True(player.Y < 100f, $"Expected swim jump to move upward immediately, but Y={player.Y}");
+            Assert.InRange(player.Physics.VelocityY, -CVecCtrl.JumpVelocity, -CVecCtrl.JumpVelocity * 0.5f);
+        }
+
+        [Fact]
+        public void JumpWhileSwimming_AppliesClientStyleSwimJumpImpulse()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+
+            player.SetPosition(100, 80);
+            player.SetSwimAreaCheck((x, y, range) => true);
+            player.Update(1000, 0.016f);
+
+            player.Physics.VelocityY = 120f;
+            player.SetInput(left: false, right: false, up: false, down: false, jump: true, attack: false, pickup: false);
+            player.Update(1400, 0.016f);
+
+            Assert.Equal(PlayerState.Swimming, player.State);
+            double expectedImpulse = PhysicsConstants.Instance.SwimSpeed * 5.0 * PhysicsConstants.Instance.JumpSpeedTuningScale;
+            Assert.InRange(
+                player.Physics.VelocityY,
+                (float)(-expectedImpulse * 1.15),
+                (float)(-expectedImpulse * 0.85));
+        }
+
+        [Fact]
+        public void SwimDownOntoFoothold_LandsInsteadOfPassingThrough()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+
+            player.SetPosition(100, 80);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+            player.SetSwimAreaCheck((x, y, range) => true);
+            player.SetInput(left: false, right: false, up: false, down: true, jump: false, attack: false, pickup: false);
+
+            for (int i = 0; i < 30 && !player.Physics.IsOnFoothold(); i++)
+            {
+                player.Update(Environment.TickCount + (i * 16), 0.016f);
+            }
+
+            Assert.True(player.Physics.IsOnFoothold(), $"Expected swim descent to land on foothold, but position is ({player.X}, {player.Y})");
+            Assert.Equal(PlayerState.Standing, player.State);
+            Assert.InRange(player.Y, 99.5f, 100.5f);
+            Assert.True(player.Y < 120f, $"Expected foothold collision before drifting below the platform, but Y={player.Y}");
+        }
+
+        [Fact]
+        public void SwimAnimation_HoldsIdleFrameUntilFloatMovementStarts()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var getRenderAnimationTime = typeof(PlayerCharacter).GetMethod("GetRenderAnimationTime", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(getRenderAnimationTime);
+
+            player.SetPosition(100, 80);
+            player.SetSwimAreaCheck((x, y, range) => true);
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(1000, 0.016f);
+
+            Assert.Equal(PlayerState.Swimming, player.State);
+            Assert.Equal(CharacterAction.Swim, player.CurrentAction);
+            Assert.Equal(0, (int)getRenderAnimationTime!.Invoke(player, new object[] { 1300 })!);
+
+            player.SetInput(left: false, right: true, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(1400, 0.016f);
+
+            Assert.True((int)getRenderAnimationTime.Invoke(player, new object[] { 1460 })! > 0,
+                "Expected swim animation to advance once float movement starts.");
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Physics.VelocityX = 0;
+            player.Physics.VelocityY = 0;
+            player.Update(1600, 0.016f);
+
+            Assert.Equal(0, (int)getRenderAnimationTime.Invoke(player, new object[] { 1900 })!);
+        }
+
+        [Fact]
+        public void IsUserFlying_RequiresFlyingMapLikeClientVecCtrlUser()
+        {
+            var physics = new CVecCtrl
+            {
+                HasFlyingAbility = true
+            };
+
+            Assert.False(physics.IsUserFlying());
+
+            physics.IsFlyingMap = true;
+            Assert.True(physics.IsUserFlying());
+        }
+
+        [Fact]
+        public void IsUserFlying_RespectsFlyingSkillGateWhenMapRequiresIt()
+        {
+            var physics = new CVecCtrl
+            {
+                IsFlyingMap = true,
+                RequiresFlyingSkillForMap = true
+            };
+
+            Assert.False(physics.IsUserFlying());
+
+            physics.HasFlyingAbility = true;
+            Assert.True(physics.IsUserFlying());
+
+            physics.HasFlyingAbility = false;
+            physics.IsFlying = true;
+            Assert.True(physics.IsUserFlying());
+        }
+
+        [Fact]
+        public void CharacterLoader_StandardActionsIncludeSwimAndFly()
+        {
+            var standardActionsField = typeof(CharacterLoader).GetField("StandardActions", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(standardActionsField);
+
+            var standardActions = (string[])standardActionsField!.GetValue(null)!;
+
+            Assert.Contains("swim", standardActions);
+            Assert.Contains("fly", standardActions);
+        }
+
+        [Fact]
+        public void CharacterPart_SwimAndFlyLookupAliasEachOther()
+        {
+            var part = new BodyPart();
+            var flyAnimation = new CharacterAnimation();
+            flyAnimation.Frames.Add(new CharacterFrame());
+            part.Animations["fly"] = flyAnimation;
+
+            Assert.Same(flyAnimation, part.GetAnimation(CharacterAction.Swim));
+
+            var swimOnlyPart = new BodyPart();
+            var swimAnimation = new CharacterAnimation();
+            swimAnimation.Frames.Add(new CharacterFrame());
+            swimOnlyPart.Animations["swim"] = swimAnimation;
+
+            Assert.Same(swimAnimation, swimOnlyPart.GetAnimation(CharacterAction.Fly));
         }
 
         [Fact]

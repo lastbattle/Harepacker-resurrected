@@ -329,6 +329,12 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool HasFlyingAbility { get; set; }
 
+        /// <summary>
+        /// Some flying maps require the user's flying skill state to be active.
+        /// Client: CAttrField::bNeedSkillForFlying.
+        /// </summary>
+        public bool RequiresFlyingSkillForMap { get; set; }
+
         #endregion
 
         #region Float State Preservation (SaveFloatState*)
@@ -357,6 +363,21 @@ namespace HaCreator.MapSimulator.Physics
         /// Whether float state has been saved
         /// </summary>
         private bool _floatStateSaved;
+
+        /// <summary>
+        /// Whether a float step saved its pre-move state this frame.
+        /// </summary>
+        public bool HasSavedFloatState => _floatStateSaved;
+
+        /// <summary>
+        /// X position captured before the last float step.
+        /// </summary>
+        public double SavedFloatX => _savedX;
+
+        /// <summary>
+        /// Y position captured before the last float step.
+        /// </summary>
+        public double SavedFloatY => _savedY;
 
         #endregion
 
@@ -486,7 +507,17 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public bool IsUserFlying()
         {
-            return IsFlying || IsFlyingMap || HasFlyingAbility;
+            if (!IsFlyingMap)
+            {
+                return false;
+            }
+
+            if (!RequiresFlyingSkillForMap)
+            {
+                return true;
+            }
+
+            return IsFlying || HasFlyingAbility;
         }
 
         /// <summary>
@@ -613,6 +644,49 @@ namespace HaCreator.MapSimulator.Physics
                 IsInKnockback = false;
                 _knockbackTimeRemaining = 0;
             }
+        }
+
+        /// <summary>
+        /// Apply the reduced foothold jump used by swim/fly states in the client.
+        /// Client: CVecCtrl::JustJump on foothold multiplies the normal jump by 0.7.
+        /// </summary>
+        public void JumpFromFloatFoothold(double jumpScale = 0.7)
+        {
+            if (!IsOnFoothold() && !IsOnLadderOrRope)
+            {
+                return;
+            }
+
+            VelocityY = -JumpVelocity * jumpScale;
+            FallStartFoothold = CurrentFoothold;
+            CurrentFoothold = null;
+            IsOnLadderOrRope = false;
+            CurrentJumpState = JumpState.Jumping;
+            CurrentAction = MoveAction.Jump;
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
+        }
+
+        /// <summary>
+        /// Apply the client swim jump impulse while already floating.
+        /// Client: CVecCtrl::JustJump sets vy = -(swimSpeedV * dSwimSpeed * |field.fly| * 5.0).
+        /// The simulator uses tuned ground jump/gravity values, so preserve the client ratio by
+        /// scaling the raw swim impulse into the simulator's jump model.
+        /// </summary>
+        public void ApplySwimJumpImpulse(double verticalSpeedScale = 1.0, double fieldFloatScale = 1.0)
+        {
+            double floatScale = Math.Abs(fieldFloatScale);
+            if (floatScale <= 0.0)
+            {
+                floatScale = 1.0;
+            }
+
+            double rawImpulse = PhysicsConstants.Instance.SwimSpeed * verticalSpeedScale * floatScale * 5.0;
+            VelocityY = -(rawImpulse * PhysicsConstants.Instance.JumpSpeedTuningScale);
+            CurrentJumpState = JumpState.Jumping;
+            CurrentAction = MoveAction.Swim;
+            IsInKnockback = false;
+            _knockbackTimeRemaining = 0;
         }
 
         /// <summary>
@@ -857,25 +931,38 @@ namespace HaCreator.MapSimulator.Physics
             // Player input is handled separately in PlayerCharacter.ProcessFloatMovement
             int inputX = 0;
             int inputY = 0;
+            StepFloatMovement(inputX, inputY, maxSpeed, force, drag, mass, gravityFactor, deltaTime, mode);
+        }
 
-            // Save state before collision
+        /// <summary>
+        /// Apply one complete float-movement step, including physics integration and map bounds.
+        /// PlayerCharacter uses this directly for user-controlled swimming/flying so the
+        /// simulator does not skip the actual movement step while in float mode.
+        /// </summary>
+        public void StepFloatMovement(int inputX, int inputY, double maxSpeed, double force, double drag,
+            double mass, double gravityFactor, float deltaTime, FloatMode mode)
+        {
             SaveFloatStateBeforeCollision();
 
-            // Apply float physics
             CalcFloat(inputX, inputY, maxSpeed, force, drag, mass, gravityFactor, deltaTime);
 
-            // Update position
             double newX = X + VelocityX * deltaTime;
             double newY = Y + VelocityY * deltaTime;
 
-            // Collision detection
             if (CollisionDetectFloat(newX, newY, out double collidedX, out double collidedY))
             {
                 X = collidedX;
                 Y = collidedY;
-                // Zero velocity on collision
-                if (collidedX != newX) VelocityX = 0;
-                if (collidedY != newY) VelocityY = 0;
+
+                if (Math.Abs(collidedX - newX) > 0.001)
+                {
+                    VelocityX = 0;
+                }
+
+                if (Math.Abs(collidedY - newY) > 0.001)
+                {
+                    VelocityY = 0;
+                }
             }
             else
             {
@@ -883,21 +970,15 @@ namespace HaCreator.MapSimulator.Physics
                 Y = newY;
             }
 
-            // Save state after collision
             SaveFloatStateAfterCollision();
-
-            // Bound to map
             BoundPosMapRange();
 
-            // Update action state
-            if (mode == FloatMode.Flying)
-                CurrentAction = MoveAction.Fly;
-            else if (mode == FloatMode.Swimming)
-                CurrentAction = MoveAction.Swim;
-            else
-                CurrentAction = VelocityY < 0 ? MoveAction.Jump : MoveAction.Fall;
-
-            // Update jump state
+            CurrentAction = mode switch
+            {
+                FloatMode.Flying => MoveAction.Fly,
+                FloatMode.Swimming => MoveAction.Swim,
+                _ => VelocityY < 0 ? MoveAction.Jump : MoveAction.Fall
+            };
             CurrentJumpState = VelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
         }
 
@@ -1590,6 +1671,7 @@ namespace HaCreator.MapSimulator.Physics
             IsFlying = false;
             IsFlyingMap = false;
             HasFlyingAbility = false;
+            RequiresFlyingSkillForMap = false;
 
             // Float state preservation
             _savedX = 0;

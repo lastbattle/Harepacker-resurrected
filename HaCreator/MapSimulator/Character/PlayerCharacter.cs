@@ -69,9 +69,13 @@ namespace HaCreator.MapSimulator.Character
 
         // Attack cooldowns
         private const int MIN_ATTACK_DELAY = 300;
+        private const int FLOAT_JUMP_COOLDOWN_MS = 300;
 
         // Hit state duration (knockback stun)
         private const int HIT_STUN_DURATION = 400; // 400ms stun when hit by monster
+
+        // Float idle should ignore the tiny passive sink applied by swim physics.
+        private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
 
         #endregion
 
@@ -137,6 +141,10 @@ namespace HaCreator.MapSimulator.Character
         // Debug
         private bool _physicsDebugLogged;
         private bool _wasInSwimMode;
+        private bool _isFloatAnimationMoving;
+        private bool _wasJumpHeldLastFrame;
+        private bool _jumpPressedThisFrame;
+        private int _lastFloatJumpTime = int.MinValue;
 
         // Callbacks
         public Action<PlayerCharacter, Rectangle> OnAttackHitbox;
@@ -247,6 +255,8 @@ namespace HaCreator.MapSimulator.Character
             _inputAttack = false;
             _inputPickup = false;
             _inputGmFlyToggle = false;
+            _jumpPressedThisFrame = false;
+            _wasJumpHeldLastFrame = false;
         }
 
         /// <summary>
@@ -294,6 +304,8 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
+            _jumpPressedThisFrame = _inputJump && !_wasJumpHeldLastFrame;
+
             // Handle GM fly mode toggle
             if (_inputGmFlyToggle)
             {
@@ -309,6 +321,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            RefreshSwimAreaState();
             TryRegrabLadderWhileHoldingUp();
 
             // Process input and update state (pass deltaTime for proper acceleration scaling)
@@ -333,17 +346,23 @@ namespace HaCreator.MapSimulator.Character
                 CheckFootholdTransition();
             }
 
-            // Check swim area
-            if (_checkSwimArea != null)
-            {
-                Physics.IsInSwimArea = _checkSwimArea(X, Y, 0);
-            }
+            RefreshSwimAreaState();
 
             // Update state machine
             UpdateStateMachine(currentTime);
 
             // Update animation
             UpdateAnimation(currentTime);
+
+            _wasJumpHeldLastFrame = _inputJump;
+        }
+
+        private void RefreshSwimAreaState()
+        {
+            if (_checkSwimArea != null)
+            {
+                Physics.IsInSwimArea = _checkSwimArea(X, Y, 0);
+            }
         }
 
         /// <summary>
@@ -412,7 +431,7 @@ namespace HaCreator.MapSimulator.Character
             // Jump input
             if (_inputJump)
             {
-                TryJump();
+                TryJump(currentTime);
             }
 
             // Movement input - using official physics formula from Physics.img
@@ -498,10 +517,8 @@ namespace HaCreator.MapSimulator.Character
             }
             else if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && Physics.IsOnFoothold() && (_inputUp || _inputJump))
             {
-                // On foothold in swim area, pressing up/jump - start swimming
+                // On foothold in a swim/fly map, up/jump transitions into float control.
                 Physics.DetachFromFoothold();
-                Physics.VelocityY = -100; // Upward push to leave ground
-                _wasInSwimMode = false; // Reset so entry clamp doesn't trigger
                 ProcessFloatMovement(tSec);
             }
             else
@@ -579,6 +596,11 @@ namespace HaCreator.MapSimulator.Character
         /// <param name="tSec">Time step in seconds</param>
         private void ProcessFloatMovement(float tSec)
         {
+            if (Physics.CurrentFoothold != null)
+            {
+                Physics.DetachFromFoothold();
+            }
+
             // Determine input directions
             int inputX = 0;
             int inputY = 0;
@@ -586,8 +608,14 @@ namespace HaCreator.MapSimulator.Character
             if (_inputLeft && !_inputRight) inputX = -1;
             else if (_inputRight && !_inputLeft) inputX = 1;
 
-            if (_inputUp && !_inputDown) inputY = -1;
-            else if (_inputDown && !_inputUp) inputY = 1;
+            if (_inputUp && !_inputDown)
+            {
+                inputY = -1;
+            }
+            else if (_inputDown && !_inputUp)
+            {
+                inputY = 1;
+            }
 
             // Update facing direction
             if (inputX < 0)
@@ -618,24 +646,15 @@ namespace HaCreator.MapSimulator.Character
             }
             else // Swimming
             {
-                // Swimming mode - official client physics
-                // Max speed, force, drag from Physics.img
+                // Swimming mode - use the raw swim vecctrl values from Physics.img.
                 maxSpeed = PhysicsConstants.Instance.SwimSpeed;
                 floatForce = PhysicsConstants.Instance.SwimForce;
                 floatDrag = PhysicsConstants.Instance.FloatDrag2;
-                // Gravity factor not used for swimming - official uses force/mass/maxSpeed formula
                 gravityFactor = 0.0;
 
                 State = PlayerState.Swimming;
                 Physics.CurrentAction = MoveAction.Swim;
-
-                // Apply swim speed modifier from equipment/buffs
-                float swimSpeedMod = (Build?.Speed ?? 100) / 100f * (float)PhysicsConstants.Instance.SwimSpeedDec;
-                maxSpeed *= swimSpeedMod;
             }
-
-            // Apply CalcFloat physics
-            Physics.CalcFloat(inputX, inputY, maxSpeed, floatForce, floatDrag, entityMass, gravityFactor, tSec);
 
             // Debug output (once)
             if (!_physicsDebugLogged && (inputX != 0 || inputY != 0))
@@ -645,14 +664,8 @@ namespace HaCreator.MapSimulator.Character
                 System.Diagnostics.Debug.WriteLine($"[PlayerCharacter {mode}] maxSpeed={maxSpeed:F1}, force={floatForce:F1}, drag={floatDrag:F1}, gravity={gravityFactor:F2}");
             }
 
-            // Detach from foothold when entering water/flying
-            if (Physics.CurrentFoothold != null)
-            {
-                Physics.DetachFromFoothold();
-            }
-
             // Handle swim mode entry - clamp velocity
-            if (!_wasInSwimMode)
+            if (!_wasInSwimMode && Physics.CurrentJumpState != JumpState.Jumping)
             {
                 // Just entered swim mode - clamp velocity to prevent jump momentum
                 double maxUpVelocity = maxSpeed * 0.3;
@@ -667,10 +680,22 @@ namespace HaCreator.MapSimulator.Character
                     Physics.VelocityY = (float)maxDownVelocity;
                 }
             }
+
+            Physics.StepFloatMovement(
+                inputX,
+                inputY,
+                maxSpeed,
+                floatForce,
+                floatDrag,
+                entityMass,
+                gravityFactor,
+                tSec,
+                Physics.IsUserFlying() ? FloatMode.Flying : FloatMode.Swimming);
+
             _wasInSwimMode = true;
         }
 
-        private void TryJump()
+        private void TryJump(int currentTime)
         {
             // Check for jump down first (Down + Jump while on foothold)
             // This works even while prone - character gets up and falls through
@@ -690,6 +715,33 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if ((Physics.IsInSwimArea || Physics.IsUserFlying()) && !Physics.IsOnLadderOrRope)
+            {
+                if (Physics.IsOnFoothold())
+                {
+                    if (_jumpPressedThisFrame && CanTriggerFloatJump(currentTime))
+                    {
+                        Physics.JumpFromFloatFoothold();
+                        _lastFloatJumpTime = currentTime;
+                        State = Physics.IsUserFlying() ? PlayerState.Flying : PlayerState.Swimming;
+                        _onJumpSound?.Invoke();
+                    }
+                    else
+                    {
+                        Physics.DetachFromFoothold();
+                    }
+                }
+                else if (_jumpPressedThisFrame && CanTriggerFloatJump(currentTime) && Physics.IsSwimming())
+                {
+                    Physics.ApplySwimJumpImpulse();
+                    _lastFloatJumpTime = currentTime;
+                    State = PlayerState.Swimming;
+                    _onJumpSound?.Invoke();
+                }
+
+                return;
+            }
+
             // Don't allow jump from TryJump when on rope - rope jump is handled separately
             // and requires pressing a direction key
             if (Physics.IsOnFoothold() && !Physics.IsOnLadderOrRope)
@@ -706,6 +758,16 @@ namespace HaCreator.MapSimulator.Character
                 // Play jump sound
                 _onJumpSound?.Invoke();
             }
+        }
+
+        private bool CanTriggerFloatJump(int currentTime)
+        {
+            if (_lastFloatJumpTime == int.MinValue)
+            {
+                return true;
+            }
+
+            return currentTime - _lastFloatJumpTime >= FLOAT_JUMP_COOLDOWN_MS;
         }
 
         /// <summary>
@@ -803,14 +865,22 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_findFoothold == null || Physics.VelocityY <= 0) return;
 
-            // Search for foothold at current position
-            // Use velocity-based search range: faster falling = larger search range
-            // This prevents passing through footholds at high speeds
-            float searchRange = Math.Max(20, (float)Physics.VelocityY * 0.05f);
-            var fh = _findFoothold(X, Y, searchRange);
+            float previousY = Physics.HasSavedFloatState ? (float)Physics.SavedFloatY : Y;
+            float downwardTravel = Math.Max(0f, Y - previousY);
+            float searchRange = Math.Max(20f, downwardTravel + 8f);
+            float probeY = Physics.HasSavedFloatState ? previousY : Y;
+            var fh = _findFoothold(X, probeY, searchRange);
 
             if (fh != null)
             {
+                float fhYAtX = (float)CalculateYOnFoothold(fh, X);
+                bool crossedFoothold = !Physics.HasSavedFloatState || (previousY <= fhYAtX + 1f && Y >= fhYAtX - 1f);
+
+                if (!crossedFoothold)
+                {
+                    return;
+                }
+
                 // Check if we're falling through this foothold
                 if (Physics.FallStartFoothold != fh)
                 {
@@ -839,7 +909,7 @@ namespace HaCreator.MapSimulator.Character
                     // Calculate actual Y on the sloped foothold at current X position
                     float fhY = Physics.FallStartFoothold != null
                         ? (float)CalculateYOnFoothold(Physics.FallStartFoothold, X)
-                        : Y;
+                        : fhYAtX;
                     if (Physics.Y >= fhY)
                     {
                         Physics.LandOnFoothold(fh);
@@ -945,6 +1015,10 @@ namespace HaCreator.MapSimulator.Character
                         State = PlayerState.Ladder;
                     else if (Physics.IsOnRope())
                         State = PlayerState.Rope;
+                    else if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+                        State = PlayerState.Flying;
+                    else if (Physics.IsSwimming() && !Physics.IsOnFoothold())
+                        State = PlayerState.Swimming;
                     else if (Physics.IsAirborne())
                         State = Physics.VelocityY < 0 ? PlayerState.Jumping : PlayerState.Falling;
                     else
@@ -990,13 +1064,17 @@ namespace HaCreator.MapSimulator.Character
             {
                 State = PlayerState.Rope;
             }
+            else if (Physics.IsUserFlying() && !Physics.IsOnFoothold())
+            {
+                State = PlayerState.Flying;
+            }
+            else if (Physics.IsSwimming() && !Physics.IsOnFoothold())
+            {
+                State = PlayerState.Swimming;
+            }
             else if (Physics.IsAirborne())
             {
                 State = Physics.VelocityY < 0 ? PlayerState.Jumping : PlayerState.Falling;
-            }
-            else if (Physics.IsSwimming())
-            {
-                State = PlayerState.Swimming;
             }
             else if (State != PlayerState.Prone && State != PlayerState.Sitting)
             {
@@ -1034,11 +1112,49 @@ namespace HaCreator.MapSimulator.Character
                 _ => CharacterAction.Stand1
             };
 
-            if (newAction != CurrentAction)
+            bool isFloatAction = IsFloatAnimationAction(newAction);
+            bool isFloatMoving = isFloatAction && ShouldAnimateFloatAction();
+
+            if (newAction != CurrentAction || (isFloatAction && isFloatMoving != _isFloatAnimationMoving))
             {
-                CurrentAction = newAction;
                 _animationStartTime = currentTime;
             }
+
+            CurrentAction = newAction;
+            _isFloatAnimationMoving = isFloatMoving;
+        }
+
+        private bool IsFloatAnimationAction(CharacterAction action)
+        {
+            return action == CharacterAction.Swim || action == CharacterAction.Fly;
+        }
+
+        private bool ShouldAnimateFloatAction()
+        {
+            if (Physics.IsOnFoothold() || Physics.IsOnLadderOrRope)
+            {
+                return false;
+            }
+
+            bool hasDirectionalInput = _inputLeft || _inputRight || _inputUp || _inputDown || _inputJump;
+            return hasDirectionalInput ||
+                   Math.Abs(Physics.VelocityX) > FLOAT_ANIMATION_MOVEMENT_THRESHOLD ||
+                   Math.Abs(Physics.VelocityY) > FLOAT_ANIMATION_MOVEMENT_THRESHOLD;
+        }
+
+        private int GetRenderAnimationTime(int currentTime)
+        {
+            if ((State == PlayerState.Rope || State == PlayerState.Ladder) && Math.Abs(Physics.VelocityY) < 0.001)
+            {
+                return 0;
+            }
+
+            if (IsFloatAnimationAction(CurrentAction) && !_isFloatAnimationMoving)
+            {
+                return 0;
+            }
+
+            return currentTime - _animationStartTime;
         }
 
         #endregion
@@ -1370,13 +1486,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
 
             // Get current frame
-            int animTime = currentTime - _animationStartTime;
-
-            // When on rope/ladder and not moving, use still frame (frame 0)
-            if ((State == PlayerState.Rope || State == PlayerState.Ladder) && Math.Abs(Physics.VelocityY) < 0.001)
-            {
-                animTime = 0;
-            }
+            int animTime = GetRenderAnimationTime(currentTime);
 
             var frame = Assembler.GetFrameAtTime(CurrentAction, animTime);
 
@@ -1475,8 +1585,11 @@ namespace HaCreator.MapSimulator.Character
 
             if (State == PlayerState.Swimming)
             {
-                // Swimming uses swimSpeedDec multiplier (from Physics.img)
-                return characterSpeed * WalkSpeedScale * CVecCtrl.SwimSpeedFactor;
+                return (float)PhysicsConstants.Instance.SwimSpeed;
+            }
+            else if (State == PlayerState.Flying)
+            {
+                return (float)PhysicsConstants.Instance.FlySpeed;
             }
             else if (State == PlayerState.Ladder || State == PlayerState.Rope)
             {
