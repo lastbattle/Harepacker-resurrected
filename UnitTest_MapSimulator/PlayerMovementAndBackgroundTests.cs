@@ -30,6 +30,23 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void ImpactWhileOnLadder_DetachesIntoAirborneKnockback()
+        {
+            var physics = new CVecCtrl();
+            physics.SetPosition(120, 180);
+            physics.GrabLadder(120, 80, 240, true);
+
+            physics.Impact(250, -150);
+            physics.Update(0.016f);
+
+            Assert.False(physics.IsOnLadderOrRope);
+            Assert.Null(physics.CurrentFoothold);
+            Assert.Equal(JumpState.Jumping, physics.CurrentJumpState);
+            Assert.True(physics.X > 120, $"Expected knockback to move horizontally off the ladder, but X={physics.X}");
+            Assert.True(physics.Y < 180, $"Expected upward knockback to move above the ladder hit position, but Y={physics.Y}");
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;

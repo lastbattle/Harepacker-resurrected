@@ -1063,6 +1063,15 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="vy">Vertical impact velocity</param>
         public void Impact(double vx, double vy)
         {
+            if (IsOnLadderOrRope)
+            {
+                IsOnLadderOrRope = false;
+                CurrentFoothold = null;
+                FallStartFoothold = null;
+                IsJumpingDown = false;
+                CurrentJumpState = vy < 0 ? JumpState.Jumping : JumpState.Falling;
+            }
+
             // Impact applies immediately (unlike SetImpactNext which queues)
             VelocityX = vx;
             VelocityY = vy;
