@@ -16,6 +16,11 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
+        private const int DefaultBeginnerSwordId = 1302000;
+        private const int DefaultBeginnerCoatId = 1040002;
+        private const int DefaultBeginnerPantsId = 1060002;
+        private const int DefaultBeginnerShoesId = 1072005;
+
         private readonly WzFile _characterWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -1480,17 +1485,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "SuperGM"
             };
 
-            // Load and equip beginner sword (One-Handed Sword)
-            var weapon = LoadEquipment(1302000);
-            if (weapon != null)
-            {
-                build.Equip(weapon);
-                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Equipped weapon: {weapon.Name}");
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("[CharacterLoader] Failed to load weapon 1302000");
-            }
+            EquipDefaultBeginnerGear(build);
 
             return build;
         }
@@ -1514,12 +1509,7 @@ namespace HaCreator.MapSimulator.Character
                 JobName = "SuperGM"
             };
 
-            // Load and equip beginner sword (One-Handed Sword)
-            var weapon = LoadEquipment(1302000);
-            if (weapon != null)
-            {
-                build.Equip(weapon);
-            }
+            EquipDefaultBeginnerGear(build);
 
             return build;
         }
@@ -1543,6 +1533,31 @@ namespace HaCreator.MapSimulator.Character
                 Hair = LoadHair(gender == CharacterGender.Male ? 30000 + random.Next(50) : 31000 + random.Next(50)),
                 Name = "Random"
             };
+        }
+
+        private void EquipDefaultBeginnerGear(CharacterBuild build)
+        {
+            if (build == null)
+                return;
+
+            EquipDefaultItem(build, DefaultBeginnerCoatId, "coat");
+            EquipDefaultItem(build, DefaultBeginnerPantsId, "pants");
+            EquipDefaultItem(build, DefaultBeginnerShoesId, "shoes");
+            EquipDefaultItem(build, DefaultBeginnerSwordId, "weapon");
+        }
+
+        private void EquipDefaultItem(CharacterBuild build, int itemId, string label)
+        {
+            var equipment = LoadEquipment(itemId);
+            if (equipment != null)
+            {
+                build.Equip(equipment);
+                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Equipped default {label}: {equipment.Name} ({itemId})");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Failed to load default {label} {itemId}");
+            }
         }
 
         #endregion
