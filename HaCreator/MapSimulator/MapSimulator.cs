@@ -1906,7 +1906,7 @@ namespace HaCreator.MapSimulator
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
             bool isWindowActive = IsActive;
             KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
-            MouseState newMouseState = mouseCursor.MouseState;
+            MouseState newMouseState = GetEffectiveMouseState(mouseCursor.MouseState, isWindowActive);
 
             // Update UI Windows - handles ESC to close windows and I/E/S/Q toggles
             // Pass chat state to prevent hotkeys from working while typing
@@ -1952,11 +1952,14 @@ namespace HaCreator.MapSimulator
             // Handle mouse
             mouseCursor.UpdateCursorState();
 
-            // Check if mouse is hovering over an NPC
-            CheckNpcHover(newMouseState);
+            if (isWindowActive)
+            {
+                // Check if mouse is hovering over an NPC
+                CheckNpcHover(newMouseState);
 
-            // Handle portal double-click for teleportation
-            HandlePortalDoubleClick(newMouseState);
+                // Handle portal double-click for teleportation
+                HandlePortalDoubleClick(newMouseState);
+            }
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
@@ -4257,7 +4260,7 @@ namespace HaCreator.MapSimulator
 
             // Status bar [layer below minimap]
             if (!_gameState.HideUIMode) {
-                DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount); // status bar and minimap
+                DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount, IsActive); // status bar and minimap
             }
 
             if (gameTime.TotalGameTime.TotalSeconds < 5)
@@ -4515,7 +4518,7 @@ namespace HaCreator.MapSimulator
         /// <param name="TickCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DrawUI(GameTime gameTime, Vector2 shiftCenter, RenderParameters renderParams,
-            int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount)
+            int mapCenterX, int mapCenterY, Microsoft.Xna.Framework.Input.MouseState mouseState, int TickCount, bool isWindowActive)
         {
             // Status bar [layer below minimap]
             if (statusBarUi != null)
@@ -4526,7 +4529,10 @@ namespace HaCreator.MapSimulator
                             _renderParams,
                             TickCount);
 
-                statusBarUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                if (isWindowActive)
+                {
+                    statusBarUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                }
 
                 // StatusBarChatUI may be null for pre-BigBang versions
                 if (statusBarChatUI != null)
@@ -4536,7 +4542,10 @@ namespace HaCreator.MapSimulator
                                 null,
                                 _renderParams,
                                 TickCount);
-                    statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                    if (isWindowActive)
+                    {
+                        statusBarChatUI.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                    }
                 }
             }
 
@@ -4570,7 +4579,6 @@ namespace HaCreator.MapSimulator
             // Windows are drawn ON TOP of minimap, so they get priority when starting a new drag
             // Once dragging starts, that element keeps exclusive control until mouse is released
             bool minimapIsDragging = miniMapUi != null && miniMapUi.IsDragging;
-            bool windowIsDragging = uiWindowManager != null && uiWindowManager.IsDraggingWindow;
 
             if (uiWindowManager != null)
             {
@@ -4580,8 +4588,12 @@ namespace HaCreator.MapSimulator
                     _renderParams,
                     TickCount);
 
+                if (!isWindowActive)
+                {
+                    uiWindowManager.ResetAllDragStates();
+                }
                 // Check UI windows - but not if minimap is ALREADY being dragged
-                if (!minimapIsDragging)
+                else if (!minimapIsDragging)
                 {
                     uiWindowManager.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
                 }
@@ -4593,7 +4605,7 @@ namespace HaCreator.MapSimulator
             }
 
             // Minimap mouse events
-            if (miniMapUi != null)
+            if (miniMapUi != null && isWindowActive)
             {
                 // If minimap is already being dragged, continue dragging regardless of window positions
                 if (minimapIsDragging)
@@ -4613,6 +4625,25 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static MouseState GetEffectiveMouseState(MouseState mouseState, bool isWindowActive)
+        {
+            if (isWindowActive)
+            {
+                return mouseState;
+            }
+
+            return new MouseState(
+                mouseState.X,
+                mouseState.Y,
+                mouseState.ScrollWheelValue,
+                ButtonState.Released,
+                ButtonState.Released,
+                ButtonState.Released,
+                ButtonState.Released,
+                ButtonState.Released);
         }
 
         // NOTE: DrawTooltip, DrawVRFieldBorder, DrawLBFieldBorder, DrawBorder,
