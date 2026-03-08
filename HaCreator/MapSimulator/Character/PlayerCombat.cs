@@ -38,6 +38,8 @@ namespace HaCreator.MapSimulator.Character
         private const float CRITICAL_MULTIPLIER = 1.5f;
         private const float KNOCKBACK_FORCE = 250f; // Horizontal knockback velocity (px/s) - matches official client feel
         private const float KNOCKBACK_FORCE_Y = -150f; // Vertical knockback velocity (px/s, negative = up)
+        private const float SWIM_KNOCKBACK_FORCE_SCALE_X = 0.6f;
+        private const float SWIM_KNOCKBACK_FORCE_SCALE_Y = 0.45f;
         private const int INVINCIBILITY_DURATION = 2000; // 2 seconds after hit
 
         // State
@@ -330,14 +332,14 @@ namespace HaCreator.MapSimulator.Character
             damage = (int)(damage * variance);
 
             // Calculate knockback direction (away from mob)
-            float knockbackX = mob.MovementInfo.X < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
 
             // Play character damage sound from mob (CharDam1/CharDam2)
             int attackNum = currentAttack?.AttackId ?? 1;
             mob.PlayCharDamSound(attackNum);
 
             // Apply damage and knockback (KNOCKBACK_FORCE_Y is negative for upward motion)
-            _player.TakeDamage(damage, knockbackX, KNOCKBACK_FORCE_Y);
+            _player.TakeDamage(damage, knockback.X, knockback.Y);
 
             OnDamageReceived?.Invoke(_player, damage, mob);
 
@@ -432,13 +434,13 @@ namespace HaCreator.MapSimulator.Character
             int damage = Math.Max(1, touchDamage - playerDefense / 2);
 
             // Calculate knockback direction (away from mob)
-            float knockbackX = mob.MovementInfo.X < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
 
             // Play character damage sound from mob (CharDam1 for touch damage)
             mob.PlayCharDamSound(1);
 
             // Apply damage and knockback (touch damage uses same knockback as attacks)
-            _player.TakeDamage(damage, knockbackX, KNOCKBACK_FORCE_Y);
+            _player.TakeDamage(damage, knockback.X, knockback.Y);
 
             OnDamageReceived?.Invoke(_player, damage, mob);
 
@@ -477,6 +479,20 @@ namespace HaCreator.MapSimulator.Character
         public void SetInvincible(int currentTime)
         {
             _lastHitTime = currentTime;
+        }
+
+        private Vector2 GetPlayerKnockbackVelocity(float sourceX)
+        {
+            float horizontal = sourceX < _player.X ? KNOCKBACK_FORCE : -KNOCKBACK_FORCE;
+            float vertical = KNOCKBACK_FORCE_Y;
+
+            if (_player.Physics.IsSwimming())
+            {
+                horizontal *= SWIM_KNOCKBACK_FORCE_SCALE_X;
+                vertical *= SWIM_KNOCKBACK_FORCE_SCALE_Y;
+            }
+
+            return new Vector2(horizontal, vertical);
         }
 
         /// <summary>

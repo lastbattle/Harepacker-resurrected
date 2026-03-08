@@ -116,6 +116,50 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void ImpactWhileSwimming_MergesWithCurrentFloatVelocityLikeClient()
+        {
+            var physics = new CVecCtrl();
+            physics.SetPosition(100, 80);
+            physics.IsInSwimArea = true;
+            physics.VelocityX = 60;
+            physics.VelocityY = 120;
+
+            physics.Impact(200, -150);
+
+            Assert.Equal(200, physics.VelocityX);
+            Assert.Equal(-30, physics.VelocityY);
+            Assert.Equal(JumpState.Jumping, physics.CurrentJumpState);
+            Assert.False(physics.IsInKnockback);
+        }
+
+        [Fact]
+        public void PlayerCombat_ScalesKnockbackDownWhileSwimming()
+        {
+            var swimPlayer = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var landPlayer = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var getKnockback = typeof(PlayerCombat).GetMethod("GetPlayerKnockbackVelocity", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(getKnockback);
+
+            swimPlayer.SetPosition(100, 80);
+            swimPlayer.SetSwimAreaCheck((x, y, range) => true);
+            swimPlayer.Update(1000, 0.016f);
+
+            landPlayer.SetPosition(100, 80);
+
+            var swimCombat = new PlayerCombat(swimPlayer);
+            var landCombat = new PlayerCombat(landPlayer);
+
+            var swimKnockback = (Microsoft.Xna.Framework.Vector2)getKnockback!.Invoke(swimCombat, new object[] { 40f })!;
+            var landKnockback = (Microsoft.Xna.Framework.Vector2)getKnockback.Invoke(landCombat, new object[] { 40f })!;
+
+            Assert.InRange(swimKnockback.X, 149.5f, 150.5f);
+            Assert.InRange(swimKnockback.Y, -68f, -67f);
+            Assert.True(Math.Abs(swimKnockback.X) < Math.Abs(landKnockback.X));
+            Assert.True(Math.Abs(swimKnockback.Y) < Math.Abs(landKnockback.Y));
+        }
+
+        [Fact]
         public void JumpInSwimArea_TransitionsIntoSwimmingWithoutGroundJumpLaunch()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);

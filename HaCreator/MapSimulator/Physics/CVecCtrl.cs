@@ -599,30 +599,11 @@ namespace HaCreator.MapSimulator.Physics
         {
             if (HasPendingImpact)
             {
-                VelocityX += ImpactVelocityX;
-                VelocityY += ImpactVelocityY;
-
-                // Set up knockback bounds from current foothold to prevent falling off
-                if (CurrentFoothold != null)
-                {
-                    // Record the foothold bounds for knockback clamping
-                    KnockbackMinX = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                    KnockbackMaxX = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                    IsInKnockback = true;
-                    _knockbackTimeRemaining = MaxKnockbackTime;
-                }
+                ApplyImpactVelocity(ImpactVelocityX, ImpactVelocityY);
 
                 ImpactVelocityX = 0;
                 ImpactVelocityY = 0;
                 HasPendingImpact = false;
-
-                // Leave foothold if knocked back vertically
-                if (CurrentFoothold != null && Math.Abs(VelocityY) > 0.1)
-                {
-                    FallStartFoothold = CurrentFoothold;
-                    CurrentFoothold = null;
-                    CurrentJumpState = JumpState.Falling;
-                }
             }
         }
 
@@ -1144,35 +1125,57 @@ namespace HaCreator.MapSimulator.Physics
         /// <param name="vy">Vertical impact velocity</param>
         public void Impact(double vx, double vy)
         {
-            if (IsOnLadderOrRope)
+            ApplyImpactVelocity(vx, vy);
+        }
+
+        private void ApplyImpactVelocity(double vx, double vy)
+        {
+            if (CurrentFoothold != null)
+            {
+                DetachFromFoothold();
+            }
+            else if (IsOnLadderOrRope)
             {
                 IsOnLadderOrRope = false;
                 CurrentFoothold = null;
                 FallStartFoothold = null;
-                IsJumpingDown = false;
-                CurrentJumpState = vy < 0 ? JumpState.Jumping : JumpState.Falling;
             }
 
-            // Impact applies immediately (unlike SetImpactNext which queues)
-            VelocityX = vx;
-            VelocityY = vy;
+            VelocityX = MergeImpactVelocity(VelocityX, vx);
+            VelocityY = MergeImpactVelocity(VelocityY, vy);
 
-            WingsActive = false; // Disable wings on impact
+            // Client impact truncates the resulting velocities to integer values.
+            VelocityX = Math.Truncate(VelocityX);
+            VelocityY = Math.Truncate(VelocityY);
 
-            // Detach from foothold if vertical impact
-            if (vy < 0 && CurrentFoothold != null)
+            WingsActive = false;
+            IsJumpingDown = false;
+            IsInKnockback = false;
+            KnockbackMinX = 0;
+            KnockbackMaxX = 0;
+            _knockbackTimeRemaining = 0;
+
+            if (!IsOnFoothold() && !IsOnLadderOrRope)
             {
-                DetachFromFoothold();
+                CurrentJumpState = VelocityY < 0 ? JumpState.Jumping : JumpState.Falling;
+            }
+        }
+
+        private static double MergeImpactVelocity(double currentVelocity, double impactVelocity)
+        {
+            if (impactVelocity < 0.0 && impactVelocity < currentVelocity)
+            {
+                double combined = currentVelocity + impactVelocity;
+                return combined >= impactVelocity ? combined : impactVelocity;
             }
 
-            // Set up knockback bounds
-            if (CurrentFoothold != null)
+            if (impactVelocity > 0.0 && currentVelocity < impactVelocity)
             {
-                KnockbackMinX = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                KnockbackMaxX = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
-                IsInKnockback = true;
-                _knockbackTimeRemaining = MaxKnockbackTime;
+                double combined = currentVelocity + impactVelocity;
+                return combined <= impactVelocity ? combined : impactVelocity;
             }
+
+            return currentVelocity;
         }
 
         #endregion
