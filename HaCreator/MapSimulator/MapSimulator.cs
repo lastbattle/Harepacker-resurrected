@@ -4258,6 +4258,12 @@ namespace HaCreator.MapSimulator
             //////////////////// UI related here ////////////////////
             _renderingManager.DrawTooltips(in renderContext, mouseState); 
 
+            // Boss HP bar should stay behind the map UI layers.
+            if (!_gameState.HideUIMode && _combatEffects.HasActiveBossBar)
+            {
+                _combatEffects.DrawBossHPBar(_spriteBatch);
+            }
+
             // Status bar [layer below minimap]
             if (!_gameState.HideUIMode) {
                 DrawUI(gameTime, shiftCenter, _renderParams, mapCenterX, mapCenterY, mouseState, TickCount, IsActive); // status bar and minimap
@@ -4567,11 +4573,6 @@ namespace HaCreator.MapSimulator
                 TickCount);
             }
 
-            // Boss HP bar (at top of screen)
-            if (_combatEffects.HasActiveBossBar)
-            {
-                _combatEffects.DrawBossHPBar(_spriteBatch);
-            }
 
             // UI Windows (Inventory, Equipment, Skills, Quest)
             // Toggle: I=Inventory, E=Equipment, S=Skills, Q=Quest
