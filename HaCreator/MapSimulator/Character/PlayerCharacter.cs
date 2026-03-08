@@ -151,6 +151,13 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
 
+        // Preserve ladder context across hit knockback so holding UP can immediately re-grab it.
+        private bool _pendingLadderRegrab;
+        private int _pendingLadderX;
+        private int _pendingLadderTop;
+        private int _pendingLadderBottom;
+        private bool _pendingLadderIsLadder;
+
         #endregion
 
         #region Initialization
@@ -301,6 +308,8 @@ namespace HaCreator.MapSimulator.Character
                 UpdateAnimation(currentTime);
                 return;
             }
+
+            TryRegrabLadderWhileHoldingUp();
 
             // Process input and update state (pass deltaTime for proper acceleration scaling)
             ProcessInput(currentTime, deltaTime);
@@ -944,6 +953,8 @@ namespace HaCreator.MapSimulator.Character
                 return; // Don't process other state changes while in hit stun
             }
 
+            ClearPendingLadderRegrab();
+
             // Determine state based on physics
             if (State == PlayerState.Attacking)
             {
@@ -1155,6 +1166,7 @@ namespace HaCreator.MapSimulator.Character
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
             Physics.CurrentAction = MoveAction.Hit;
+            CacheLadderStateForRegrab();
 
             // Apply knockback velocity
             if (knockbackX != 0 || knockbackY != 0)
@@ -1186,9 +1198,66 @@ namespace HaCreator.MapSimulator.Character
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
             Physics.CurrentAction = MoveAction.Hit;
+            CacheLadderStateForRegrab();
 
             // Use Impact for immediate knockback
             Physics.Impact(knockbackX, knockbackY);
+        }
+
+        private void CacheLadderStateForRegrab()
+        {
+            if (!Physics.IsOnLadderOrRope)
+            {
+                ClearPendingLadderRegrab();
+                return;
+            }
+
+            _pendingLadderRegrab = true;
+            _pendingLadderX = Physics.LadderX;
+            _pendingLadderTop = Physics.LadderTop;
+            _pendingLadderBottom = Physics.LadderBottom;
+            _pendingLadderIsLadder = Physics.IsLadder;
+        }
+
+        private void ClearPendingLadderRegrab()
+        {
+            _pendingLadderRegrab = false;
+            _pendingLadderX = 0;
+            _pendingLadderTop = 0;
+            _pendingLadderBottom = 0;
+            _pendingLadderIsLadder = false;
+        }
+
+        private bool TryRegrabLadderWhileHoldingUp()
+        {
+            if (State != PlayerState.Hit || !_pendingLadderRegrab || !_inputUp)
+            {
+                return false;
+            }
+
+            const float regrabHorizontalTolerance = 18f;
+            const float regrabVerticalTolerance = 6f;
+
+            var ladder = _findLadder?.Invoke(X, Y, regrabHorizontalTolerance);
+            if (!ladder.HasValue &&
+                Math.Abs(X - _pendingLadderX) <= regrabHorizontalTolerance &&
+                Y >= _pendingLadderTop - regrabVerticalTolerance &&
+                Y <= _pendingLadderBottom + regrabVerticalTolerance)
+            {
+                ladder = (_pendingLadderX, _pendingLadderTop, _pendingLadderBottom, _pendingLadderIsLadder);
+            }
+
+            if (!ladder.HasValue ||
+                Y < ladder.Value.top - regrabVerticalTolerance ||
+                Y > ladder.Value.bottom + regrabVerticalTolerance)
+            {
+                return false;
+            }
+
+            Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
+            State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+            ClearPendingLadderRegrab();
+            return true;
         }
 
         /// <summary>

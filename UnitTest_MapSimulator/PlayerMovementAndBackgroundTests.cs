@@ -1,4 +1,5 @@
 using System;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
@@ -44,6 +45,25 @@ namespace UnitTest_MapSimulator
             Assert.Equal(JumpState.Jumping, physics.CurrentJumpState);
             Assert.True(physics.X > 120, $"Expected knockback to move horizontally off the ladder, but X={physics.X}");
             Assert.True(physics.Y < 180, $"Expected upward knockback to move above the ladder hit position, but Y={physics.Y}");
+        }
+
+        [Fact]
+        public void TakingDamageWhileHoldingUp_RegrabsLadderBeforeFalling()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.SetPosition(120, 180);
+            player.Physics.GrabLadder(120, 80, 240, true);
+            player.SetLadderLookup((x, y, range) => (120, 80, 240, true));
+            player.SetInput(left: false, right: false, up: true, down: false, jump: false, attack: false, pickup: false);
+
+            player.TakeDamage(10, knockbackX: 250, knockbackY: -150);
+            player.Update(Environment.TickCount, 0.016f);
+
+            Assert.Equal(PlayerState.Ladder, player.State);
+            Assert.True(player.Physics.IsOnLadderOrRope);
+            Assert.True(player.Physics.IsOnLadder());
+            Assert.Equal(120, player.Physics.LadderX);
+            Assert.Equal(120, player.X);
         }
 
         [Fact]
