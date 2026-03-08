@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -301,6 +303,7 @@ namespace HaCreator.MapSimulator.Character
 
         // For equipment with visible slots
         public string VSlot { get; set; }           // Visible slot conflicts
+        public string ISlot { get; set; }           // Item slot priority
         public bool IsCash { get; set; }            // Cash shop item (overrides defaults)
 
         // Icon for UI
@@ -453,6 +456,26 @@ namespace HaCreator.MapSimulator.Character
                 "ghost" => CharacterAction.Ghost,
                 _ => CharacterAction.Stand1
             };
+        }
+
+        public static IReadOnlyList<string> ParseSlotTokens(string slotValue)
+        {
+            if (string.IsNullOrWhiteSpace(slotValue))
+            {
+                return Array.Empty<string>();
+            }
+
+            var tokens = new List<string>(slotValue.Length / 2);
+            for (int i = 0; i + 1 < slotValue.Length; i += 2)
+            {
+                string token = slotValue.Substring(i, 2);
+                if (!string.IsNullOrWhiteSpace(token))
+                {
+                    tokens.Add(token);
+                }
+            }
+
+            return tokens;
         }
     }
 
@@ -720,8 +743,10 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public static class ZMapReference
     {
+        private static readonly object MapperLock = new();
+
         // Standard z-layer strings - order matters! Lower index = rendered first (behind)
-        public static readonly string[] ZOrder = new[]
+        private static readonly string[] DefaultZOrder = new[]
         {
             "backHair",
             "backHairOverCape",
@@ -781,10 +806,29 @@ namespace HaCreator.MapSimulator.Character
             "shadow"
         };
 
+        private static bool _mappersLoaded;
+        private static string[] _zOrder = DefaultZOrder;
+        private static Dictionary<string, int> _zIndices = BuildZIndexMap(DefaultZOrder);
+        private static Dictionary<string, string[]> _slotMap = new(StringComparer.Ordinal);
+
+        public static IReadOnlyList<string> ZOrder
+        {
+            get
+            {
+                EnsureLoaded();
+                return _zOrder;
+            }
+        }
+
         public static int GetZIndex(string zLayer)
         {
-            int index = Array.IndexOf(ZOrder, zLayer);
-            return index >= 0 ? index : 50; // Default to middle
+            EnsureLoaded();
+            if (!string.IsNullOrEmpty(zLayer) && _zIndices.TryGetValue(zLayer, out int index))
+            {
+                return index;
+            }
+
+            return _zOrder.Length > 0 ? _zOrder.Length / 2 : 50;
         }
 
         /// <summary>
@@ -792,7 +836,153 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public static bool HasZLayer(string zLayer)
         {
-            return Array.IndexOf(ZOrder, zLayer) >= 0;
+            EnsureLoaded();
+            return !string.IsNullOrEmpty(zLayer) && _zIndices.ContainsKey(zLayer);
+        }
+
+        public static IReadOnlyList<string> GetSlotTokens(string zLayer)
+        {
+            EnsureLoaded();
+            if (!string.IsNullOrEmpty(zLayer) && _slotMap.TryGetValue(zLayer, out string[] tokens))
+            {
+                return tokens;
+            }
+
+            return Array.Empty<string>();
+        }
+
+        public static int GetSlotPriority(string slotValue)
+        {
+            EnsureLoaded();
+
+            int maxPriority = int.MinValue;
+            foreach (string token in CharacterPart.ParseSlotTokens(slotValue))
+            {
+                if (_zIndices.TryGetValue(token, out int priority))
+                {
+                    maxPriority = Math.Max(maxPriority, priority);
+                }
+            }
+
+            return maxPriority;
+        }
+
+        public static int GetSlotPriority(IEnumerable<string> slotTokens)
+        {
+            EnsureLoaded();
+
+            int maxPriority = int.MinValue;
+            if (slotTokens == null)
+            {
+                return maxPriority;
+            }
+
+            foreach (string token in slotTokens)
+            {
+                if (!string.IsNullOrEmpty(token) && _zIndices.TryGetValue(token, out int priority))
+                {
+                    maxPriority = Math.Max(maxPriority, priority);
+                }
+            }
+
+            return maxPriority;
+        }
+
+        public static void EnsureLoaded()
+        {
+            if (_mappersLoaded)
+            {
+                return;
+            }
+
+            lock (MapperLock)
+            {
+                if (_mappersLoaded)
+                {
+                    return;
+                }
+
+                TryLoadMappers();
+                _mappersLoaded = true;
+            }
+        }
+
+        private static void TryLoadMappers()
+        {
+            try
+            {
+                var zMapImage = global::HaCreator.Program.FindImage("base", "zmap.img");
+                if (zMapImage != null)
+                {
+                    zMapImage.ParseImage();
+
+                    var loadedOrder = new List<string>();
+                    foreach (WzImageProperty property in zMapImage.WzProperties)
+                    {
+                        if (!string.IsNullOrWhiteSpace(property.Name))
+                        {
+                            loadedOrder.Add(property.Name);
+                        }
+                    }
+
+                    if (loadedOrder.Count > 0)
+                    {
+                        // zmap.img is enumerated from front to back; drawing needs back to front.
+                        loadedOrder.Reverse();
+                        _zOrder = loadedOrder.ToArray();
+                        _zIndices = BuildZIndexMap(_zOrder);
+                    }
+                }
+
+                var sMapImage = global::HaCreator.Program.FindImage("base", "smap.img");
+                if (sMapImage != null)
+                {
+                    sMapImage.ParseImage();
+
+                    var loadedSlotMap = new Dictionary<string, string[]>(StringComparer.Ordinal);
+                    foreach (WzImageProperty property in sMapImage.WzProperties)
+                    {
+                        string value = property switch
+                        {
+                            WzStringProperty stringProperty => stringProperty.Value,
+                            _ => null
+                        };
+
+                        loadedSlotMap[property.Name] = new List<string>(CharacterPart.ParseSlotTokens(value)).ToArray();
+                    }
+
+                    if (loadedSlotMap.Count > 0)
+                    {
+                        _slotMap = loadedSlotMap;
+                    }
+                }
+            }
+            catch
+            {
+                _zOrder = DefaultZOrder;
+                _zIndices = BuildZIndexMap(DefaultZOrder);
+                _slotMap = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            }
+        }
+
+        private static Dictionary<string, int> BuildZIndexMap(IReadOnlyList<string> zOrder)
+        {
+            var map = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (zOrder == null)
+            {
+                return map;
+            }
+
+            for (int i = 0; i < zOrder.Count; i++)
+            {
+                string entry = zOrder[i];
+                if (!string.IsNullOrWhiteSpace(entry))
+                {
+                    map[entry] = i;
+                }
+            }
+
+            return map;
         }
     }
 

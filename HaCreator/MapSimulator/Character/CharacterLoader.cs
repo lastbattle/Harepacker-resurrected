@@ -783,14 +783,14 @@ namespace HaCreator.MapSimulator.Character
             if (frame == null) return null;
 
             // Get z-layer from canvas first, then parent frame
-            string zLayer = GetStringValue(canvas["z"]);
+            string zLayer = ResolveZLayer(GetStringValue(canvas["z"]), frameName);
 
             if (string.IsNullOrEmpty(zLayer) || !ZMapReference.HasZLayer(zLayer))
             {
                 // Try parent frame's z property
                 if (parentFrame != null)
                 {
-                    zLayer = GetStringValue(parentFrame["z"]);
+                    zLayer = ResolveZLayer(GetStringValue(parentFrame["z"]), frameName);
                 }
             }
 
@@ -854,6 +854,7 @@ namespace HaCreator.MapSimulator.Character
             if (info == null) return;
 
             part.VSlot = GetStringValue(info["vslot"]);
+            part.ISlot = GetStringValue(info["islot"]);
             part.IsCash = GetIntValue(info["cash"]) == 1;
 
             // Load icon
@@ -1186,7 +1187,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Load z-layer
-            frame.Z = GetStringValue(canvas["z"]) ?? frameName;
+            frame.Z = ResolveZLayer(GetStringValue(canvas["z"]), frameName);
 
             // Load map points
             var mapNode = canvas["map"];
@@ -1375,7 +1376,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Load z-layer
-            subPart.Z = GetStringValue(canvas["z"]) ?? partName;
+            subPart.Z = ResolveZLayer(GetStringValue(canvas["z"]), partName);
 
             // Load map points
             var mapNode = canvas["map"];
@@ -1464,6 +1465,21 @@ namespace HaCreator.MapSimulator.Character
                 WzIntProperty intProp => intProp.Value.ToString(),
                 _ => null
             };
+        }
+
+        private static string ResolveZLayer(string zLayer, string fallback)
+        {
+            if (!string.IsNullOrEmpty(zLayer) && ZMapReference.HasZLayer(zLayer))
+            {
+                return zLayer;
+            }
+
+            if (!string.IsNullOrEmpty(fallback) && ZMapReference.HasZLayer(fallback))
+            {
+                return fallback;
+            }
+
+            return zLayer ?? fallback;
         }
 
         #endregion

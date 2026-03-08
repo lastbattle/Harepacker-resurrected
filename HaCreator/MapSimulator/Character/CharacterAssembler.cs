@@ -39,7 +39,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (var part in Parts)
             {
-                if (part.Texture == null) continue;
+                if (part.Texture == null || !part.IsVisible) continue;
 
                 int partX, partY;
                 if (flip)
@@ -74,6 +74,10 @@ namespace HaCreator.MapSimulator.Character
         public int OffsetY { get; set; }
         public string ZLayer { get; set; }
         public int ZIndex { get; set; }
+        public IReadOnlyList<string> VisibilityTokens { get; set; } = Array.Empty<string>();
+        public int VisibilityPriority { get; set; }
+        public bool IsVisible { get; set; } = true;
+        public CharacterPart SourcePart { get; set; }
         public Color Tint { get; set; } = Color.White;
         public CharacterPartType PartType { get; set; }
     }
@@ -234,7 +238,7 @@ namespace HaCreator.MapSimulator.Character
             Point baseOffset = new Point(-bodyNavel.X, -bodyNavel.Y);
 
             // Add body
-            AddPart(parts, bodyFrame, baseOffset, CharacterPartType.Body);
+            AddPart(parts, bodyFrame, baseOffset, CharacterPartType.Body, _build.Body);
 
             // Add head - connects to body's neck
             Point bodyNeck = bodyFrame.GetMapPoint(MAP_NECK);
@@ -258,7 +262,7 @@ namespace HaCreator.MapSimulator.Character
                     baseOffset.X + bodyNeck.X - headNeck.X,
                     baseOffset.Y + bodyNeck.Y - headNeck.Y);
 
-                AddPart(parts, headFrame, headOffset.Value, CharacterPartType.Head);
+                AddPart(parts, headFrame, headOffset.Value, CharacterPartType.Head, _build.Head);
 
                 // Add face - relative to head
                 var faceFrame = GetFaceFrame(_build.Face, frameIndex);
@@ -273,7 +277,7 @@ namespace HaCreator.MapSimulator.Character
                         headOffset.Value.X + headBrow.X - faceBrow.X,
                         headOffset.Value.Y + headBrow.Y - faceBrow.Y);
 
-                    AddPart(parts, faceFrame, faceOffset, CharacterPartType.Face);
+                    AddPart(parts, faceFrame, faceOffset, CharacterPartType.Face, _build.Face);
                 }
 
                 // Add hair - relative to head
@@ -297,7 +301,7 @@ namespace HaCreator.MapSimulator.Character
                         headOffset.Value.X + headBrow.X - hairBrow.X,
                         headOffset.Value.Y + headBrow.Y - hairBrow.Y);
 
-                    AddPart(parts, hairFrame, hairOffset, CharacterPartType.Hair);
+                    AddPart(parts, hairFrame, hairOffset, CharacterPartType.Hair, _build.Hair);
                 }
 
                 // Add back hair if exists
@@ -313,7 +317,7 @@ namespace HaCreator.MapSimulator.Character
                             headOffset.Value.X + headBrow.X - bhBrow.X,
                             headOffset.Value.Y + headBrow.Y - bhBrow.Y);
 
-                        AddPart(parts, backHairFrame, bhOffset, CharacterPartType.HairBelowBody, zOverride: 0);
+                        AddPart(parts, backHairFrame, bhOffset, CharacterPartType.HairBelowBody, _build.Hair, zOverride: 0);
                     }
                 }
             }
@@ -325,11 +329,12 @@ namespace HaCreator.MapSimulator.Character
                 if (equipFrame == null) continue;
 
                 Point equipOffset = CalculateEquipOffset(equipFrame, bodyFrame, headFrame, baseOffset, headOffset, kv.Value.Type);
-                AddPart(parts, equipFrame, equipOffset, kv.Value.Type);
+                AddPart(parts, equipFrame, equipOffset, kv.Value.Type, kv.Value);
             }
 
             // Sort parts by z-index
             parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
+            ApplyVisibility(parts);
             assembled.Parts = parts;
 
             // Calculate bounds
@@ -338,7 +343,13 @@ namespace HaCreator.MapSimulator.Character
             return assembled;
         }
 
-        private void AddPart(List<AssembledPart> parts, CharacterFrame frame, Point offset, CharacterPartType type, int? zOverride = null)
+        private void AddPart(
+            List<AssembledPart> parts,
+            CharacterFrame frame,
+            Point offset,
+            CharacterPartType type,
+            CharacterPart sourcePart,
+            int? zOverride = null)
         {
             if (frame == null) return;
 
@@ -353,13 +364,17 @@ namespace HaCreator.MapSimulator.Character
                     int subOffsetX = offset.X + subPart.NavelOffset.X - subPart.Origin.X;
                     int subOffsetY = offset.Y + subPart.NavelOffset.Y - subPart.Origin.Y;
 
+                    int zIndex = zOverride ?? ZMapReference.GetZIndex(subPart.Z);
                     parts.Add(new AssembledPart
                     {
                         Texture = subPart.Texture,
                         OffsetX = subOffsetX,
                         OffsetY = subOffsetY,
                         ZLayer = subPart.Z,
-                        ZIndex = zOverride ?? ZMapReference.GetZIndex(subPart.Z),
+                        ZIndex = zIndex,
+                        VisibilityTokens = GetVisibilityTokens(sourcePart, subPart.Z),
+                        VisibilityPriority = GetVisibilityPriority(sourcePart, subPart.Z, zIndex),
+                        SourcePart = sourcePart,
                         PartType = type
                     });
                 }
@@ -367,13 +382,17 @@ namespace HaCreator.MapSimulator.Character
             else if (frame.Texture != null)
             {
                 // Single texture (head, face, hair, equipment)
+                int zIndex = zOverride ?? ZMapReference.GetZIndex(frame.Z);
                 parts.Add(new AssembledPart
                 {
                     Texture = frame.Texture,
                     OffsetX = offset.X - frame.Origin.X,
                     OffsetY = offset.Y - frame.Origin.Y,
                     ZLayer = frame.Z,
-                    ZIndex = zOverride ?? ZMapReference.GetZIndex(frame.Z),
+                    ZIndex = zIndex,
+                    VisibilityTokens = GetVisibilityTokens(sourcePart, frame.Z),
+                    VisibilityPriority = GetVisibilityPriority(sourcePart, frame.Z, zIndex),
+                    SourcePart = sourcePart,
                     PartType = type
                 });
             }
@@ -569,6 +588,130 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        private static IReadOnlyList<string> GetVisibilityTokens(CharacterPart sourcePart, string zLayer)
+        {
+            IReadOnlyList<string> layerTokens = ZMapReference.GetSlotTokens(zLayer);
+            IReadOnlyList<string> partTokens = CharacterPart.ParseSlotTokens(sourcePart?.VSlot);
+
+            if (layerTokens.Count == 0)
+            {
+                return partTokens;
+            }
+
+            if (partTokens.Count == 0)
+            {
+                return layerTokens;
+            }
+
+            var intersection = new List<string>();
+            foreach (string token in layerTokens)
+            {
+                if (partTokens.Contains(token))
+                {
+                    intersection.Add(token);
+                }
+            }
+
+            return intersection.Count > 0 ? intersection : partTokens;
+        }
+
+        private static int GetVisibilityPriority(CharacterPart sourcePart, string zLayer, int zIndex)
+        {
+            int priority = ZMapReference.GetSlotPriority(sourcePart?.ISlot);
+            if (priority != int.MinValue)
+            {
+                return priority;
+            }
+
+            priority = ZMapReference.GetSlotPriority(GetVisibilityTokens(sourcePart, zLayer));
+            return priority != int.MinValue ? priority : zIndex;
+        }
+
+        private static void ApplyVisibility(List<AssembledPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return;
+            }
+
+            var owners = new Dictionary<string, AssembledPart>(StringComparer.Ordinal);
+            foreach (AssembledPart part in parts)
+            {
+                part.IsVisible = true;
+                if (part.VisibilityTokens == null || part.VisibilityTokens.Count == 0)
+                {
+                    continue;
+                }
+
+                var conflictingOwners = new HashSet<AssembledPart>();
+                foreach (string token in part.VisibilityTokens)
+                {
+                    if (owners.TryGetValue(token, out AssembledPart owner)
+                        && owner != null
+                        && owner.IsVisible
+                        && owner != part
+                        && owner.SourcePart != part.SourcePart)
+                    {
+                        conflictingOwners.Add(owner);
+                    }
+                }
+
+                if (conflictingOwners.Count == 0)
+                {
+                    ClaimVisibilityTokens(owners, part);
+                    continue;
+                }
+
+                bool currentWins = true;
+                foreach (AssembledPart owner in conflictingOwners)
+                {
+                    if (owner.VisibilityPriority >= part.VisibilityPriority)
+                    {
+                        currentWins = false;
+                        break;
+                    }
+                }
+
+                if (!currentWins)
+                {
+                    part.IsVisible = false;
+                    continue;
+                }
+
+                foreach (AssembledPart owner in conflictingOwners)
+                {
+                    owner.IsVisible = false;
+                    ReleaseVisibilityTokens(owners, owner);
+                }
+
+                ClaimVisibilityTokens(owners, part);
+            }
+        }
+
+        private static void ClaimVisibilityTokens(Dictionary<string, AssembledPart> owners, AssembledPart part)
+        {
+            foreach (string token in part.VisibilityTokens)
+            {
+                owners[token] = part;
+            }
+        }
+
+        private static void ReleaseVisibilityTokens(Dictionary<string, AssembledPart> owners, AssembledPart part)
+        {
+            if (part.VisibilityTokens == null)
+            {
+                return;
+            }
+
+            foreach (string token in part.VisibilityTokens)
+            {
+                if (owners.TryGetValue(token, out AssembledPart owner) && owner == part)
+                {
+                    owners.Remove(token);
+                }
+            }
+        }
+
         private void CalculateBounds(AssembledFrame frame)
         {
             if (frame.Parts.Count == 0)
@@ -583,7 +726,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (var part in frame.Parts)
             {
-                if (part.Texture == null) continue;
+                if (part.Texture == null || !part.IsVisible) continue;
 
                 var tex = part.Texture;
                 int left = part.OffsetX;
@@ -595,6 +738,13 @@ namespace HaCreator.MapSimulator.Character
                 minY = Math.Min(minY, top);
                 maxX = Math.Max(maxX, right);
                 maxY = Math.Max(maxY, bottom);
+            }
+
+            if (minX == int.MaxValue)
+            {
+                frame.Bounds = Rectangle.Empty;
+                frame.FeetOffset = 0;
+                return;
             }
 
             frame.Bounds = new Rectangle(minX, minY, maxX - minX, maxY - minY);
