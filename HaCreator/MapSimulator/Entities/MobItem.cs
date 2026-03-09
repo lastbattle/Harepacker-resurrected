@@ -22,6 +22,8 @@ namespace HaCreator.MapSimulator.Entities
 {
     public class MobItem : BaseDXDrawableItem, ICombatEntity
     {
+        private const int SPAWN_FADE_DURATION_MS = 750;
+
         private readonly MobInstance _mobInstance;
         private NameTooltipItem _nameTooltip = null;
 
@@ -32,6 +34,8 @@ namespace HaCreator.MapSimulator.Entities
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
+        private bool _isSpawnFading;
+        private int _spawnFadeStartTick;
 
         /// <summary>
         /// AI controller for combat and behavior
@@ -122,6 +126,12 @@ namespace HaCreator.MapSimulator.Entities
         {
             Attack1SE = attack1SE;
             Attack2SE = attack2SE;
+        }
+
+        public void StartSpawnFadeIn(int tickCount)
+        {
+            _spawnFadeStartTick = tickCount;
+            _isSpawnFading = true;
         }
 
         /// <summary>
@@ -1101,6 +1111,24 @@ namespace HaCreator.MapSimulator.Entities
             return _animationController.GetCurrentFrame();
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private float GetSpawnAlpha(int tickCount)
+        {
+            if (!_isSpawnFading)
+            {
+                return 1f;
+            }
+
+            int elapsed = Math.Max(0, unchecked(tickCount - _spawnFadeStartTick));
+            if (elapsed >= SPAWN_FADE_DURATION_MS)
+            {
+                _isSpawnFading = false;
+                return 1f;
+            }
+
+            return Math.Clamp((float)elapsed / SPAWN_FADE_DURATION_MS, 0f, 1f);
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -1155,15 +1183,28 @@ namespace HaCreator.MapSimulator.Entities
                 if (IsFrameWithinView(drawFrame, adjustedShiftX, shiftCenteredY,
                     renderParameters.RenderWidth, renderParameters.RenderHeight))
                 {
-                    drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
-                        adjustedShiftX, shiftCenteredY,
-                        flip,
-                        drawReflectionInfo);
+                    float spawnAlpha = GetSpawnAlpha(TickCount);
+                    if (spawnAlpha < 1f)
+                    {
+                        drawFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
+                            drawFrame.X - adjustedShiftX,
+                            drawFrame.Y - shiftCenteredY,
+                            Color.White * spawnAlpha,
+                            flip,
+                            drawReflectionInfo);
+                    }
+                    else
+                    {
+                        drawFrame.DrawObject(sprite, skeletonMeshRenderer, gameTime,
+                            adjustedShiftX, shiftCenteredY,
+                            flip,
+                            drawReflectionInfo);
+                    }
                 }
             }
 
             // Draw name tooltip
-            if (_nameTooltip != null)
+            if (_nameTooltip != null && !_isSpawnFading)
             {
                 _nameTooltip.Draw(sprite, skeletonMeshRenderer, gameTime,
                     adjustedMapShiftX, adjustedMapShiftY, centerX, centerY,

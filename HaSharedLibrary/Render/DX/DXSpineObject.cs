@@ -89,10 +89,14 @@ namespace HaSharedLibrary.Render.DX
             //}
 
             skeletonMeshRenderer.PremultipliedAlpha = spineObject.spineAnimationItem.PremultipliedAlpha;
+            float previousAlpha = spineObject.skeleton.A;
+            spineObject.skeleton.A = color.A / 255f;
 
             skeletonMeshRenderer.Begin();
             skeletonMeshRenderer.Draw(spineObject.skeleton);
             skeletonMeshRenderer.End();
+
+            spineObject.skeleton.A = previousAlpha;
         }
 
 

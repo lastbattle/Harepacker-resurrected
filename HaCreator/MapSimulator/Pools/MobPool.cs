@@ -296,6 +296,7 @@ namespace HaCreator.MapSimulator.Pools
 
             spawnPoint.CurrentMob = newMob;
             spawnPoint.IsActive = true;
+            newMob.StartSpawnFadeIn(_lastUpdateTick);
 
             // Boss announcement
             if (spawnPoint.IsBoss)
