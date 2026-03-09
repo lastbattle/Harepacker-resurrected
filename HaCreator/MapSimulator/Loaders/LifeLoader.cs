@@ -161,9 +161,14 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             System.Drawing.Color color_foreGround = System.Drawing.Color.White; // mob foreground color
-            NameTooltipItem nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
-                mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, color_foreGround,
-                texturePool, UserScreenScaleFactor, device);
+            NameTooltipItem nameTooltip = null;
+            bool hasBossHpBar = mobInfo?.MobData?.HpTagColor > 0;
+            if (!hasBossHpBar)
+            {
+                nameTooltip = MapSimulatorLoader.CreateNPCMobNameTooltip(
+                    mobInstance.MobInfo.Name, mobInstance.X, mobInstance.Y, color_foreGround,
+                    texturePool, UserScreenScaleFactor, device);
+            }
 
             var mobItem = new MobItem(mobInstance, animationSet, nameTooltip);
 
