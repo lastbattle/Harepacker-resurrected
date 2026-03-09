@@ -1936,7 +1936,7 @@ namespace HaCreator.MapSimulator
             float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;
             bool isWindowActive = IsActive;
             KeyboardState newKeyboardState = Keyboard.GetState();  // get the newest state
-            MouseState newMouseState = GetEffectiveMouseState(mouseCursor.MouseState, isWindowActive);
+            MouseState newMouseState = GetEffectiveMouseState(Mouse.GetState(), isWindowActive);
 
             // Update UI Windows - handles ESC to close windows and I/E/S/Q toggles
             // Pass chat state to prevent hotkeys from working while typing
