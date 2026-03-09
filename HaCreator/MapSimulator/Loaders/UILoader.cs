@@ -13,6 +13,7 @@ using MapleLib.Converters;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.UI.Controls;
 
@@ -100,7 +101,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var hpBitmap = hpCanvas.GetLinkedWzCanvasBitmap();
                                 if (hpBitmap != null)
                                 {
-                                    hpGaugeTexture = hpBitmap.ToTexture2D(device);
+                                    hpGaugeTexture = hpBitmap.ToTexture2DAndDispose(device);
                                 }
                             }
                         }
@@ -115,7 +116,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var mpBitmap = mpCanvas.GetLinkedWzCanvasBitmap();
                                 if (mpBitmap != null)
                                 {
-                                    mpGaugeTexture = mpBitmap.ToTexture2D(device);
+                                    mpGaugeTexture = mpBitmap.ToTexture2DAndDispose(device);
                                 }
                             }
                         }
@@ -130,7 +131,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var expBitmap = expCanvas.GetLinkedWzCanvasBitmap();
                                 if (expBitmap != null)
                                 {
-                                    expGaugeTexture = expBitmap.ToTexture2D(device);
+                                    expGaugeTexture = expBitmap.ToTexture2DAndDispose(device);
                                 }
                             }
                         }
@@ -239,7 +240,7 @@ namespace HaCreator.MapSimulator.Loaders
                     });
                     grid_chat.AddRenderable(0, 0, uiImage_notice);
 
-                    Texture2D texture_chatUI = grid_chat.Render().ToTexture2D(device);
+                    Texture2D texture_chatUI = grid_chat.Render().ToTexture2DAndDispose(device);
                     IDXObject dxObj_chatUI = new DXObject(UI_PADDING_PX, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid_chat.GetSize().Height - 36, texture_chatUI, 0);
 
                     // Scroll up+down, Chat, report/ claim, notice, stat, quest, inventory, equip, skill, key set
@@ -371,7 +372,7 @@ namespace HaCreator.MapSimulator.Loaders
                     // Add all items to the main grid
                     grid.AddRenderable(0, 0, stackPanel_charStats);
 
-                    Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
+                    Texture2D texture_backgrnd = grid.Render().ToTexture2DAndDispose(device);
 
                     IDXObject dxObj_backgrnd = new DXObject(0, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid.GetSize().Height, texture_backgrnd, 0);
                     StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd, obj_Ui_BtCashShop, obj_Ui_BtMTS, obj_Ui_BtMenu, obj_Ui_BtSystem, obj_Ui_BtChannel,
@@ -413,7 +414,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (digitCanvas != null) {
                                 var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    digitTextures[i] = bitmap.ToTexture2D(device);
+                                    digitTextures[i] = bitmap.ToTexture2DAndDispose(device);
                                     digitOrigins[i] = GetCanvasOrigin(digitCanvas);
                                     hasDigits = true;
                                 }
@@ -435,7 +436,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (lbCanvas != null) {
                                 var bitmap = lbCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    bracketLeftTexture = bitmap.ToTexture2D(device);
+                                    bracketLeftTexture = bitmap.ToTexture2DAndDispose(device);
                                     bracketLeftOrigin = GetCanvasOrigin(lbCanvas);
                                 }
                             }
@@ -445,7 +446,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (rbCanvas != null) {
                                 var bitmap = rbCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    bracketRightTexture = bitmap.ToTexture2D(device);
+                                    bracketRightTexture = bitmap.ToTexture2DAndDispose(device);
                                     bracketRightOrigin = GetCanvasOrigin(rbCanvas);
                                 }
                             }
@@ -455,7 +456,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (slashCanvas != null) {
                                 var bitmap = slashCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    slashTexture = bitmap.ToTexture2D(device);
+                                    slashTexture = bitmap.ToTexture2DAndDispose(device);
                                     slashOrigin = GetCanvasOrigin(slashCanvas);
                                 }
                             }
@@ -465,7 +466,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (percentCanvas != null) {
                                 var bitmap = percentCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    percentTexture = bitmap.ToTexture2D(device);
+                                    percentTexture = bitmap.ToTexture2DAndDispose(device);
                                     percentOrigin = GetCanvasOrigin(percentCanvas);
                                 }
                             }
@@ -475,7 +476,7 @@ namespace HaCreator.MapSimulator.Loaders
                             if (dotCanvas != null) {
                                 var bitmap = dotCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null) {
-                                    dotTexture = bitmap.ToTexture2D(device);
+                                    dotTexture = bitmap.ToTexture2DAndDispose(device);
                                     dotOrigin = GetCanvasOrigin(dotCanvas);
                                 }
                             }
@@ -547,9 +548,16 @@ namespace HaCreator.MapSimulator.Loaders
                             if (barBitmap != null)
                             {
                                 // Pre-BB uses the same gauge bar texture for all gauges
-                                hpGaugeTexture = barBitmap.ToTexture2D(device);
-                                mpGaugeTexture = barBitmap.ToTexture2D(device);
-                                expGaugeTexture = barBitmap.ToTexture2D(device);
+                                try
+                                {
+                                    hpGaugeTexture = barBitmap.ToTexture2D(device);
+                                    mpGaugeTexture = barBitmap.ToTexture2D(device);
+                                    expGaugeTexture = barBitmap.ToTexture2D(device);
+                                }
+                                finally
+                                {
+                                    barBitmap.Dispose();
+                                }
                             }
                         }
                     }
@@ -619,7 +627,7 @@ namespace HaCreator.MapSimulator.Loaders
                     // Pre-BB doesn't have BtChannel, create a dummy null
                     UIObject obj_Ui_BtChannel = null;
 
-                    Texture2D texture_backgrnd = grid.Render().ToTexture2D(device);
+                    Texture2D texture_backgrnd = grid.Render().ToTexture2DAndDispose(device);
 
                     IDXObject dxObj_backgrnd = new DXObject(0, (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - grid.GetSize().Height, texture_backgrnd, 0);
                     StatusBarUI statusBar = new StatusBarUI(dxObj_backgrnd,
@@ -666,7 +674,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null)
                                 {
-                                    digitTextures[i] = bitmap.ToTexture2D(device);
+                                    digitTextures[i] = bitmap.ToTexture2DAndDispose(device);
                                     digitOrigins[i] = GetCanvasOrigin(digitCanvas);
                                     hasDigits = true;
                                 }
@@ -690,7 +698,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var bitmap = lbCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null)
                                 {
-                                    bracketLeftTexture = bitmap.ToTexture2D(device);
+                                    bracketLeftTexture = bitmap.ToTexture2DAndDispose(device);
                                     bracketLeftOrigin = GetCanvasOrigin(lbCanvas);
                                 }
                             }
@@ -702,7 +710,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var bitmap = rbCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null)
                                 {
-                                    bracketRightTexture = bitmap.ToTexture2D(device);
+                                    bracketRightTexture = bitmap.ToTexture2DAndDispose(device);
                                     bracketRightOrigin = GetCanvasOrigin(rbCanvas);
                                 }
                             }
@@ -714,7 +722,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var bitmap = slashCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null)
                                 {
-                                    slashTexture = bitmap.ToTexture2D(device);
+                                    slashTexture = bitmap.ToTexture2DAndDispose(device);
                                     slashOrigin = GetCanvasOrigin(slashCanvas);
                                 }
                             }
@@ -726,7 +734,7 @@ namespace HaCreator.MapSimulator.Loaders
                                 var bitmap = percentCanvas.GetLinkedWzCanvasBitmap();
                                 if (bitmap != null)
                                 {
-                                    percentTexture = bitmap.ToTexture2D(device);
+                                    percentTexture = bitmap.ToTexture2DAndDispose(device);
                                     percentOrigin = GetCanvasOrigin(percentCanvas);
                                 }
                             }
@@ -881,8 +889,8 @@ namespace HaCreator.MapSimulator.Loaders
             System.Drawing.Bitmap finalFullMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s,
                 c, mapMark != null ? mapMark.Height : 0);
 
-            Texture2D texturer_miniMapMinimised = finalMininisedMinimapBitmap.ToTexture2D(device);
-            Texture2D texturer_miniMap = finalFullMinimapBitmap.ToTexture2D(device);
+            Texture2D texturer_miniMapMinimised = finalMininisedMinimapBitmap.ToTexture2DAndDispose(device);
+            Texture2D texturer_miniMap = finalFullMinimapBitmap.ToTexture2DAndDispose(device);
 
             // Dots pixel
             System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
@@ -891,7 +899,7 @@ namespace HaCreator.MapSimulator.Loaders
                 graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
                 graphics.Flush();
             }
-            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2D(device), 0);
+            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2DAndDispose(device), 0);
 
             // Map
             IDXObject dxObj_miniMap_Minimised = new DXObject(0, 0, texturer_miniMapMinimised, 0);
@@ -1002,7 +1010,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static MouseCursorItem CreateMouseCursorFromProperty(
             TexturePool texturePool, WzImageProperty source, int x, int y,
-            GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip)
         {
             WzSubProperty cursorCanvas = (WzSubProperty)source?["0"]; // normal
             WzSubProperty cursorClickable = (WzSubProperty)source?["1"]; // click-able item
@@ -1018,31 +1026,31 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty cursorPickable2 = (WzSubProperty)source?["11"]; // pickable inventory
             WzSubProperty cursorHold = (WzSubProperty)source?["12"]; // pickable inventory
 
-            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, cursorCanvas, x, y, device, ref usedProps);
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, cursorCanvas, x, y, device, usedProps);
 
             // Mouse hold state (style 12 - may not exist in beta MapleStory)
             BaseDXDrawableItem holdState = null;
             if (cursorHold != null)
             {
-                holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                holdState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorHold, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
             // Mouse clicked item state
             BaseDXDrawableItem clickableButtonState = null;
             if (cursorClickable != null)
             {
-                clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                clickableButtonState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
             // NPC hover cursor state (uses style 4 - alternate clickable, or fallback to style 1)
             BaseDXDrawableItem npcHoverState = null;
             if (cursorClickable2 != null)
             {
-                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable2, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable2, 0, 0, new Point(0, 0), device, usedProps, false);
             }
             else if (cursorClickable != null)
             {
-                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, ref usedProps, false);
+                npcHoverState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorClickable, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
             return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState);

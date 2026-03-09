@@ -9,6 +9,7 @@ using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework.Graphics;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Pools;
 
@@ -31,7 +32,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static ReactorItem CreateReactorFromProperty(
             TexturePool texturePool, ReactorInstance reactorInstance,
-            GraphicsDevice device, ref List<WzObject> usedProps)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             ReactorInfo reactorInfo = (ReactorInfo)reactorInstance.BaseInfo;
 
@@ -43,7 +44,7 @@ namespace HaCreator.MapSimulator.Loaders
                 WzImageProperty framesImage = (WzImageProperty)linkedReactorImage?["0"]?["0"];
                 if (framesImage != null)
                 {
-                    frames = MapSimulatorLoader.LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, ref usedProps);
+                    frames = MapSimulatorLoader.LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, usedProps);
                 }
             }
             if (frames.Count == 0)
@@ -69,7 +70,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static PortalItem CreatePortalFromProperty(
             TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance,
-            GraphicsDevice device, ref List<WzObject> usedProps)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             PortalInfo portalInfo = (PortalInfo)portalInstance.BaseInfo;
 
@@ -99,7 +100,7 @@ namespace HaCreator.MapSimulator.Loaders
                 // Support for older versions of MapleStory where 'pv' is a subproperty for the image frame than a collection of subproperty of frames
                 if (portalTypeProperty["0"] is WzCanvasProperty)
                 {
-                    frames.AddRange(MapSimulatorLoader.LoadFrames(texturePool, portalTypeProperty, portalInstance.X, portalInstance.Y, device, ref usedProps));
+                    frames.AddRange(MapSimulatorLoader.LoadFrames(texturePool, portalTypeProperty, portalInstance.X, portalInstance.Y, device, usedProps));
                     portalTypeProperty = null;
                 }
             }
@@ -118,7 +119,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                     if (framesPropertyParent != null)
                     {
-                        frames.AddRange(MapSimulatorLoader.LoadFrames(texturePool, framesPropertyParent, portalInstance.X, portalInstance.Y, device, ref usedProps));
+                        frames.AddRange(MapSimulatorLoader.LoadFrames(texturePool, framesPropertyParent, portalInstance.X, portalInstance.Y, device, usedProps));
                     }
                 }
             }

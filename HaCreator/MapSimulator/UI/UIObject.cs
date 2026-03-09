@@ -245,6 +245,12 @@ namespace HaCreator.MapSimulator.UI
                 if (imgProperty is WzCanvasProperty property)
                 {
                     System.Drawing.Bitmap btImage = property.GetLinkedWzCanvasBitmap(); // maximise
+                    if (btImage == null)
+                    {
+                        i++;
+                        continue;
+                    }
+
                     System.Drawing.PointF origin = property.GetCanvasOriginPosition();
                     int? delay = property[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt();
 
@@ -254,7 +260,7 @@ namespace HaCreator.MapSimulator.UI
                         _CanvasSnapshotWidth = btImage.Width;
                     }
 
-                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2D(graphicsDevice), delay != null ? (int)delay : 0);
+                    IDXObject dxObj = new DXObject(origin, btImage.ToTexture2DAndDispose(graphicsDevice), delay != null ? (int)delay : 0);
                     drawableImages.Add(dxObj);
 
                     // the origin X Y needed to update to this UIObject object

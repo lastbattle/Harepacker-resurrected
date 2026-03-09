@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using HaCreator.MapSimulator.Pools;
@@ -181,8 +182,8 @@ namespace HaCreator.MapSimulator.Loaders
             var affectedNode = specificLevelNode["affected"];
             if (affectedNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.AffectedFrames = MapSimulatorLoader.LoadFrames(_texturePool, affectedNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.AffectedFrames = MapSimulatorLoader.LoadFrames(_texturePool, affectedNode, 0, 0, _device, usedProps);
 
                 // Get position type
                 var posNode = affectedNode["pos"];
@@ -214,8 +215,8 @@ namespace HaCreator.MapSimulator.Loaders
             var effectNode = specificLevelNode["effect"];
             if (effectNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.EffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, effectNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.EffectFrames = MapSimulatorLoader.LoadFrames(_texturePool, effectNode, 0, 0, _device, usedProps);
 
                 // Get position type
                 var posNode = effectNode["pos"];
@@ -230,8 +231,8 @@ namespace HaCreator.MapSimulator.Loaders
             var mobNode = specificLevelNode["mob"];
             if (mobNode != null)
             {
-                var usedProps = new List<WzObject>();
-                effectData.MobIconFrames = MapSimulatorLoader.LoadFrames(_texturePool, mobNode, 0, 0, _device, ref usedProps);
+                var usedProps = new ConcurrentBag<WzObject>();
+                effectData.MobIconFrames = MapSimulatorLoader.LoadFrames(_texturePool, mobNode, 0, 0, _device, usedProps);
             }
 
             // Get skill duration

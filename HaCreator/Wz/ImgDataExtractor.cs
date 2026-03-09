@@ -363,7 +363,12 @@ namespace HaCreator.Wz
                         if (binProperty != null)
                         {
                             string key = WzInfoTools.RemoveExtension(soundImage.Name) + "/" + binProperty.Name;
-                            _infoManager.BGMs[key] = binProperty;
+                            WzImage ownerImage = binProperty.GetTopMostWzImage() as WzImage;
+                            string propertyPath = WzInformationManager.GetPropertyPathRelativeToImage(binProperty);
+                            if (ownerImage != null && !string.IsNullOrEmpty(propertyPath))
+                            {
+                                _infoManager.BGMs[key] = new WzInformationManager.BgmEntry(ownerImage.Name, propertyPath);
+                            }
                         }
                     }
                 }

@@ -291,11 +291,11 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetCombatEffects(_combatEffects);
                 Skills.SetSoundManager(_soundManager);
 
-                // Load the full skill catalog so the simulator can browse and execute any player skill.
-                Skills.LoadAllSkills();
+                // Keep only the player's current job path resident at startup.
+                Skills.LoadSkillsForJob(build.Job);
                 Skills.LearnAllActiveSkills();
 
-                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created, loaded full skill catalog for runtime use");
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created for job path {build.Job}");
             }
 
             // Set up callbacks

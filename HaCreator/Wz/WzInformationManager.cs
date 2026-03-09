@@ -17,6 +17,18 @@ namespace HaCreator.Wz
 {
     public class WzInformationManager
     {
+        public sealed class BgmEntry
+        {
+            public BgmEntry(string imageName, string propertyPath)
+            {
+                ImageName = imageName;
+                PropertyPath = propertyPath;
+            }
+
+            public string ImageName { get; }
+            public string PropertyPath { get; }
+        }
+
         public Dictionary<string, ReactorInfo> Reactors = new Dictionary<string, ReactorInfo>();
 
         // Lazy-loading dictionaries for map assets - only load when accessed
@@ -24,7 +36,7 @@ namespace HaCreator.Wz
         public IDictionary<string, WzImage> ObjectSets = new Dictionary<string, WzImage>();
         public IDictionary<string, WzImage> BackgroundSets = new Dictionary<string, WzImage>();
 
-        public Dictionary<string, WzBinaryProperty> BGMs = new Dictionary<string, WzBinaryProperty>();
+        public Dictionary<string, BgmEntry> BGMs = new Dictionary<string, BgmEntry>();
 
         // Maps
         public Dictionary<string, Bitmap> MapMarks = new Dictionary<string, Bitmap>();
@@ -175,6 +187,35 @@ namespace HaCreator.Wz
             PortalEditor_TypeById.Clear();
             PortalIdByType.Clear();
             PortalGame.Clear();
+        }
+
+        public WzBinaryProperty GetBgm(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !BGMs.TryGetValue(name, out var entry))
+                return null;
+
+            WzImage image = Program.FindImage("Sound", entry.ImageName);
+            image?.ParseImage();
+            if (image == null)
+                return null;
+
+            return image.GetFromPath(entry.PropertyPath) as WzBinaryProperty;
+        }
+
+        public static string GetPropertyPathRelativeToImage(WzImageProperty property)
+        {
+            if (property == null)
+                return null;
+
+            var segments = new Stack<string>();
+            WzObject current = property;
+            while (current is WzImageProperty imageProperty)
+            {
+                segments.Push(imageProperty.Name);
+                current = imageProperty.Parent;
+            }
+
+            return segments.Count == 0 ? null : string.Join("/", segments);
         }
 
         #region Hot Swap Refresh Methods

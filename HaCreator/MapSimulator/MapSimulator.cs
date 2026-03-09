@@ -26,6 +26,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
@@ -538,10 +539,11 @@ namespace HaCreator.MapSimulator
             _gameState.IsBigBang2Update = WzFileManager.IsBigBang2Update(uiWindow2Image); // chaos update
 
             // BGM
-            if (Program.InfoManager.BGMs.ContainsKey(_mapBoard.MapInfo.bgm))
+            WzBinaryProperty bgmProperty = Program.InfoManager.GetBgm(_mapBoard.MapInfo.bgm);
+            if (bgmProperty != null)
             {
                 _currentBgmName = _mapBoard.MapInfo.bgm;
-                _audio = new MonoGameBgmPlayer(Program.InfoManager.BGMs[_mapBoard.MapInfo.bgm], true);
+                _audio = new MonoGameBgmPlayer(bgmProperty, true);
                 StartBgmForCurrentFocusState();
             }
 
@@ -608,7 +610,7 @@ namespace HaCreator.MapSimulator
 #endif
 
             /////// Background and objects
-            List<WzObject> usedProps = new List<WzObject>();
+            ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
             
             // Objects
             Task t_tiles = Task.Run(() =>
@@ -618,7 +620,7 @@ namespace HaCreator.MapSimulator
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
 
                     mapObjects[tileObj.LayerNumber].Add(
-                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
                 }
             });
 
@@ -628,7 +630,7 @@ namespace HaCreator.MapSimulator
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
-                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, usedProps, background.Flip);
 
                     if (bgItem != null)
                         backgrounds_back.Add(bgItem);
@@ -636,7 +638,7 @@ namespace HaCreator.MapSimulator
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.FrontBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
-                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, usedProps, background.Flip);
 
                     if (bgItem != null)
                         backgrounds_front.Add(bgItem);
@@ -650,7 +652,7 @@ namespace HaCreator.MapSimulator
                 {
                     //WzImage imageProperty = (WzImage)NPCWZFile[reactorInfo.ID + ".img"];
 
-                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(_texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(_texturePool, reactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (reactorItem != null)
                         mapObjects_Reactors.Add(reactorItem);
                 }
@@ -665,7 +667,7 @@ namespace HaCreator.MapSimulator
                     if (npc.Hide)
                         continue;
 
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (npcItem != null)
                         mapObjects_NPCs.Add(npcItem);
                 }
@@ -680,7 +682,7 @@ namespace HaCreator.MapSimulator
                     if (mob.Hide)
                         continue;
 
-                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, ref usedProps);
+                    MobItem npcItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
 
                     mapObjects_Mobs.Add(npcItem);
                 }
@@ -696,7 +698,7 @@ namespace HaCreator.MapSimulator
 
                 foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
                 {
-                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (portalItem != null)
                         mapObjects_Portal.Add(portalItem);
                 }
@@ -718,7 +720,7 @@ namespace HaCreator.MapSimulator
             Task t_cursor = Task.Run(() =>
             {
                 WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
-                this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+                this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
             });
 
             // Spine object
@@ -1000,8 +1002,6 @@ namespace HaCreator.MapSimulator
                 obj.MSTag = null;
                 obj.MSTagSpine = null; // cleanup
             }
-            usedProps.Clear();
-
         }
 
         /// <summary>
@@ -1247,10 +1247,11 @@ namespace HaCreator.MapSimulator
                     _audio = null;
                 }
 
-                if (Program.InfoManager.BGMs.ContainsKey(newBgmName))
+                WzBinaryProperty bgmProperty = Program.InfoManager.GetBgm(newBgmName);
+                if (bgmProperty != null)
                 {
                     _currentBgmName = newBgmName;
-                    _audio = new MonoGameBgmPlayer(Program.InfoManager.BGMs[newBgmName], true);
+                    _audio = new MonoGameBgmPlayer(bgmProperty, true);
                     StartBgmForCurrentFocusState();
                 }
                 else
@@ -1283,7 +1284,7 @@ namespace HaCreator.MapSimulator
                 mapObjects[i] = new List<BaseDXDrawableItem>();
             }
 
-            List<WzObject> usedProps = new List<WzObject>();
+            ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
 
             // Load map objects in parallel
             Task t_tiles = Task.Run(() =>
@@ -1292,7 +1293,7 @@ namespace HaCreator.MapSimulator
                 {
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
                     mapObjects[tileObj.LayerNumber].Add(
-                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, ref usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
                 }
             });
 
@@ -1301,14 +1302,14 @@ namespace HaCreator.MapSimulator
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
-                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, usedProps, background.Flip);
                     if (bgItem != null)
                         backgrounds_back.Add(bgItem);
                 }
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.FrontBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
-                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, ref usedProps, background.Flip);
+                    BackgroundItem bgItem = MapSimulatorLoader.CreateBackgroundFromProperty(_texturePool, bgParent, background, _DxDeviceManager.GraphicsDevice, usedProps, background.Flip);
                     if (bgItem != null)
                         backgrounds_front.Add(bgItem);
                 }
@@ -1318,7 +1319,7 @@ namespace HaCreator.MapSimulator
             {
                 foreach (ReactorInstance reactor in _mapBoard.BoardItems.Reactors)
                 {
-                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(_texturePool, reactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(_texturePool, reactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (reactorItem != null)
                         mapObjects_Reactors.Add(reactorItem);
                 }
@@ -1330,7 +1331,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (npc.Hide)
                         continue;
-                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (npcItem != null)
                         mapObjects_NPCs.Add(npcItem);
                 }
@@ -1342,7 +1343,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (mob.Hide)
                         continue;
-                    MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, ref usedProps);
+                    MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
                     mapObjects_Mobs.Add(mobItem);
                 }
             });
@@ -1353,7 +1354,7 @@ namespace HaCreator.MapSimulator
                 WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
                 foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
                 {
-                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                    PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (portalItem != null)
                         mapObjects_Portal.Add(portalItem);
                 }
@@ -1409,7 +1410,7 @@ namespace HaCreator.MapSimulator
                 if (this.mouseCursor == null)
                 {
                     WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
-                    this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps, false);
+                    this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
                 }
             });
 
@@ -1576,7 +1577,6 @@ namespace HaCreator.MapSimulator
                 obj.MSTag = null;
                 obj.MSTagSpine = null;
             }
-            usedProps.Clear();
         }
 
         /// <summary>
@@ -1602,7 +1602,7 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void LoadTransportFieldTextures()
         {
-            List<WzObject> usedPropsTemp = new List<WzObject>();
+            ConcurrentBag<WzObject> usedPropsTemp = new ConcurrentBag<WzObject>();
             System.Diagnostics.Debug.WriteLine("[TransportField] Loading textures...");
 
             // Priority 1: Try contimove.img first (main ship sprites)
@@ -1620,7 +1620,7 @@ namespace HaCreator.MapSimulator
                     if (shipCategory != null)
                     {
                         System.Diagnostics.Debug.WriteLine("[TransportField] Found ship category in contimove.img");
-                        LoadShipFromCategory(shipCategory, "contimove", ref usedPropsTemp);
+                        LoadShipFromCategory(shipCategory, "contimove", usedPropsTemp);
                     }
 
                     // Note: Balrog textures are loaded from mob data via LoadMobFrames below
@@ -1649,7 +1649,7 @@ namespace HaCreator.MapSimulator
                             if (shipCategory != null)
                             {
                                 System.Diagnostics.Debug.WriteLine($"[TransportField] Found ship category in {oS}");
-                                LoadShipFromCategory(shipCategory, oS, ref usedPropsTemp);
+                                LoadShipFromCategory(shipCategory, oS, usedPropsTemp);
                                 if (_transportField.HasShipTextures)
                                     break;
                             }
@@ -1680,7 +1680,7 @@ namespace HaCreator.MapSimulator
                         if (shipCategory != null)
                         {
                             System.Diagnostics.Debug.WriteLine($"[TransportField] Found ship in object set: {kvp.Key}");
-                            LoadShipFromCategory(shipCategory, kvp.Key, ref usedPropsTemp);
+                            LoadShipFromCategory(shipCategory, kvp.Key, usedPropsTemp);
                             if (_transportField.HasShipTextures)
                                 break;
                         }
@@ -1697,7 +1697,7 @@ namespace HaCreator.MapSimulator
                 string[] shipMobIds = new[] { "8130100", "8150000", "8150100", "5220002", "6130101" };
                 foreach (var mobId in shipMobIds)
                 {
-                    var shipMobFrames = LoadMobFrames(mobId, "stand", ref usedPropsTemp);
+                    var shipMobFrames = LoadMobFrames(mobId, "stand", usedPropsTemp);
                     if (shipMobFrames != null && shipMobFrames.Count > 0)
                     {
                         System.Diagnostics.Debug.WriteLine($"[TransportField] Using mob {mobId} as ship sprite ({shipMobFrames.Count} frames)");
@@ -1720,11 +1720,11 @@ namespace HaCreator.MapSimulator
                 foreach (var mobId in balrogMobIds)
                 {
                     // Try fly animation first (Balrog's flying attack)
-                    var balrogFrames = LoadMobFrames(mobId, "fly", ref usedPropsTemp);
+                    var balrogFrames = LoadMobFrames(mobId, "fly", usedPropsTemp);
                     if (balrogFrames == null || balrogFrames.Count == 0)
-                        balrogFrames = LoadMobFrames(mobId, "move", ref usedPropsTemp);
+                        balrogFrames = LoadMobFrames(mobId, "move", usedPropsTemp);
                     if (balrogFrames == null || balrogFrames.Count == 0)
-                        balrogFrames = LoadMobFrames(mobId, "stand", ref usedPropsTemp);
+                        balrogFrames = LoadMobFrames(mobId, "stand", usedPropsTemp);
 
                     if (balrogFrames != null && balrogFrames.Count > 0)
                     {
@@ -1744,7 +1744,7 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Load ship frames from a WZ category node
         /// </summary>
-        private void LoadShipFromCategory(WzObject shipCategory, string source, ref List<WzObject> usedProps)
+        private void LoadShipFromCategory(WzObject shipCategory, string source, ConcurrentBag<WzObject> usedProps)
         {
             if (shipCategory == null) return;
 
@@ -1756,7 +1756,7 @@ namespace HaCreator.MapSimulator
                 {
                     if (prop is WzImageProperty shipVariant)
                     {
-                        var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, shipVariant, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                        var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, shipVariant, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps);
                         if (shipFrames.Count > 0)
                         {
                             System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {source}/ship/{prop.Name}");
@@ -1768,7 +1768,7 @@ namespace HaCreator.MapSimulator
             }
             else if (shipCategory is WzImageProperty imgProp)
             {
-                var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, imgProp, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, imgProp, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps);
                 if (shipFrames.Count > 0)
                 {
                     System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {source}/ship");
@@ -1780,7 +1780,7 @@ namespace HaCreator.MapSimulator
         /// <summary>
         /// Helper to load mob frames by ID and action
         /// </summary>
-        private List<IDXObject> LoadMobFrames(string mobId, string action, ref List<WzObject> usedProps)
+        private List<IDXObject> LoadMobFrames(string mobId, string action, ConcurrentBag<WzObject> usedProps)
         {
             try
             {
@@ -1805,7 +1805,7 @@ namespace HaCreator.MapSimulator
                     var actionProp = mobImage[action] ?? mobImage["stand"] ?? mobImage["move"] ?? mobImage["fly"];
                     if (actionProp is WzImageProperty imgProp)
                     {
-                        return MapSimulatorLoader.LoadFrames(_texturePool, imgProp, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedProps);
+                        return MapSimulatorLoader.LoadFrames(_texturePool, imgProp, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps);
                     }
                 }
             }
@@ -1845,14 +1845,14 @@ namespace HaCreator.MapSimulator
                 spawnPoint.Info,
                 spawnPoint.Team);
 
-            List<WzObject> usedProps = new List<WzObject>();
+            ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
             return MapSimulatorLoader.CreateMobFromProperty(
                 _texturePool,
                 mobInstance,
                 UserScreenScaleFactor,
                 _DxDeviceManager.GraphicsDevice,
                 _soundManager,
-                ref usedProps);
+                usedProps);
         }
 
         private static int? ConvertRespawnMillisecondsToMapMobTime(int respawnTimeMs)
@@ -1970,7 +1970,7 @@ namespace HaCreator.MapSimulator
             // ObjectInfo path: Map.wz/Obj/{oS}/{l0}/{l1}/{l2}
             // For ships: Map.wz/Obj/contimove.img/ship/0/0 (oS=contimove, l0=ship, l1=0, l2=0)
             // We need to load all frames from l1 level (the animation container)
-            List<WzObject> usedPropsTemp = new List<WzObject>();
+            ConcurrentBag<WzObject> usedPropsTemp = new ConcurrentBag<WzObject>();
             try
             {
                 var objInfo = shipObject.BaseInfo as ObjectInfo;
@@ -1989,7 +1989,7 @@ namespace HaCreator.MapSimulator
                         var animContainer = objectSet[objInfo.l0]?[objInfo.l1];
                         if (animContainer is WzImageProperty animProp)
                         {
-                            var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, animProp, 0, 0, _DxDeviceManager.GraphicsDevice, ref usedPropsTemp);
+                            var shipFrames = MapSimulatorLoader.LoadFrames(_texturePool, animProp, 0, 0, _DxDeviceManager.GraphicsDevice, usedPropsTemp);
                             if (shipFrames.Count > 0)
                             {
                                 System.Diagnostics.Debug.WriteLine($"[TransportField] Loaded {shipFrames.Count} ship frames from {objInfo.oS}/{objInfo.l0}/{objInfo.l1}");
@@ -4197,6 +4197,11 @@ namespace HaCreator.MapSimulator
                     // If random fails (no Character.wz), create placeholder
                     _playerManager.CreatePlaceholderPlayer();
                 }
+            }
+
+            if (_playerManager?.Player?.Build != null)
+            {
+                RefreshSkillWindowForJob(_playerManager.Player.Build.Job);
             }
 
             ConfigureSkillUIBindings();

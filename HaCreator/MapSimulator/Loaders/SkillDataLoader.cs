@@ -241,7 +241,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
 
             System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
-            Texture2D iconTexture = iconBitmap?.ToTexture2D(device);
+            Texture2D iconTexture = iconBitmap?.ToTexture2DAndDispose(device);
             if (iconTexture == null)
                 return null;
 
@@ -251,7 +251,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (disabledIconProp != null)
             {
                 System.Drawing.Bitmap disabledBitmap = disabledIconProp.GetLinkedWzCanvasBitmap();
-                disabledIconTexture = disabledBitmap?.ToTexture2D(device);
+                disabledIconTexture = disabledBitmap?.ToTexture2DAndDispose(device);
             }
 
             // Get mouse over icon if available
@@ -260,7 +260,7 @@ namespace HaCreator.MapSimulator.Loaders
             if (mouseOverIconProp != null)
             {
                 System.Drawing.Bitmap mouseOverBitmap = mouseOverIconProp.GetLinkedWzCanvasBitmap();
-                mouseOverIconTexture = mouseOverBitmap?.ToTexture2D(device);
+                mouseOverIconTexture = mouseOverBitmap?.ToTexture2DAndDispose(device);
             }
 
             // Get skill info
@@ -388,7 +388,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
 
             System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
-            return iconBitmap?.ToTexture2D(device);
+            return iconBitmap?.ToTexture2DAndDispose(device);
         }
 
         /// <summary>

@@ -1410,7 +1410,7 @@ namespace HaCreator.MapSimulator.Character
                 var bitmap = canvas.GetLinkedWzCanvasBitmap();
                 if (bitmap == null) return null;
 
-                var texture = bitmap.ToTexture2D(_device);
+                var texture = bitmap.ToTexture2DAndDispose(_device);
                 if (texture == null) return null;
 
                 var origin = canvas["origin"] as WzVectorProperty;

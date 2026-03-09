@@ -1550,7 +1550,20 @@ namespace HaCreator.GUI
                             }
 
                             if (binProperty != null)
-                                Program.InfoManager.BGMs[WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name] = binProperty;
+                            {
+                                WzImage ownerImage = binProperty.GetTopMostWzImage() as WzImage;
+                                string propertyPath = WzInformationManager.GetPropertyPathRelativeToImage(binProperty);
+                                if (ownerImage != null && !string.IsNullOrEmpty(propertyPath))
+                                {
+                                    string bgmKey = WzInfoTools.RemoveExtension(soundImage.Name) + @"/" + binProperty.Name;
+                                    Program.InfoManager.BGMs[bgmKey] = new WzInformationManager.BgmEntry(ownerImage.Name, propertyPath);
+                                }
+
+                                if (ownerImage != null && ownerImage != soundImage && ownerImage.Parsed && !ownerImage.Changed)
+                                {
+                                    ownerImage.UnparseImage();
+                                }
+                            }
                         }
                     }
                     catch (Exception e)
@@ -1558,6 +1571,13 @@ namespace HaCreator.GUI
                         string error = string.Format("[ExtractSoundFile] Error parsing {0}, {1} file.\r\nError: {2}", soundWzDir.Name, soundImage.Name, e.ToString());
                         MapleLib.Helpers.ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
                         continue;
+                    }
+                    finally
+                    {
+                        if (soundImage.Parsed && !soundImage.Changed)
+                        {
+                            soundImage.UnparseImage();
+                        }
                     }
                 }
             }

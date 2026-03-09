@@ -486,7 +486,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             var bitmap = canvas.GetLinkedWzCanvasBitmap();
             if (bitmap != null)
             {
-                var texture = bitmap.ToTexture2D(_device);
+                var texture = bitmap.ToTexture2DAndDispose(_device);
                 if (texture != null)
                 {
                     var origin = canvas.GetCanvasOriginPosition();
@@ -567,7 +567,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var bitmap = iconCanvas.GetLinkedWzCanvasBitmap();
                 if (bitmap != null)
                 {
-                    var texture = bitmap.ToTexture2D(_device);
+                    var texture = bitmap.ToTexture2DAndDispose(_device);
                     skill.Icon = new DXObject(0, 0, texture);
                 }
             }
@@ -579,7 +579,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var bitmap = iconDisabledCanvas.GetLinkedWzCanvasBitmap();
                 if (bitmap != null)
                 {
-                    var texture = bitmap.ToTexture2D(_device);
+                    var texture = bitmap.ToTexture2DAndDispose(_device);
                     skill.IconDisabled = new DXObject(0, 0, texture);
                 }
             }
@@ -591,7 +591,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var bitmap = iconMouseOverCanvas.GetLinkedWzCanvasBitmap();
                 if (bitmap != null)
                 {
-                    var texture = bitmap.ToTexture2D(_device);
+                    var texture = bitmap.ToTexture2DAndDispose(_device);
                     skill.IconMouseOver = new DXObject(0, 0, texture);
                 }
             }

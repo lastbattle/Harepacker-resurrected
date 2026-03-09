@@ -20,6 +20,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -105,7 +106,7 @@ namespace HaCreator.MapSimulator {
         /// <param name="usedProps"></param>
         /// <param name="spineAni">Spine animation path</param>
         /// <returns></returns>
-        internal static List<IDXObject> LoadFrames(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, string spineAni = null) {
+        internal static List<IDXObject> LoadFrames(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, string spineAni = null) {
             List<IDXObject> frames = new List<IDXObject>();
 
             source = WzInfoTools.GetRealProperty(source);
@@ -165,7 +166,7 @@ namespace HaCreator.MapSimulator {
                 while ((_frameProp = WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null) {
                     if (_frameProp is WzSubProperty) // issue with 867119250
                     {
-                        frames.AddRange(LoadFrames(texturePool, _frameProp, x, y, device, ref usedProps, null));
+                        frames.AddRange(LoadFrames(texturePool, _frameProp, x, y, device, usedProps, null));
                     }
                     else {
                         WzCanvasProperty frameProp;
@@ -251,9 +252,9 @@ namespace HaCreator.MapSimulator {
         public static BaseDXDrawableItem CreateMapItemFromProperty(TexturePool texturePool, 
             WzImageProperty source, 
             int x, int y, 
-            Point mapCenter, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
+            Point mapCenter, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip) {
 
-            BaseDXDrawableItem mapItem = new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, ref usedProps), flip);
+            BaseDXDrawableItem mapItem = new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, usedProps), flip);
             return mapItem;
         }
 
@@ -267,8 +268,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static BackgroundItem CreateBackgroundFromProperty(TexturePool texturePool, WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
-            List<IDXObject> frames = LoadFrames(texturePool, source, bgInstance.BaseX, bgInstance.BaseY, device, ref usedProps, bgInstance.SpineAni);
+        public static BackgroundItem CreateBackgroundFromProperty(TexturePool texturePool, WzImageProperty source, BackgroundInstance bgInstance, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip) {
+            List<IDXObject> frames = LoadFrames(texturePool, source, bgInstance.BaseX, bgInstance.BaseY, device, usedProps, bgInstance.SpineAni);
             if (frames.Count == 0) {
                 string error = string.Format("[MapSimulatorLoader] 0 frames loaded for bg texture from src: '{0}'", source.FullPath); // Back_003.wz\\BM3_3.img\\spine\\0
 
@@ -370,8 +371,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, ReactorInstance reactorInstance, GraphicsDevice device, ref List<WzObject> usedProps) {
-            return EffectLoader.CreateReactorFromProperty(texturePool, reactorInstance, device, ref usedProps);
+        public static ReactorItem CreateReactorFromProperty(TexturePool texturePool, ReactorInstance reactorInstance, GraphicsDevice device, ConcurrentBag<WzObject> usedProps) {
+            return EffectLoader.CreateReactorFromProperty(texturePool, reactorInstance, device, usedProps);
         }
         #endregion
 
@@ -385,8 +386,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, GraphicsDevice device, ref List<WzObject> usedProps) {
-            return EffectLoader.CreatePortalFromProperty(texturePool, gameParent, portalInstance, device, ref usedProps);
+        public static PortalItem CreatePortalFromProperty(TexturePool texturePool, WzSubProperty gameParent, PortalInstance portalInstance, GraphicsDevice device, ConcurrentBag<WzObject> usedProps) {
+            return EffectLoader.CreatePortalFromProperty(texturePool, gameParent, portalInstance, device, usedProps);
         }
         #endregion
 
@@ -400,8 +401,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps) {
-            return LifeLoader.CreateMobFromProperty(texturePool, mobInstance, UserScreenScaleFactor, device, soundManager, ref usedProps);
+        public static MobItem CreateMobFromProperty(TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ConcurrentBag<WzObject> usedProps) {
+            return LifeLoader.CreateMobFromProperty(texturePool, mobInstance, UserScreenScaleFactor, device, soundManager, usedProps);
         }
 
         /// <summary>
@@ -413,8 +414,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="device"></param>
         /// <param name="usedProps"></param>
         /// <returns></returns>
-        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps) {
-            return LifeLoader.CreateNpcFromProperty(texturePool, npcInstance, UserScreenScaleFactor, device, ref usedProps);
+        public static NpcItem CreateNpcFromProperty(TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor, GraphicsDevice device, ConcurrentBag<WzObject> usedProps) {
+            return LifeLoader.CreateNpcFromProperty(texturePool, npcInstance, UserScreenScaleFactor, device, usedProps);
         }
         #endregion
 
@@ -465,8 +466,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="usedProps"></param>
         /// <param name="flip"></param>
         /// <returns></returns>
-        public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip) {
-            return UILoader.CreateMouseCursorFromProperty(texturePool, source, x, y, device, ref usedProps, flip);
+        public static MouseCursorItem CreateMouseCursorFromProperty(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip) {
+            return UILoader.CreateMouseCursorFromProperty(texturePool, source, x, y, device, usedProps, flip);
         }
         #endregion
 

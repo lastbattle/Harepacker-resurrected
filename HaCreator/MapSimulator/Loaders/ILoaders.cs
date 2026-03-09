@@ -10,6 +10,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Loaders
@@ -23,13 +24,13 @@ namespace HaCreator.MapSimulator.Loaders
         /// Creates a MobItem with animations from WZ data
         /// </summary>
         MobItem CreateMob(TexturePool texturePool, MobInstance mobInstance,
-            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps);
+            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ConcurrentBag<WzObject> usedProps);
 
         /// <summary>
         /// Creates an NpcItem with animations from WZ data
         /// </summary>
         NpcItem CreateNpc(TexturePool texturePool, NpcInstance npcInstance,
-            float userScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps);
+            float userScreenScaleFactor, GraphicsDevice device, ConcurrentBag<WzObject> usedProps);
     }
 
     /// <summary>
@@ -41,13 +42,13 @@ namespace HaCreator.MapSimulator.Loaders
         /// Creates a ReactorItem from WZ data
         /// </summary>
         ReactorItem CreateReactor(TexturePool texturePool, ReactorInstance reactorInstance,
-            GraphicsDevice device, ref List<WzObject> usedProps);
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps);
 
         /// <summary>
         /// Creates a PortalItem from WZ data
         /// </summary>
         PortalItem CreatePortal(TexturePool texturePool, WzSubProperty gameParent,
-            PortalInstance portalInstance, GraphicsDevice device, ref List<WzObject> usedProps);
+            PortalInstance portalInstance, GraphicsDevice device, ConcurrentBag<WzObject> usedProps);
     }
 
     /// <summary>
@@ -73,7 +74,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Creates the mouse cursor
         /// </summary>
         MouseCursorItem CreateMouseCursor(TexturePool texturePool, WzImageProperty source,
-            int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip);
+            int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip);
     }
 
     /// <summary>
@@ -143,17 +144,17 @@ namespace HaCreator.MapSimulator.Loaders
     internal class LifeLoaderImpl : ILifeLoader
     {
         public MobItem CreateMob(TexturePool texturePool, MobInstance mobInstance,
-            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps)
+            float userScreenScaleFactor, GraphicsDevice device, SoundManager soundManager, ConcurrentBag<WzObject> usedProps)
         {
             return LifeLoader.CreateMobFromProperty(texturePool, mobInstance,
-                userScreenScaleFactor, device, soundManager, ref usedProps);
+                userScreenScaleFactor, device, soundManager, usedProps);
         }
 
         public NpcItem CreateNpc(TexturePool texturePool, NpcInstance npcInstance,
-            float userScreenScaleFactor, GraphicsDevice device, ref List<WzObject> usedProps)
+            float userScreenScaleFactor, GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             return LifeLoader.CreateNpcFromProperty(texturePool, npcInstance,
-                userScreenScaleFactor, device, ref usedProps);
+                userScreenScaleFactor, device, usedProps);
         }
     }
 
@@ -163,17 +164,17 @@ namespace HaCreator.MapSimulator.Loaders
     internal class EffectLoaderImpl : IEffectLoader
     {
         public ReactorItem CreateReactor(TexturePool texturePool, ReactorInstance reactorInstance,
-            GraphicsDevice device, ref List<WzObject> usedProps)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             return EffectLoader.CreateReactorFromProperty(texturePool, reactorInstance,
-                device, ref usedProps);
+                device, usedProps);
         }
 
         public PortalItem CreatePortal(TexturePool texturePool, WzSubProperty gameParent,
-            PortalInstance portalInstance, GraphicsDevice device, ref List<WzObject> usedProps)
+            PortalInstance portalInstance, GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             return EffectLoader.CreatePortalFromProperty(texturePool, gameParent,
-                portalInstance, device, ref usedProps);
+                portalInstance, device, usedProps);
         }
     }
 
@@ -202,10 +203,10 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         public MouseCursorItem CreateMouseCursor(TexturePool texturePool, WzImageProperty source,
-            int x, int y, GraphicsDevice device, ref List<WzObject> usedProps, bool flip)
+            int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip)
         {
             return UILoader.CreateMouseCursorFromProperty(texturePool, source, x, y,
-                device, ref usedProps, flip);
+                device, usedProps, flip);
         }
     }
 }

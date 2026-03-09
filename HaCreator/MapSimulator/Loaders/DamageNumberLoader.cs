@@ -205,9 +205,9 @@ namespace HaCreator.MapSimulator.Loaders
                     var bitmap = digitCanvas.GetLinkedWzCanvasBitmap();
                     if (bitmap != null)
                     {
-                        digitSet.Digits[i] = bitmap.ToTexture2D(device);
                         digitSet.Widths[i] = bitmap.Width;
                         digitSet.Heights[i] = bitmap.Height;
+                        digitSet.Digits[i] = bitmap.ToTexture2DAndDispose(device);
 
                         // Get origin point
                         var originProp = digitCanvas["origin"] as WzVectorProperty;
@@ -237,7 +237,7 @@ namespace HaCreator.MapSimulator.Loaders
                     var bitmap = specialCanvas.GetLinkedWzCanvasBitmap();
                     if (bitmap != null)
                     {
-                        digitSet.SpecialTextures[specialName] = bitmap.ToTexture2D(device);
+                        digitSet.SpecialTextures[specialName] = bitmap.ToTexture2DAndDispose(device);
 
                         var originProp = specialCanvas["origin"] as WzVectorProperty;
                         if (originProp != null)
@@ -263,7 +263,7 @@ namespace HaCreator.MapSimulator.Loaders
                         var bitmap = effectCanvas.GetLinkedWzCanvasBitmap();
                         if (bitmap != null)
                         {
-                            digitSet.CriticalEffectTexture = bitmap.ToTexture2D(device);
+                            digitSet.CriticalEffectTexture = bitmap.ToTexture2DAndDispose(device);
 
                             var originProp = effectCanvas["origin"] as WzVectorProperty;
                             if (originProp != null)

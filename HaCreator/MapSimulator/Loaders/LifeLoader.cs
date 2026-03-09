@@ -11,6 +11,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework.Graphics;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Pools;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
@@ -35,7 +36,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static MobItem CreateMobFromProperty(
             TexturePool texturePool, MobInstance mobInstance, float UserScreenScaleFactor,
-            GraphicsDevice device, SoundManager soundManager, ref List<WzObject> usedProps)
+            GraphicsDevice device, SoundManager soundManager, ConcurrentBag<WzObject> usedProps)
         {
             MobInfo mobInfo = (MobInfo)mobInstance.BaseInfo;
             WzImage source = mobInfo.LinkedWzImage;
@@ -72,7 +73,7 @@ namespace HaCreator.MapSimulator.Loaders
                         case "regen":
                             {
                                 // Load frames for this specific action
-                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps);
+                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, usedProps);
                                 if (actionFrames.Count > 0)
                                 {
                                     animationSet.AddAnimation(actionName, actionFrames);
@@ -91,7 +92,7 @@ namespace HaCreator.MapSimulator.Loaders
                                     WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
                                     if (hitNode != null)
                                     {
-                                        List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, ref usedProps);
+                                        List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
                                         if (hitFrames.Count > 0)
                                         {
                                             animationSet.AddAttackHitEffect(actionName, hitFrames);
@@ -102,7 +103,7 @@ namespace HaCreator.MapSimulator.Loaders
                                     WzImageProperty ballNode = infoNode?["ball"] ?? mobStateProperty["ball"];
                                     if (ballNode != null)
                                     {
-                                        List<IDXObject> ballFrames = MapSimulatorLoader.LoadFrames(texturePool, ballNode, 0, 0, device, ref usedProps);
+                                        List<IDXObject> ballFrames = MapSimulatorLoader.LoadFrames(texturePool, ballNode, 0, 0, device, usedProps);
                                         if (ballFrames.Count > 0)
                                         {
                                             animationSet.AddAttackProjectileEffect(actionName, ballFrames);
@@ -113,7 +114,7 @@ namespace HaCreator.MapSimulator.Loaders
                                     WzImageProperty effectNode = infoNode?["effect"];
                                     if (effectNode != null)
                                     {
-                                        List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, ref usedProps);
+                                        List<IDXObject> effectFrames = MapSimulatorLoader.LoadFrames(texturePool, effectNode, 0, 0, device, usedProps);
                                         if (effectFrames.Count > 0)
                                         {
                                             animationSet.AddAttackEffect(actionName, effectFrames);
@@ -124,7 +125,7 @@ namespace HaCreator.MapSimulator.Loaders
                                     {
                                         foreach (WzImageProperty infoChild in infoNode.WzProperties)
                                         {
-                                            if (!TryBuildAttackEffectNode(texturePool, infoChild, device, ref usedProps, out var extraEffectNode))
+                                            if (!TryBuildAttackEffectNode(texturePool, infoChild, device, usedProps, out var extraEffectNode))
                                             {
                                                 continue;
                                             }
@@ -136,7 +137,7 @@ namespace HaCreator.MapSimulator.Loaders
                                     WzImageProperty warningNode = infoNode?["areaWarning"];
                                     if (warningNode != null)
                                     {
-                                        List<IDXObject> warningFrames = MapSimulatorLoader.LoadFrames(texturePool, warningNode, 0, 0, device, ref usedProps);
+                                        List<IDXObject> warningFrames = MapSimulatorLoader.LoadFrames(texturePool, warningNode, 0, 0, device, usedProps);
                                         if (warningFrames.Count > 0)
                                         {
                                             animationSet.AddAttackWarningEffect(actionName, warningFrames);
@@ -149,7 +150,7 @@ namespace HaCreator.MapSimulator.Loaders
                         default:
                             {
                                 // For unknown actions, still load them in case they're needed
-                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, ref usedProps);
+                                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, mobInstance.X, mobInstance.Y, device, usedProps);
                                 if (actionFrames.Count > 0)
                                 {
                                     animationSet.AddAnimation(actionName, actionFrames);
@@ -301,7 +302,7 @@ namespace HaCreator.MapSimulator.Loaders
             TexturePool texturePool,
             WzImageProperty infoChild,
             GraphicsDevice device,
-            ref List<WzObject> usedProps,
+            ConcurrentBag<WzObject> usedProps,
             out MobAnimationSet.AttackEffectNode effectNode)
         {
             effectNode = null;
@@ -351,7 +352,7 @@ namespace HaCreator.MapSimulator.Loaders
                     break;
                 }
 
-                List<IDXObject> sequenceFrames = MapSimulatorLoader.LoadFrames(texturePool, sequenceProperty, 0, 0, device, ref usedProps);
+                List<IDXObject> sequenceFrames = MapSimulatorLoader.LoadFrames(texturePool, sequenceProperty, 0, 0, device, usedProps);
                 if (sequenceFrames.Count > 0)
                 {
                     effectNode.Sequences.Add(sequenceFrames);
@@ -374,7 +375,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <returns></returns>
         public static NpcItem CreateNpcFromProperty(
             TexturePool texturePool, NpcInstance npcInstance, float UserScreenScaleFactor,
-            GraphicsDevice device, ref List<WzObject> usedProps)
+            GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
@@ -394,7 +395,7 @@ namespace HaCreator.MapSimulator.Loaders
                     default:
                         {
                             // Load frames for this action and store by action name
-                            List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, npcStateProperty, npcInstance.X, npcInstance.Y, device, ref usedProps);
+                            List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, npcStateProperty, npcInstance.X, npcInstance.Y, device, usedProps);
                             if (actionFrames.Count > 0)
                             {
                                 animationSet.AddAnimation(npcStateProperty.Name, actionFrames);

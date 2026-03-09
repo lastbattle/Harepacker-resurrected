@@ -77,6 +77,27 @@ namespace HaSharedLibrary.Util
         }
 
         /// <summary>
+        /// Converts a bitmap to Texture2D and disposes the bitmap afterwards.
+        /// Use this when the bitmap is only an intermediate decode step.
+        /// </summary>
+        public static Texture2D ToTexture2DAndDispose(this System.Drawing.Bitmap bitmap, GraphicsDevice device)
+        {
+            if (bitmap == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return bitmap.ToTexture2D(device);
+            }
+            finally
+            {
+                bitmap.Dispose();
+            }
+        }
+
+        /// <summary>
         /// Get the size of an image in Kilobytes
         /// </summary>
         /// <param name="imageSource"></param>

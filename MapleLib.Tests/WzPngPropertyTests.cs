@@ -38,10 +38,44 @@ public class WzPngPropertyTests
         using WzPngProperty property = CreateDetachedProperty(source);
 
         Bitmap first = property.GetImage(true);
-        Bitmap second = property.GetImage(false);
+        Bitmap second = property.GetImage(true);
 
         Assert.NotNull(first);
         Assert.Same(first, second);
+
+        first.Dispose();
+    }
+
+    [Fact]
+    public void GetImageFalse_ReturnsCloneWhenBitmapIsCached()
+    {
+        using Bitmap sourceBitmap = new Bitmap(2, 2);
+        sourceBitmap.SetPixel(0, 0, Color.Red);
+        sourceBitmap.SetPixel(1, 0, Color.Green);
+        sourceBitmap.SetPixel(0, 1, Color.Blue);
+        sourceBitmap.SetPixel(1, 1, Color.White);
+
+        using WzPngProperty source = new WzPngProperty { PNG = (Bitmap)sourceBitmap.Clone() };
+        using WzPngProperty property = CreateDetachedProperty(source);
+
+        using Bitmap cached = property.GetImage(true);
+        using Bitmap clone = property.GetImage(false);
+
+        Assert.NotNull(clone);
+        Assert.NotSame(cached, clone);
+    }
+
+    [Fact]
+    public void SettingPng_DoesNotRetainSourceBitmapAsCache()
+    {
+        using Bitmap sourceBitmap = new Bitmap(2, 2);
+        sourceBitmap.SetPixel(0, 0, Color.Red);
+
+        using WzPngProperty property = new WzPngProperty { PNG = sourceBitmap };
+        using Bitmap decoded = property.GetImage(false);
+
+        Assert.NotNull(decoded);
+        Assert.NotSame(sourceBitmap, decoded);
     }
 
     private static WzPngProperty CreateDetachedProperty(WzPngProperty source)
