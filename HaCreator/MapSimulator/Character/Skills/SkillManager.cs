@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -36,8 +38,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Active state
         private readonly List<ActiveProjectile> _projectiles = new();
         private readonly List<ActiveBuff> _buffs = new();
+        private readonly List<ActiveSummon> _summons = new();
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly Dictionary<int, int> _cooldowns = new(); // skillId -> lastCastTime
+        private PreparedSkill _preparedSkill;
         private SkillCastInfo _currentCast;
 
         // Skill book
@@ -53,15 +57,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Counters
         private int _nextProjectileId = 1;
 
+        private static readonly Random Random = new();
+
         // Callbacks
         public Action<SkillCastInfo> OnSkillCast;
         public Action<ActiveProjectile, MobItem> OnProjectileHit;
         public Action<ActiveBuff> OnBuffApplied;
         public Action<ActiveBuff> OnBuffExpired;
+        public Action<PreparedSkill> OnPreparedSkillStarted;
+        public Action<PreparedSkill> OnPreparedSkillReleased;
 
         // References
         private MobPool _mobPool;
         private CombatEffects _combatEffects;
+        private SoundManager _soundManager;
 
         #endregion
 
@@ -75,17 +84,58 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public void SetMobPool(MobPool mobPool) => _mobPool = mobPool;
         public void SetCombatEffects(CombatEffects effects) => _combatEffects = effects;
+        public void SetSoundManager(SoundManager soundManager) => _soundManager = soundManager;
 
         /// <summary>
         /// Load skills for player's job
         /// </summary>
         public void LoadSkillsForJob(int jobId)
         {
-            // Only load skills for the current job. Loading the entire advancement path
-            // scales poorly on newer versions with far more jobs/skills.
-            _availableSkills = _loader.LoadSkillsForJob(jobId);
+            ClearActiveSkillState(clearBuffs: true);
+
+            // Standard jobs should keep their full advancement chain available (Beginner -> current job),
+            // while special admin jobs stay on their focused single-book behavior.
+            _availableSkills = IsFocusedSingleBookJob(jobId)
+                ? _loader.LoadSkillsForJob(jobId)
+                : _loader.LoadSkillsForJobPath(jobId);
+
+            var validSkillIds = new HashSet<int>(_availableSkills.Select(skill => skill.SkillId));
+
+            foreach (int obsoleteSkillId in _skillLevels.Keys.Where(skillId => !validSkillIds.Contains(skillId)).ToList())
+            {
+                _skillLevels.Remove(obsoleteSkillId);
+            }
+
+            foreach (int hotkeySlot in _skillHotkeys
+                         .Where(entry => !validSkillIds.Contains(entry.Value))
+                         .Select(entry => entry.Key)
+                         .ToList())
+            {
+                _skillHotkeys.Remove(hotkeySlot);
+            }
+
+            foreach (int cooldownSkillId in _cooldowns.Keys.Where(skillId => !validSkillIds.Contains(skillId)).ToList())
+            {
+                _cooldowns.Remove(cooldownSkillId);
+            }
 
             // Initialize skill levels to 0 (unlearned)
+            foreach (var skill in _availableSkills)
+            {
+                if (!_skillLevels.ContainsKey(skill.SkillId))
+                {
+                    _skillLevels[skill.SkillId] = 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Load the full player skill catalog from Skill.wz.
+        /// </summary>
+        public void LoadAllSkills()
+        {
+            _availableSkills = _loader.LoadAllSkills();
+
             foreach (var skill in _availableSkills)
             {
                 if (!_skillLevels.ContainsKey(skill.SkillId))
@@ -109,6 +159,17 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int GetSkillLevel(int skillId)
         {
             return _skillLevels.TryGetValue(skillId, out int level) ? level : 0;
+        }
+
+        public void LearnAllActiveSkills()
+        {
+            foreach (var skill in _availableSkills)
+            {
+                if (skill == null || skill.IsPassive || skill.Invisible)
+                    continue;
+
+                SetSkillLevel(skill.SkillId, Math.Max(1, skill.MaxLevel));
+            }
         }
 
         /// <summary>
@@ -321,6 +382,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (skill == null)
                 return false;
 
+            if (_preparedSkill != null && _preparedSkill.SkillId == skillId)
+            {
+                ReleasePreparedSkill(currentTime);
+                return true;
+            }
+
             // Check if can cast
             if (!CanCastSkill(skillId, currentTime))
                 return false;
@@ -379,6 +446,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_currentCast != null && !_currentCast.IsComplete)
                 return false;
 
+            if (_preparedSkill != null)
+                return false;
+
             // Attack skills cannot be cast while on ladder/rope/swimming (buffs and heals are allowed)
             if (skill.IsAttack && !_player.CanAttack)
                 return false;
@@ -428,6 +498,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void StartCast(SkillData skill, int level, int currentTime)
         {
             var levelData = skill.GetLevel(level);
+            if (levelData == null)
+                return;
 
             _currentCast = new SkillCastInfo
             {
@@ -442,46 +514,172 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FacingRight = _player.FacingRight
             };
 
-            // Consume MP
+            ConsumeSkillResources(skill, levelData, currentTime);
+            TriggerSkillAnimation(skill);
+            PlayCastSound(skill);
+            OnSkillCast?.Invoke(_currentCast);
+
+            if (skill.IsPrepareSkill)
+            {
+                BeginPreparedSkill(skill, level, currentTime);
+                return;
+            }
+
+            ExecuteSkillPayload(skill, level, currentTime);
+        }
+
+        private void ConsumeSkillResources(SkillData skill, SkillLevelData levelData, int currentTime)
+        {
             _player.MP = Math.Max(0, _player.MP - levelData.MpCon);
 
-            // Consume HP if needed
             if (levelData.HpCon > 0)
             {
                 _player.HP = Math.Max(1, _player.HP - levelData.HpCon);
             }
 
-            // Set cooldown
             if (levelData.Cooldown > 0)
             {
                 _cooldowns[skill.SkillId] = currentTime;
             }
+        }
 
-            // Trigger player attack animation
-            _player.TriggerSkillAnimation(skill.ActionName ?? "attack1");
+        private void TriggerSkillAnimation(SkillData skill)
+        {
+            string actionName = string.IsNullOrWhiteSpace(skill.ActionName)
+                ? skill.AttackType switch
+                {
+                    SkillAttackType.Ranged => "shoot1",
+                    SkillAttackType.Magic => "swingO1",
+                    _ => "attack1"
+                }
+                : skill.ActionName;
 
-            OnSkillCast?.Invoke(_currentCast);
+            _player.TriggerSkillAnimation(actionName);
+        }
 
-            // Handle different skill types
+        private void PlayCastSound(SkillData skill)
+        {
+            if (skill == null || _soundManager == null)
+                return;
+
+            string soundKey = _loader.EnsureCastSoundRegistered(skill, _soundManager);
+            if (!string.IsNullOrEmpty(soundKey))
+            {
+                _soundManager.PlaySound(soundKey);
+            }
+        }
+
+        private void ExecuteSkillPayload(SkillData skill, int level, int currentTime)
+        {
+            if (skill.IsMovement)
+            {
+                ExecuteMovementSkill(skill, level);
+            }
+
             if (skill.IsBuff)
             {
                 ApplyBuff(skill, level, currentTime);
             }
-            else if (skill.IsHeal)
+
+            if (skill.IsHeal)
             {
                 ApplyHeal(skill, level);
             }
-            else if (skill.IsAttack)
+
+            if (skill.IsSummon)
             {
-                if (skill.Projectile != null)
-                {
-                    SpawnProjectile(skill, level, currentTime);
-                }
-                else
-                {
-                    ProcessMeleeAttack(skill, level, currentTime);
-                }
+                SpawnSummon(skill, level, currentTime);
             }
+
+            if (!skill.IsAttack)
+                return;
+
+            if (skill.Projectile != null)
+            {
+                SpawnProjectile(skill, level, currentTime);
+                return;
+            }
+
+            ProcessMeleeAttack(skill, level, currentTime);
+        }
+
+        private void BeginPreparedSkill(SkillData skill, int level, int currentTime)
+        {
+            var levelData = skill.GetLevel(level);
+            int durationMs = GetPrepareDuration(skill, levelData);
+
+            _preparedSkill = new PreparedSkill
+            {
+                SkillId = skill.SkillId,
+                Level = level,
+                StartTime = currentTime,
+                Duration = durationMs,
+                SkillData = skill,
+                LevelData = levelData
+            };
+
+            OnPreparedSkillStarted?.Invoke(_preparedSkill);
+        }
+
+        private int GetPrepareDuration(SkillData skill, SkillLevelData levelData)
+        {
+            if (levelData == null)
+                return 750;
+
+            if (levelData.Time > 0 && levelData.Time <= 5)
+                return levelData.Time * 1000;
+
+            if (levelData.X > 0 && levelData.X <= 5000)
+                return levelData.X;
+
+            if (levelData.Y > 0 && levelData.Y <= 5000)
+                return levelData.Y;
+
+            return skill.Projectile != null ? 900 : 750;
+        }
+
+        private void ReleasePreparedSkill(int currentTime)
+        {
+            if (_preparedSkill == null)
+                return;
+
+            PreparedSkill prepared = _preparedSkill;
+            _preparedSkill = null;
+
+            ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
+            OnPreparedSkillReleased?.Invoke(prepared);
+        }
+
+        private void ExecuteMovementSkill(SkillData skill, int level)
+        {
+            var levelData = skill.GetLevel(level);
+            if (levelData == null)
+                return;
+
+            int horizontalRange = Math.Max(
+                Math.Max(levelData.RangeR, levelData.RangeL),
+                Math.Max(levelData.Range, Math.Max(levelData.X, levelData.Y)));
+
+            if (horizontalRange <= 0)
+                horizontalRange = 120;
+
+            bool isTeleport = skill.ActionName.Contains("teleport", StringComparison.OrdinalIgnoreCase)
+                              || skill.Name?.Contains("teleport", StringComparison.OrdinalIgnoreCase) == true;
+            bool isFlyingRush = skill.ActionName.Contains("fly", StringComparison.OrdinalIgnoreCase)
+                                || skill.Name?.Contains("flying", StringComparison.OrdinalIgnoreCase) == true;
+
+            float direction = _player.FacingRight ? 1f : -1f;
+            float targetX = _player.X + (horizontalRange * direction);
+
+            if (isTeleport)
+            {
+                _player.SetPosition(targetX, _player.Y);
+                return;
+            }
+
+            float rushSpeed = Math.Max(250f, horizontalRange * 2.5f);
+            float verticalSpeed = isFlyingRush ? -60f : (float)_player.Physics.VelocityY;
+            _player.Physics.SetVelocity(rushSpeed * direction, verticalSpeed);
         }
 
         #endregion
@@ -678,7 +876,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Calculate magic damage (higher than melee but single target)
             int damage = CalculateBasicDamage() + 50;
-            bool isCritical = new Random().Next(100) < 20; // 20% crit chance
+            bool isCritical = Random.Next(100) < 20; // 20% crit chance
             if (isCritical)
                 damage = (int)(damage * 1.5f);
 
@@ -746,7 +944,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public bool TryDoingRandomAttack(int currentTime)
         {
-            int attackType = new Random().Next(3);
+            int attackType = Random.Next(3);
 
             return attackType switch
             {
@@ -770,8 +968,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             // Variance 0.9 - 1.1
-            var random = new Random();
-            float variance = 0.9f + (float)random.NextDouble() * 0.2f;
+            float variance = 0.9f + (float)Random.NextDouble() * 0.2f;
 
             return Math.Max(1, (int)(baseAttack * variance));
         }
@@ -801,6 +998,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             var levelData = skill.GetLevel(level);
             var hitbox = skill.GetAttackRange(level, _player.FacingRight);
+            if (hitbox.Width <= 0 || hitbox.Height <= 0)
+            {
+                hitbox = GetDefaultMeleeHitbox(skill, levelData, _player.FacingRight);
+            }
 
             // Adjust hitbox to world position
             var worldHitbox = new Rectangle(
@@ -877,24 +1078,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private int CalculateSkillDamage(SkillData skill, int level)
         {
+            if (skill == null)
+                return 1;
+
             var levelData = skill.GetLevel(level);
             if (levelData == null)
                 return 1;
 
             // Base attack calculation
-            int baseAttack = _player.Build?.Attack ?? 10;
+            int baseAttack = skill.AttackType == SkillAttackType.Magic
+                ? _player.Build?.MagicAttack ?? 10
+                : _player.Build?.Attack ?? 10;
             var weapon = _player.Build?.GetWeapon();
-            if (weapon != null)
+            if (weapon != null && skill.AttackType != SkillAttackType.Magic)
             {
                 baseAttack += weapon.Attack;
             }
 
             // Apply skill damage multiplier
             float multiplier = levelData.Damage / 100f;
+            if (multiplier <= 0f)
+                multiplier = 1f;
 
             // Variance
-            var random = new Random();
-            float variance = 0.9f + (float)random.NextDouble() * 0.2f;
+            float variance = 0.9f + (float)Random.NextDouble() * 0.2f;
 
             int damage = (int)(baseAttack * multiplier * variance);
 
@@ -1014,9 +1221,15 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 // Calculate damage
                 int attackCount = proj.LevelData?.AttackCount ?? 1;
+                var skill = GetSkillData(proj.SkillId);
+                if (skill == null)
+                {
+                    proj.IsExpired = true;
+                    break;
+                }
+
                 for (int i = 0; i < attackCount; i++)
                 {
-                    var skill = GetSkillData(proj.SkillId);
                     int damage = CalculateSkillDamage(skill, proj.SkillLevel);
 
                     mob.ApplyDamage(damage, currentTime, false, _player.X, _player.Y);
@@ -1057,6 +1270,133 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #endregion
 
+        #region Summon System
+
+        private void SpawnSummon(SkillData skill, int level, int currentTime)
+        {
+            var levelData = skill.GetLevel(level);
+            if (levelData == null)
+                return;
+
+            for (int i = _summons.Count - 1; i >= 0; i--)
+            {
+                if (_summons[i].SkillId == skill.SkillId)
+                {
+                    _summons.RemoveAt(i);
+                }
+            }
+
+            int durationMs = levelData.Time > 0 ? levelData.Time * 1000 : 30000;
+            float offsetX = _player.FacingRight ? 50f : -50f;
+            float offsetY = -25f;
+
+            _summons.Add(new ActiveSummon
+            {
+                SkillId = skill.SkillId,
+                Level = level,
+                StartTime = currentTime,
+                Duration = durationMs,
+                LastAttackTime = currentTime,
+                OffsetX = offsetX,
+                OffsetY = offsetY,
+                SkillData = skill,
+                LevelData = levelData,
+                FacingRight = _player.FacingRight
+            });
+        }
+
+        private void UpdateSummons(int currentTime)
+        {
+            for (int i = _summons.Count - 1; i >= 0; i--)
+            {
+                var summon = _summons[i];
+                if (summon.IsExpired(currentTime))
+                {
+                    _summons.RemoveAt(i);
+                    continue;
+                }
+
+                if (currentTime - summon.LastAttackTime < 1000)
+                    continue;
+
+                summon.LastAttackTime = currentTime;
+                ProcessSummonAttack(summon, currentTime);
+            }
+        }
+
+        private void ProcessSummonAttack(ActiveSummon summon, int currentTime)
+        {
+            if (_mobPool == null || summon?.SkillData == null)
+                return;
+
+            int maxTargets = summon.LevelData?.MobCount ?? 2;
+            int attackCount = summon.LevelData?.AttackCount ?? 1;
+            var summonCenter = GetSummonPosition(summon);
+            var summonArea = new Rectangle((int)summonCenter.X - 90, (int)summonCenter.Y - 70, 180, 100);
+            int hitCount = 0;
+            var mobsToKill = new List<MobItem>();
+
+            foreach (var mob in _mobPool.ActiveMobs)
+            {
+                if (hitCount >= maxTargets)
+                    break;
+
+                if (mob?.AI == null || mob.AI.State == MobAIState.Death)
+                    continue;
+
+                if (!summonArea.Intersects(GetMobHitbox(mob)))
+                    continue;
+
+                for (int i = 0; i < attackCount; i++)
+                {
+                    int damage = CalculateSkillDamage(summon.SkillData, summon.Level);
+                    bool died = mob.ApplyDamage(damage, currentTime, false, _player.X, _player.Y);
+
+                    if (_combatEffects != null)
+                    {
+                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
+                        _combatEffects.OnMobDamaged(mob, currentTime);
+                        _combatEffects.AddDamageNumber(
+                            damage,
+                            damageAnchor.X,
+                            damageAnchor.Y,
+                            false,
+                            false,
+                            currentTime,
+                            i);
+                    }
+
+                    if (summon.SkillData.HitEffect != null)
+                    {
+                        SpawnHitEffect(summon.SkillData, mob.MovementInfo?.X ?? summonCenter.X, (mob.MovementInfo?.Y ?? summonCenter.Y) - 20, currentTime);
+                    }
+
+                    if (died)
+                    {
+                        mobsToKill.Add(mob);
+                        break;
+                    }
+                }
+
+                hitCount++;
+            }
+
+            foreach (var mob in mobsToKill)
+            {
+                HandleMobDeath(mob, currentTime);
+            }
+        }
+
+        private Vector2 GetSummonPosition(ActiveSummon summon)
+        {
+            float facingOffsetX = summon.FacingRight ? Math.Abs(summon.OffsetX) : -Math.Abs(summon.OffsetX);
+            return new Vector2(_player.X + facingOffsetX, _player.Y + summon.OffsetY);
+        }
+
+        public IReadOnlyList<ActiveSummon> ActiveSummons => _summons;
+
+        #endregion
+
         #region Buff System
 
         private void ApplyBuff(SkillData skill, int level, int currentTime)
@@ -1070,6 +1410,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (_buffs[i].SkillId == skill.SkillId)
                 {
+                    ApplyBuffStats(_buffs[i], false);
                     OnBuffExpired?.Invoke(_buffs[i]);
                     _buffs.RemoveAt(i);
                 }
@@ -1100,10 +1441,14 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int modifier = apply ? 1 : -1;
 
-            // Apply stat modifiers
             _player.Build.Attack += levelData.PAD * modifier;
             _player.Build.Defense += levelData.PDD * modifier;
-            // Would also apply: MAD, MDD, ACC, EVA, Speed, Jump
+            _player.Build.MagicAttack += levelData.MAD * modifier;
+            _player.Build.MagicDefense += levelData.MDD * modifier;
+            _player.Build.Accuracy += levelData.ACC * modifier;
+            _player.Build.Avoidability += levelData.EVA * modifier;
+            _player.Build.Speed += levelData.Speed * modifier;
+            _player.Build.JumpPower += levelData.Jump * modifier;
         }
 
         private void UpdateBuffs(int currentTime)
@@ -1290,11 +1635,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
+            if (_preparedSkill != null && _preparedSkill.Progress(currentTime) >= 1f)
+            {
+                ReleasePreparedSkill(currentTime);
+            }
+
             // Process skill queue (for macros)
             ProcessSkillQueue(currentTime);
 
             // Update projectiles
             UpdateProjectiles(currentTime, deltaTime);
+
+            // Update summons
+            UpdateSummons(currentTime);
 
             // Update buffs
             UpdateBuffs(currentTime);
@@ -1354,11 +1707,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX = (int)proj.X - mapShiftX + centerX;
             int screenY = (int)proj.Y - mapShiftY + centerY;
 
-            bool shouldFlip = (!proj.FacingRight) ^ frame.Flip;
+            bool shouldFlip = proj.FacingRight ^ frame.Flip;
 
-            // Use DrawBackground which handles the texture internally
             frame.Texture.DrawBackground(spriteBatch, null, null,
-                screenX - frame.Origin.X, screenY - frame.Origin.Y,
+                GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
                 Color.White, shouldFlip, null);
         }
 
@@ -1375,6 +1727,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 DrawAffectedEffect(spriteBatch, buff, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            }
+
+            foreach (var summon in _summons)
+            {
+                DrawSummonEffect(spriteBatch, summon, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
 
             // Draw hit effects
@@ -1400,10 +1757,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX = (int)hitEffect.X - mapShiftX + centerX;
             int screenY = (int)hitEffect.Y - mapShiftY + centerY;
 
-            bool shouldFlip = (!hitEffect.FacingRight) ^ frame.Flip;
+            bool shouldFlip = hitEffect.FacingRight ^ frame.Flip;
 
             frame.Texture.DrawBackground(spriteBatch, null, null,
-                screenX - frame.Origin.X, screenY - frame.Origin.Y,
+                GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
                 Color.White, shouldFlip, null);
         }
 
@@ -1421,11 +1778,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX = (int)cast.CasterX - mapShiftX + centerX;
             int screenY = (int)cast.CasterY - mapShiftY + centerY;
 
-            bool shouldFlip = (!cast.FacingRight) ^ frame.Flip;
+            bool shouldFlip = cast.FacingRight ^ frame.Flip;
 
-            // Use DrawBackground which handles the texture internally
             frame.Texture.DrawBackground(spriteBatch, null, null,
-                screenX - frame.Origin.X, screenY - frame.Origin.Y,
+                GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
                 Color.White, shouldFlip, null);
         }
 
@@ -1449,11 +1805,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             int screenX = (int)_player.X - mapShiftX + centerX;
             int screenY = (int)_player.Y - mapShiftY + centerY;
 
-            bool shouldFlip = (!_player.FacingRight) ^ frame.Flip;
+            bool shouldFlip = _player.FacingRight ^ frame.Flip;
 
-            // Use DrawBackground which handles the texture internally
             frame.Texture.DrawBackground(spriteBatch, null, null,
-                screenX - frame.Origin.X, screenY - frame.Origin.Y,
+                GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
+                Color.White, shouldFlip, null);
+        }
+
+        private void DrawSummonEffect(SpriteBatch spriteBatch, ActiveSummon summon,
+            int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
+        {
+            var animation = summon.SkillData?.SummonAnimation ?? summon.SkillData?.AffectedEffect ?? summon.SkillData?.Effect;
+            if (animation == null)
+                return;
+
+            var frame = animation.GetFrameAtTime(currentTime - summon.StartTime);
+            if (frame?.Texture == null)
+                return;
+
+            Vector2 summonPosition = GetSummonPosition(summon);
+            int screenX = (int)summonPosition.X - mapShiftX + centerX;
+            int screenY = (int)summonPosition.Y - mapShiftY + centerY;
+            bool shouldFlip = summon.FacingRight ^ frame.Flip;
+
+            frame.Texture.DrawBackground(spriteBatch, null, null,
+                GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
                 Color.White, shouldFlip, null);
         }
 
@@ -1464,6 +1840,52 @@ namespace HaCreator.MapSimulator.Character.Skills
         private SkillData GetSkillData(int skillId)
         {
             return _loader.LoadSkill(skillId);
+        }
+
+        private static int GetFrameDrawX(int anchorX, SkillFrame frame, bool shouldFlip)
+        {
+            if (frame?.Texture == null)
+                return anchorX;
+
+            return shouldFlip
+                ? anchorX - (frame.Texture.Width - frame.Origin.X)
+                : anchorX - frame.Origin.X;
+        }
+
+        private Rectangle GetDefaultMeleeHitbox(SkillData skill, SkillLevelData levelData, bool facingRight)
+        {
+            int width = Math.Max(80, Math.Max(levelData?.Range ?? 0, GetAnimationWidth(skill)));
+            int height = Math.Max(60, Math.Max(levelData?.RangeY ?? 0, GetAnimationHeight(skill)));
+            int offsetX = facingRight ? 10 : -(width + 10);
+
+            return new Rectangle(offsetX, -height - 10, width, height);
+        }
+
+        private static int GetAnimationWidth(SkillData skill)
+        {
+            return GetMaxFrameDimension(skill?.Effect, frame => frame.Bounds.Width);
+        }
+
+        private static int GetAnimationHeight(SkillData skill)
+        {
+            return GetMaxFrameDimension(skill?.Effect, frame => frame.Bounds.Height);
+        }
+
+        private static int GetMaxFrameDimension(SkillAnimation animation, Func<SkillFrame, int> selector)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+                return 0;
+
+            int max = 0;
+            foreach (var frame in animation.Frames)
+            {
+                if (frame == null)
+                    continue;
+
+                max = Math.Max(max, selector(frame));
+            }
+
+            return max;
         }
 
         public IEnumerable<SkillData> GetLearnedSkills()
@@ -1488,6 +1910,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        public IEnumerable<SkillData> GetAllSkills()
+        {
+            return _availableSkills;
+        }
+
+        public PreparedSkill GetPreparedSkill() => _preparedSkill;
+
         /// <summary>
         /// Full clear - clears everything including skill levels and hotkeys.
         /// Use when completely disposing the skill system.
@@ -1495,7 +1924,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void Clear()
         {
             _projectiles.Clear();
+            _summons.Clear();
             _hitEffects.Clear();
+            _preparedSkill = null;
 
             // Remove all buff effects
             foreach (var buff in _buffs)
@@ -1518,17 +1949,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public void ClearMapState()
         {
-            // Clear active combat state
-            _projectiles.Clear();
-            _hitEffects.Clear();
-            _currentCast = null;
-
-            // Remove all buff effects (buffs don't persist across maps in MapleStory)
-            foreach (var buff in _buffs)
-            {
-                ApplyBuffStats(buff, false);
-            }
-            _buffs.Clear();
+            ClearActiveSkillState(clearBuffs: true);
 
             // Clear map-specific references
             _mobPool = null;
@@ -1539,6 +1960,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             // - _skillHotkeys (hotkey bindings persist)
             // - _availableSkills (job skills persist)
             // - _cooldowns (debatable - could reset or persist)
+        }
+
+        private void ClearActiveSkillState(bool clearBuffs)
+        {
+            _projectiles.Clear();
+            _summons.Clear();
+            _hitEffects.Clear();
+            _currentCast = null;
+            _preparedSkill = null;
+
+            if (!clearBuffs)
+                return;
+
+            foreach (var buff in _buffs)
+            {
+                ApplyBuffStats(buff, false);
+            }
+            _buffs.Clear();
+        }
+
+        private static bool IsFocusedSingleBookJob(int jobId)
+        {
+            return jobId >= 800 && jobId < 1000;
         }
 
         #endregion

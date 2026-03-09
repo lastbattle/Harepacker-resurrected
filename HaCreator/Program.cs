@@ -87,8 +87,12 @@ namespace HaCreator
             // Try IDataSource first
             if (DataSource != null)
             {
-                // Try as image first
-                obj = DataSource.GetImage(category, name);
+                if (!string.IsNullOrEmpty(name))
+                {
+                    // Try as image first
+                    obj = DataSource.GetImage(category, name);
+                }
+
                 if (obj == null)
                 {
                     // Try as directory - get category root then navigate to subdirectory
@@ -265,4 +269,3 @@ namespace HaCreator
         }
     }
 }
-

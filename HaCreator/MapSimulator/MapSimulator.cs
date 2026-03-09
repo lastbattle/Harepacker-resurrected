@@ -3928,6 +3928,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetMobPool(_mobPool);
             _playerManager.SetDropPool(_dropPool);
             _playerManager.SetCombatEffects(_combatEffects);
+            _playerManager.SetSoundManager(_soundManager);
 
             // Set up sound callbacks
             _playerManager.SetJumpSoundCallback(PlayJumpSE);
@@ -4069,6 +4070,8 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            ConfigureSkillUIBindings();
+
             Debug.WriteLine($"Player spawned at ({spawnX}, {spawnY}), IsActive: {_playerManager.IsPlayerActive}");
         }
 
@@ -4189,7 +4192,60 @@ namespace HaCreator.MapSimulator
             _playerManager.SetSpawnPoint(spawnX, spawnY);
             _playerManager.TeleportTo(spawnX, spawnY);
 
+            ConfigureSkillUIBindings();
+
             Debug.WriteLine($"[Player] Reconnected to new map, IsActive: {_playerManager.IsPlayerActive}");
+        }
+
+        private void ConfigureSkillUIBindings()
+        {
+            if (_playerManager?.Skills == null || uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow)
+                return;
+
+            skillWindow.OnSkillInvoked = skillId =>
+            {
+                _playerManager.Skills.TryCastSkill(skillId, currTickCount);
+            };
+
+            foreach (var skill in _playerManager.Skills.GetAllSkills())
+            {
+                if (skill == null)
+                    continue;
+
+                int currentLevel = _playerManager.Skills.GetSkillLevel(skill.SkillId);
+                if (currentLevel <= 0)
+                    continue;
+
+                skillWindow.UpdateSkillLevel(skill.SkillId, currentLevel, skill.MaxLevel);
+            }
+        }
+
+        private bool TrySetPlayerJob(int jobId)
+        {
+            var build = _playerManager?.Player?.Build;
+            if (build == null)
+                return false;
+
+            build.Job = jobId;
+            build.JobName = SkillDataLoader.GetJobName(jobId);
+
+            if (_playerManager?.Skills != null)
+            {
+                _playerManager.Skills.LoadSkillsForJob(jobId);
+                _playerManager.Skills.LearnAllActiveSkills();
+            }
+
+            RefreshSkillWindowForJob(jobId);
+            return true;
+        }
+
+        private void RefreshSkillWindowForJob(int jobId)
+        {
+            if (uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow)
+                return;
+
+            UIWindowLoader.LoadSkillsForJob(skillWindow, jobId, GraphicsDevice);
+            ConfigureSkillUIBindings();
         }
 
         /// <summary>
@@ -4862,6 +4918,37 @@ namespace HaCreator.MapSimulator
                     _gameState.PendingPortalName = null;
 
                     return ChatCommandHandler.CommandResult.Ok($"Loading map {mapId}...");
+                });
+
+            // /job <jobid> - Change the active player job and refocus skill UI
+            _chat.CommandHandler.RegisterCommand(
+                "job",
+                "Change the player's job ID",
+                "/job <jobId>",
+                args =>
+                {
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /job <jobId>");
+                    }
+
+                    if (!int.TryParse(args[0], out int jobId))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"Invalid job ID: {args[0]}");
+                    }
+
+                    if (jobId < 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Job ID must be non-negative");
+                    }
+
+                    if (!TrySetPlayerJob(jobId))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Player not available");
+                    }
+
+                    string jobName = _playerManager?.Player?.Build?.JobName ?? SkillDataLoader.GetJobName(jobId);
+                    return ChatCommandHandler.CommandResult.Ok($"Changed job to {jobName} ({jobId})");
                 });
 
             // /pos - Show current camera position

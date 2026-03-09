@@ -281,6 +281,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsAttack { get; set; }
         public bool IsHeal { get; set; }
         public bool IsSummon { get; set; }
+        public bool IsMovement { get; set; }
+        public bool IsPrepareSkill { get; set; }
         public bool Invisible { get; set; }          // Hidden skill
         public bool MasterOnly { get; set; }         // Only usable at max level
 
@@ -294,7 +296,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation Effect { get; set; }           // Effect on caster
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
+        public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
         public ProjectileData Projectile { get; set; }       // Ball/projectile
+        public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
 
         // Action
         public string ActionName { get; set; }       // Animation action to play
@@ -523,6 +527,59 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool IsComplete { get; set; }
         public int AnimationTime => Environment.TickCount - CastTime;
+    }
+
+    #endregion
+
+    #region Prepared Skill
+
+    /// <summary>
+    /// Active prepare / charge skill state
+    /// </summary>
+    public class PreparedSkill
+    {
+        public int SkillId { get; set; }
+        public int Level { get; set; }
+        public int StartTime { get; set; }
+        public int Duration { get; set; }
+        public SkillData SkillData { get; set; }
+        public SkillLevelData LevelData { get; set; }
+
+        public int Elapsed(int currentTime) => Math.Max(0, currentTime - StartTime);
+
+        public float Progress(int currentTime)
+        {
+            if (Duration <= 0)
+                return 1f;
+
+            return Math.Clamp(Elapsed(currentTime) / (float)Duration, 0f, 1f);
+        }
+    }
+
+    #endregion
+
+    #region Active Summon
+
+    /// <summary>
+    /// Generic summon state used by the simulator for summon-family skills
+    /// </summary>
+    public class ActiveSummon
+    {
+        public int SkillId { get; set; }
+        public int Level { get; set; }
+        public int StartTime { get; set; }
+        public int Duration { get; set; }
+        public int LastAttackTime { get; set; }
+        public float OffsetX { get; set; }
+        public float OffsetY { get; set; }
+        public SkillData SkillData { get; set; }
+        public SkillLevelData LevelData { get; set; }
+        public bool FacingRight { get; set; }
+
+        public bool IsExpired(int currentTime)
+        {
+            return Duration > 0 && currentTime - StartTime >= Duration;
+        }
     }
 
     #endregion

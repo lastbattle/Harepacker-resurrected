@@ -8,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -82,6 +83,9 @@ namespace HaCreator.MapSimulator.UI
         private int _currentTab = TAB_BEGINNER;
         private int _scrollOffset = 0;
         private int _hoveredSkillIndex = -1;
+        private int _selectedSkillIndex = -1;
+        private int _lastClickedSkillIndex = -1;
+        private int _lastClickTime;
 
         // Foreground textures
         private IDXObject _foreground;
@@ -131,6 +135,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Mouse state
         private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
 
         // Placeholder texture (1x1 white pixel for drawing colored rects)
         private Texture2D _debugPlaceholder;
@@ -138,6 +143,9 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "Skills";
+
+        public Action<int> OnSkillInvoked { get; set; }
+        public Action<SkillDisplayData> OnSkillSelected { get; set; }
 
         public int CurrentTab
         {
@@ -149,6 +157,7 @@ namespace HaCreator.MapSimulator.UI
                     _currentTab = value;
                     _scrollOffset = 0;
                     _hoveredSkillIndex = -1;
+                    _selectedSkillIndex = -1;
                 }
             }
         }
@@ -163,6 +172,17 @@ namespace HaCreator.MapSimulator.UI
                 if (skillsByTab.TryGetValue(_currentTab, out var skills))
                     return skills;
                 return new List<SkillDisplayData>();
+            }
+        }
+
+        public SkillDisplayData SelectedSkill
+        {
+            get
+            {
+                var skills = CurrentSkills;
+                return _selectedSkillIndex >= 0 && _selectedSkillIndex < skills.Count
+                    ? skills[_selectedSkillIndex]
+                    : null;
             }
         }
         #endregion
@@ -412,7 +432,15 @@ namespace HaCreator.MapSimulator.UI
                 SkillDisplayData skill = skills[skillIndex];
                 bool canLevelUp = availableSp > 0 && skill.CurrentLevel < skill.MaxLevel;
 
-                DrawSkillEntry(sprite, skill, windowX, windowY, nTop, canLevelUp, skillIndex == _hoveredSkillIndex);
+                DrawSkillEntry(
+                    sprite,
+                    skill,
+                    windowX,
+                    windowY,
+                    nTop,
+                    canLevelUp,
+                    skillIndex == _hoveredSkillIndex,
+                    skillIndex == _selectedSkillIndex);
 
                 if (_skillRowLine != null && rowIndex < VISIBLE_SKILLS - 1 && skillIndex + 1 < skills.Count)
                 {
@@ -431,12 +459,19 @@ namespace HaCreator.MapSimulator.UI
             int windowY,
             int nTop,
             bool canLevelUp,
-            bool isHovered)
+            bool isHovered,
+            bool isSelected)
         {
             Texture2D rowBg = canLevelUp ? _skillRow1 : _skillRow0;
             if (rowBg != null)
             {
                 sprite.Draw(rowBg, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+            }
+
+            if (isSelected)
+            {
+                var selectionRect = new Rectangle(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET, 140, 37);
+                sprite.Draw(_debugPlaceholder, selectionRect, new Color(80, 140, 255, 70));
             }
 
             Texture2D icon = skill.GetIconForState(canLevelUp, isHovered);
@@ -451,9 +486,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (_font != null)
             {
+                string skillName = SanitizeFontText(skill.SkillName);
                 sprite.DrawString(
                     _font,
-                    skill.SkillName ?? string.Empty,
+                    skillName,
                     new Vector2(windowX + NAME_X, windowY + nTop + NAME_Y_OFFSET),
                     Color.Black);
 
@@ -476,7 +512,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null)
                 return;
 
-            string spText = GetCurrentSkillPoints().ToString();
+            string spText = SanitizeFontText(GetCurrentSkillPoints().ToString());
             float width = _font.MeasureString(spText).X;
             sprite.DrawString(
                 _font,
@@ -490,6 +526,7 @@ namespace HaCreator.MapSimulator.UI
             if (_font == null || string.IsNullOrWhiteSpace(jobName))
                 return;
 
+            jobName = SanitizeFontText(jobName);
             float width = _font.MeasureString(jobName).X;
             if (width <= BOOK_NAME_MAX_WIDTH)
             {
@@ -520,8 +557,62 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(
                 _font,
                 jobName.Substring(splitIndex + 1),
-                new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
-                Color.Black);
+                    new Vector2(windowX + BOOK_NAME_MULTI_LINE_X, windowY + BOOK_NAME_MULTI_LINE_SECOND_Y),
+                    Color.Black);
+        }
+
+        private static string SanitizeFontText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return string.Empty;
+
+            var builder = new StringBuilder(text.Length);
+            foreach (char ch in text)
+            {
+                switch (ch)
+                {
+                    case '\r':
+                    case '\n':
+                    case '\t':
+                    case ' ':
+                        builder.Append(ch == '\t' ? ' ' : ch);
+                        break;
+                    case '\u2018':
+                    case '\u2019':
+                    case '\u2032':
+                        builder.Append('\'');
+                        break;
+                    case '\u201C':
+                    case '\u201D':
+                    case '\u2033':
+                        builder.Append('"');
+                        break;
+                    case '\u2013':
+                    case '\u2014':
+                    case '\u2212':
+                        builder.Append('-');
+                        break;
+                    case '\u2026':
+                        builder.Append("...");
+                        break;
+                    case '\u00A0':
+                    case '\u3000':
+                        builder.Append(' ');
+                        break;
+                    default:
+                        if (ch >= 32 && ch <= 126)
+                        {
+                            builder.Append(ch);
+                        }
+                        else if (!char.IsControl(ch))
+                        {
+                            builder.Append('?');
+                        }
+                        break;
+                }
+            }
+
+            return builder.ToString();
         }
 
         /// <summary>
@@ -593,6 +684,21 @@ namespace HaCreator.MapSimulator.UI
                 int beforeCount = skills.Count;
                 skills.AddRange(skillDataList);
                 System.Diagnostics.Debug.WriteLine($"[SkillUIBigBang] Added skills to tab {tab}: was {beforeCount}, now {skills.Count}");
+            }
+        }
+
+        public void UpdateSkillLevel(int skillId, int currentLevel, int maxLevel)
+        {
+            foreach (var tabSkills in skillsByTab.Values)
+            {
+                foreach (var skill in tabSkills)
+                {
+                    if (skill.SkillId != skillId)
+                        continue;
+
+                    skill.CurrentLevel = Math.Max(0, currentLevel);
+                    skill.MaxLevel = Math.Max(skill.CurrentLevel, maxLevel);
+                }
             }
         }
 
@@ -734,6 +840,38 @@ namespace HaCreator.MapSimulator.UI
                         break;
                     }
                 }
+
+                int clickedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                if (clickedSkillIndex >= 0)
+                {
+                    _selectedSkillIndex = clickedSkillIndex;
+                    var selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
+                    if (selectedSkill != null)
+                    {
+                        OnSkillSelected?.Invoke(selectedSkill);
+
+                        int now = Environment.TickCount;
+                        if (_lastClickedSkillIndex == clickedSkillIndex && now - _lastClickTime <= 350)
+                        {
+                            OnSkillInvoked?.Invoke(selectedSkill.SkillId);
+                        }
+
+                        _lastClickedSkillIndex = clickedSkillIndex;
+                        _lastClickTime = now;
+                    }
+                }
+            }
+
+            if (mouseState.RightButton == ButtonState.Pressed &&
+                _previousMouseState.RightButton == ButtonState.Released)
+            {
+                var selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
+                if (selectedSkill != null)
+                {
+                    _selectedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                    OnSkillSelected?.Invoke(selectedSkill);
+                    OnSkillInvoked?.Invoke(selectedSkill.SkillId);
+                }
             }
 
             // Handle scroll wheel
@@ -752,7 +890,17 @@ namespace HaCreator.MapSimulator.UI
             // Update hovered skill index
             _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
 
+            KeyboardState keyboardState = Keyboard.GetState();
+            bool invokeSelected = SelectedSkill != null &&
+                                  ((keyboardState.IsKeyDown(Keys.Enter) && !_previousKeyboardState.IsKeyDown(Keys.Enter)) ||
+                                   (keyboardState.IsKeyDown(Keys.Space) && !_previousKeyboardState.IsKeyDown(Keys.Space)));
+            if (invokeSelected)
+            {
+                OnSkillInvoked?.Invoke(SelectedSkill.SkillId);
+            }
+
             _previousMouseState = mouseState;
+            _previousKeyboardState = keyboardState;
         }
         #endregion
     }

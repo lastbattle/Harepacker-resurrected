@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
+using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework.Graphics;
@@ -105,6 +106,56 @@ namespace HaCreator.MapSimulator.Loaders
 
             Debug.WriteLine($"[SkillDataLoader] Total skills loaded for job {jobId}: {skills.Count}");
             return skills;
+        }
+
+        /// <summary>
+        /// Enumerate every numeric skill book image available in Skill.wz.
+        /// </summary>
+        public static IReadOnlyList<int> GetAvailableSkillBookJobIds(WzFile skillWzFile)
+        {
+            var fromFile = SkillLoader.EnumerateSkillBookJobIds(skillWzFile);
+            if (fromFile.Count > 0)
+                return fromFile;
+
+            var result = new SortedSet<int>();
+
+            if (Program.FindWzObject("Skill", string.Empty) is WzDirectory rootDirectory)
+            {
+                CollectSkillBookJobIds(rootDirectory, result);
+            }
+
+            if (result.Count == 0)
+            {
+                foreach (var directory in Program.GetDirectories("Skill"))
+                {
+                    CollectSkillBookJobIds(directory, result);
+                }
+            }
+
+            return new List<int>(result);
+        }
+
+        private static void CollectSkillBookJobIds(WzDirectory directory, ISet<int> result)
+        {
+            if (directory == null)
+                return;
+
+            foreach (var image in directory.WzImages)
+            {
+                if (image == null)
+                    continue;
+
+                string name = System.IO.Path.GetFileNameWithoutExtension(image.Name);
+                if (int.TryParse(name, out int jobId))
+                {
+                    result.Add(jobId);
+                }
+            }
+
+            foreach (var subDirectory in directory.WzDirectories)
+            {
+                CollectSkillBookJobIds(subDirectory, result);
+            }
         }
 
         /// <summary>
@@ -289,6 +340,10 @@ namespace HaCreator.MapSimulator.Loaders
         public static int GetJobAdvancementLevel(int jobId)
         {
             if (jobId == 0) return 0; // Beginner
+
+            // GM/SuperGM books still live on the first job tab in the client UI.
+            if (jobId >= 800 && jobId < 1000)
+                return 1;
 
             int baseJob = jobId / 100;
             int advancement = jobId % 100;

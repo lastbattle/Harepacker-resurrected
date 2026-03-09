@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.IO;
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -24,6 +27,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Caches
         private readonly Dictionary<int, SkillData> _skillCache = new();
         private readonly Dictionary<int, JobSkillBook> _jobCache = new();
+        private readonly HashSet<int> _skillsWithoutCastSound = new();
+        private WzImage _skillSoundImage;
 
         public SkillLoader(WzFile skillWz, GraphicsDevice device, TexturePool texturePool)
         {
@@ -50,6 +55,73 @@ namespace HaCreator.MapSimulator.Character.Skills
             return skill;
         }
 
+        public string EnsureCastSoundRegistered(SkillData skill, SoundManager soundManager)
+        {
+            if (skill == null || soundManager == null)
+                return null;
+
+            if (!string.IsNullOrEmpty(skill.CastSoundKey))
+                return skill.CastSoundKey;
+
+            if (_skillsWithoutCastSound.Contains(skill.SkillId))
+                return null;
+
+            var skillSoundNode = GetSkillSoundNode(skill.SkillId);
+            if (skillSoundNode == null)
+            {
+                _skillsWithoutCastSound.Add(skill.SkillId);
+                return null;
+            }
+
+            foreach (string preferredName in new[] { "Use", "Attack1" })
+            {
+                if (TryRegisterSkillSound(skill, soundManager, skillSoundNode[preferredName], preferredName))
+                    return skill.CastSoundKey;
+            }
+
+            foreach (var child in skillSoundNode.WzProperties)
+            {
+                if (TryRegisterSkillSound(skill, soundManager, child, child.Name))
+                    return skill.CastSoundKey;
+            }
+
+            _skillsWithoutCastSound.Add(skill.SkillId);
+            return null;
+        }
+
+        /// <summary>
+        /// Load every skill book available in Skill.wz and merge the results into a single catalog.
+        /// </summary>
+        public List<SkillData> LoadAllSkills()
+        {
+            var skills = new List<SkillData>();
+
+            foreach (int jobId in EnumerateAvailableSkillBookJobIds())
+            {
+                var book = LoadJobSkills(jobId);
+                if (book == null || book.Skills.Count == 0)
+                    continue;
+
+                skills.AddRange(book.Skills.Values);
+            }
+
+            if (skills.Count == 0)
+                return skills;
+
+            var seen = new HashSet<int>();
+            var result = new List<SkillData>(skills.Count);
+            foreach (var skill in skills)
+            {
+                if (skill == null)
+                    continue;
+
+                if (seen.Add(skill.SkillId))
+                    result.Add(skill);
+            }
+
+            return result;
+        }
+
         private SkillData LoadSkillInternal(int skillId)
         {
             // Skill.wz structure: Skill.wz/[jobId].img/skill/[skillId]
@@ -57,7 +129,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int jobId = skillId / 10000;
             string imgName = $"{jobId}.img";
 
-            var jobImg = _skillWz?.WzDirectory?[imgName] as WzImage;
+            var jobImg = GetSkillImage(imgName);
             if (jobImg == null)
                 return null;
 
@@ -90,6 +162,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ParseSkillInfo(SkillData skill, WzImageProperty skillNode)
         {
+            skill.ActionName = GetPrimaryActionName(skillNode);
+
             // Basic properties from info node
             var infoNode = skillNode["info"];
             if (infoNode != null)
@@ -130,47 +204,99 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hasHit = skillNode["hit"] != null;
             bool hasAffected = skillNode["affected"] != null;
             bool hasSummon = skillNode["summon"] != null;
+            bool hasPrepare = skillNode["prepare"] != null || skillNode["keydown"] != null || skillNode["keyDown"] != null;
+            bool hasAction = !string.IsNullOrWhiteSpace(skill.ActionName);
+            bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
+            bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
 
             var commonNode = skillNode["common"];
+            int commonDamage = GetInt(commonNode, "damage");
+            int commonTime = GetInt(commonNode, "time");
+            int commonMobCount = GetInt(commonNode, "mobCount");
+            int commonHp = GetInt(commonNode, "hp") + GetInt(commonNode, "hpR");
+            int commonPad = GetInt(commonNode, "pad");
+            int commonMad = GetInt(commonNode, "mad");
+
+            var levelNode = skillNode["level"]?["1"];
+            int levelDamage = GetInt(levelNode, "damage");
+            int levelMobCount = GetInt(levelNode, "mobCount");
+            int levelHp = GetInt(levelNode, "hp") + GetInt(levelNode, "hpR");
+            int levelTime = GetInt(levelNode, "time");
+            int levelPad = GetInt(levelNode, "pad");
+            int levelMad = GetInt(levelNode, "mad");
+
+            bool hasDamage = commonDamage > 0 || levelDamage > 0;
+            bool hasTime = commonTime > 0 || levelTime > 0;
+            bool hasMobCount = commonMobCount > 0 || levelMobCount > 0;
+            bool hasHp = commonHp > 0 || levelHp > 0;
+            bool hasPad = commonPad > 0 || levelPad > 0;
+            bool hasMad = commonMad > 0 || levelMad > 0;
+
+            skill.IsMovement = looksLikeMovement;
+            skill.IsPrepareSkill = looksLikePrepare;
+
             if (commonNode != null)
             {
-                bool hasDamage = GetInt(commonNode, "damage") > 0;
-                bool hasTime = GetInt(commonNode, "time") > 0;
-                bool hasMobCount = GetInt(commonNode, "mobCount") > 0;
-                bool hasHp = GetInt(commonNode, "hp") > 0 || GetInt(commonNode, "hpR") > 0;
-                bool hasPad = GetInt(commonNode, "pad") > 0;
-                bool hasMad = GetInt(commonNode, "mad") > 0;
-
-                // Determine type
                 if (hasSummon)
                 {
                     skill.Type = SkillType.Summon;
                     skill.IsSummon = true;
+                    skill.IsAttack = hasDamage || hasMobCount;
                 }
                 else if (hasHp && !hasDamage)
                 {
                     skill.Type = SkillType.Heal;
                     skill.IsHeal = true;
                 }
-                else if (hasTime && (hasPad || hasMad || hasAffected))
+                else if (hasTime && (hasPad || hasMad || hasAffected || skill.IsMovement))
                 {
                     skill.Type = SkillType.Buff;
                     skill.IsBuff = true;
                 }
-                else if (hasDamage || hasMobCount)
+                else if (hasDamage || hasMobCount || skill.IsPrepareSkill || skill.IsMovement)
                 {
-                    skill.Type = hasBall ? SkillType.Magic : SkillType.Attack;
-                    skill.IsAttack = true;
+                    skill.Type = hasBall ? SkillType.Magic : (skill.IsMovement ? SkillType.Movement : SkillType.Attack);
+                    skill.IsAttack = hasDamage || hasMobCount || skill.IsPrepareSkill;
                 }
-                else if (!hasDamage && !hasTime)
+                else if (!hasDamage && !hasTime && !hasAction)
                 {
                     skill.Type = SkillType.Passive;
                     skill.IsPassive = true;
                 }
             }
+            else if (hasSummon || hasDamage || hasMobCount || skill.IsMovement || skill.IsPrepareSkill)
+            {
+                skill.Type = hasSummon
+                    ? SkillType.Summon
+                    : hasBall
+                        ? SkillType.Magic
+                        : skill.IsMovement
+                            ? SkillType.Movement
+                            : SkillType.Attack;
+                skill.IsSummon = hasSummon;
+                skill.IsAttack = hasDamage || hasMobCount || skill.IsPrepareSkill;
+            }
+            else if (hasTime || hasAffected)
+            {
+                skill.Type = SkillType.Buff;
+                skill.IsBuff = true;
+            }
+            else
+            {
+                skill.Type = SkillType.Passive;
+                skill.IsPassive = true;
+            }
 
             // Determine attack type
-            if (hasBall)
+            if (skill.IsSummon)
+            {
+                skill.AttackType = SkillAttackType.Summon;
+            }
+            else if (skill.IsMovement || skill.IsPrepareSkill)
+            {
+                skill.AttackType = SkillAttackType.Special;
+            }
+            else if (hasBall)
             {
                 skill.AttackType = SkillAttackType.Ranged;
             }
@@ -178,20 +304,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.AttackType = SkillAttackType.Magic;
             }
-            else if (skill.Type == SkillType.Summon)
-            {
-                skill.AttackType = SkillAttackType.Summon;
-            }
             else
             {
                 skill.AttackType = SkillAttackType.Melee;
             }
 
             // Determine target type
-            var levelNode = skillNode["level"]?["1"];
-            if (levelNode != null)
+            var levelOneNode = skillNode["level"]?["1"];
+            if (levelOneNode != null)
             {
-                int mobCount = GetInt(levelNode, "mobCount", 1);
+                int mobCount = GetInt(levelOneNode, "mobCount", 1);
                 if (skill.IsBuff)
                 {
                     skill.Target = SkillTarget.Self;
@@ -206,97 +328,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
             }
 
-            // Check action name
-            var actionNode = skillNode["action"];
-            if (actionNode != null)
-            {
-                skill.ActionName = GetString(actionNode, "0");
-            }
+            skill.IsBuff |= hasTime && (hasPad || hasMad || hasAffected);
+            skill.IsHeal |= hasHp && !hasDamage;
         }
 
         private void ParseSkillLevels(SkillData skill, WzImageProperty skillNode)
         {
             var levelNode = skillNode["level"];
-            if (levelNode == null)
-                return;
-
-            foreach (var child in levelNode.WzProperties)
+            if (levelNode != null)
             {
-                if (!int.TryParse(child.Name, out int level))
-                    continue;
+                foreach (var child in levelNode.WzProperties)
+                {
+                    if (!int.TryParse(child.Name, out int level))
+                        continue;
 
-                var levelData = new SkillLevelData { Level = level };
-
-                // Damage
-                levelData.Damage = GetInt(child, "damage");
-                levelData.AttackCount = GetInt(child, "attackCount", 1);
-                levelData.MobCount = GetInt(child, "mobCount", 1);
-
-                // Costs
-                levelData.MpCon = GetInt(child, "mpCon");
-                levelData.HpCon = GetInt(child, "hpCon");
-                levelData.ItemCon = GetInt(child, "itemCon");
-                levelData.ItemConNo = GetInt(child, "itemConNo");
-
-                // Timing
-                levelData.Cooldown = GetInt(child, "cooltime") * 1000; // Convert to ms
-                levelData.Time = GetInt(child, "time");
-
-                // Range
-                levelData.Range = GetInt(child, "range");
-                var rb = GetVector(child, "rb");
-                var lt = GetVector(child, "lt");
-                levelData.RangeR = rb?.X ?? levelData.Range;
-                levelData.RangeL = Math.Abs(lt?.X ?? levelData.Range);
-                levelData.RangeY = Math.Abs(lt?.Y ?? 0) + Math.Abs(rb?.Y ?? 0);
-
-                // Buff stats
-                levelData.PAD = GetInt(child, "pad");
-                levelData.MAD = GetInt(child, "mad");
-                levelData.PDD = GetInt(child, "pdd");
-                levelData.MDD = GetInt(child, "mdd");
-                levelData.ACC = GetInt(child, "acc");
-                levelData.EVA = GetInt(child, "eva");
-                levelData.Speed = GetInt(child, "speed");
-                levelData.Jump = GetInt(child, "jump");
-
-                // Heal
-                levelData.HP = GetInt(child, "hp");
-                levelData.MP = GetInt(child, "mp");
-
-                // Special
-                levelData.Prop = GetInt(child, "prop");
-                levelData.X = GetInt(child, "x");
-                levelData.Y = GetInt(child, "y");
-                levelData.Z = GetInt(child, "z");
-
-                // Projectile
-                levelData.BulletCount = GetInt(child, "bulletCount", 1);
-                levelData.BulletSpeed = GetInt(child, "bulletSpeed");
-
-                // Mastery
-                levelData.Mastery = GetInt(child, "mastery");
-                levelData.CriticalRate = GetInt(child, "cr");
-
-                // Requirements
-                levelData.RequiredLevel = GetInt(child, "reqLevel");
-
-                skill.Levels[level] = levelData;
+                    var levelData = CreateLevelData(child, level);
+                    skill.Levels[level] = levelData;
+                }
             }
 
-            // Also try common node for simplified skill data
             var commonNode = skillNode["common"];
             if (commonNode != null && skill.Levels.Count == 0)
             {
-                // Some skills use common node with formulas
-                // For now, just create level 1 from common
-                var levelData = new SkillLevelData { Level = 1 };
-                levelData.Damage = GetInt(commonNode, "damage");
-                levelData.MobCount = GetInt(commonNode, "mobCount", 1);
-                levelData.AttackCount = GetInt(commonNode, "attackCount", 1);
-                levelData.MpCon = GetInt(commonNode, "mpCon");
-                levelData.Time = GetInt(commonNode, "time");
-                skill.Levels[1] = levelData;
+                int maxLevel = Math.Max(1, GetInt(commonNode, "maxLevel", skill.MaxLevel > 0 ? skill.MaxLevel : 1));
+                skill.MaxLevel = Math.Max(skill.MaxLevel, maxLevel);
+
+                for (int level = 1; level <= maxLevel; level++)
+                {
+                    var levelData = CreateLevelData(commonNode, level);
+                    skill.Levels[level] = levelData;
+                }
             }
         }
 
@@ -325,6 +386,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (affectedNode != null)
             {
                 skill.AffectedEffect = LoadSkillAnimation(affectedNode, "affected");
+            }
+
+            var summonNode = skillNode["summon"];
+            if (summonNode != null)
+            {
+                skill.SummonAnimation = LoadSkillAnimation(summonNode, "summon");
             }
 
             // Load projectile/ball
@@ -553,7 +620,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private JobSkillBook LoadJobSkillsInternal(int jobId)
         {
             string imgName = $"{jobId}.img";
-            var jobImg = _skillWz?.WzDirectory?[imgName] as WzImage;
+            var jobImg = GetSkillImage(imgName);
             if (jobImg == null)
                 return null;
 
@@ -627,6 +694,138 @@ namespace HaCreator.MapSimulator.Character.Skills
                 910 => new[] { 900, 910 },
                 _ => new[] { jobId }
             };
+        }
+
+        public static IReadOnlyList<int> EnumerateSkillBookJobIds(WzFile skillWz)
+        {
+            if (skillWz?.WzDirectory == null)
+                return Array.Empty<int>();
+
+            var result = new SortedSet<int>();
+            CollectSkillBookJobIds(skillWz.WzDirectory, result);
+            return result.ToList();
+        }
+
+        private IReadOnlyList<int> EnumerateAvailableSkillBookJobIds()
+        {
+            var fromFile = EnumerateSkillBookJobIds(_skillWz);
+            if (fromFile.Count > 0)
+                return fromFile;
+
+            var result = new SortedSet<int>();
+            CollectSkillBookJobIds(Program.FindWzObject("Skill", string.Empty), result);
+
+            if (result.Count == 0)
+            {
+                foreach (var directory in Program.GetDirectories("Skill"))
+                {
+                    CollectSkillBookJobIds(directory, result);
+                }
+            }
+
+            return result.ToList();
+        }
+
+        private static void CollectSkillBookJobIds(WzDirectory directory, ISet<int> result)
+        {
+            if (directory == null)
+                return;
+
+            foreach (var image in directory.WzImages)
+            {
+                if (image == null)
+                    continue;
+
+                string fileName = Path.GetFileNameWithoutExtension(image.Name);
+                if (int.TryParse(fileName, out int jobId))
+                {
+                    result.Add(jobId);
+                }
+            }
+
+            foreach (var subDirectory in directory.WzDirectories)
+            {
+                CollectSkillBookJobIds(subDirectory, result);
+            }
+        }
+
+        private static void CollectSkillBookJobIds(WzObject node, ISet<int> result)
+        {
+            switch (node)
+            {
+                case WzDirectory directory:
+                    CollectSkillBookJobIds(directory, result);
+                    break;
+                case WzImage image:
+                    string fileName = Path.GetFileNameWithoutExtension(image.Name);
+                    if (int.TryParse(fileName, out int jobId))
+                    {
+                        result.Add(jobId);
+                    }
+                    break;
+            }
+        }
+
+        private WzImage GetSkillImage(string imgName)
+        {
+            return (_skillWz?.WzDirectory?[imgName] as WzImage)
+                   ?? Program.FindImage("Skill", imgName);
+        }
+
+        private WzImageProperty GetSkillSoundNode(int skillId)
+        {
+            _skillSoundImage ??= Program.FindImage("Sound", "Skill.img");
+            _skillSoundImage?.ParseImage();
+            return _skillSoundImage?[skillId.ToString("D7", CultureInfo.InvariantCulture)];
+        }
+
+        private bool TryRegisterSkillSound(SkillData skill, SoundManager soundManager, WzImageProperty soundProperty, string soundName)
+        {
+            WzBinaryProperty soundBinary = soundProperty as WzBinaryProperty
+                                          ?? (soundProperty as WzUOLProperty)?.LinkValue as WzBinaryProperty;
+            if (soundBinary == null)
+                return false;
+
+            string soundKey = $"Skill:{skill.SkillId}:{soundName}";
+            soundManager.RegisterSound(soundKey, soundBinary);
+            skill.CastSoundKey = soundKey;
+            return true;
+        }
+
+        private static string GetPrimaryActionName(WzImageProperty skillNode)
+        {
+            var actionNode = skillNode["action"];
+            if (actionNode == null)
+                return string.Empty;
+
+            return GetString(actionNode, "0")
+                   ?? GetString(actionNode, "action")
+                   ?? actionNode.WzProperties.Select(prop => GetPropertyStringValue(prop)).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+                   ?? string.Empty;
+        }
+
+        private static string GetPropertyStringValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty stringProperty => stringProperty.Value,
+                _ => null
+            };
+        }
+
+        private static bool MatchesAction(string actionName, params string[] keywords)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+                return false;
+
+            string lowered = actionName.ToLowerInvariant();
+            foreach (string keyword in keywords)
+            {
+                if (lowered.Contains(keyword.ToLowerInvariant()))
+                    return true;
+            }
+
+            return false;
         }
 
         private string GetJobName(int jobId)
@@ -735,7 +934,58 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         #region Utility
 
-        private static int GetInt(WzImageProperty node, string name, int defaultValue = 0)
+        private static SkillLevelData CreateLevelData(WzImageProperty node, int level)
+        {
+            var levelData = new SkillLevelData { Level = level };
+
+            levelData.Damage = GetInt(node, "damage", 0, level);
+            levelData.AttackCount = GetInt(node, "attackCount", 1, level);
+            levelData.MobCount = GetInt(node, "mobCount", 1, level);
+
+            levelData.MpCon = GetInt(node, "mpCon", 0, level);
+            levelData.HpCon = GetInt(node, "hpCon", 0, level);
+            levelData.ItemCon = GetInt(node, "itemCon", 0, level);
+            levelData.ItemConNo = GetInt(node, "itemConNo", 0, level);
+
+            levelData.Cooldown = GetInt(node, "cooltime", 0, level) * 1000;
+            levelData.Time = GetInt(node, "time", 0, level);
+
+            levelData.Range = GetInt(node, "range", 0, level);
+            var rb = GetVector(node, "rb");
+            var lt = GetVector(node, "lt");
+            levelData.RangeR = rb?.X ?? levelData.Range;
+            levelData.RangeL = Math.Abs(lt?.X ?? levelData.Range);
+            levelData.RangeY = Math.Abs(lt?.Y ?? 0) + Math.Abs(rb?.Y ?? 0);
+
+            levelData.PAD = GetInt(node, "pad", 0, level);
+            levelData.MAD = GetInt(node, "mad", 0, level);
+            levelData.PDD = GetInt(node, "pdd", 0, level);
+            levelData.MDD = GetInt(node, "mdd", 0, level);
+            levelData.ACC = GetInt(node, "acc", 0, level);
+            levelData.EVA = GetInt(node, "eva", 0, level);
+            levelData.Speed = GetInt(node, "speed", 0, level);
+            levelData.Jump = GetInt(node, "jump", 0, level);
+
+            levelData.HP = GetInt(node, "hp", 0, level);
+            levelData.MP = GetInt(node, "mp", 0, level);
+
+            levelData.Prop = GetInt(node, "prop", 0, level);
+            levelData.X = GetInt(node, "x", 0, level);
+            levelData.Y = GetInt(node, "y", 0, level);
+            levelData.Z = GetInt(node, "z", 0, level);
+
+            levelData.BulletCount = GetInt(node, "bulletCount", 1, level);
+            levelData.BulletSpeed = GetInt(node, "bulletSpeed", 0, level);
+
+            levelData.Mastery = GetInt(node, "mastery", 0, level);
+            levelData.CriticalRate = GetInt(node, "cr", 0, level);
+
+            levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
+
+            return levelData;
+        }
+
+        private static int GetInt(WzImageProperty node, string name, int defaultValue = 0, int formulaX = 1)
         {
             var child = node?[name];
             if (child is WzIntProperty intProp)
@@ -744,7 +994,28 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return shortProp.Value;
             if (child is WzLongProperty longProp)
                 return (int)longProp.Value;
+            if (child is WzStringProperty stringProp && TryEvaluateFormula(stringProp.Value, formulaX, out int value))
+                return value;
             return defaultValue;
+        }
+
+        private static bool TryEvaluateFormula(string expression, int xValue, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(expression))
+                return false;
+
+            try
+            {
+                var parser = new FormulaParser(expression, xValue);
+                double result = parser.Parse();
+                value = (int)Math.Round(result, MidpointRounding.AwayFromZero);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static Point? GetVector(WzImageProperty node, string name)
@@ -767,6 +1038,176 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             _skillCache.Clear();
             _jobCache.Clear();
+        }
+
+        private sealed class FormulaParser
+        {
+            private readonly string _expression;
+            private readonly int _xValue;
+            private int _index;
+
+            public FormulaParser(string expression, int xValue)
+            {
+                _expression = expression ?? string.Empty;
+                _xValue = xValue;
+            }
+
+            public double Parse()
+            {
+                double value = ParseExpression();
+                SkipWhitespace();
+                if (_index < _expression.Length)
+                    throw new FormatException($"Unexpected token '{_expression[_index]}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private double ParseExpression()
+            {
+                double value = ParseTerm();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('+'))
+                    {
+                        value += ParseTerm();
+                    }
+                    else if (Match('-'))
+                    {
+                        value -= ParseTerm();
+                    }
+                    else
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            private double ParseTerm()
+            {
+                double value = ParseFactor();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('*'))
+                    {
+                        value *= ParseFactor();
+                    }
+                    else if (Match('/'))
+                    {
+                        double divisor = ParseFactor();
+                        value = Math.Abs(divisor) < double.Epsilon ? 0 : value / divisor;
+                    }
+                    else
+                    {
+                        return value;
+                    }
+                }
+            }
+
+            private double ParseFactor()
+            {
+                SkipWhitespace();
+
+                if (Match('+'))
+                    return ParseFactor();
+
+                if (Match('-'))
+                    return -ParseFactor();
+
+                if (Match('('))
+                {
+                    double value = ParseExpression();
+                    Expect(')');
+                    return value;
+                }
+
+                if (TryParseIdentifier(out string identifier))
+                {
+                    if (string.Equals(identifier, "x", StringComparison.OrdinalIgnoreCase))
+                        return _xValue;
+
+                    if (identifier.Equals("u", StringComparison.OrdinalIgnoreCase) ||
+                        identifier.Equals("d", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Expect('(');
+                        double inner = ParseExpression();
+                        Expect(')');
+                        return identifier.Equals("u", StringComparison.OrdinalIgnoreCase)
+                            ? Math.Ceiling(inner)
+                            : Math.Floor(inner);
+                    }
+
+                    throw new FormatException($"Unsupported identifier '{identifier}' in '{_expression}'.");
+                }
+
+                return ParseNumber();
+            }
+
+            private double ParseNumber()
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length &&
+                       (char.IsDigit(_expression[_index]) || _expression[_index] == '.'))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                    throw new FormatException($"Expected number at index {_index} in '{_expression}'.");
+
+                string token = _expression[start.._index];
+                if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                    throw new FormatException($"Invalid number '{token}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private bool TryParseIdentifier(out string identifier)
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length && char.IsLetter(_expression[_index]))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                {
+                    identifier = null;
+                    return false;
+                }
+
+                identifier = _expression[start.._index];
+                return true;
+            }
+
+            private bool Match(char ch)
+            {
+                SkipWhitespace();
+                if (_index >= _expression.Length || _expression[_index] != ch)
+                    return false;
+
+                _index++;
+                return true;
+            }
+
+            private void Expect(char ch)
+            {
+                if (!Match(ch))
+                    throw new FormatException($"Expected '{ch}' at index {_index} in '{_expression}'.");
+            }
+
+            private void SkipWhitespace()
+            {
+                while (_index < _expression.Length && char.IsWhiteSpace(_expression[_index]))
+                {
+                    _index++;
+                }
+            }
         }
 
         #endregion

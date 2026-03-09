@@ -773,8 +773,8 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         /// <summary>
-        /// Load skills for a character's job into a skill window
-        /// This only loads skills for the character's current job (not the full job path).
+        /// Load skills for a character's job into a skill window.
+        /// Standard jobs populate their advancement path across tabs; admin jobs stay focused on a single book.
         /// </summary>
         /// <param name="skillWindow">The skill window to populate</param>
         /// <param name="jobId">The character's current job ID (e.g., 212 for Bishop)</param>
@@ -797,47 +797,128 @@ namespace HaCreator.MapSimulator.Loaders
                     skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
                 }
 
-                int tabIndex = GetSkillTabFromJobId(jobId);
-                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into tab {tabIndex}");
-
-                // Some jobs have skills stored under a different "skill book" job id (e.g. SuperGM 910 uses GM 900).
-                var bookJobIds = GetSkillBookJobIdsForJob(jobId);
-                var skillMap = new Dictionary<int, SkillDisplayData>();
-                foreach (int bookJobId in bookJobIds)
+                var pathJobIds = GetDisplayedSkillBookJobIdsForJob(jobId);
+                foreach (int pathJobId in pathJobIds)
                 {
-                    var skills = SkillDataLoader.LoadSkillsForJob(bookJobId, device);
-                    foreach (var s in skills)
-                    {
-                        if (s == null) continue;
-                        if (!skillMap.ContainsKey(s.SkillId))
-                            skillMap[s.SkillId] = s;
-                    }
-                }
+                    int tabIndex = GetSkillTabFromJobId(pathJobId);
+                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for display job {pathJobId} into tab {tabIndex} (requested job {jobId})");
 
-                var mergedSkills = skillMap.Values.ToList();
-                skillWindow.AddSkills(tabIndex, mergedSkills);
-                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for job {jobId} (books: [{string.Join(", ", bookJobIds)}])");
-
-                // Load and set the job icon and name for the populated tab.
-                Texture2D jobIcon = SkillDataLoader.LoadJobIcon(jobId, device);
-                if (jobIcon == null)
-                {
-                    // Fallback for jobs where the icon lives in another book (e.g. GM).
-                    foreach (int bookJobId in bookJobIds)
+                    var skillMap = new Dictionary<int, SkillDisplayData>();
+                    foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId))
                     {
-                        jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
-                        if (jobIcon != null) break;
+                        var skills = SkillDataLoader.LoadSkillsForJob(bookJobId, device);
+                        foreach (var skill in skills)
+                        {
+                            if (skill == null)
+                                continue;
+
+                            if (!skillMap.ContainsKey(skill.SkillId))
+                                skillMap[skill.SkillId] = skill;
+                        }
                     }
+
+                    var mergedSkills = skillMap.Values.ToList();
+                    skillWindow.AddSkills(tabIndex, mergedSkills);
+                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Tab {tabIndex}: Loaded {mergedSkills.Count} skills for display job {pathJobId}");
+
+                    // Load and set the job icon and name for the populated tab.
+                    Texture2D jobIcon = SkillDataLoader.LoadJobIcon(pathJobId, device);
+                    if (jobIcon == null)
+                    {
+                        // Fallback for jobs where the icon lives in another book (e.g. GM).
+                        foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId))
+                        {
+                            jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
+                            if (jobIcon != null)
+                                break;
+                        }
+                    }
+
+                    string jobName = SkillDataLoader.GetJobName(pathJobId);
+                    skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
                 }
-                string jobName = SkillDataLoader.GetJobName(jobId);
-                skillWindow.SetJobInfo(tabIndex, jobIcon, jobName);
 
                 // Show the populated tab by default.
-                skillWindow.CurrentTab = tabIndex;
+                skillWindow.CurrentTab = GetSkillTabFromJobId(jobId);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to load skills: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Load the full skill catalog into the skill window, grouped by advancement tab.
+        /// </summary>
+        public static void LoadAllSkills(SkillUIBigBang skillWindow, WzFile skillWzFile, GraphicsDevice device, int focusJobId = 0)
+        {
+            if (skillWindow == null)
+                return;
+
+            try
+            {
+                if (ShouldLoadFocusedJobOnly(focusJobId))
+                {
+                    LoadSkillsForJob(skillWindow, focusJobId, device);
+                    return;
+                }
+
+                skillWindow.ClearSkills();
+
+                var skillsByTab = new Dictionary<int, Dictionary<int, SkillDisplayData>>
+                {
+                    { 0, new Dictionary<int, SkillDisplayData>() },
+                    { 1, new Dictionary<int, SkillDisplayData>() },
+                    { 2, new Dictionary<int, SkillDisplayData>() },
+                    { 3, new Dictionary<int, SkillDisplayData>() },
+                    { 4, new Dictionary<int, SkillDisplayData>() }
+                };
+
+                var defaultIcon = SkillDataLoader.LoadJobIcon(0, device);
+                skillWindow.SetJobInfo(0, defaultIcon, "All Beginner Skills");
+                skillWindow.SetJobInfo(1, defaultIcon, "All 1st Job Skills");
+                skillWindow.SetJobInfo(2, defaultIcon, "All 2nd Job Skills");
+                skillWindow.SetJobInfo(3, defaultIcon, "All 3rd Job Skills");
+                skillWindow.SetJobInfo(4, defaultIcon, "All 4th Job Skills");
+
+                var availableBookIds = SkillDataLoader.GetAvailableSkillBookJobIds(skillWzFile);
+                if (availableBookIds.Count == 0)
+                {
+                    LoadSkillsForJob(skillWindow, focusJobId, device);
+                    return;
+                }
+
+                foreach (int bookJobId in availableBookIds)
+                {
+                    int tabIndex = GetSkillTabFromJobId(bookJobId);
+
+                    foreach (int resolvedBookJobId in GetSkillBookAliasesForJob(bookJobId))
+                    {
+                        var skills = SkillDataLoader.LoadSkillsForJob(resolvedBookJobId, device);
+                        foreach (var skill in skills)
+                        {
+                            if (skill == null)
+                                continue;
+
+                            if (!skillsByTab[tabIndex].ContainsKey(skill.SkillId))
+                            {
+                                skillsByTab[tabIndex][skill.SkillId] = skill;
+                            }
+                        }
+                    }
+                }
+
+                for (int tab = 0; tab <= 4; tab++)
+                {
+                    skillWindow.AddSkills(tab, skillsByTab[tab].Values);
+                }
+
+                int focusTab = GetSkillTabFromJobId(focusJobId);
+                skillWindow.CurrentTab = focusTab;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Failed to load full skill catalog: {ex.Message}");
             }
         }
 
@@ -872,13 +953,46 @@ namespace HaCreator.MapSimulator.Loaders
             };
         }
 
-        private static IReadOnlyList<int> GetSkillBookJobIdsForJob(int jobId)
+        private static IReadOnlyList<int> GetSkillBookAliasesForJob(int jobId)
         {
             return jobId switch
             {
-                910 => new[] { 900, 910 },
+                900 => new[] { 900, 910 },
+                910 => new[] { 910, 900 },
                 _ => new[] { jobId }
             };
+        }
+
+        private static IReadOnlyList<int> GetDisplayedSkillBookJobIdsForJob(int jobId)
+        {
+            if (ShouldLoadFocusedJobOnly(jobId))
+                return GetSkillBookAliasesForJob(jobId);
+
+            var path = new List<int> { 0 };
+            if (jobId <= 0)
+                return path;
+
+            int firstJob = (jobId / 100) * 100;
+            if (firstJob > 0 && !path.Contains(firstJob))
+                path.Add(firstJob);
+
+            int secondJob = (jobId / 10) * 10;
+            if (secondJob > firstJob && !path.Contains(secondJob))
+                path.Add(secondJob);
+
+            int thirdJob = secondJob + (jobId % 10 > 0 ? 1 : 0);
+            if (thirdJob > secondJob && thirdJob < jobId && !path.Contains(thirdJob))
+                path.Add(thirdJob);
+
+            if (!path.Contains(jobId))
+                path.Add(jobId);
+
+            return path;
+        }
+
+        private static bool ShouldLoadFocusedJobOnly(int jobId)
+        {
+            return jobId >= 800 && jobId < 1000;
         }
 
         /// <summary>
@@ -1465,7 +1579,7 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang)
         {
             return CreateUIWindowManager(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage,
-                null, null, device, screenWidth, screenHeight, isBigBang, 910); // Default to SuperGM (job 910)
+                null, null, device, screenWidth, screenHeight, isBigBang, 900); // Default to GM book (900 in v115-style data)
         }
 
         /// <summary>
@@ -1474,7 +1588,7 @@ namespace HaCreator.MapSimulator.Loaders
         public static UIWindowManager CreateUIWindowManager(
             WzImage uiWindow1Image, WzImage uiWindow2Image, WzImage basicImage, WzImage soundUIImage,
             WzFile skillWzFile, WzFile stringWzFile,
-            GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang, int jobId = 910)
+            GraphicsDevice device, int screenWidth, int screenHeight, bool isBigBang, int jobId = 900)
         {
             UIWindowManager manager = new UIWindowManager();
 
@@ -1486,11 +1600,10 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
 
             // Load skills for the character's job into skill window
-            // Only load skills for the current job to keep load time reasonable on newer versions.
             if (skill is SkillUIBigBang skillBigBang)
             {
-                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for job {jobId} into SkillUIBigBang");
-                LoadSkillsForJob(skillBigBang, jobId, device);
+                System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading full skill catalog into SkillUIBigBang");
+                LoadAllSkills(skillBigBang, skillWzFile, device, jobId);
             }
 
             // Create skill macro window (post-BB only)

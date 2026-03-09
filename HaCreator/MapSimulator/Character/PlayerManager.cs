@@ -13,6 +13,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -56,6 +57,7 @@ namespace HaCreator.MapSimulator.Character
         // Combat effects reference
         private CombatEffects _combatEffects;
         private MobSkillEffectLoader _mobSkillEffectLoader;
+        private SoundManager _soundManager;
 
         // Sound callbacks
         private Action _onJumpSound;
@@ -95,12 +97,9 @@ namespace HaCreator.MapSimulator.Character
             Loader = new CharacterLoader(characterWz, _device, _texturePool);
             System.Diagnostics.Debug.WriteLine($"[PlayerManager] CharacterLoader created (will use Program.FindImage if WzFile is null)");
 
-            // Create SkillLoader if Skill.wz is available
-            if (skillWz != null)
-            {
-                SkillLoader = new SkillLoader(skillWz, _device, _texturePool);
-                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillLoader created");
-            }
+            // Always create SkillLoader - it can fall back to Program.FindImage / IDataSource in IMG mode
+            SkillLoader = new SkillLoader(skillWz, _device, _texturePool);
+            System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillLoader created");
 
             _mobSkillEffectLoader = new MobSkillEffectLoader(_device, _texturePool);
             _mobSkillEffectLoader.Initialize();
@@ -207,6 +206,12 @@ namespace HaCreator.MapSimulator.Character
             _combatEffects = combatEffects;
         }
 
+        public void SetSoundManager(SoundManager soundManager)
+        {
+            _soundManager = soundManager;
+            Skills?.SetSoundManager(soundManager);
+        }
+
         /// <summary>
         /// Set spawn point
         /// </summary>
@@ -284,15 +289,13 @@ namespace HaCreator.MapSimulator.Character
                 Skills = new SkillManager(SkillLoader, Player);
                 Skills.SetMobPool(_mobPool);
                 Skills.SetCombatEffects(_combatEffects);
+                Skills.SetSoundManager(_soundManager);
 
-                // Load only the current job's skills (not every advancement/job).
-                Skills.LoadSkillsForJob(build?.Job ?? 0);
-                foreach (var skill in Skills.GetActiveSkills())
-                {
-                    Skills.SetSkillLevel(skill.SkillId, skill.MaxLevel);
-                }
+                // Load the full skill catalog so the simulator can browse and execute any player skill.
+                Skills.LoadAllSkills();
+                Skills.LearnAllActiveSkills();
 
-                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created, loaded job {build?.Job ?? 0} skills");
+                System.Diagnostics.Debug.WriteLine($"[PlayerManager] SkillManager created, loaded full skill catalog for runtime use");
             }
 
             // Set up callbacks
@@ -1053,6 +1056,7 @@ namespace HaCreator.MapSimulator.Character
             // Reconnect skill manager references
             Skills?.SetMobPool(mobPool);
             Skills?.SetCombatEffects(combatEffects);
+            Skills?.SetSoundManager(_soundManager);
         }
 
         #endregion
