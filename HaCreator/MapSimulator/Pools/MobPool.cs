@@ -8,6 +8,7 @@ using HaCreator.MapEditor.Instance;
 using Microsoft.Xna.Framework;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Core;
+using MapleLib.WzLib.WzStructure.Data;
 
 namespace HaCreator.MapSimulator.Pools
 {
@@ -22,7 +23,12 @@ namespace HaCreator.MapSimulator.Pools
         public float Y { get; set; }
         public int Rx0Shift { get; set; }
         public int Rx1Shift { get; set; }
+        public int YShift { get; set; }
         public bool Flip { get; set; }
+        public string LimitedName { get; set; }
+        public bool Hide { get; set; }
+        public int? Info { get; set; }
+        public int? Team { get; set; }
         public int RespawnTimeMs { get; set; }
         public bool IsBoss { get; set; }
 
@@ -40,10 +46,16 @@ namespace HaCreator.MapSimulator.Pools
     public class MobPool
     {
         #region Constants
-        private const int DEFAULT_RESPAWN_TIME = 7000;      // 7 seconds default respawn
         private const int BOSS_RESPAWN_TIME = 0;            // Bosses don't respawn by default
+        private const int DEFAULT_CREATE_MOB_INTERVAL = 9000;
         private const int DEATH_ANIMATION_TIME = 2000;      // 2 seconds for death animation
-        private const int BOSS_ANNOUNCE_DELAY = 500;        // Delay before boss announcement
+        private const int INITIAL_RESPAWN_DELAY = 1000;
+        private const double MAP_UNIT_SIZE_FACTOR = 0.0000078125d;
+        private const int MIN_MONSTER_CAPACITY = 1;
+        private const int MAX_MONSTER_CAPACITY = 40;
+        private const int SPAWN_HEIGHT_REDUCTION = 450;
+        private const int MIN_SPAWN_WIDTH = 1024;
+        private const int MIN_SPAWN_HEIGHT = 768;
         #endregion
 
         #region Collections
@@ -60,6 +72,12 @@ namespace HaCreator.MapSimulator.Pools
         private bool _respawnEnabled = true;
         private bool _bossSpawnEnabled = true;
         private int _lastUpdateTick = 0;
+        private int _globalRespawnIntervalMs = DEFAULT_CREATE_MOB_INTERVAL;
+        private int _nextRespawnTime = -1;
+        private int _minRegularSpawnAtOnce = MIN_MONSTER_CAPACITY;
+        private int _maxRegularSpawnAtOnce = MIN_MONSTER_CAPACITY * 2;
+        private int _simulatedCharacterCount = 1;
+        private bool _noMonsterCapacityLimit = false;
         private Action<MobItem> _onMobSpawned;
         private Action<MobItem> _onMobDied;
         private Action<MobItem> _onMobRemoved;
@@ -73,6 +91,10 @@ namespace HaCreator.MapSimulator.Pools
         public int SpawnPointCount => _spawnPoints.Count;
         public bool RespawnEnabled { get => _respawnEnabled; set => _respawnEnabled = value; }
         public bool BossSpawnEnabled { get => _bossSpawnEnabled; set => _bossSpawnEnabled = value; }
+        public int MinRegularSpawnAtOnce => _minRegularSpawnAtOnce;
+        public int MaxRegularSpawnAtOnce => _maxRegularSpawnAtOnce;
+        public int CurrentSpawnTarget => CalculateTargetMobCount();
+        public int GlobalRespawnIntervalMs => _globalRespawnIntervalMs;
         public IReadOnlyList<MobItem> ActiveMobs => _activeMobs;
         public IReadOnlyList<MobItem> DyingMobs => _dyingMobs;
         #endregion
@@ -126,11 +148,31 @@ namespace HaCreator.MapSimulator.Pools
                 Y = mob.MovementInfo?.SpawnY ?? instance?.Y ?? 0,
                 Rx0Shift = instance?.rx0Shift ?? 0,
                 Rx1Shift = instance?.rx1Shift ?? 0,
+                YShift = instance?.yShift ?? 0,
                 Flip = instance?.Flip == true,
-                RespawnTimeMs = instance?.MobTime ?? DEFAULT_RESPAWN_TIME,
+                LimitedName = instance?.LimitedName,
+                Hide = instance?.Hide == true,
+                Info = instance?.Info,
+                Team = instance?.Team,
+                RespawnTimeMs = NormalizeRespawnTime(instance?.MobTime, mobData?.IsBoss ?? false),
                 IsBoss = mobData?.IsBoss ?? false,
                 IsActive = true
             };
+        }
+
+        private static int NormalizeRespawnTime(int? mobTime, bool isBoss)
+        {
+            if (!mobTime.HasValue)
+            {
+                return isBoss ? BOSS_RESPAWN_TIME : 0;
+            }
+
+            if (mobTime.Value <= 0)
+            {
+                return mobTime.Value;
+            }
+
+            return checked(mobTime.Value * 1000);
         }
 
         public void Clear()
@@ -142,6 +184,95 @@ namespace HaCreator.MapSimulator.Pools
             _spawnPoints.Clear();
             _bossAnnouncements.Clear();
             _nextMobId = 1;
+            _nextRespawnTime = -1;
+            _globalRespawnIntervalMs = DEFAULT_CREATE_MOB_INTERVAL;
+            _minRegularSpawnAtOnce = MIN_MONSTER_CAPACITY;
+            _maxRegularSpawnAtOnce = MIN_MONSTER_CAPACITY * 2;
+            _simulatedCharacterCount = 1;
+            _noMonsterCapacityLimit = false;
+        }
+
+        public void ConfigureSpawnModel(int mapWidth, int mapHeight, float mobRate, int? createMobIntervalMs, long fieldLimit, int simulatedCharacterCount = 1)
+        {
+            int spawnWidth = Math.Max(MIN_SPAWN_WIDTH, mapWidth);
+            int spawnHeight = Math.Max(MIN_SPAWN_HEIGHT, mapHeight - SPAWN_HEIGHT_REDUCTION);
+            int capacity = CalculateMonsterCapacity(spawnWidth, spawnHeight, mobRate);
+
+            _minRegularSpawnAtOnce = capacity;
+            _maxRegularSpawnAtOnce = capacity * 2;
+            _globalRespawnIntervalMs = createMobIntervalMs.GetValueOrDefault(DEFAULT_CREATE_MOB_INTERVAL);
+            _simulatedCharacterCount = Math.Max(1, simulatedCharacterCount);
+            _noMonsterCapacityLimit = FieldLimitType.No_Monster_Capacity_Limit.Check(fieldLimit);
+            _nextRespawnTime = -1;
+        }
+
+        public void TrimInitialPopulation()
+        {
+            int remainingBudget = Math.Max(0, CalculateTargetMobCount());
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => sp.IsBoss))
+            {
+                if (spawnPoint.CurrentMob == null)
+                {
+                    continue;
+                }
+
+                if (remainingBudget > 0)
+                {
+                    remainingBudget--;
+                    continue;
+                }
+
+                DeactivateSpawnPoint(spawnPoint, scheduleImmediateRespawn: true);
+            }
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => !sp.IsBoss))
+            {
+                if (spawnPoint.CurrentMob == null)
+                {
+                    continue;
+                }
+
+                if (remainingBudget > 0)
+                {
+                    remainingBudget--;
+                    continue;
+                }
+
+                DeactivateSpawnPoint(spawnPoint, scheduleImmediateRespawn: true);
+            }
+        }
+
+        private static int CalculateMonsterCapacity(int spawnWidth, int spawnHeight, float mobRate)
+        {
+            double rawCapacity = spawnWidth * (double)spawnHeight * mobRate * MAP_UNIT_SIZE_FACTOR;
+            int capacity = (int)rawCapacity;
+            capacity = Math.Max(MIN_MONSTER_CAPACITY, capacity);
+            capacity = Math.Min(MAX_MONSTER_CAPACITY, capacity);
+            return capacity;
+        }
+
+        private int CalculateTargetMobCount()
+        {
+            if (_noMonsterCapacityLimit)
+            {
+                return _spawnPoints.Count(sp => !sp.IsBoss);
+            }
+
+            int target = _minRegularSpawnAtOnce;
+            if (_minRegularSpawnAtOnce <= 0)
+            {
+                return 0;
+            }
+
+            if (_simulatedCharacterCount > _maxRegularSpawnAtOnce / 2)
+            {
+                target += (_maxRegularSpawnAtOnce - _minRegularSpawnAtOnce)
+                    * (2 * _simulatedCharacterCount - _minRegularSpawnAtOnce)
+                    / (3 * _minRegularSpawnAtOnce);
+            }
+
+            return Math.Min(target, _maxRegularSpawnAtOnce);
         }
         #endregion
 
@@ -244,7 +375,9 @@ namespace HaCreator.MapSimulator.Pools
             {
                 spawnPoint.IsActive = false;
                 spawnPoint.DeathTime = _lastUpdateTick;
-                spawnPoint.NextSpawnTime = _lastUpdateTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
+                spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
+                    ? int.MaxValue
+                    : _lastUpdateTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
                 spawnPoint.CurrentMob = null;
             }
 
@@ -273,6 +406,27 @@ namespace HaCreator.MapSimulator.Pools
             _mobById.Remove(mob.PoolId);
 
             // Notify listeners so they can clean up references (e.g., MapSimulator nulls array entry)
+            _onMobRemoved?.Invoke(mob);
+        }
+
+        private void DeactivateSpawnPoint(MobSpawnPoint spawnPoint, bool scheduleImmediateRespawn)
+        {
+            var mob = spawnPoint?.CurrentMob;
+            if (spawnPoint == null || mob == null)
+            {
+                return;
+            }
+
+            _activeMobs.Remove(mob);
+            _dyingMobs.Remove(mob);
+            _deadMobs.Remove(mob);
+            _mobById.Remove(mob.PoolId);
+
+            spawnPoint.CurrentMob = null;
+            spawnPoint.IsActive = false;
+            spawnPoint.DeathTime = 0;
+            spawnPoint.NextSpawnTime = scheduleImmediateRespawn ? 0 : int.MaxValue;
+
             _onMobRemoved?.Invoke(mob);
         }
 
@@ -336,7 +490,9 @@ namespace HaCreator.MapSimulator.Pools
                     {
                         spawnPoint.IsActive = false;
                         spawnPoint.DeathTime = currentTick;
-                        spawnPoint.NextSpawnTime = currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
+                        spawnPoint.NextSpawnTime = spawnPoint.RespawnTimeMs < 0
+                            ? int.MaxValue
+                            : currentTick + DEATH_ANIMATION_TIME + spawnPoint.RespawnTimeMs;
                         spawnPoint.CurrentMob = null;
                     }
 
@@ -367,27 +523,18 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            // Process respawns
+            // Process respawns using the field-level spawn cadence and population cap.
             if (_respawnEnabled && mobFactory != null)
             {
-                foreach (var spawnPoint in _spawnPoints)
+                if (_nextRespawnTime < 0)
                 {
-                    if (spawnPoint.IsActive)
-                        continue;
+                    _nextRespawnTime = currentTick + INITIAL_RESPAWN_DELAY;
+                }
 
-                    // Skip boss respawn if disabled
-                    if (spawnPoint.IsBoss && !_bossSpawnEnabled)
-                        continue;
-
-                    // Skip if respawn time is 0 (no respawn)
-                    if (spawnPoint.RespawnTimeMs <= 0)
-                        continue;
-
-                    // Check if ready to respawn
-                    if (currentTick >= spawnPoint.NextSpawnTime)
-                    {
-                        SpawnMobAtPoint(spawnPoint, mobFactory);
-                    }
+                if (currentTick >= _nextRespawnTime)
+                {
+                    RespawnToTargetPopulation(currentTick, mobFactory);
+                    _nextRespawnTime = currentTick + _globalRespawnIntervalMs;
                 }
             }
 
@@ -422,7 +569,7 @@ namespace HaCreator.MapSimulator.Pools
 
             foreach (var spawnPoint in _spawnPoints)
             {
-                if (!spawnPoint.IsActive && spawnPoint.RespawnTimeMs > 0)
+                if (!spawnPoint.IsActive && spawnPoint.RespawnTimeMs >= 0)
                 {
                     SpawnMobAtPoint(spawnPoint, mobFactory);
                 }
@@ -455,8 +602,87 @@ namespace HaCreator.MapSimulator.Pools
                 TotalSpawnPoints = _spawnPoints.Count,
                 ActiveSpawnPoints = _spawnPoints.Count(sp => sp.IsActive),
                 BossSpawnPoints = _spawnPoints.Count(sp => sp.IsBoss),
-                ActiveBosses = _activeMobs.Count(m => m.AI?.IsBoss == true)
+                ActiveBosses = _activeMobs.Count(m => m.AI?.IsBoss == true),
+                MinRegularSpawnAtOnce = _minRegularSpawnAtOnce,
+                MaxRegularSpawnAtOnce = _maxRegularSpawnAtOnce,
+                CurrentSpawnTarget = CalculateTargetMobCount(),
+                GlobalRespawnIntervalMs = _globalRespawnIntervalMs
             };
+        }
+
+        private void RespawnToTargetPopulation(int currentTick, Func<MobSpawnPoint, MobItem> mobFactory)
+        {
+            int numShouldSpawn = CalculateTargetMobCount() - _activeMobs.Count;
+            if (numShouldSpawn <= 0)
+            {
+                return;
+            }
+
+            foreach (var spawnPoint in _spawnPoints.Where(sp => sp.IsBoss))
+            {
+                if (numShouldSpawn <= 0)
+                {
+                    return;
+                }
+
+                if (!IsSpawnPointReady(spawnPoint, currentTick))
+                {
+                    continue;
+                }
+
+                if (SpawnMobAtPoint(spawnPoint, mobFactory) != null)
+                {
+                    numShouldSpawn--;
+                }
+            }
+
+            List<MobSpawnPoint> regularSpawnPoints = _spawnPoints
+                .Where(sp => !sp.IsBoss && IsSpawnPointReady(sp, currentTick))
+                .ToList();
+
+            ShuffleSpawnPoints(regularSpawnPoints);
+
+            foreach (var spawnPoint in regularSpawnPoints)
+            {
+                if (numShouldSpawn <= 0)
+                {
+                    break;
+                }
+
+                if (SpawnMobAtPoint(spawnPoint, mobFactory) != null)
+                {
+                    numShouldSpawn--;
+                }
+            }
+        }
+
+        private bool IsSpawnPointReady(MobSpawnPoint spawnPoint, int currentTick)
+        {
+            if (spawnPoint == null || spawnPoint.IsActive)
+            {
+                return false;
+            }
+
+            if (spawnPoint.IsBoss && !_bossSpawnEnabled)
+            {
+                return false;
+            }
+
+            if (spawnPoint.RespawnTimeMs < 0)
+            {
+                return false;
+            }
+
+            return currentTick >= spawnPoint.NextSpawnTime;
+        }
+
+        private static void ShuffleSpawnPoints(List<MobSpawnPoint> spawnPoints)
+        {
+            for (int i = spawnPoints.Count - 1; i > 0; i--)
+            {
+                int j = Random.Shared.Next(i + 1);
+                (spawnPoints[i], spawnPoints[j]) = (spawnPoints[j], spawnPoints[i]);
+            }
         }
         #endregion
 
@@ -1117,5 +1343,9 @@ namespace HaCreator.MapSimulator.Pools
         public int ActiveSpawnPoints;
         public int BossSpawnPoints;
         public int ActiveBosses;
+        public int MinRegularSpawnAtOnce;
+        public int MaxRegularSpawnAtOnce;
+        public int CurrentSpawnTarget;
+        public int GlobalRespawnIntervalMs;
     }
 }

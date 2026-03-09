@@ -1816,6 +1816,128 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
+        private MobItem CreateMobFromSpawnPoint(MobSpawnPoint spawnPoint)
+        {
+            if (spawnPoint == null || string.IsNullOrWhiteSpace(spawnPoint.MobId))
+            {
+                return null;
+            }
+
+            MobInfo mobInfo = MobInfo.Get(spawnPoint.MobId);
+            if (mobInfo == null)
+            {
+                Debug.WriteLine($"[MobRespawn] Unable to resolve mob info for {spawnPoint.MobId}");
+                return null;
+            }
+
+            var mobInstance = new MobInstance(
+                mobInfo,
+                _mapBoard,
+                (int)spawnPoint.X,
+                (int)spawnPoint.Y,
+                spawnPoint.Rx0Shift,
+                spawnPoint.Rx1Shift,
+                spawnPoint.YShift,
+                spawnPoint.LimitedName,
+                ConvertRespawnMillisecondsToMapMobTime(spawnPoint.RespawnTimeMs),
+                spawnPoint.Flip,
+                spawnPoint.Hide,
+                spawnPoint.Info,
+                spawnPoint.Team);
+
+            List<WzObject> usedProps = new List<WzObject>();
+            return MapSimulatorLoader.CreateMobFromProperty(
+                _texturePool,
+                mobInstance,
+                UserScreenScaleFactor,
+                _DxDeviceManager.GraphicsDevice,
+                _soundManager,
+                ref usedProps);
+        }
+
+        private static int? ConvertRespawnMillisecondsToMapMobTime(int respawnTimeMs)
+        {
+            if (respawnTimeMs <= 0)
+            {
+                return respawnTimeMs;
+            }
+
+            return Math.Max(1, respawnTimeMs / 1000);
+        }
+
+        private void AddMobToActiveArrays(MobItem mob)
+        {
+            if (mob == null)
+            {
+                return;
+            }
+
+            ApplyRespawnedMobState(mob);
+
+            if (_mobsArray == null || _mobsArray.Length == 0)
+            {
+                _mobsArray = new[] { mob };
+            }
+            else
+            {
+                for (int i = 0; i < _mobsArray.Length; i++)
+                {
+                    if (_mobsArray[i] == null)
+                    {
+                        _mobsArray[i] = mob;
+                        RefreshMobRenderArray();
+                        return;
+                    }
+                }
+
+                Array.Resize(ref _mobsArray, _mobsArray.Length + 1);
+                _mobsArray[^1] = mob;
+            }
+
+            RefreshMobRenderArray();
+        }
+
+        private void ApplyRespawnedMobState(MobItem mob)
+        {
+            if (mob?.MovementInfo == null)
+            {
+                return;
+            }
+
+            Rectangle rawVR = _mapBoard.VRRectangle != null
+                ? new Rectangle(_mapBoard.VRRectangle.X, _mapBoard.VRRectangle.Y, _mapBoard.VRRectangle.Width, _mapBoard.VRRectangle.Height)
+                : new Rectangle(-_mapBoard.CenterPoint.X, -_mapBoard.CenterPoint.Y, _mapBoard.MapSize.X, _mapBoard.MapSize.Y);
+
+            mob.SetMapBoundaries(rawVR.Left, rawVR.Right, rawVR.Top, rawVR.Bottom);
+            mob.MovementEnabled = _gameState.MobMovementEnabled;
+
+            var footholds = _mapBoard.BoardItems.FootholdLines;
+            if (footholds == null || footholds.Count == 0)
+            {
+                return;
+            }
+
+            if (mob.MovementInfo.MoveType == MobMoveType.Move ||
+                mob.MovementInfo.MoveType == MobMoveType.Stand ||
+                mob.MovementInfo.MoveType == MobMoveType.Jump)
+            {
+                mob.MovementInfo.FindCurrentFoothold(footholds);
+            }
+        }
+
+        private void RefreshMobRenderArray()
+        {
+            _renderingManager?.SetRenderArrays(
+                _backgroundsBackArray,
+                _backgroundsFrontArray,
+                _mapObjectsArray,
+                _mobsArray,
+                _npcsArray,
+                _portalsArray,
+                _reactorsArray,
+                _tooltipsArray);
+        }
+
         /// <summary>
         /// Detect transport maps (CField_ContiMove) by checking for ShipObject in map's MiscItems.
         /// Transport maps are typically in the 990000xxx range (e.g., 990000100 Orbis ship).
@@ -2975,7 +3097,7 @@ namespace HaCreator.MapSimulator
                 t => _effectManager.Tremble(2, true, 0, 0, true, t));
 
             // Update mob pool for death animations, cleanup, and respawns
-            _mobPool?.Update(tickCount);
+            _mobPool?.Update(tickCount, CreateMobFromSpawnPoint);
 
             // Update drop pool for physics and expiration (frame-rate independent)
             _dropPool?.Update(tickCount, deltaSecondsLocal);
@@ -3611,6 +3733,7 @@ namespace HaCreator.MapSimulator
             // Initialize mob pool for spawn/despawn management
             _mobPool = new MobPool();
             _mobPool.Initialize(_mobsArray);
+            _mobPool.SetOnMobSpawned(AddMobToActiveArrays);
 
             // Initialize drop pool for item/meso drops
             _dropPool = new DropPool();
@@ -3696,7 +3819,21 @@ namespace HaCreator.MapSimulator
 
                 // Also remove from combat effects
                 _combatEffects.RemoveMobHPBar(mob.PoolId);
+                RefreshMobRenderArray();
             });
+
+            Rectangle mobSpawnBounds = _mapBoard.VRRectangle != null
+                ? new Rectangle(_mapBoard.VRRectangle.X, _mapBoard.VRRectangle.Y, _mapBoard.VRRectangle.Width, _mapBoard.VRRectangle.Height)
+                : new Rectangle(-_mapBoard.CenterPoint.X, -_mapBoard.CenterPoint.Y, _mapBoard.MapSize.X, _mapBoard.MapSize.Y);
+
+            _mobPool.ConfigureSpawnModel(
+                mobSpawnBounds.Width,
+                mobSpawnBounds.Height,
+                _mapBoard.MapInfo?.mobRate ?? 1.5f,
+                _mapBoard.MapInfo?.createMobInterval,
+                _mapBoard.MapInfo?.fieldLimit ?? 0,
+                simulatedCharacterCount: 1);
+            _mobPool.TrimInitialPopulation();
 
             // Convert Reactors
             _reactorsArray = mapObjects_Reactors.Count > 0
@@ -3738,15 +3875,7 @@ namespace HaCreator.MapSimulator
             _backgroundsBackArray = backgrounds_back.ToArray();
 
             // Set render arrays on RenderingManager
-            _renderingManager.SetRenderArrays(
-                _backgroundsBackArray,
-                _backgroundsFrontArray,
-                _mapObjectsArray,
-                _mobsArray,
-                _npcsArray,
-                _portalsArray,
-                _reactorsArray,
-                _tooltipsArray);
+            RefreshMobRenderArray();
 
             // Set pools on RenderingManager
             _renderingManager.SetPools(_dropPool, _playerManager);
