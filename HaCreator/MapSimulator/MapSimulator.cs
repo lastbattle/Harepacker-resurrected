@@ -285,15 +285,6 @@ namespace HaCreator.MapSimulator
             public bool IsValid;
         }
 
-        private DebugDrawData[] _debugMobData;
-        private DebugDrawData[] _debugNpcData;
-        private DebugDrawData[] _debugPortalData;
-        private DebugDrawData[] _debugReactorData;
-        private int _debugMobCount;
-        private int _debugNpcCount;
-        private int _debugPortalCount;
-        private int _debugReactorCount;
-
         // Cached StringBuilder for debug text to avoid GC allocations every frame
         private readonly StringBuilder _debugStringBuilder = new StringBuilder(256);
 
@@ -487,12 +478,6 @@ namespace HaCreator.MapSimulator
             {
                 mapObjects[i] = new List<BaseDXDrawableItem>();
             }
-
-            // Initialize debug data arrays (sized generously to avoid reallocations)
-            _debugMobData = new DebugDrawData[256];
-            _debugNpcData = new DebugDrawData[64];
-            _debugPortalData = new DebugDrawData[64];
-            _debugReactorData = new DebugDrawData[64];
 
             //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
 
