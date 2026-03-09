@@ -124,12 +124,14 @@ namespace HaCreator.MapSimulator {
                         source.MSTag = textureFromCache;
                     }
                     else {
-                        var bitmap = property.GetLinkedWzCanvasBitmap();
-                        if (bitmap != null)
+                        using (var bitmap = property.GetLinkedWzCanvasBitmap())
                         {
-                            source.MSTag = bitmap.ToTexture2D(device);
-                            // add to cache
-                            texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                            if (bitmap != null)
+                            {
+                                source.MSTag = bitmap.ToTexture2D(device);
+                                // add to cache
+                                texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
+                            }
                         }
                     }
                 }
@@ -192,9 +194,11 @@ namespace HaCreator.MapSimulator {
                                     frameProp.MSTag = textureFromCache;
                                 }
                                 else {
-                                    var bitmap = frameProp.GetLinkedWzCanvasBitmap();
-                                    if (bitmap != null) {
-                                        frameProp.MSTag = bitmap.ToTexture2D(device);
+                                    using (var bitmap = frameProp.GetLinkedWzCanvasBitmap())
+                                    {
+                                        if (bitmap != null) {
+                                            frameProp.MSTag = bitmap.ToTexture2D(device);
+                                        }
                                     }
 
                                     // add to cache
