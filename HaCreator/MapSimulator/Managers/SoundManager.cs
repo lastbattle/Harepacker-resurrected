@@ -143,6 +143,12 @@ namespace HaCreator.MapSimulator.Managers
 
             lock (_lock)
             {
+                // Poll instance state so completed sounds can release their slot.
+                for (int i = 0; i < _activeSounds.Count; i++)
+                {
+                    _activeSounds[i].Update();
+                }
+
                 // Remove and dispose completed sounds
                 for (int i = _activeSounds.Count - 1; i >= 0; i--)
                 {

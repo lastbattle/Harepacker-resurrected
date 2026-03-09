@@ -1929,6 +1929,7 @@ namespace HaCreator.MapSimulator
         protected override void Update(GameTime gameTime)
         {
             SyncBgmPlaybackToWindowFocus();
+            _soundManager?.Update();
 
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             currTickCount = Environment.TickCount;
