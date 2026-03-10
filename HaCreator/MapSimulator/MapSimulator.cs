@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator
         private FieldEffects _fieldEffects => _effectManager.Field;
         private readonly DynamicFootholdSystem _dynamicFootholds = new DynamicFootholdSystem();
         private readonly TransportationField _transportField = new TransportationField();
+        private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private TemporaryPortalField _temporaryPortalField;
 
@@ -1148,6 +1149,7 @@ namespace HaCreator.MapSimulator
 
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
+            _passengerSync.Clear();
 
             // Clear arrays
             _mapObjectsArray = null;
@@ -2651,6 +2653,12 @@ namespace HaCreator.MapSimulator
             // Update particle system
             _particleSystem.Update(currTickCount, deltaSeconds);
 
+            // Update moving transport/platform state before entity movement so grounded
+            // passengers can stay on a foothold-backed seam for the current frame.
+            _dynamicFootholds.Update(currTickCount, deltaSeconds);
+            _transportField.Update(currTickCount, deltaSeconds);
+            _passengerSync.SyncPlayer(_playerManager?.Player, _dynamicFootholds, _transportField);
+
             // Update player character
             // Pass chat state to block movement/jump input while typing
             if (_playerManager != null)
@@ -2747,12 +2755,6 @@ namespace HaCreator.MapSimulator
             // Pass deltaSeconds * 1000 to convert to milliseconds for frame-rate independence
             _fieldEffects.Update(currTickCount, Width, Height, _oldMouseState.X, _oldMouseState.Y, deltaSeconds * 1000f);
 
-            // Update dynamic footholds (moving platforms)
-            _dynamicFootholds.Update(currTickCount, deltaSeconds);
-
-            // Update transportation field (ship movement)
-            _transportField.Update(currTickCount, deltaSeconds);
-
             // Update limited view field (fog of war) - use player position if available
             float playerX = _playerManager?.IsPlayerActive == true
                 ? _playerManager.GetPlayerPosition().X
@@ -2761,6 +2763,8 @@ namespace HaCreator.MapSimulator
                 ? _playerManager.GetPlayerPosition().Y
                 : mapShiftY + _renderParams.RenderHeight / 2f;
             _limitedViewField.Update(gameTime, playerX, playerY);
+
+            _passengerSync.SyncGroundMobPassengers(_mobPool?.ActiveMobs.Select(m => m?.MovementInfo), _dynamicFootholds);
 
             // Update mob movement
             UpdateMobMovement(gameTime);
