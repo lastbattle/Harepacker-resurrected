@@ -127,7 +127,14 @@ namespace HaCreator.MapSimulator.Entities
             if (_stateFrames.Count == 0 || _stateFrames.ContainsKey(state))
                 return state;
 
-            return _stateFrames.ContainsKey(0) ? 0 : _stateFrames.Keys.OrderBy(key => key).First();
+            int lowerOrEqualState = _stateFrames.Keys
+                .Where(key => key <= state)
+                .DefaultIfEmpty(int.MinValue)
+                .Max();
+            if (lowerOrEqualState != int.MinValue)
+                return lowerOrEqualState;
+
+            return _stateFrames.Keys.OrderBy(key => key).First();
         }
 
         private static List<IDXObject> GetDefaultFrames(Dictionary<int, List<IDXObject>> stateFrames)
