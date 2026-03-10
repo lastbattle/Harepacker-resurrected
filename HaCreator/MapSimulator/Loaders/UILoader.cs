@@ -385,6 +385,9 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetWarningAnimations(
+                        LoadStatusBarWarningAnimation(mainBarProperties?["aniHPGauge"] as WzSubProperty, device),
+                        LoadStatusBarWarningAnimation(mainBarProperties?["aniMPGauge"] as WzSubProperty, device));
                     statusBar.SetKeyDownBarTextures(LoadKeyDownBarTextures(uiBasic, device));
 
                     // Load bitmap font digit textures from StatusBar2.img/mainBar/gauge/number
@@ -648,6 +651,9 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetWarningAnimations(
+                        LoadStatusBarWarningAnimation(gaugeProperties?["hpFlash"] as WzSubProperty, device),
+                        LoadStatusBarWarningAnimation(gaugeProperties?["mpFlash"] as WzSubProperty, device));
                     statusBar.SetKeyDownBarTextures(LoadKeyDownBarTextures(uiBasic, device));
 
                     // Load bitmap font digit textures from StatusBar.img/number
@@ -809,6 +815,43 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return keyDownBarTextures;
+        }
+
+        private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)
+        {
+            var animation = new StatusBarWarningAnimation();
+            if (warningProperty == null || device == null)
+            {
+                return animation;
+            }
+
+            var frames = new List<Texture2D>();
+            int frameDelayMs = animation.FrameDelayMs;
+
+            for (int frameIndex = 0; ; frameIndex++)
+            {
+                if (!(warningProperty[frameIndex.ToString()] is WzCanvasProperty warningCanvas))
+                {
+                    break;
+                }
+
+                Texture2D frameTexture = LoadCanvasTexture(warningCanvas, device);
+                if (frameTexture == null)
+                {
+                    continue;
+                }
+
+                frames.Add(frameTexture);
+                if (warningCanvas["delay"] is WzIntProperty delayProperty && delayProperty.Value > 0)
+                {
+                    frameDelayMs = delayProperty.Value;
+                }
+            }
+
+            animation.Frames = frames.ToArray();
+            animation.FrameDelayMs = frameDelayMs;
+            animation.FlashDurationMs = 500;
+            return animation;
         }
 
         private static void TryAddBuffIcon(Dictionary<string, Texture2D> buffIconTextures, WzImage uiBuffIcon,

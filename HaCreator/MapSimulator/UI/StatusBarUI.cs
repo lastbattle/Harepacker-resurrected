@@ -55,6 +55,13 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D Graduation { get; set; }
     }
 
+    public class StatusBarWarningAnimation
+    {
+        public Texture2D[] Frames { get; set; } = Array.Empty<Texture2D>();
+        public int FrameDelayMs { get; set; } = 120;
+        public int FlashDurationMs { get; set; } = 500;
+    }
+
     public class StatusBarUI : BaseDXDrawableItem, IUIObjectEvents {
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
@@ -90,6 +97,18 @@ namespace HaCreator.MapSimulator.UI {
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
+        private StatusBarWarningAnimation _hpWarningAnimation = new StatusBarWarningAnimation();
+        private StatusBarWarningAnimation _mpWarningAnimation = new StatusBarWarningAnimation();
+        private int _lowHpWarningThresholdPercent = 20;
+        private int _lowMpWarningThresholdPercent = 20;
+        private int _pastHpWarningValue;
+        private int _pastMpWarningValue;
+        private bool _hpWarningInitialized;
+        private bool _mpWarningInitialized;
+        private int _hpFlashStartTime = int.MinValue;
+        private int _hpFlashEndTime = int.MinValue;
+        private int _mpFlashStartTime = int.MinValue;
+        private int _mpFlashEndTime = int.MinValue;
 
         // Text positions relative to status bar (from IDA Pro analysis)
         // The status bar is composed of: lvBacktrnd (left ~64px) + gaugeBackgrd (center) + buttons
@@ -246,6 +265,20 @@ namespace HaCreator.MapSimulator.UI {
             }
         }
 
+        public void SetWarningAnimations(StatusBarWarningAnimation hpWarningAnimation, StatusBarWarningAnimation mpWarningAnimation)
+        {
+            _hpWarningAnimation = hpWarningAnimation ?? new StatusBarWarningAnimation();
+            _mpWarningAnimation = mpWarningAnimation ?? new StatusBarWarningAnimation();
+        }
+
+        public void SetLowResourceWarningThresholds(int hpThresholdPercent, int mpThresholdPercent)
+        {
+            _lowHpWarningThresholdPercent = Math.Clamp(hpThresholdPercent, 0, 100);
+            _lowMpWarningThresholdPercent = Math.Clamp(mpThresholdPercent, 0, 100);
+            _hpWarningInitialized = false;
+            _mpWarningInitialized = false;
+        }
+
         /// <summary>
         /// Set the digit textures for MapleStory-style bitmap font rendering.
         /// Loaded from UI.wz/Basic.img/ItemNo/ or UI.wz/StatusBar2.img/mainBar/number/
@@ -367,8 +400,10 @@ namespace HaCreator.MapSimulator.UI {
                 this.Position.X + STATUS_BAR_GAUGE_BASE_OFFSET.X,
                 this.Position.Y + STATUS_BAR_GAUGE_BASE_OFFSET.Y);
 
+            UpdateWarningFlashState(stats, currentTime);
+
             // Draw gauge bars first (under the text)
-            DrawGaugeBars(sprite, stats, basePosGauge);
+            DrawGaugeBars(sprite, stats, basePosGauge, currentTime);
             DrawBuffTray(sprite, basePosGauge, currentTime);
             DrawPreparedSkillBar(sprite, basePosGauge, currentTime);
 
@@ -429,7 +464,7 @@ namespace HaCreator.MapSimulator.UI {
         /// Gauge positions derived from IDA Pro analysis of CUIStatusBar::CGauge::Create.
         /// Uses actual gauge textures from UI.wz when available, falls back to colored rectangles.
         /// </summary>
-        private void DrawGaugeBars(SpriteBatch sprite, CharacterStatsData stats, Vector2 basePos) {
+        private void DrawGaugeBars(SpriteBatch sprite, CharacterStatsData stats, Vector2 basePos, int currentTime) {
             // Calculate fill ratios
             float hpRatio = stats.MaxHP > 0 ? (float)stats.HP / stats.MaxHP : 0f;
             float mpRatio = stats.MaxMP > 0 ? (float)stats.MP / stats.MaxMP : 0f;
@@ -446,6 +481,7 @@ namespace HaCreator.MapSimulator.UI {
             } else if (_pixelTexture != null) {
                 DrawGaugeBar(sprite, basePos, HP_GAUGE_RECT, hpRatio, HP_GAUGE_COLOR, HP_GAUGE_BG_COLOR);
             }
+            DrawWarningAnimation(sprite, basePos, HP_GAUGE_RECT, _hpWarningAnimation, currentTime, _hpFlashStartTime, _hpFlashEndTime, new Color(255, 88, 88, 180));
 
             // Draw MP gauge
             if (_mpGaugeTexture != null) {
@@ -453,6 +489,7 @@ namespace HaCreator.MapSimulator.UI {
             } else if (_pixelTexture != null) {
                 DrawGaugeBar(sprite, basePos, MP_GAUGE_RECT, mpRatio, MP_GAUGE_COLOR, MP_GAUGE_BG_COLOR);
             }
+            DrawWarningAnimation(sprite, basePos, MP_GAUGE_RECT, _mpWarningAnimation, currentTime, _mpFlashStartTime, _mpFlashEndTime, new Color(128, 180, 255, 180));
 
             // Draw EXP gauge
             if (_expGaugeTexture != null) {
@@ -460,6 +497,126 @@ namespace HaCreator.MapSimulator.UI {
             } else if (_pixelTexture != null) {
                 DrawGaugeBar(sprite, basePos, EXP_GAUGE_RECT, expRatio, EXP_GAUGE_COLOR, EXP_GAUGE_BG_COLOR);
             }
+        }
+
+        private void UpdateWarningFlashState(CharacterStatsData stats, int currentTime)
+        {
+            UpdateWarningFlash(
+                ref _hpWarningInitialized,
+                ref _pastHpWarningValue,
+                stats.HP,
+                stats.MaxHP,
+                _lowHpWarningThresholdPercent,
+                currentTime,
+                _hpWarningAnimation,
+                ref _hpFlashStartTime,
+                ref _hpFlashEndTime);
+
+            UpdateWarningFlash(
+                ref _mpWarningInitialized,
+                ref _pastMpWarningValue,
+                stats.MP,
+                stats.MaxMP,
+                _lowMpWarningThresholdPercent,
+                currentTime,
+                _mpWarningAnimation,
+                ref _mpFlashStartTime,
+                ref _mpFlashEndTime);
+        }
+
+        private void UpdateWarningFlash(
+            ref bool initialized,
+            ref int pastValue,
+            int currentValue,
+            int maxValue,
+            int thresholdPercent,
+            int currentTime,
+            StatusBarWarningAnimation animation,
+            ref int flashStartTime,
+            ref int flashEndTime)
+        {
+            if (maxValue <= 0)
+            {
+                initialized = false;
+                pastValue = 0;
+                flashStartTime = int.MinValue;
+                flashEndTime = int.MinValue;
+                return;
+            }
+
+            int safeCurrentValue = Math.Clamp(currentValue, 0, maxValue);
+            int safeThresholdPercent = Math.Clamp(thresholdPercent, 0, 100);
+            int thresholdValue = maxValue * safeThresholdPercent / 100;
+
+            if (!initialized)
+            {
+                pastValue = thresholdValue;
+                initialized = true;
+            }
+
+            if (safeThresholdPercent > 0 && safeCurrentValue * 100 / maxValue < safeThresholdPercent)
+            {
+                if (pastValue > safeCurrentValue)
+                {
+                    flashStartTime = currentTime;
+                    flashEndTime = currentTime + Math.Max(1, animation?.FlashDurationMs ?? 500);
+                }
+
+                pastValue = safeCurrentValue;
+                return;
+            }
+
+            pastValue = thresholdValue;
+        }
+
+        private void DrawWarningAnimation(
+            SpriteBatch sprite,
+            Vector2 basePos,
+            Rectangle gaugeRect,
+            StatusBarWarningAnimation animation,
+            int currentTime,
+            int flashStartTime,
+            int flashEndTime,
+            Color fallbackColor)
+        {
+            if (currentTime >= flashEndTime)
+            {
+                return;
+            }
+
+            int elapsedMs = Math.Max(0, currentTime - flashStartTime);
+            Texture2D[] frames = animation?.Frames ?? Array.Empty<Texture2D>();
+            if (frames.Length > 0)
+            {
+                int frameDelayMs = Math.Max(1, animation.FrameDelayMs);
+                int frameIndex = (elapsedMs / frameDelayMs) % frames.Length;
+                Texture2D frame = frames[frameIndex];
+                if (frame != null)
+                {
+                    sprite.Draw(frame, new Rectangle(
+                        (int)basePos.X + gaugeRect.X,
+                        (int)basePos.Y + gaugeRect.Y,
+                        gaugeRect.Width,
+                        gaugeRect.Height), Color.White);
+                    return;
+                }
+            }
+
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            int pulsePhase = (elapsedMs / 120) % 2;
+            byte alpha = pulsePhase == 0 ? (byte)160 : (byte)88;
+            sprite.Draw(
+                _pixelTexture,
+                new Rectangle(
+                    (int)basePos.X + gaugeRect.X,
+                    (int)basePos.Y + gaugeRect.Y,
+                    gaugeRect.Width,
+                    gaugeRect.Height),
+                new Color(fallbackColor.R, fallbackColor.G, fallbackColor.B, alpha));
         }
 
         private void DrawBuffTray(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)
