@@ -569,6 +569,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
                 : skill.ActionName;
 
+            _player.ApplySkillAvatarTransform(skill.SkillId, actionName);
             _player.TriggerSkillAnimation(actionName);
         }
 
@@ -1795,6 +1796,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (_buffs[i].SkillId == skill.SkillId)
                 {
                     ApplyBuffStats(_buffs[i], false);
+                    _player.ClearSkillAvatarTransform(_buffs[i].SkillId);
                     OnBuffExpired?.Invoke(_buffs[i]);
                     _buffs.RemoveAt(i);
                 }
@@ -1844,6 +1846,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     // Remove buff effects
                     ApplyBuffStats(buff, false);
+                    _player.ClearSkillAvatarTransform(buff.SkillId);
                     _buffs.RemoveAt(i);
                     OnBuffExpired?.Invoke(buff);
                 }
@@ -2429,6 +2432,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _skillLevels.Clear();
             _skillHotkeys.Clear();
             _availableSkills.Clear();
+            _player.ClearSkillAvatarTransform();
         }
 
         /// <summary>
@@ -2450,6 +2454,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ApplyBuffStats(buff, false);
             }
             _buffs.Clear();
+            _player.ClearSkillAvatarTransform();
 
             // Clear map-specific references
             _mobPool = null;
@@ -2479,6 +2484,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ApplyBuffStats(buff, false);
             }
             _buffs.Clear();
+            _player.ClearSkillAvatarTransform();
         }
 
         private static bool IsFocusedSingleBookJob(int jobId)

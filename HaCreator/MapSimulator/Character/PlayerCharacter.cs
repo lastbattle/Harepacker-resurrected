@@ -47,6 +47,19 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerCharacter
     {
+        private sealed class SkillAvatarTransformState
+        {
+            public int SkillId { get; init; }
+            public string StandActionName { get; init; }
+            public string WalkActionName { get; init; }
+            public string JumpActionName { get; init; }
+            public string ProneActionName { get; init; }
+            public string AttackActionName { get; init; }
+            public string ClimbActionName { get; init; }
+            public string FloatActionName { get; init; }
+            public string HitActionName { get; init; }
+        }
+
         #region Constants
 
         // ============================================================
@@ -131,6 +144,7 @@ namespace HaCreator.MapSimulator.Character
         private int _attackFrame;
         private int _attackFrameTimer;
         private string _forcedActionName;
+        private SkillAvatarTransformState _activeSkillAvatarTransform;
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
@@ -1127,9 +1141,15 @@ namespace HaCreator.MapSimulator.Character
                 _ => CharacterAction.Stand1
             };
 
-            string newActionName = State == PlayerState.Attacking && !string.IsNullOrWhiteSpace(_forcedActionName)
-                ? _forcedActionName
-                : CharacterPart.GetActionString(newAction);
+            string newActionName;
+            if (State == PlayerState.Attacking && !string.IsNullOrWhiteSpace(_forcedActionName))
+            {
+                newActionName = _forcedActionName;
+            }
+            else
+            {
+                newActionName = GetSkillTransformActionName(State) ?? CharacterPart.GetActionString(newAction);
+            }
 
             bool isFloatAction = IsFloatAnimationAction(newAction);
             bool isFloatMoving = isFloatAction && ShouldAnimateFloatAction();
@@ -1320,6 +1340,30 @@ namespace HaCreator.MapSimulator.Character
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
         }
 
+        public bool ApplySkillAvatarTransform(int skillId, string actionName)
+        {
+            if (!TryCreateSkillAvatarTransform(skillId, actionName, out SkillAvatarTransformState transform))
+            {
+                return false;
+            }
+
+            _activeSkillAvatarTransform = transform;
+            return true;
+        }
+
+        public void ClearSkillAvatarTransform()
+        {
+            _activeSkillAvatarTransform = null;
+        }
+
+        public void ClearSkillAvatarTransform(int skillId)
+        {
+            if (_activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId)
+            {
+                ClearSkillAvatarTransform();
+            }
+        }
+
         /// <summary>
         /// Apply damage to player with knockback
         /// </summary>
@@ -1477,6 +1521,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Dead;
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Dead);
             ClearForcedActionName();
+            ClearSkillAvatarTransform();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -1515,6 +1560,7 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Stand1;
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
             ClearForcedActionName();
+            ClearSkillAvatarTransform();
             _blinkExpressionEndTime = 0;
             _hitExpressionEndTime = 0;
             CurrentFaceExpressionName = "default";
@@ -1645,6 +1691,82 @@ namespace HaCreator.MapSimulator.Character
         private void ClearForcedActionName()
         {
             _forcedActionName = null;
+        }
+
+        private string GetSkillTransformActionName(PlayerState state)
+        {
+            if (_activeSkillAvatarTransform == null)
+            {
+                return null;
+            }
+
+            return state switch
+            {
+                PlayerState.Walking => _activeSkillAvatarTransform.WalkActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Jumping or PlayerState.Falling => _activeSkillAvatarTransform.JumpActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Prone => _activeSkillAvatarTransform.ProneActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Ladder or PlayerState.Rope => _activeSkillAvatarTransform.ClimbActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Swimming or PlayerState.Flying => _activeSkillAvatarTransform.FloatActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Attacking => _activeSkillAvatarTransform.AttackActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Hit => _activeSkillAvatarTransform.HitActionName ?? _activeSkillAvatarTransform.StandActionName,
+                PlayerState.Dead => CharacterPart.GetActionString(CharacterAction.Dead),
+                _ => _activeSkillAvatarTransform.StandActionName
+            };
+        }
+
+        private static bool TryCreateSkillAvatarTransform(int skillId, string actionName, out SkillAvatarTransformState transform)
+        {
+            transform = null;
+            string normalizedAction = actionName?.Trim();
+
+            switch (skillId)
+            {
+                case 35121005:
+                    transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone");
+                    return true;
+                case 35111004:
+                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand");
+                    return true;
+                case 35121013:
+                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand");
+                    return true;
+            }
+
+            if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand");
+                return true;
+            }
+
+            return false;
+        }
+
+        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName)
+        {
+            return new SkillAvatarTransformState
+            {
+                SkillId = skillId,
+                StandActionName = standActionName,
+                WalkActionName = walkActionName,
+                JumpActionName = standActionName,
+                ProneActionName = proneActionName,
+                AttackActionName = attackActionName,
+                ClimbActionName = standActionName,
+                FloatActionName = standActionName,
+                HitActionName = standActionName
+            };
         }
 
         /// <summary>

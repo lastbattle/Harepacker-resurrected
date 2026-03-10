@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Physics;
@@ -532,6 +533,104 @@ namespace UnitTest_MapSimulator
             Assert.Same(sitFrame, passengerStandResult);
             Assert.Same(sitFrame, passengerWalkResult);
             Assert.Same(sitFrame, passengerAttackResult);
+        }
+
+        [Theory]
+        [InlineData(35121005, "tank_pre", "tank_stand", "tank_walk", "tank")]
+        [InlineData(35111004, "siege_pre", "siege_stand", "siege_stand", "siege")]
+        [InlineData(35121013, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack")]
+        public void PlayerCharacter_SkillAvatarTransforms_MapMechanicActionFamilies(
+            int skillId,
+            string actionName,
+            string expectedStandAction,
+            string expectedWalkAction,
+            string expectedAttackAction)
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            Assert.True(player.ApplySkillAvatarTransform(skillId, actionName));
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(1000, 0.016f);
+            Assert.Equal(PlayerState.Standing, player.State);
+            Assert.Equal(expectedStandAction, player.CurrentActionName);
+
+            player.SetInput(left: false, right: true, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(1200, 0.016f);
+            Assert.Equal(PlayerState.Walking, player.State);
+            Assert.Equal(expectedWalkAction, player.CurrentActionName);
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: true, pickup: false);
+            player.Update(1400, 0.016f);
+            Assert.Equal(PlayerState.Attacking, player.State);
+            Assert.Equal(expectedAttackAction, player.CurrentActionName);
+        }
+
+        [Fact]
+        public void SkillManager_MechanicTransforms_ClearOnMapResetAndBuffExpiry()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var tankSkill = new SkillData
+            {
+                SkillId = 35121005,
+                MaxLevel = 1,
+                ActionName = "tank_pre",
+                Levels =
+                {
+                    [1] = new SkillLevelData { Level = 1 }
+                }
+            };
+
+            startCast!.Invoke(skillManager, new object[] { tankSkill, 1, 1000 });
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(Environment.TickCount + 400, 0.016f);
+            Assert.Equal("tank_stand", player.CurrentActionName);
+
+            skillManager.ClearMapState();
+            player.Update(Environment.TickCount + 450, 0.016f);
+            Assert.Equal("stand1", player.CurrentActionName);
+
+            var siegeSkill = new SkillData
+            {
+                SkillId = 35111004,
+                MaxLevel = 1,
+                ActionName = "siege_pre",
+                IsBuff = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 1
+                    }
+                }
+            };
+
+            startCast.Invoke(skillManager, new object[] { siegeSkill, 1, 2000 });
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(Environment.TickCount + 400, 0.016f);
+            Assert.Equal("siege_stand", player.CurrentActionName);
+
+            skillManager.Update(3201, 0.016f);
+            player.Update(Environment.TickCount + 450, 0.016f);
+            Assert.Equal("stand1", player.CurrentActionName);
         }
 
         [Fact]
