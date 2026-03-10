@@ -66,6 +66,8 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
+        private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
+        private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
 
         // Hit testing
         private const int ICON_HIT_LEFT = 13;
@@ -752,12 +754,10 @@ namespace HaCreator.MapSimulator.UI
 
             int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
             int tooltipY = _lastMousePosition.Y + 20;
-            int tooltipFrameIndex = 1; // tip1: draw to the right of the hovered skill by default.
 
             if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
             {
                 tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
-                tooltipFrameIndex = 0; // tip0: mirrored fallback on the left.
             }
 
             if (tooltipX < TOOLTIP_PADDING)
@@ -766,11 +766,10 @@ namespace HaCreator.MapSimulator.UI
             if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
             {
                 tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
-                tooltipFrameIndex = 2; // tip2: lift above when the lower edge would clip.
             }
 
             Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+            DrawTooltipBackground(sprite, backgroundRect);
 
             int titleX = tooltipX + TOOLTIP_PADDING;
             int titleY = tooltipY + TOOLTIP_PADDING;
@@ -844,33 +843,21 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveTooltipWidth()
         {
-            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
-            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+            return TOOLTIP_FALLBACK_WIDTH;
         }
 
-        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect)
         {
-            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
-                ? _tooltipFrames[tooltipFrameIndex]
-                : null;
-
-            if (tooltipFrame != null)
-            {
-                sprite.Draw(tooltipFrame, rect, Color.White);
-                return;
-            }
-
-            sprite.Draw(_debugPlaceholder, rect, new Color(18, 18, 26, 235));
+            sprite.Draw(_debugPlaceholder, rect, TOOLTIP_BACKGROUND_COLOR);
             DrawTooltipBorder(sprite, rect);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
         {
-            Color borderColor = new Color(214, 174, 82);
-            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
-            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
-            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
-            sprite.Draw(_debugPlaceholder, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), TOOLTIP_BORDER_COLOR);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), TOOLTIP_BORDER_COLOR);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), TOOLTIP_BORDER_COLOR);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.Right, rect.Y, 1, rect.Height), TOOLTIP_BORDER_COLOR);
         }
 
         private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
