@@ -50,6 +50,15 @@ namespace HaCreator.MapSimulator.UI {
         public float Progress { get; set; }
     }
 
+    public class StatusBarCooldownRenderData
+    {
+        public int SkillId { get; set; }
+        public string SkillName { get; set; }
+        public Texture2D IconTexture { get; set; }
+        public int RemainingMs { get; set; }
+        public int DurationMs { get; set; }
+    }
+
     public class StatusBarKeyDownBarTextures
     {
         public Texture2D Bar { get; set; }
@@ -73,6 +82,7 @@ namespace HaCreator.MapSimulator.UI {
         private SpriteFont _font;
         private Func<CharacterStatsData> _getCharacterStats;
         private Func<int, IReadOnlyList<StatusBarBuffRenderData>> _getBuffStatus;
+        private Func<int, IReadOnlyList<StatusBarCooldownRenderData>> _getCooldownStatus;
         private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillStatus;
         private Texture2D _pixelTexture;
 
@@ -166,6 +176,9 @@ namespace HaCreator.MapSimulator.UI {
         private const int BUFF_TRAY_ROWS = 2;
         private const int BUFF_TRAY_TOP_MARGIN = 8;
         private const int BUFF_TRAY_RIGHT_MARGIN = 8;
+        private const int COOLDOWN_TRAY_COLUMNS = 8;
+        private const int COOLDOWN_TRAY_TOP_MARGIN = BUFF_TRAY_TOP_MARGIN + (BUFF_TRAY_ROWS * (BUFF_ICON_SIZE + BUFF_ICON_SPACING)) + 4;
+        private const int COOLDOWN_TRAY_RIGHT_MARGIN = 8;
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_TITLE_GAP = 8;
@@ -219,6 +232,11 @@ namespace HaCreator.MapSimulator.UI {
         public void SetBuffStatusProvider(Func<int, IReadOnlyList<StatusBarBuffRenderData>> getBuffStatus)
         {
             _getBuffStatus = getBuffStatus;
+        }
+
+        public void SetCooldownStatusProvider(Func<int, IReadOnlyList<StatusBarCooldownRenderData>> getCooldownStatus)
+        {
+            _getCooldownStatus = getCooldownStatus;
         }
 
         public void SetPreparedSkillProvider(Func<int, StatusBarPreparedSkillRenderData> getPreparedSkillStatus)
@@ -447,6 +465,7 @@ namespace HaCreator.MapSimulator.UI {
             // Draw gauge bars first (under the text)
             DrawGaugeBars(sprite, stats, basePosGauge, currentTime);
             DrawBuffTray(sprite, renderParameters, currentTime);
+            DrawCooldownTray(sprite, renderParameters, currentTime);
             DrawPreparedSkillBar(sprite, basePosGauge, currentTime);
 
             // Skip text rendering if no font
@@ -816,6 +835,79 @@ namespace HaCreator.MapSimulator.UI {
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), new Color(42, 42, 54));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), new Color(92, 92, 110));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), new Color(42, 42, 54));
+        }
+
+        private void DrawCooldownTray(SpriteBatch sprite, RenderParameters renderParameters, int currentTime)
+        {
+            if (_getCooldownStatus == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<StatusBarCooldownRenderData> cooldownEntries = _getCooldownStatus(currentTime);
+            if (cooldownEntries == null || cooldownEntries.Count == 0)
+            {
+                return;
+            }
+
+            int visibleCount = Math.Min(cooldownEntries.Count, COOLDOWN_TRAY_COLUMNS);
+            int trayWidth = (BUFF_ICON_SIZE * visibleCount) + (BUFF_ICON_SPACING * Math.Max(0, visibleCount - 1));
+            int startX = renderParameters.RenderWidth - COOLDOWN_TRAY_RIGHT_MARGIN - trayWidth;
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                StatusBarCooldownRenderData cooldownEntry = cooldownEntries[i];
+                Rectangle iconRect = new Rectangle(
+                    startX + i * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
+                    COOLDOWN_TRAY_TOP_MARGIN,
+                    BUFF_ICON_SIZE,
+                    BUFF_ICON_SIZE);
+
+                DrawBuffIconFrame(sprite, iconRect);
+                if (cooldownEntry.IconTexture != null)
+                {
+                    sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
+                }
+
+                float remainingProgress = cooldownEntry.DurationMs > 0
+                    ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
+                    : 1f;
+                DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+
+                if (_font == null || cooldownEntry.RemainingMs <= 0)
+                {
+                    continue;
+                }
+
+                string remainingText = Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString();
+                Vector2 textSize = _font.MeasureString(remainingText) * 0.5f;
+                Vector2 textPosition = new Vector2(
+                    iconRect.Right - textSize.X - 2,
+                    iconRect.Bottom - textSize.Y - 1);
+
+                DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
+            }
+        }
+
+        private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            int overlayHeight = Math.Clamp((int)Math.Round(iconRect.Height * remainingProgress), 0, iconRect.Height);
+            if (overlayHeight <= 0)
+            {
+                return;
+            }
+
+            Rectangle overlayRect = new Rectangle(
+                iconRect.X,
+                iconRect.Bottom - overlayHeight,
+                iconRect.Width,
+                overlayHeight);
+            sprite.Draw(_pixelTexture, overlayRect, new Color(0, 0, 0, 150));
         }
 
         private void DrawPreparedSkillBar(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)

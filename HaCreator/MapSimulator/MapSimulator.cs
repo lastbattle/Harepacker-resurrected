@@ -1003,6 +1003,7 @@ namespace HaCreator.MapSimulator
             {
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
+                statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
@@ -1483,6 +1484,7 @@ namespace HaCreator.MapSimulator
             {
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
+                statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
@@ -4904,6 +4906,55 @@ namespace HaCreator.MapSimulator
                     IconTexture = buffEntry.IconTexture,
                     RemainingMs = buffEntry.RemainingMs,
                     DurationMs = buffEntry.DurationMs
+                });
+            }
+
+            return renderData;
+        }
+
+        private IReadOnlyList<StatusBarCooldownRenderData> GetStatusBarCooldownData(int currentTime)
+        {
+            if (_playerManager?.Skills == null || _playerManager.SkillLoader == null)
+            {
+                return Array.Empty<StatusBarCooldownRenderData>();
+            }
+
+            Dictionary<int, int> hotkeys = _playerManager.Skills.GetAllHotkeys();
+            if (hotkeys.Count == 0)
+            {
+                return Array.Empty<StatusBarCooldownRenderData>();
+            }
+
+            List<StatusBarCooldownRenderData> renderData = new List<StatusBarCooldownRenderData>();
+            foreach (KeyValuePair<int, int> hotkey in hotkeys.OrderBy(entry => entry.Key))
+            {
+                int skillId = hotkey.Value;
+                if (skillId <= 0 || renderData.Any(entry => entry.SkillId == skillId))
+                {
+                    continue;
+                }
+
+                if (!_playerManager.Skills.IsOnCooldown(skillId, currentTime))
+                {
+                    continue;
+                }
+
+                SkillData skill = _playerManager.SkillLoader.LoadSkill(skillId);
+                int level = _playerManager.Skills.GetSkillLevel(skillId);
+                int remainingMs = _playerManager.Skills.GetCooldownRemaining(skillId, currentTime);
+                int durationMs = skill?.GetLevel(level)?.Cooldown ?? remainingMs;
+                if (remainingMs <= 0)
+                {
+                    continue;
+                }
+
+                renderData.Add(new StatusBarCooldownRenderData
+                {
+                    SkillId = skillId,
+                    SkillName = skill?.Name,
+                    IconTexture = skill?.IconTexture,
+                    RemainingMs = remainingMs,
+                    DurationMs = Math.Max(remainingMs, durationMs)
                 });
             }
 
