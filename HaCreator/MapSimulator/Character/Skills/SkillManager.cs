@@ -678,10 +678,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (horizontalRange <= 0)
                 horizontalRange = 120;
 
-            bool isTeleport = skill.ActionName.Contains("teleport", StringComparison.OrdinalIgnoreCase)
-                              || skill.Name?.Contains("teleport", StringComparison.OrdinalIgnoreCase) == true;
-            bool isFlyingRush = skill.ActionName.Contains("fly", StringComparison.OrdinalIgnoreCase)
-                                || skill.Name?.Contains("flying", StringComparison.OrdinalIgnoreCase) == true;
+            bool isTeleport = SkillTextContains(skill, "teleport");
+            bool isFlyingRush = SkillTextContains(skill, "fly")
+                                || SkillTextContains(skill, "flying")
+                                || SkillTextContains(skill, "rocket");
+            bool isJumpRush = !isTeleport
+                              && !isFlyingRush
+                              && (SkillTextContains(skill, "flash jump")
+                                  || SkillTextContains(skill, "jump")
+                                  || SkillTextContains(skill, "hop"));
 
             float direction = _player.FacingRight ? 1f : -1f;
             float targetX = _player.X + (horizontalRange * direction);
@@ -693,8 +698,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             float rushSpeed = Math.Max(250f, horizontalRange * 2.5f);
+            if (isJumpRush)
+            {
+                float jumpPower = (_player.Build?.JumpPower ?? 100) / 100f;
+                float jumpRushVerticalSpeed = Math.Max(
+                    140f,
+                    Math.Max(levelData.RangeY, Math.Max(levelData.Y, levelData.RangeBottom - levelData.RangeTop)));
+
+                _player.Physics.Jump();
+                _player.Physics.SetVelocity(
+                    rushSpeed * direction,
+                    -Math.Max(jumpRushVerticalSpeed, HaCreator.MapSimulator.Physics.CVecCtrl.JumpVelocity * jumpPower));
+                return;
+            }
+
             float verticalSpeed = isFlyingRush ? -60f : (float)_player.Physics.VelocityY;
             _player.Physics.SetVelocity(rushSpeed * direction, verticalSpeed);
+        }
+
+        private static bool SkillTextContains(SkillData skill, string value)
+        {
+            return skill?.ActionName?.Contains(value, StringComparison.OrdinalIgnoreCase) == true
+                   || skill?.Name?.Contains(value, StringComparison.OrdinalIgnoreCase) == true;
         }
 
         #endregion
