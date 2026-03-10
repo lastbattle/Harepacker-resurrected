@@ -55,6 +55,8 @@ namespace HaCreator.MapSimulator
     /// </summary>
     public class MapSimulator : Microsoft.Xna.Framework.Game
     {
+        private const int DefaultLowHpWarningThresholdPercent = 20;
+        private const int DefaultLowMpWarningThresholdPercent = 20;
         public int mapShiftX = 0;
         public int mapShiftY = 0;
         public Point minimapPos;
@@ -71,6 +73,8 @@ namespace HaCreator.MapSimulator
         private GraphicsDeviceManager _DxDeviceManager;
         private readonly TexturePool _texturePool = new TexturePool();
         private readonly ScreenshotManager _screenshotManager = new ScreenshotManager();
+        private int _statusBarHpWarningThresholdPercent = DefaultLowHpWarningThresholdPercent;
+        private int _statusBarMpWarningThresholdPercent = DefaultLowMpWarningThresholdPercent;
 
         private SpriteBatch _spriteBatch;
 
@@ -1006,6 +1010,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
             }
             if (statusBarChatUI != null)
@@ -1487,6 +1492,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetCooldownStatusProvider(GetStatusBarCooldownData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
                 statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
             }
             if (statusBarChatUI != null)
@@ -5756,6 +5762,72 @@ namespace HaCreator.MapSimulator
                     _chat.ClearMessages();
                     return ChatCommandHandler.CommandResult.Ok("Chat cleared");
                 });
+
+            _chat.CommandHandler.RegisterCommand(
+                "hpwarn",
+                "Set the low-HP warning threshold percentage",
+                "/hpwarn <percent>",
+                args =>
+                {
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Info($"HP warning threshold: {_statusBarHpWarningThresholdPercent}%");
+                    }
+
+                    if (!TryUpdateLowResourceWarningThreshold(args[0], isHp: true, out string message))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(message);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(message);
+                });
+
+            _chat.CommandHandler.RegisterCommand(
+                "mpwarn",
+                "Set the low-MP warning threshold percentage",
+                "/mpwarn <percent>",
+                args =>
+                {
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Info($"MP warning threshold: {_statusBarMpWarningThresholdPercent}%");
+                    }
+
+                    if (!TryUpdateLowResourceWarningThreshold(args[0], isHp: false, out string message))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(message);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(message);
+                });
+        }
+
+        private bool TryUpdateLowResourceWarningThreshold(string valueText, bool isHp, out string message)
+        {
+            if (!int.TryParse(valueText, out int thresholdPercent))
+            {
+                message = "Threshold must be an integer percentage between 0 and 100";
+                return false;
+            }
+
+            if (thresholdPercent < 0 || thresholdPercent > 100)
+            {
+                message = "Threshold must be between 0 and 100";
+                return false;
+            }
+
+            if (isHp)
+            {
+                _statusBarHpWarningThresholdPercent = thresholdPercent;
+            }
+            else
+            {
+                _statusBarMpWarningThresholdPercent = thresholdPercent;
+            }
+
+            statusBarUi?.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
+            message = $"{(isHp ? "HP" : "MP")} warning threshold set to {thresholdPercent}%";
+            return true;
         }
         #endregion
 
