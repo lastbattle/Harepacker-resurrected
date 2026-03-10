@@ -1005,6 +1005,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
             }
             if (statusBarChatUI != null)
             {
@@ -1484,6 +1485,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.CancelActiveBuff(skillId);
             }
             if (statusBarChatUI != null)
             {

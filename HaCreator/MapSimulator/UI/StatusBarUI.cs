@@ -116,6 +116,7 @@ namespace HaCreator.MapSimulator.UI {
         private int _hpFlashEndTime = int.MinValue;
         private int _mpFlashStartTime = int.MinValue;
         private int _mpFlashEndTime = int.MinValue;
+        private ButtonState _previousRightButtonState = ButtonState.Released;
 
         // Text positions relative to status bar (from IDA Pro analysis)
         // The status bar is composed of: lvBacktrnd (left ~64px) + gaugeBackgrd (center) + buttons
@@ -224,6 +225,8 @@ namespace HaCreator.MapSimulator.UI {
         {
             _getPreparedSkillStatus = getPreparedSkillStatus;
         }
+
+        public Action<int> BuffCancelRequested { get; set; }
 
         /// <summary>
         /// Set the pixel texture for drawing gauge bars
@@ -780,6 +783,11 @@ namespace HaCreator.MapSimulator.UI {
         private bool TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect)
         {
             Point mousePosition = new Point(Mouse.GetState().X, Mouse.GetState().Y);
+            return TryGetBuffEntryAt(mousePosition, out buffEntry, out iconRect);
+        }
+
+        private bool TryGetBuffEntryAt(Point mousePosition, out StatusBarBuffRenderData buffEntry, out Rectangle iconRect)
+        {
             foreach (KeyValuePair<int, Rectangle> hitbox in _buffIconHitboxes)
             {
                 if (!hitbox.Value.Contains(mousePosition))
@@ -1422,6 +1430,7 @@ namespace HaCreator.MapSimulator.UI {
         #region IClickableUIObject
         private Point? mouseOffsetOnDragStart = null;
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight) {
+            HandleBuffTrayRightClick(mouseState);
             return UIMouseEventHandler.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState, mouseCursor, uiButtons, false);
 
             // handle UI movement
@@ -1453,6 +1462,22 @@ namespace HaCreator.MapSimulator.UI {
                   // If the window is outside at the end of mouse click + move
                   // move it slightly back to the nearest X and Y coordinate
               }*/
+        }
+
+        private void HandleBuffTrayRightClick(MouseState mouseState)
+        {
+            bool releasedThisFrame = _previousRightButtonState == ButtonState.Pressed
+                && mouseState.RightButton == ButtonState.Released;
+            _previousRightButtonState = mouseState.RightButton;
+            if (!releasedThisFrame || BuffCancelRequested == null)
+            {
+                return;
+            }
+
+            if (TryGetBuffEntryAt(new Point(mouseState.X, mouseState.Y), out StatusBarBuffRenderData buffEntry, out _))
+            {
+                BuffCancelRequested.Invoke(buffEntry.SkillId);
+            }
         }
         #endregion
     }

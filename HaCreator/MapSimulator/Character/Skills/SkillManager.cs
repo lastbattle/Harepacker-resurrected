@@ -2275,6 +2275,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        public bool CancelActiveBuff(int skillId)
+        {
+            for (int i = _buffs.Count - 1; i >= 0; i--)
+            {
+                var buff = _buffs[i];
+                if (buff.SkillId != skillId)
+                {
+                    continue;
+                }
+
+                ApplyBuffStats(buff, false);
+                _player.ClearSkillAvatarTransform(buff.SkillId);
+                ClearSkillMount(buff.SkillId);
+                _buffs.RemoveAt(i);
+                OnBuffExpired?.Invoke(buff);
+                return true;
+            }
+
+            return false;
+        }
+
         public IReadOnlyList<ActiveBuff> ActiveBuffs => _buffs;
 
         public IReadOnlyList<StatusBarBuffEntry> GetStatusBarBuffEntries(int currentTime)
