@@ -46,6 +46,13 @@ namespace HaCreator.MapSimulator.Character
             "swingP1", "swingP2", "swingPF", "shoot1", "shoot2", "shootF", "proneStab"
         };
 
+        private static readonly HashSet<string> NonActionProperties = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "info",
+            "icon",
+            "iconRaw"
+        };
+
         public CharacterLoader(WzFile characterWz, GraphicsDevice device, TexturePool texturePool)
         {
             _characterWz = characterWz; // Can be null - will use Program.FindImage fallback
@@ -429,7 +436,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             // Load regular hair animations - include attack animations for proper character posing
-            var allActions = StandardActions.Concat(AttackActions);
+            var allActions = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
             foreach (var action in allActions)
             {
                 var actionNode = img[action];
@@ -631,7 +638,7 @@ namespace HaCreator.MapSimulator.Character
             if (img == null) return;
 
             // Combine standard and attack actions
-            var allActions = StandardActions.Concat(AttackActions);
+            var allActions = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
 
             foreach (var action in allActions)
             {
@@ -965,9 +972,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            // Determine which actions to load - body parts need attack animations too
-            bool isBodyPart = part.Type == CharacterPartType.Body || part.Type == CharacterPartType.Head;
-            var actionsToLoad = isBodyPart ? StandardActions.Concat(AttackActions) : StandardActions;
+            var actionsToLoad = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
 
             foreach (var action in actionsToLoad)
             {
@@ -986,6 +991,52 @@ namespace HaCreator.MapSimulator.Character
             }
 
             System.Diagnostics.Debug.WriteLine($"[CharacterLoader] {part.Name} has {part.Animations.Count} animations");
+        }
+
+        private static IReadOnlyList<string> BuildActionLoadOrder(IEnumerable<string> availableActionNames, bool includeAttackActions)
+        {
+            var orderedActions = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddAction(string actionName)
+            {
+                if (string.IsNullOrWhiteSpace(actionName) || !seen.Add(actionName) || !LooksLikeActionName(actionName))
+                {
+                    return;
+                }
+
+                orderedActions.Add(actionName);
+            }
+
+            foreach (string action in StandardActions)
+            {
+                AddAction(action);
+            }
+
+            if (includeAttackActions)
+            {
+                foreach (string action in AttackActions)
+                {
+                    AddAction(action);
+                }
+            }
+
+            if (availableActionNames != null)
+            {
+                foreach (string action in availableActionNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+                {
+                    AddAction(action);
+                }
+            }
+
+            return orderedActions;
+        }
+
+        private static bool LooksLikeActionName(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                   && !NonActionProperties.Contains(name)
+                   && !name.StartsWith("_", StringComparison.Ordinal);
         }
 
         private CharacterAnimation LoadAnimation(WzImageProperty node, string debugContext = null)

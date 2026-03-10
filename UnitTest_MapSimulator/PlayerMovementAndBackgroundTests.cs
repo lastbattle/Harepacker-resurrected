@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Character;
@@ -298,6 +299,30 @@ namespace UnitTest_MapSimulator
 
             Assert.Contains("swim", standardActions);
             Assert.Contains("fly", standardActions);
+        }
+
+        [Fact]
+        public void CharacterLoader_ActionLoadOrder_IncludesRareAndDeathActionsFromImageSurface()
+        {
+            var buildActionLoadOrder = typeof(CharacterLoader).GetMethod("BuildActionLoadOrder", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.NotNull(buildActionLoadOrder);
+
+            var actionOrder = ((IReadOnlyList<string>)buildActionLoadOrder!.Invoke(null, new object[]
+            {
+                new[] { "info", "dead", "ghost", "stand1", "swingO3", "dash", "_canvas" },
+                true
+            })!).ToList();
+
+            Assert.Contains("stand1", actionOrder);
+            Assert.Contains("swingO3", actionOrder);
+            Assert.Contains("dead", actionOrder);
+            Assert.Contains("ghost", actionOrder);
+            Assert.Contains("dash", actionOrder);
+            Assert.DoesNotContain("info", actionOrder);
+            Assert.DoesNotContain("_canvas", actionOrder);
+            Assert.True(actionOrder.IndexOf("stand1") < actionOrder.IndexOf("dead"));
+            Assert.True(actionOrder.IndexOf("swingO3") < actionOrder.IndexOf("dead"));
         }
 
         [Fact]
