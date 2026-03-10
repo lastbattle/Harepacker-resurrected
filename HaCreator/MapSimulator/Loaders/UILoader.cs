@@ -396,6 +396,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(mainBarProperties?["aniHPGauge"] as WzSubProperty, device),
                         LoadStatusBarWarningAnimation(mainBarProperties?["aniMPGauge"] as WzSubProperty, device));
@@ -666,6 +667,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetTooltipTextures(LoadSkillTooltipTextures(device));
                     statusBar.SetWarningAnimations(
                         LoadStatusBarWarningAnimation(gaugeProperties?["hpFlash"] as WzSubProperty, device),
                         LoadStatusBarWarningAnimation(gaugeProperties?["mpFlash"] as WzSubProperty, device));
@@ -799,6 +801,33 @@ namespace HaCreator.MapSimulator.Loaders
             TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incJump/0");
 
             return buffIconTextures;
+        }
+
+        private static Texture2D[] LoadSkillTooltipTextures(GraphicsDevice device)
+        {
+            Texture2D[] tooltipFrames = new Texture2D[3];
+            if (device == null)
+            {
+                return tooltipFrames;
+            }
+
+            WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            if (uiWindow2Image == null)
+            {
+                return tooltipFrames;
+            }
+
+            WzSubProperty skillProperty = uiWindow2Image["Skill"] as WzSubProperty;
+            WzSubProperty mainProperty = skillProperty?["main"] as WzSubProperty;
+            if (mainProperty == null)
+            {
+                return tooltipFrames;
+            }
+
+            tooltipFrames[0] = LoadCanvasTexture(mainProperty["tip0"] as WzCanvasProperty, device);
+            tooltipFrames[1] = LoadCanvasTexture(mainProperty["tip1"] as WzCanvasProperty, device);
+            tooltipFrames[2] = LoadCanvasTexture(mainProperty["tip2"] as WzCanvasProperty, device);
+            return tooltipFrames;
         }
 
         private static Dictionary<string, StatusBarKeyDownBarTextures> LoadKeyDownBarTextures(WzImage uiBasic, GraphicsDevice device)

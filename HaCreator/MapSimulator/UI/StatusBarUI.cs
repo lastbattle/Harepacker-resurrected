@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.UI {
     {
         public int SkillId { get; set; }
         public string SkillName { get; set; }
+        public string Description { get; set; }
         public string IconKey { get; set; } = "united/buff";
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
@@ -96,7 +97,9 @@ namespace HaCreator.MapSimulator.UI {
         private bool _useBitmapFont = false;      // Whether to use bitmap font or SpriteFont
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
+        private readonly Dictionary<int, StatusBarBuffRenderData> _buffTooltipEntries = new Dictionary<int, StatusBarBuffRenderData>();
         private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
+        private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private StatusBarWarningAnimation _hpWarningAnimation = new StatusBarWarningAnimation();
         private StatusBarWarningAnimation _mpWarningAnimation = new StatusBarWarningAnimation();
         private int _lowHpWarningThresholdPercent = 20;
@@ -157,6 +160,12 @@ namespace HaCreator.MapSimulator.UI {
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
         private const int BUFF_TRAY_ROWS = 2;
+        private const int TOOLTIP_FALLBACK_WIDTH = 320;
+        private const int TOOLTIP_PADDING = 10;
+        private const int TOOLTIP_TITLE_GAP = 8;
+        private const int TOOLTIP_SECTION_GAP = 6;
+        private const int TOOLTIP_OFFSET_X = 12;
+        private const int TOOLTIP_OFFSET_Y = -4;
         private static readonly Vector2 KEYDOWN_BAR_POS = new Vector2(214, -22);
         private static readonly Point KEYDOWN_BAR_GAUGE_OFFSET = new Point(2, 2);
 
@@ -262,6 +271,19 @@ namespace HaCreator.MapSimulator.UI {
                 {
                     _keyDownBarTextures[keyDownBarEntry.Key] = keyDownBarEntry.Value;
                 }
+            }
+        }
+
+        public void SetTooltipTextures(Texture2D[] tooltipFrames)
+        {
+            if (tooltipFrames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
+            {
+                _tooltipFrames[i] = tooltipFrames[i];
             }
         }
 
@@ -377,6 +399,7 @@ namespace HaCreator.MapSimulator.UI {
             // Draw character stats (HP, MP, EXP, Level, Name)
             // Use renderParameters to get screen height and calculate position from bottom
             DrawCharacterStats(sprite, renderParameters, TickCount);
+            DrawHoveredBuffTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         /// <summary>
@@ -628,6 +651,7 @@ namespace HaCreator.MapSimulator.UI {
 
             IReadOnlyList<StatusBarBuffRenderData> buffEntries = _getBuffStatus(currentTime);
             _buffIconHitboxes.Clear();
+            _buffTooltipEntries.Clear();
             if (buffEntries == null || buffEntries.Count == 0)
             {
                 return;
@@ -648,6 +672,7 @@ namespace HaCreator.MapSimulator.UI {
                     BUFF_ICON_SIZE);
 
                 _buffIconHitboxes[buffEntry.SkillId] = iconRect;
+                _buffTooltipEntries[buffEntry.SkillId] = buffEntry;
                 DrawBuffIconFrame(sprite, iconRect);
 
                 Texture2D iconTexture = null;
@@ -674,6 +699,75 @@ namespace HaCreator.MapSimulator.UI {
 
                 DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
             }
+        }
+
+        private void DrawHoveredBuffTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || !TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect))
+            {
+                return;
+            }
+
+            string title = SanitizeTooltipText(buffEntry.SkillName);
+            string remainingText = buffEntry.RemainingMs > 0
+                ? $"Time Left: {Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f))} sec"
+                : "Time Left: --";
+            string[] descriptionLines = WrapTooltipText(
+                SanitizeTooltipText(buffEntry.Description),
+                TOOLTIP_FALLBACK_WIDTH - (TOOLTIP_PADDING * 2));
+
+            float textWidth = Math.Max(
+                _font.MeasureString(title).X,
+                _font.MeasureString(remainingText).X);
+            if (descriptionLines.Length > 0)
+            {
+                textWidth = Math.Max(textWidth, MeasureLongestLine(descriptionLines));
+            }
+
+            int tooltipWidth = Math.Max(
+                TOOLTIP_FALLBACK_WIDTH,
+                (int)Math.Ceiling(textWidth + (TOOLTIP_PADDING * 2)));
+            int tooltipHeight = (TOOLTIP_PADDING * 2) + _font.LineSpacing + TOOLTIP_TITLE_GAP + _font.LineSpacing;
+            if (descriptionLines.Length > 0)
+            {
+                tooltipHeight += TOOLTIP_SECTION_GAP + (int)Math.Ceiling(MeasureLinesHeight(descriptionLines));
+            }
+
+            Point tooltipPosition = GetTooltipPosition(iconRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
+            Rectangle tooltipRect = new Rectangle(tooltipPosition.X, tooltipPosition.Y, tooltipWidth, tooltipHeight);
+
+            DrawTooltipBackground(sprite, tooltipRect);
+
+            float textY = tooltipRect.Y + TOOLTIP_PADDING;
+            DrawTooltipText(sprite, title, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), new Color(255, 238, 155));
+            textY += _font.LineSpacing + TOOLTIP_TITLE_GAP;
+            DrawTooltipText(sprite, remainingText, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), Color.White);
+            textY += _font.LineSpacing;
+
+            if (descriptionLines.Length > 0)
+            {
+                textY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, descriptionLines, tooltipRect.X + TOOLTIP_PADDING, textY, new Color(219, 219, 219));
+            }
+        }
+
+        private bool TryGetHoveredBuffEntry(out StatusBarBuffRenderData buffEntry, out Rectangle iconRect)
+        {
+            Point mousePosition = new Point(Mouse.GetState().X, Mouse.GetState().Y);
+            foreach (KeyValuePair<int, Rectangle> hitbox in _buffIconHitboxes)
+            {
+                if (!hitbox.Value.Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                iconRect = hitbox.Value;
+                return _buffTooltipEntries.TryGetValue(hitbox.Key, out buffEntry);
+            }
+
+            buffEntry = null;
+            iconRect = Rectangle.Empty;
+            return false;
         }
 
         private void DrawBuffIconFrame(SpriteBatch sprite, Rectangle iconRect)
@@ -745,6 +839,185 @@ namespace HaCreator.MapSimulator.UI {
             {
                 sprite.Draw(_pixelTexture, gaugeRect, new Color(255, 207, 76));
             }
+        }
+
+        private Point GetTooltipPosition(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
+        {
+            int x = anchorRect.Right + TOOLTIP_OFFSET_X;
+            int y = anchorRect.Y + TOOLTIP_OFFSET_Y;
+
+            if (x + tooltipWidth > renderWidth - TOOLTIP_PADDING)
+            {
+                x = anchorRect.Left - tooltipWidth - TOOLTIP_OFFSET_X;
+            }
+
+            if (x < TOOLTIP_PADDING)
+            {
+                x = Math.Max(TOOLTIP_PADDING, Math.Min(anchorRect.Left, renderWidth - tooltipWidth - TOOLTIP_PADDING));
+                y = anchorRect.Top - tooltipHeight - TOOLTIP_PADDING;
+            }
+
+            if (y + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+            {
+                y = renderHeight - tooltipHeight - TOOLTIP_PADDING;
+            }
+
+            if (y < TOOLTIP_PADDING)
+            {
+                y = Math.Min(renderHeight - tooltipHeight - TOOLTIP_PADDING, anchorRect.Bottom + TOOLTIP_PADDING);
+            }
+
+            return new Point(
+                Math.Max(TOOLTIP_PADDING, x),
+                Math.Max(TOOLTIP_PADDING, y));
+        }
+
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect)
+        {
+            Texture2D leftFrame = _tooltipFrames[0];
+            Texture2D centerFrame = _tooltipFrames[1];
+            Texture2D rightFrame = _tooltipFrames[2];
+            if (leftFrame != null && centerFrame != null && rightFrame != null)
+            {
+                sprite.Draw(leftFrame, new Rectangle(rect.X, rect.Y, leftFrame.Width, rect.Height), Color.White);
+                sprite.Draw(centerFrame, new Rectangle(rect.X + leftFrame.Width, rect.Y, Math.Max(1, rect.Width - leftFrame.Width - rightFrame.Width), rect.Height), Color.White);
+                sprite.Draw(rightFrame, new Rectangle(rect.Right - rightFrame.Width, rect.Y, rightFrame.Width, rect.Height), Color.White);
+                return;
+            }
+
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixelTexture, rect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, rect);
+        }
+
+        private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            Color borderColor = new Color(214, 174, 82);
+            sprite.Draw(_pixelTexture, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
+            sprite.Draw(_pixelTexture, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
+        }
+
+        private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    continue;
+                }
+
+                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * _font.LineSpacing)), color);
+            }
+        }
+
+        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
+            sprite.DrawString(_font, text, position, color);
+        }
+
+        private float MeasureLongestLine(string[] lines)
+        {
+            float width = 0f;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    width = Math.Max(width, _font.MeasureString(lines[i]).X);
+                }
+            }
+
+            return width;
+        }
+
+        private float MeasureLinesHeight(string[] lines)
+        {
+            if (lines == null || lines.Length == 0)
+            {
+                return 0f;
+            }
+
+            int nonEmptyLines = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                {
+                    nonEmptyLines++;
+                }
+            }
+
+            return nonEmptyLines > 0 ? nonEmptyLines * _font.LineSpacing : 0f;
+        }
+
+        private string[] WrapTooltipText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                return Array.Empty<string>();
+            }
+
+            var lines = new List<string>();
+            string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
+            foreach (string paragraph in paragraphs)
+            {
+                string trimmed = paragraph.Trim();
+                if (trimmed.Length == 0)
+                {
+                    continue;
+                }
+
+                string currentLine = string.Empty;
+                string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string word in words)
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = word;
+                    }
+                    else
+                    {
+                        currentLine = candidate;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                {
+                    lines.Add(currentLine);
+                }
+            }
+
+            return lines.ToArray();
+        }
+
+        private static string SanitizeTooltipText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            return text
+                .Replace("\r", string.Empty)
+                .Replace("\n", " ")
+                .Replace("\t", " ");
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures)
