@@ -46,6 +46,7 @@ It does three things that the old notes did not do well:
 - `CUserLocal::TryDoingRush` at `0x90b8c0`
 - `CUserLocal::TryDoingFlyingRush` at `0x90bc10`
 - `CUserLocal::TryDoingRocketBooster` at `0x940e50`
+- `CUserLocal::TryDoingRocketBoosterEnd` at `0x93d2d0`
 - `CUserLocal::TryDoingSmoothingMovingShootAttack` at `0x92de70`
 - `CUserLocal::TryDoingSwallowBuff` at `0x944520`
 - `CUserLocal::TryDoingSwallowMobWriggle` at `0x93f500`
@@ -53,7 +54,10 @@ It does three things that the old notes did not do well:
 - `CUserLocal::TryDoingCyclone` at `0x932d60`
 - `CUserLocal::TryDoingSitdownHealing` at `0x903d60`
 - `CUserLocal::UpdateClientTimer` at `0x90e6d0`
+- `CUserLocal::TryPassiveTransferField` at `0x91a2e0`
 - `CUserLocal::TalkToNpc` at `0x9321f0`
+- `CUserLocal::TryAutoRequestFollowCharacter` at `0x904bf0`
+- `CUserLocal::TryLeaveDirectionMode` at `0x9054c0`
 - `CUser::LoadLayer` at `0x8e96d0`
 - `CUser::PrepareActionLayer` at `0x8e3070`
 - `CUser::SetMoveAction` at `0x8df540`
@@ -112,6 +116,7 @@ Notes:
 - `CUserLocal::TryDoingRush` at `0x90b8c0`
 - `CUserLocal::TryDoingFlyingRush` at `0x90bc10`
 - `CUserLocal::TryDoingRocketBooster` at `0x940e50`
+- `CUserLocal::TryDoingRocketBoosterEnd` at `0x93d2d0`
 - `CUserLocal::TryDoingSmoothingMovingShootAttack` at `0x92de70`
 - `CUserLocal::TryDoingSwallowBuff` at `0x944520`
 - `CUserLocal::TryDoingSwallowMobWriggle` at `0x93f500`
@@ -121,7 +126,7 @@ Notes:
 - `CUserLocal::UpdateClientTimer` at `0x90e6d0`
 
 Notes:
-`CUserLocal::Update` at `0x937330` orchestrates several of these paths and confirms that key-down gauge updates, queued follow-up attacks, prepared-skill execution, repeat-skill handling, teleport, rush, flying-rush, movement-coupled shoot branches, timer-driven cancellations, and status-bar feedback are coordinated in one local-player update loop rather than isolated one-off handlers.
+`CUserLocal::Update` at `0x937330` orchestrates several of these paths and confirms that key-down gauge updates, queued follow-up attacks, prepared-skill execution, repeat-skill handling, teleport, rush, flying-rush, rocket-booster start/end handling, movement-coupled shoot branches, timer-driven cancellations, and status-bar feedback are coordinated in one local-player update loop rather than isolated one-off handlers.
 
 ### 3. Physics and movement parity
 
@@ -145,8 +150,12 @@ Notes:
 - `CPortalList::FindPortal_Hidden` at `0x6ab5d0`
 - `CUserLocal::CheckPortal_Collision` at `0x919a10`
 - `CUserLocal::TryDoingTeleport` at `0x932c00`
+- `CUserLocal::TryPassiveTransferField` at `0x91a2e0`
 - `CField::IsFearEffectOn` at `0x52a420`
 - `CField::OffFearEffect` at `0x52b810`
+
+Notes:
+`CUserLocal::TryPassiveTransferField` shows that client field transfer is not only explicit portal collision handling; the local-player update loop also retries an up-key style transfer after one-time actions finish when the character is allowed to move.
 
 ### 6. UI parity
 
@@ -167,11 +176,13 @@ Notes:
 
 - `CUserLocal::TalkToNpc` at `0x9321f0`
 - `CUserLocal::CheckReactor_Collision` at `0x903d20`
+- `CUserLocal::TryAutoRequestFollowCharacter` at `0x904bf0`
+- `CUserLocal::TryLeaveDirectionMode` at `0x9054c0`
 - `CUIStatusBar::ChatLogAdd` at `0x87aec0`
 - `CUser::PetAutoSpeaking` at `0x8deb10`
 
 Notes:
-`CUserLocal::TalkToNpc` is the first concrete client seam for future NPC bridge work. `CUserLocal::Update` also shows client-side quest-alert refresh calls, emotion reset / balloon lifetime upkeep, timer refresh, and status-bar chat logging, while `CUser::PetAutoSpeaking` covers one of the idle-feedback surfaces tied to those broader interaction loops.
+`CUserLocal::TalkToNpc` is the first concrete client seam for future NPC bridge work. `CUserLocal::Update` also shows client-side quest-alert refresh calls, emotion reset / balloon lifetime upkeep, timer refresh, timed direction-mode release, and status-bar chat logging, while `CUserLocal::TryAutoRequestFollowCharacter` covers automatic escort/follow requests and `CUser::PetAutoSpeaking` covers one of the idle-feedback surfaces tied to those broader interaction loops.
 
 ## Current State Summary
 
@@ -209,6 +220,7 @@ Confirmed changes since last pass:
 - `Boss HP bar` ? Implemented (both regular and boss HP bars).
 - `Damage numbers` (`ShowDamage`) ? Implemented with WZ-backed digit rendering.
 - `Ladder / rope lookup` ? Implemented for the runtime seam: `PlayerCharacter` now configures ladder and rope search directly through `CVecCtrl`, the old vecctrl stub is gone, and grab / re-grab paths resolve ladder metadata through the controller instead of bypassing it.
+- `Float collision` ? Implemented for the runtime seam: `CVecCtrl::CollisionDetectFloat` now resolves foothold landings through the configured foothold lookup, uses saved float-state crossing checks to avoid tunneling through platforms, and marks same-frame float landings so the player does not immediately collapse into prone while still holding `Down`.
 - `Floating-map parity` ? Partial; swim/fly states exist, but client-specific map/skill float behavior is incomplete.
 - `HP indicators` ? Implemented for regular mob and boss HP bars.
 - `Player skill catalog / invocation` ? Implemented for simulator use: the skill window now loads the full `Skill.wz` player-skill catalog grouped by advancement tab, active skills are learned into the runtime, and selected skills can be cast directly from the skill window.
@@ -220,6 +232,7 @@ Confirmed changes since last pass:
 - `NPC talk flow` ? Partial: clicking a nearby NPC now opens a real simulator dialogue overlay instead of stopping at hover-only cursor feedback, and that overlay resolves its baseline text from loaded NPC string data so interaction has a WZ-backed `TalkToNpc` surface even before quest/script branching is wired in.
 - `Skill UI layout` ? Partial: the Big Bang skill window now reuses the client-facing `UIWindow2.img/Skill/main/tip0..tip2` tooltip chrome and switches between right, left, and above hover placement as the cursor approaches screen edges, but scrollbar parity, recommendation logic, and skill-up behavior are still incomplete.
 - `Quick slot cooldown overlay` ? Partial: quick-slot cooldowns now draw through the client `UIWindow2.img/Skill/main/CoolTime/0..15` mask family instead of a flat dark fill, while keeping the remaining-seconds countdown text, but the broader status-bar cooldown tray and per-skill feedback surface are still incomplete.
+- `Quick-slot validation and quantity sync` ? Partial: quick slots now reject passive, hidden, unlearned, and stale skill assignments at the `SkillManager` seam, revalidate saved bindings after preset restore, and lazily prune invalid entries during redraw or hotkey use so job swaps no longer leave impossible skill icons behind, but the client's item and cash-slot quantity recount path still remains blocked on a real simulator inventory backend.
 - `Projectile hit-cap resolution` ? Partial: projectile-family skills now honor the effective WZ target cap from both `level/mobCount` and `ball/mobCount` instead of silently collapsing to a single non-piercing hit when only one source is populated, but client-only ranged and magic family branches are still incomplete.
 - `DoActiveSkill movement-family dispatch` ? Partial: the runtime now splits movement-family skills into teleport snaps, grounded rush, flying-rush glide, and jump-rush launch behavior using the same client seam family (`CUserLocal::TryDoingTeleport`, `TryDoingRush`, `TryDoingFlyingRush`), but several named per-skill branches are still unimplemented.
 - `Key-down / charge HUD` ? Partial: prepared skills now drive a WZ-backed status-bar key-down gauge sourced from `UI/Basic.img/KeyDownBar*`, including live fill progress for held charge skills, but the client's variant selection and branch-specific timing rules are still incomplete.
@@ -268,7 +281,7 @@ The simulator has a generic skill runtime. It does not yet mirror the client's n
 | Partial | `DoActiveSkill_*` family parity | Generic movement, summon, and prepare/charge families now execute, and movement-family dispatch now separates teleport snaps, grounded rush, flying-rush glide, and jump-rush launches from client-confirmed `TryDoingTeleport` / `TryDoingRush` / `TryDoingFlyingRush` seams, but the simulator still does not mirror every named client branch such as job-specific bound jumps, meso explosion, smoke shell, open gate, or admin-only rules one-for-one | The largest remaining gap is now fidelity of per-family behavior rather than total lack of execution support | `SkillManager`, `PlayerCharacter`, `PlayerCombat` (`CUserLocal::DoActiveSkill_*` family) |
 | Missing | Queued follow-up attack families | The client still runs deferred `TryDoingFinalAttack`, `TryDoingSerialAttack`, and `TryDoingSparkAttack` branches after the initiating attack resolves, with weapon-type gating and stored skill or target context, and the simulator has no equivalent queued follow-up pipeline | Passive procs and chained attack families still collapse into a single generic cast path, which changes both timing and hit behavior | `SkillManager`, `PlayerCombat` (`CUserLocal::TryDoingFinalAttack`, `CUserLocal::TryDoingSerialAttack`, `CUserLocal::TryDoingSparkAttack`) |
 | Partial | Repeat-skill sustain families | `CUserLocal::TryDoingRepeatSkill` still manages repeat-skill state for mechanic sustain skills such as siege/tank/SG-88, including key-down bar setup, summon assist toggles, timeout-driven effect requests, and mode handoff; the simulator only covers a subset of that behavior through generic prepared skills plus a few mechanic transforms | Mechanic sustain skills still diverge in timing, teardown, and summon interaction even though the visible transform baseline is now present | `SkillManager`, `PlayerCharacter` (`CUserLocal::TryDoingRepeatSkill`) |
-| Missing | Bound-jump and smoothing moving-shoot branches | The client still routes rocket-booster startup into `DoActiveSkill_BoundJump` through `TryDoingRocketBooster` and separately drives moving-fire behavior in `TryDoingSmoothingMovingShootAttack`, while the simulator currently stops at teleport/rush/flying-rush movement families | Several movement-coupled attack skills still lack the client's traversal and firing cadence | `SkillManager`, `PlayerCharacter` (`CUserLocal::TryDoingRocketBooster`, `CUserLocal::TryDoingSmoothingMovingShootAttack`) |
+| Missing | Bound-jump, rocket-booster end, and smoothing moving-shoot branches | The client still routes rocket-booster startup into `DoActiveSkill_BoundJump` through `TryDoingRocketBooster`, lands into a follow-up melee/effect teardown path in `TryDoingRocketBoosterEnd`, and separately drives moving-fire behavior in `TryDoingSmoothingMovingShootAttack`, while the simulator currently stops at teleport/rush/flying-rush movement families | Several movement-coupled attack skills still lack the client's traversal, landing, and firing cadence | `SkillManager`, `PlayerCharacter` (`CUserLocal::TryDoingRocketBooster`, `CUserLocal::TryDoingRocketBoosterEnd`, `CUserLocal::TryDoingSmoothingMovingShootAttack`) |
 | Partial | Key-down / charge skills | The simulator now has a generic prepare/charge flow with release handling plus a WZ-backed status-bar key-down gauge sourced from `UI/Basic.img/KeyDownBar*`, but it still lacks the client's full branch-specific timing, skin selection, and per-skill rules | Charge-family skills can execute and now expose visible hold progress, but the presentation and timing semantics are still simplified vs client behavior | `SkillManager`, `StatusBarUI.cs`, `UILoader.cs` (`CUserLocal::DoActiveSkill_Prepare`, `CUserLocal::TryDoingPreparedSkill`, `CUserLocal::DrawKeyDownBar`) |
 | Missing | Swallow, mine, cyclone, and sit-down healing branches | `CUserLocal::Update` still invokes dedicated handlers for swallow buff/wriggle, mine deployment, cyclone, and sit-down healing, none of which are represented in the simulator's current skill runtime | A real slice of class- and state-specific active-skill behavior is still absent even though the generic cast path exists | `SkillManager`, `PlayerCharacter` (`CUserLocal::TryDoingSwallowBuff`, `CUserLocal::TryDoingSwallowMobWriggle`, `CUserLocal::TryDoingMine`, `CUserLocal::TryDoingCyclone`, `CUserLocal::TryDoingSitdownHealing`) |
 | Partial | Summon simulation | Summon-family skills now create a generic summon lifecycle with duration, rendering, summon attack-branch playback, periodic nearby attacks, deferred mob removal during summon attack resolution, registration into the simulator's puppet/aggro system, client-backed movement-style buckets for stationary emplacement, grounded leash, owner-hover, and anchor-based roaming summons, and owner ladder/rope attack gating with the client-confirmed octopus / self-destruct exemptions, but they still do not reproduce per-skill summon attack logic, foothold settling, or full aggro behavior one-for-one | Summon-heavy jobs are now usable, more runtime-stable, and visually closer to client summon behavior, but they are still not client-parity | `SkillManager`, `SkillLoader.cs`, `SummonMovementResolver.cs`, `MobPool.cs`, entity/pool layer (`CUserLocal::DoActiveSkill_Summon`, `CSummoned::Init`, `CVecCtrlSummoned::WorkUpdateActive`, `CSummoned::TryDoingAttack`) |
@@ -294,7 +307,7 @@ This is no longer a blank area, but a refinement area.
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
 | Implemented | Ladder / rope lookup | `CVecCtrl` now owns the ladder/rope lookup seam and resolves ladder metadata for grab/re-grab paths instead of exposing a stub helper | Core climb behavior now routes through the same vector-controller seam the client uses | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
-| Partial | Float collision | There is still a TODO for foothold lookup during floating collision | Swim/fly collision edge cases can differ from client behavior | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
+| Implemented | Float collision | `CVecCtrl::CollisionDetectFloat` now uses the configured foothold lookup plus saved float-state crossing checks to land on footholds during swim/fly motion instead of carrying a TODO block | Swim/fly landing and platform-contact behavior now runs inside the vector controller instead of a partial fallback path | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
 | Partial | Floating-map parity | Swim and fly states exist, but they remain generic float modes rather than map- or skill-specific client behaviors | The simulator supports movement without matching all map rules | `PlayerCharacter`, `CVecCtrl` (`CVecCtrl::CollisionDetectFloat`, `CUserLocal::Update`) |
 | Missing | Movement path parity | The client's move-path encode/decode/passive-pos flow is still not modeled as a full parity target | Network-faithful movement replay and sync are incomplete | `CVecCtrl`, broader movement serialization layer |
 | Missing | Dynamic foothold passenger sync | Dynamic footholds exist, but full player and mob sync with moving platforms is still listed as future work | Transport/platform maps still diverge under movement | `DynamicFoothold.cs`, `TransportationField.cs` |
@@ -320,6 +333,7 @@ The old backlog understated what is already present here, but there is still rea
 | Implemented | Hidden portals | Reveal, hide, alpha fade, and collision gating are implemented | Remove from missing backlog | `PortalPool.cs` (`CPortalList::FindPortal_Hidden`) |
 | Implemented | Portal property accessors | `PH`, `PSH`, and `PV` equivalents are implemented | Remove from missing backlog | `PortalPool.cs` |
 | Partial | Portal interaction parity | Basic portal triggering and hidden portal behavior exist, but town portal, open gate, and more specialized client portal flows are still absent | Travel behavior is incomplete outside standard portals | `PortalPool.cs`, `MapSimulator.cs` (`CUserLocal::CheckPortal_Collision`, `CUserLocal::TryDoingTeleport`) |
+| Missing | Passive transfer-field triggers | `CUserLocal::TryPassiveTransferField` still retries an up-key style field transfer after one-time actions finish when the local player is allowed to move, and the simulator has no equivalent passive handoff path | Passive transfer maps and scripted transitions can stall or require manual input where the client advances automatically | `MapSimulator.cs`, portal/field transition layer (`CUserLocal::TryPassiveTransferField`) |
 | Partial | Transportation fields | Ship and Balrog transport handling exists, but player-on-ship sync is still explicitly unfinished | Visual field logic is ahead of gameplay sync | `TransportationField.cs` |
 | Partial | Dynamic objects / quest layers | Older notes listed these as missing; they still do not appear as a consolidated parity system in the current simulator surface | Event maps and quest-driven field presentation remain incomplete | map/field load path |
 | Missing | Town portal / mystic door lifecycle | Client-side create, enter, restore, and position flows are not implemented | Important movement utility remains absent | field and portal layer |
@@ -334,7 +348,7 @@ This area is more advanced than older parity notes suggested, but still far from
 | Partial | Status bar layout | Positions are informed by client analysis, bitmap/WZ-backed rendering exists for gauges and text, the overlay now stays anchored to the composed `StatusBar2.img/mainBar` frame, and the EXP gauge follows live progress instead of a fixed near-full fill | Strong base, but not complete behavior parity | `StatusBarUI.cs` (`CUIStatusBar::Draw`, `CUIStatusBar::SetStatusValue`, `CUIStatusBar::SetNumberValue`) |
 | Partial | Skill UI layout | Row height, positions, hit boxes, SP placement, and quick-slot assignment wiring are present, the Big Bang hover tooltip now reuses the client `tip0..tip2` frames with left/right/above placement variants, and post-Big Bang skill-icon drag-and-drop into the quick-slot bar still works, but the window still lacks scrollbar parity, recommendation logic, and full skill-up behavior | The window is usable and closer to the client than the old notes imply, but it is still not a full `CUISkill` clone | `SkillUI.cs`, `SkillUIBigBang.cs` (`CUISkill::Draw`) |
 | Partial | Quick slot cooldown overlay | Cooldown masking now uses the client `UIWindow2.img/Skill/main/CoolTime` frame family and remaining-seconds countdown text still renders on assigned quick-slot skills | Surface-level parity exists without the client's full cooldown tray and feedback behavior | `QuickSlotUI.cs` (`CUIStatusBar::CQuickSlot::Draw`) |
-| Missing | Quick-slot validation and quantity sync | The client revalidates each quick-slot entry against learned skills, function-key mappings, inventory counts, and consumable or cash-item validity in `CUIStatusBar::CQuickSlot::CompareValidateFuncKeyMappedInfo`, but the simulator currently persists whatever skill ids were dragged into slots | Stale or impossible assignments survive across job swaps and state changes, so the quick-slot bar still behaves more like a debug container than the client | `QuickSlotUI.cs`, `SkillManager.cs` (`CUIStatusBar::CQuickSlot::CompareValidateFuncKeyMappedInfo`) |
+| Partial | Quick-slot validation and quantity sync | The simulator now rejects passive, hidden, and unlearned skills at hotkey assignment time, revalidates saved quick-slot bindings after preset restore, and lazily prunes stale skill slots during redraw and hotkey lookup, but it still lacks the client's inventory-backed recount for consumable and cash-item entries from `CUIStatusBar::CQuickSlot::CompareValidateFuncKeyMappedInfo` | Stale skill assignments no longer survive job swaps and state changes, but item quantity parity is still blocked on the missing simulator inventory model | `QuickSlotUI.cs`, `SkillManager.cs`, `CharacterConfig.cs` (`CUIStatusBar::CQuickSlot::CompareValidateFuncKeyMappedInfo`) |
 | Partial | HP/MP warning flash | HP/MP gauge warnings now replay the client `aniHPGauge` / `aniMPGauge` and `hpFlash` / `mpFlash` assets for 500 ms when the resource drops further while already below the simulator's current 20% threshold default, but the underlying client-configurable warning thresholds are not yet exposed in the simulator UI | The client-visible low-resource cue now exists, but settings parity is still incomplete | `StatusBarUI.cs`, `UILoader.cs` (`CUIStatusBar::Draw`, `CUIStatusBar::SetNumberValue`) |
 | Partial | Chat log / whisper flows | The Big Bang status-bar chat strip now renders wrapped recent chat lines from the simulator chat history, cycles the `chatTarget` badge through the client WZ labels, and supports `/w` + `/r` whisper targeting with an on-bar prompt, but full client message typing modes, scroll behavior, and exact chat-log color/layout rules are still missing | The status-bar chat surface now exists, but it is still short of a full client chat log and whisper workflow clone | `MapSimulatorChat.cs`, `StatusBarChatUI.cs`, `UILoader.cs` (`CUIStatusBar::ChatLogAdd`) |
 | Missing | Full skill UI behavior | Skill-up actions, guide flow, scrollbar parity, recommendation logic, and root visibility handling are still missing | Current window is a layout approximation, not a full CUISkill clone | `SkillUI.cs` (`CUISkill::Draw`, `CUISkill::GetSkillRootVisible`, `CUISkill::GetRecommendSKill`) |
@@ -347,6 +361,8 @@ This area is more advanced than older parity notes suggested, but still far from
 |--------|------|-----|----------------|--------------|
 | Partial | NPC talk flow | Nearby NPC clicks now open a real simulator dialogue overlay fed from loaded NPC string data instead of stopping at hover-only cursor feedback, but quest/script branching and client-grade conversation layouts are still missing | Core interaction now exists, which closes the old hover-only gap even though the simulator still lacks the full script bridge | player/NPC/UI layer (`CUserLocal::TalkToNpc`) |
 | Missing | Quest lists and quest-only actions | NPC quest visibility and accept/complete flows are not modeled | Progression-facing NPC parity is absent | NPC/UI layer |
+| Missing | Auto-follow and escort follow requests | `CUserLocal::TryAutoRequestFollowCharacter` still checks driver proximity, vertical alignment, and traversability before sending a follow-character request, and the simulator has no equivalent follow handshake | Escort-style maps and character-follow interactions cannot reproduce the client's automatic attach behavior | `PlayerCharacter`, field/party interaction layer (`CUserLocal::TryAutoRequestFollowCharacter`) |
+| Missing | Direction-mode release timing | `CUserLocal::TryLeaveDirectionMode` still clears scripted direction mode on a delayed timer after cutscene actions finish, and the simulator does not model that locked-input lifecycle | Scripted maps and NPC sequences can hand control back at the wrong time or remain in the wrong control state | `PlayerCharacter`, scripted field/UI layer (`CUserLocal::TryLeaveDirectionMode`) |
 | Missing | Reactor interaction parity | Reactor proximity, skill reactors, moving reactors, and richer state handling remain incomplete | Environmental interaction is still basic | `ReactorPool.cs` (`CUserLocal::CheckReactor_Collision`) |
 | Missing | Quest-alert, balloon, and idle social feedback loops | `CUserLocal::Update` still refreshes auto-quest alert state, resets emotions, updates avatar and field balloon lifetimes, and the client also triggers idle pet speech through `CUser::PetAutoSpeaking`, none of which are modeled in the simulator UI/runtime | Even outside NPC scripts, the local-player interaction surface still lacks several visible client feedback systems that make the game feel alive and signal quest availability | `PlayerCharacter`, `StatusBarUI.cs`, chat/UI layer (`CUserLocal::Update`, `CUser::PetAutoSpeaking`) |
 
@@ -362,7 +378,9 @@ These were either not documented at all or were buried in older parity notes ins
 6. Quick-slot validation against learned skills, inventory state, and item quantity is still missing.
 7. Client timer-driven skill cancellation is still missing.
 8. Quest-alert, emotion-reset, balloon, and idle pet speech feedback loops are still missing.
-9. Movement and float collision still have explicit stub/TODO points in `CVecCtrl.cs`.
+9. Passive transfer-field retries after one-time actions are still missing.
+10. Auto-follow requests and delayed direction-mode exit are still missing.
+11. Movement and float collision still have explicit stub/TODO points in `CVecCtrl.cs`.
 
 ## Priority Order
 
@@ -371,13 +389,13 @@ If the goal is visible parity first, the next work should be sequenced like this
 1. Avatar parity pass:
    Validate default asset selection, client-managed overlay/effect layers, and remaining action coverage against WZ and client behavior.
 2. Skill execution pass:
-   Implement queued follow-up, repeat-skill, bound-jump, and movement-coupled shoot families rather than extending the generic cast path indefinitely.
+   Implement queued follow-up, repeat-skill, bound-jump, rocket-booster teardown, and movement-coupled shoot families rather than extending the generic cast path indefinitely.
 3. UI feedback pass:
    Add quick-slot validation, quest or balloon feedback, chat surfaces, and complete skill-window behavior.
 4. Movement refinement pass:
-   Remove the remaining ladder/float stubs and tighten platform/dynamic foothold sync.
+   Remove the remaining ladder/float stubs, add passive transfer-field handoff, and tighten platform/dynamic foothold sync.
 5. Interaction pass:
-   Add NPC talk/quest flow and richer reactor interactions.
+   Add NPC talk/quest flow, follow and direction-mode handling, and richer reactor interactions.
 
 ## Working Rule For Future Updates
 
