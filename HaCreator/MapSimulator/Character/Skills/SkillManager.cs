@@ -1747,7 +1747,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_mobPool == null || summon?.SkillData == null)
                 return;
 
-            summon.LastAttackAnimationStartTime = currentTime;
             int maxTargets = summon.LevelData?.MobCount ?? 2;
             int attackCount = summon.LevelData?.AttackCount ?? 1;
             var summonCenter = GetSummonPosition(summon);
@@ -1799,6 +1798,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 hitCount++;
             }
+            if (hitCount > 0)
+            {
+                summon.LastAttackAnimationStartTime = currentTime;
+            }
+
 
             foreach (var mob in mobsToKill)
             {
