@@ -20,6 +20,18 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillLoader
     {
+        private static readonly string[] PreferredSummonAnimationBranches =
+        {
+            "summoned",
+            "stand",
+            "fly",
+            "move",
+            "walk",
+            "attack1",
+            "attack",
+            "die"
+        };
+
         private readonly WzFile _skillWz;
         private readonly GraphicsDevice _device;
         private readonly TexturePool _texturePool;
@@ -391,7 +403,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             var summonNode = skillNode["summon"];
             if (summonNode != null)
             {
-                skill.SummonAnimation = LoadSkillAnimation(summonNode, "summon");
+                skill.SummonAnimation = LoadSummonAnimation(summonNode);
             }
 
             // Load projectile/ball
@@ -459,6 +471,67 @@ namespace HaCreator.MapSimulator.Character.Skills
             animation.ZOrder = GetInt(node, "z");
 
             return animation;
+        }
+
+        private SkillAnimation LoadSummonAnimation(WzImageProperty summonNode)
+        {
+            var directAnimation = LoadSkillAnimation(summonNode, "summon");
+            if (directAnimation.Frames.Count > 0)
+            {
+                return directAnimation;
+            }
+
+            string preferredBranchName = SelectPreferredSummonAnimationBranch(
+                summonNode.WzProperties.Select(child => child.Name));
+            if (preferredBranchName == null)
+            {
+                return directAnimation;
+            }
+
+            var preferredBranch = summonNode[preferredBranchName];
+            if (preferredBranch == null)
+            {
+                return directAnimation;
+            }
+
+            var summonAnimation = LoadSkillAnimation(preferredBranch, "summon");
+            if (summonAnimation.Frames.Count == 0)
+            {
+                return directAnimation;
+            }
+
+            if (!summonAnimation.Loop
+                && (preferredBranchName.Equals("stand", StringComparison.OrdinalIgnoreCase)
+                    || preferredBranchName.Equals("fly", StringComparison.OrdinalIgnoreCase)
+                    || preferredBranchName.Equals("move", StringComparison.OrdinalIgnoreCase)
+                    || preferredBranchName.Equals("walk", StringComparison.OrdinalIgnoreCase)))
+            {
+                summonAnimation.Loop = true;
+            }
+
+            return summonAnimation;
+        }
+
+        public static string SelectPreferredSummonAnimationBranch(IEnumerable<string> branchNames)
+        {
+            if (branchNames == null)
+            {
+                return null;
+            }
+
+            var availableBranches = branchNames
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToDictionary(name => name, name => name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (string preferredBranch in PreferredSummonAnimationBranches)
+            {
+                if (availableBranches.TryGetValue(preferredBranch, out string actualBranchName))
+                {
+                    return actualBranchName;
+                }
+            }
+
+            return availableBranches.Keys.FirstOrDefault();
         }
 
         private SkillFrame LoadSkillFrame(WzImageProperty frameNode)
