@@ -128,6 +128,11 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Color MP_GAUGE_BG_COLOR = new Color(20, 40, 80);     // Dark blue background
         private static readonly Color EXP_GAUGE_COLOR = new Color(255, 255, 50);     // Yellow for EXP
         private static readonly Color EXP_GAUGE_BG_COLOR = new Color(60, 60, 20);    // Dark yellow background
+        // These offsets are derived from the composed StatusBar2 mainBar frame:
+        // background origin Y=84, lv/gauge origin Y=33, which keeps the overlay
+        // content anchored 51px above the frame bottom instead of to the viewport.
+        private static readonly Point STATUS_BAR_LEFT_BASE_OFFSET = new Point(0, 43);
+        private static readonly Point STATUS_BAR_GAUGE_BASE_OFFSET = new Point(155, 52);
         private static readonly Vector2 BUFF_TRAY_POS = new Vector2(429, -7);
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;
@@ -353,15 +358,14 @@ namespace HaCreator.MapSimulator.UI {
             if (stats == null)
                 return;
 
-            // Calculate base position from bottom of screen
-            // Use logical height (RenderHeight / RenderObjectScaling) to match how the frame is positioned
-            int barHeight = Frame0?.Height ?? 30;
-            int logicalHeight = (int)(renderParameters.RenderHeight / renderParameters.RenderObjectScaling);
-            int statusBarY = logicalHeight - barHeight + 50;  // Offset to align with status bar frame
-
-            // Two base positions: left side (Name, Job, Level) and gauge area (HP, MP, EXP)
-            Vector2 basePosLeft = new Vector2(0, statusBarY - 7);    // Y - 7 for left side
-            Vector2 basePosGauge = new Vector2(155, statusBarY + 2);  // X + 155, Y + 2 for gauges
+            // Anchor overlay content to the rendered status-bar frame so it follows
+            // the UI's actual placement instead of re-deriving from viewport height.
+            Vector2 basePosLeft = new Vector2(
+                this.Position.X + STATUS_BAR_LEFT_BASE_OFFSET.X,
+                this.Position.Y + STATUS_BAR_LEFT_BASE_OFFSET.Y);
+            Vector2 basePosGauge = new Vector2(
+                this.Position.X + STATUS_BAR_GAUGE_BASE_OFFSET.X,
+                this.Position.Y + STATUS_BAR_GAUGE_BASE_OFFSET.Y);
 
             // Draw gauge bars first (under the text)
             DrawGaugeBars(sprite, stats, basePosGauge);
@@ -429,11 +433,12 @@ namespace HaCreator.MapSimulator.UI {
             // Calculate fill ratios
             float hpRatio = stats.MaxHP > 0 ? (float)stats.HP / stats.MaxHP : 0f;
             float mpRatio = stats.MaxMP > 0 ? (float)stats.MP / stats.MaxMP : 0f;
-            float expRatio = 0.99f; // Always draw EXP at 99%
+            float expRatio = stats.MaxEXP > 0 ? (float)stats.EXP / stats.MaxEXP : 0f;
 
             // Clamp ratios to 0-1 range
             hpRatio = Math.Clamp(hpRatio, 0f, 1f);
             mpRatio = Math.Clamp(mpRatio, 0f, 1f);
+            expRatio = Math.Clamp(expRatio, 0f, 1f);
 
             // Draw HP gauge - use texture if available, use predefined gauge rect for positioning
             if (_hpGaugeTexture != null) {
