@@ -32,12 +32,14 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _pixelTexture;
         private Texture2D _chatEnterTexture;
         private int _scrollOffset;
+        private int? _previousScrollWheelValue;
 
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
         private const int ChatMaxVisibleLines = 8;
         private const int ChatLogLineHeight = 14;
         private const int ChatLogWidth = 452;
+        private const int ChatWrapIndentSpaces = 5;
         private static readonly Vector2 ChatTargetLabelPos = new Vector2(17, 7);
         private static readonly Vector2 ChatInputPos = new Vector2(74, 5);
         private static readonly Vector2 ChatWhisperPromptPos = new Vector2(74, -13);
@@ -313,6 +315,8 @@ namespace HaCreator.MapSimulator.UI
 
             string[] words = text.Split(' ');
             StringBuilder currentLine = new StringBuilder();
+            string continuationIndent = new string(' ', ChatWrapIndentSpaces);
+            bool isFirstLine = true;
             foreach (string word in words)
             {
                 string candidate = currentLine.Length == 0 ? word : $"{currentLine} {word}";
@@ -327,10 +331,15 @@ namespace HaCreator.MapSimulator.UI
                 {
                     yield return currentLine.ToString();
                     currentLine.Clear();
+                    isFirstLine = false;
                 }
 
                 if (_font.MeasureString(word).X <= maxWidth)
                 {
+                    if (!isFirstLine)
+                    {
+                        currentLine.Append(continuationIndent);
+                    }
                     currentLine.Append(word);
                     continue;
                 }
@@ -350,6 +359,10 @@ namespace HaCreator.MapSimulator.UI
 
                 if (fragment.Length > 0)
                 {
+                    if (!isFirstLine)
+                    {
+                        currentLine.Append(continuationIndent);
+                    }
                     currentLine.Append(fragment);
                 }
             }
@@ -371,6 +384,8 @@ namespace HaCreator.MapSimulator.UI
 
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
+            HandleMouseWheel(mouseState);
+
             return UIMouseEventHandler.CheckMouseEvent(
                 shiftCenteredX,
                 shiftCenteredY,
@@ -380,6 +395,46 @@ namespace HaCreator.MapSimulator.UI
                 mouseCursor,
                 uiButtons,
                 false);
+        }
+
+        private void HandleMouseWheel(MouseState mouseState)
+        {
+            if (_previousScrollWheelValue == null)
+            {
+                _previousScrollWheelValue = mouseState.ScrollWheelValue;
+                return;
+            }
+
+            int scrollDelta = mouseState.ScrollWheelValue - _previousScrollWheelValue.Value;
+            _previousScrollWheelValue = mouseState.ScrollWheelValue;
+            if (scrollDelta == 0)
+            {
+                return;
+            }
+
+            if (!GetChatInteractionBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                return;
+            }
+
+            int steps = Math.Max(1, Math.Abs(scrollDelta) / 120);
+            if (scrollDelta > 0)
+            {
+                _scrollOffset += steps;
+            }
+            else
+            {
+                _scrollOffset = Math.Max(0, _scrollOffset - steps);
+            }
+        }
+
+        private Rectangle GetChatInteractionBounds()
+        {
+            return new Rectangle(
+                this.Position.X,
+                this.Position.Y - (ChatMaxVisibleLines * ChatLogLineHeight) - 18,
+                ChatLogWidth + 18,
+                (ChatMaxVisibleLines * ChatLogLineHeight) + 42);
         }
         #endregion
     }
