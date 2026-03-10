@@ -112,6 +112,7 @@ namespace HaCreator.MapSimulator.UI
         // Skill row backgrounds (normal / can-level-up)
         private Texture2D _skillRow0;
         private Texture2D _skillRow1;
+        private Texture2D _recommendTexture;
         private Texture2D _skillRowLine;
 
         // Tab textures (0=Beginner, 1-4=Job advancements)
@@ -308,6 +309,11 @@ namespace HaCreator.MapSimulator.UI
             _skillRow0 = row0;
             _skillRow1 = row1;
             _skillRowLine = line;
+        }
+
+        public void SetRecommendTexture(Texture2D recommendTexture)
+        {
+            _recommendTexture = recommendTexture;
         }
 
         /// <summary>
@@ -534,6 +540,7 @@ namespace HaCreator.MapSimulator.UI
         {
             var skills = CurrentSkills;
             int availableSp = GetCurrentSkillPoints();
+            int recommendedSkillId = ResolveRecommendedSkillId(skills, availableSp);
 
             for (int rowIndex = 0; rowIndex < VISIBLE_SKILLS; rowIndex++)
             {
@@ -552,6 +559,7 @@ namespace HaCreator.MapSimulator.UI
                     windowY,
                     nTop,
                     canLevelUp,
+                    skill.SkillId == recommendedSkillId,
                     skillIndex == _hoveredSkillIndex,
                     skillIndex == _selectedSkillIndex);
 
@@ -572,6 +580,7 @@ namespace HaCreator.MapSimulator.UI
             int windowY,
             int nTop,
             bool canLevelUp,
+            bool isRecommended,
             bool isHovered,
             bool isSelected)
         {
@@ -579,6 +588,11 @@ namespace HaCreator.MapSimulator.UI
             if (rowBg != null)
             {
                 sprite.Draw(rowBg, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
+            }
+
+            if (isRecommended && _recommendTexture != null)
+            {
+                sprite.Draw(_recommendTexture, new Vector2(windowX + ROW_BG_X, windowY + nTop + ROW_BG_Y_OFFSET), Color.White);
             }
 
             if (isSelected)
@@ -618,6 +632,24 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_spUpNormal, new Vector2(windowX + 135, windowY + nTop + 1), Color.White);
             }
+        }
+
+        private static int ResolveRecommendedSkillId(IReadOnlyList<SkillDisplayData> skills, int availableSp)
+        {
+            if (skills == null || skills.Count == 0 || availableSp <= 0)
+                return 0;
+
+            for (int i = 0; i < skills.Count; i++)
+            {
+                SkillDisplayData skill = skills[i];
+                if (skill == null)
+                    continue;
+
+                if (skill.CurrentLevel < skill.MaxLevel)
+                    return skill.SkillId;
+            }
+
+            return 0;
         }
 
         private void DrawSkillPointCount(SpriteBatch sprite, int windowX, int windowY)

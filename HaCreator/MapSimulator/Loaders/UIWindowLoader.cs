@@ -693,8 +693,10 @@ namespace HaCreator.MapSimulator.Loaders
             // Load skill row textures (skill0, skill1 - alternating row backgrounds)
             Texture2D skillRow0 = LoadCanvasTexture(mainProperty, "skill0", device);
             Texture2D skillRow1 = LoadCanvasTexture(mainProperty, "skill1", device);
+            Texture2D recommendTexture = LoadCanvasTexture(mainProperty["recommend"] as WzSubProperty, "0", device);
             Texture2D skillLine = LoadCanvasTexture(mainProperty, "line", device);
             skill.SetSkillRowTextures(skillRow0, skillRow1, skillLine);
+            skill.SetRecommendTexture(recommendTexture);
             System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Skill row textures: row0={skillRow0 != null}, row1={skillRow1 != null}, line={skillLine != null}");
 
             // Load tab textures
