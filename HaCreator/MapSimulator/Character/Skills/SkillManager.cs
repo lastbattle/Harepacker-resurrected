@@ -1685,8 +1685,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int durationMs = levelData.Time > 0 ? levelData.Time * 1000 : 30000;
-            float offsetX = _player.FacingRight ? 50f : -50f;
-            float offsetY = -25f;
+            Vector2 spawnPosition = SummonMovementResolver.ResolveSpawnPosition(
+                skill.SummonMovementStyle,
+                skill.SummonSpawnDistanceX,
+                _player.Position,
+                _player.FacingRight);
 
             var summon = new ActiveSummon
             {
@@ -1696,18 +1699,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 StartTime = currentTime,
                 Duration = durationMs,
                 LastAttackTime = currentTime,
-                OffsetX = offsetX,
-                OffsetY = offsetY,
+                MoveAbility = skill.SummonMoveAbility,
+                MovementStyle = skill.SummonMovementStyle,
+                SpawnDistanceX = skill.SummonSpawnDistanceX,
+                AnchorX = spawnPosition.X,
+                AnchorY = spawnPosition.Y,
+                PositionX = spawnPosition.X,
+                PositionY = spawnPosition.Y,
                 SkillData = skill,
                 LevelData = levelData,
                 FacingRight = _player.FacingRight
             };
 
+            UpdateSummonPosition(summon, currentTime, 0f);
             _summons.Add(summon);
             SyncSummonPuppet(summon, currentTime);
         }
 
-        private void UpdateSummons(int currentTime)
+        private void UpdateSummons(int currentTime, float deltaTime)
         {
             _mobPool?.UpdatePuppets(currentTime);
 
@@ -1721,6 +1730,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
+                UpdateSummonPosition(summon, currentTime, deltaTime);
                 SyncSummonPuppet(summon, currentTime);
 
                 if (currentTime - summon.LastAttackTime < 1000)
@@ -1736,6 +1746,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_mobPool == null || summon?.SkillData == null)
                 return;
 
+            summon.LastAttackAnimationStartTime = currentTime;
             int maxTargets = summon.LevelData?.MobCount ?? 2;
             int attackCount = summon.LevelData?.AttackCount ?? 1;
             var summonCenter = GetSummonPosition(summon);
@@ -1796,8 +1807,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private Vector2 GetSummonPosition(ActiveSummon summon)
         {
-            float facingOffsetX = summon.FacingRight ? Math.Abs(summon.OffsetX) : -Math.Abs(summon.OffsetX);
-            return new Vector2(_player.X + facingOffsetX, _player.Y + summon.OffsetY);
+            return new Vector2(summon.PositionX, summon.PositionY);
         }
 
         private void SyncSummonPuppet(ActiveSummon summon, int currentTime)
@@ -1819,7 +1829,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsActive = true
             });
 
-            float aggroRange = Math.Max(220f, Math.Abs(summon.OffsetX) + 170f);
+            float aggroRange = Math.Max(220f, Math.Abs(summon.PositionX - _player.X) + 170f);
             _mobPool.LetMobChasePuppet(summonPosition.X, summonPosition.Y, aggroRange, summon.ObjectId);
         }
 
@@ -1845,6 +1855,71 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IReadOnlyList<ActiveSummon> ActiveSummons => _summons;
 
         #endregion
+
+        private void UpdateSummonPosition(ActiveSummon summon, int currentTime, float deltaTime)
+        {
+            if (summon == null)
+                return;
+
+            if (summon.NeedsAnchorReset && SummonMovementResolver.IsAnchorBound(summon.MovementStyle))
+            {
+                Vector2 respawnPosition = SummonMovementResolver.ResolveSpawnPosition(
+                    summon.MovementStyle,
+                    summon.SpawnDistanceX,
+                    _player.Position,
+                    _player.FacingRight);
+
+                summon.AnchorX = respawnPosition.X;
+                summon.AnchorY = respawnPosition.Y;
+                summon.PositionX = respawnPosition.X;
+                summon.PositionY = respawnPosition.Y;
+                summon.NeedsAnchorReset = false;
+            }
+
+            float elapsedSeconds = Math.Max(0f, (currentTime - summon.StartTime) / 1000f);
+            Vector2 playerPosition = _player.Position;
+            Vector2 targetPosition = summon.MovementStyle switch
+            {
+                SummonMovementStyle.GroundFollow => new Vector2(
+                    playerPosition.X + (_player.FacingRight ? 70f : -70f),
+                    playerPosition.Y - 25f),
+                SummonMovementStyle.HoverFollow => new Vector2(
+                    playerPosition.X + (_player.FacingRight ? 60f : -60f) + MathF.Sin(elapsedSeconds * 2.1f + summon.ObjectId) * 14f,
+                    playerPosition.Y - 65f + MathF.Cos(elapsedSeconds * 3.3f + summon.ObjectId * 0.5f) * 8f),
+                SummonMovementStyle.DriftAroundOwner => new Vector2(
+                    playerPosition.X + MathF.Cos(elapsedSeconds * 1.6f + summon.ObjectId) * 65f,
+                    playerPosition.Y - 52f + MathF.Sin(elapsedSeconds * 2.8f + summon.ObjectId * 0.75f) * 18f),
+                SummonMovementStyle.HoverAroundAnchor => new Vector2(
+                    summon.AnchorX + MathF.Sin(elapsedSeconds * 1.3f + summon.ObjectId) * 80f,
+                    summon.AnchorY - 35f + MathF.Cos(elapsedSeconds * 2.0f + summon.ObjectId * 0.35f) * 16f),
+                _ => new Vector2(summon.AnchorX, summon.AnchorY)
+            };
+
+            if (deltaTime <= 0f)
+            {
+                summon.PositionX = targetPosition.X;
+                summon.PositionY = targetPosition.Y;
+            }
+            else if (summon.MovementStyle == SummonMovementStyle.GroundFollow
+                     || summon.MovementStyle == SummonMovementStyle.HoverFollow)
+            {
+                float followSpeed = summon.MovementStyle == SummonMovementStyle.GroundFollow ? 220f : 260f;
+                summon.PositionX = MoveTowards(summon.PositionX, targetPosition.X, followSpeed * deltaTime);
+                summon.PositionY = MoveTowards(summon.PositionY, targetPosition.Y, (followSpeed + 40f) * deltaTime);
+            }
+            else
+            {
+                summon.PositionX = targetPosition.X;
+                summon.PositionY = targetPosition.Y;
+            }
+
+            if (summon.MovementStyle == SummonMovementStyle.GroundFollow
+                || summon.MovementStyle == SummonMovementStyle.HoverFollow
+                || summon.MovementStyle == SummonMovementStyle.DriftAroundOwner)
+            {
+                summon.FacingRight = _player.FacingRight;
+            }
+        }
 
         #region Buff System
 
@@ -2159,7 +2234,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             UpdateProjectiles(currentTime, deltaTime);
 
             // Update summons
-            UpdateSummons(currentTime);
+            UpdateSummons(currentTime, deltaTime);
 
             // Update buffs
             UpdateBuffs(currentTime);
@@ -2330,7 +2405,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
         {
             int elapsed = currentTime - summon.StartTime;
-            var animation = ResolveSummonAnimation(summon.SkillData, elapsed, out int animationTime)
+            var animation = ResolveSummonAnimation(summon, currentTime, elapsed, out int animationTime)
                 ?? summon.SkillData?.AffectedEffect
                 ?? summon.SkillData?.Effect;
             if (animation == null)
@@ -2350,9 +2425,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Color.White, shouldFlip, null);
         }
 
-        private static SkillAnimation ResolveSummonAnimation(SkillData skill, int elapsedTime, out int animationTime)
+        private static SkillAnimation ResolveSummonAnimation(ActiveSummon summon, int currentTime, int elapsedTime, out int animationTime)
         {
             animationTime = Math.Max(0, elapsedTime);
+            var skill = summon?.SkillData;
             if (skill == null)
                 return null;
 
@@ -2369,6 +2445,20 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 animationTime = Math.Max(0, elapsedTime - spawnDuration);
+            }
+
+            var attackAnimation = skill.SummonAttackAnimation;
+            if (attackAnimation?.Frames.Count > 0 && summon != null)
+            {
+                int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
+                int attackDuration = attackAnimation.TotalDuration > 0
+                    ? attackAnimation.TotalDuration
+                    : attackAnimation.Frames.Sum(frame => frame.Delay);
+                if (attackElapsed >= 0 && attackDuration > 0 && attackElapsed < attackDuration)
+                {
+                    animationTime = attackElapsed;
+                    return attackAnimation;
+                }
             }
 
             if (skill.SummonAnimation?.Frames.Count > 0)
@@ -2522,6 +2612,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             _buffs.Clear();
             _player.ClearSkillAvatarTransform();
 
+            foreach (var summon in _summons)
+            {
+                summon.NeedsAnchorReset = SummonMovementResolver.IsAnchorBound(summon.MovementStyle);
+            }
+
             // Clear map-specific references
             _mobPool = null;
             _combatEffects = null;
@@ -2557,6 +2652,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static bool IsFocusedSingleBookJob(int jobId)
         {
             return jobId >= 800 && jobId < 1000;
+        }
+
+        private static float MoveTowards(float current, float target, float maxDelta)
+        {
+            if (maxDelta <= 0f || Math.Abs(target - current) <= maxDelta)
+                return target;
+
+            return current + MathF.Sign(target - current) * maxDelta;
         }
 
         #endregion

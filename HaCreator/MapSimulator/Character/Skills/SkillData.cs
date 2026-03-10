@@ -97,6 +97,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         Exploding       // Explodes on impact
     }
 
+    public enum SummonMovementStyle
+    {
+        Stationary,
+        GroundFollow,
+        HoverFollow,
+        DriftAroundOwner,
+        HoverAroundAnchor
+    }
+
     #endregion
 
     #region Skill Level Data
@@ -300,6 +309,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
         public SkillAnimation SummonAnimation { get; set; }  // Summon body/effect
+        public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
+        public int SummonMoveAbility { get; set; }
+        public SummonMovementStyle SummonMovementStyle { get; set; } = SummonMovementStyle.Stationary;
+        public float SummonSpawnDistanceX { get; set; } = 50f;
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
 
@@ -613,8 +626,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int StartTime { get; set; }
         public int Duration { get; set; }
         public int LastAttackTime { get; set; }
-        public float OffsetX { get; set; }
-        public float OffsetY { get; set; }
+        public int LastAttackAnimationStartTime { get; set; } = int.MinValue;
+        public int MoveAbility { get; set; }
+        public SummonMovementStyle MovementStyle { get; set; }
+        public float SpawnDistanceX { get; set; }
+        public float AnchorX { get; set; }
+        public float AnchorY { get; set; }
+        public float PositionX { get; set; }
+        public float PositionY { get; set; }
+        public bool NeedsAnchorReset { get; set; }
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
         public bool FacingRight { get; set; }

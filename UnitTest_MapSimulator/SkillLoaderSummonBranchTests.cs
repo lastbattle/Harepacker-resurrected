@@ -54,5 +54,30 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal("stand", branch);
         }
+
+        [Fact]
+        public void SelectPreferredSummonAttackBranch_PrefersAttackOne()
+        {
+            string branch = SkillLoader.SelectPreferredSummonAttackBranch(new[]
+            {
+                "stand",
+                "attack",
+                "attack1"
+            });
+
+            Assert.Equal("attack1", branch);
+        }
+
+        [Fact]
+        public void SelectPreferredSummonAttackBranch_ReturnsNullWhenAttackIsMissing()
+        {
+            string branch = SkillLoader.SelectPreferredSummonAttackBranch(new[]
+            {
+                "stand",
+                "fly"
+            });
+
+            Assert.Null(branch);
+        }
     }
 }
