@@ -536,6 +536,8 @@ namespace UnitTest_MapSimulator
         }
 
         [Theory]
+        [InlineData(35001001, "flamethrower", "flamethrower", "flamethrower", "flamethrower")]
+        [InlineData(35101009, "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower2")]
         [InlineData(35121005, "tank_pre", "tank_stand", "tank_walk", "tank")]
         [InlineData(35111004, "siege_pre", "siege_stand", "siege_stand", "siege")]
         [InlineData(35121013, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack")]
@@ -571,6 +573,27 @@ namespace UnitTest_MapSimulator
             Assert.Equal(expectedAttackAction, player.CurrentActionName);
         }
 
+        [Theory]
+        [InlineData(35001001, "flamethrower", "flamethrower_after")]
+        [InlineData(35101009, "flamethrower2", "flamethrower_after2")]
+        [InlineData(35121005, "tank_pre", "tank_after")]
+        [InlineData(35111004, "siege_pre", "siege_after")]
+        [InlineData(35121013, "tank_siegepre", "tank_siegeafter")]
+        public void PlayerCharacter_SkillAvatarTransforms_PlayExitActionsOnClear(
+            int skillId,
+            string actionName,
+            string expectedExitAction)
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+
+            Assert.True(player.ApplySkillAvatarTransform(skillId, actionName));
+
+            player.ClearSkillAvatarTransform(skillId);
+
+            Assert.Equal(PlayerState.Attacking, player.State);
+            Assert.Equal(expectedExitAction, player.CurrentActionName);
+        }
+
         [Fact]
         public void SkillManager_MechanicTransforms_ClearOnMapResetAndBuffExpiry()
         {
@@ -603,6 +626,7 @@ namespace UnitTest_MapSimulator
             Assert.Equal("tank_stand", player.CurrentActionName);
 
             skillManager.ClearMapState();
+            Assert.Equal("tank_after", player.CurrentActionName);
             player.Update(Environment.TickCount + 450, 0.016f);
             Assert.Equal("stand1", player.CurrentActionName);
 
@@ -629,8 +653,53 @@ namespace UnitTest_MapSimulator
             Assert.Equal("siege_stand", player.CurrentActionName);
 
             skillManager.Update(3201, 0.016f);
+            Assert.Equal("siege_after", player.CurrentActionName);
             player.Update(Environment.TickCount + 450, 0.016f);
             Assert.Equal("stand1", player.CurrentActionName);
+        }
+
+        [Fact]
+        public void SkillManager_PreparedSkillTransforms_PlayExitActionsOnRelease()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+            var releasePreparedSkill = typeof(SkillManager).GetMethod("ReleasePreparedSkill", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+            Assert.NotNull(releasePreparedSkill);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+
+            var flamethrowerSkill = new SkillData
+            {
+                SkillId = 35001001,
+                MaxLevel = 1,
+                ActionName = "flamethrower",
+                IsPrepareSkill = true,
+                IsAttack = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        X = 1000
+                    }
+                }
+            };
+
+            startCast!.Invoke(skillManager, new object[] { flamethrowerSkill, 1, 1000 });
+
+            player.SetInput(left: false, right: false, up: false, down: false, jump: false, attack: false, pickup: false);
+            player.Update(Environment.TickCount + 400, 0.016f);
+            Assert.Equal("flamethrower", player.CurrentActionName);
+
+            releasePreparedSkill!.Invoke(skillManager, new object[] { 2000 });
+
+            Assert.Equal("flamethrower_after", player.CurrentActionName);
         }
 
         [Fact]

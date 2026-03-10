@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Character
             public string ClimbActionName { get; init; }
             public string FloatActionName { get; init; }
             public string HitActionName { get; init; }
+            public string ExitActionName { get; init; }
         }
 
         #region Constants
@@ -1356,11 +1357,27 @@ namespace HaCreator.MapSimulator.Character
             _activeSkillAvatarTransform = null;
         }
 
+        public void ClearSkillAvatarTransformAndPlayExitAction()
+        {
+            if (_activeSkillAvatarTransform == null)
+            {
+                return;
+            }
+
+            string exitActionName = _activeSkillAvatarTransform.ExitActionName;
+            ClearSkillAvatarTransform();
+
+            if (!string.IsNullOrWhiteSpace(exitActionName) && IsAlive)
+            {
+                TriggerSkillAnimation(exitActionName);
+            }
+        }
+
         public void ClearSkillAvatarTransform(int skillId)
         {
             if (_activeSkillAvatarTransform != null && _activeSkillAvatarTransform.SkillId == skillId)
             {
-                ClearSkillAvatarTransform();
+                ClearSkillAvatarTransformAndPlayExitAction();
             }
         }
 
@@ -1721,39 +1738,57 @@ namespace HaCreator.MapSimulator.Character
 
             switch (skillId)
             {
+                case 35001001:
+                    transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
+                    return true;
+                case 35101009:
+                    transform = CreateMechanicTransform(skillId, "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower_after2");
+                    return true;
                 case 35121005:
-                    transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone");
+                    transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
                     return true;
                 case 35111004:
-                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand");
+                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after");
                     return true;
                 case 35121013:
-                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand");
+                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter");
                     return true;
+            }
+
+            if (string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
+                return true;
+            }
+
+            if (string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateMechanicTransform(skillId, "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower_after2");
+                return true;
             }
 
             if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone");
+                transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
                 return true;
             }
 
             if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand");
+                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after");
                 return true;
             }
 
             if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand");
+                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter");
                 return true;
             }
 
             return false;
         }
 
-        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName)
+        private static SkillAvatarTransformState CreateMechanicTransform(int skillId, string standActionName, string walkActionName, string attackActionName, string proneActionName, string exitActionName)
         {
             return new SkillAvatarTransformState
             {
@@ -1765,7 +1800,8 @@ namespace HaCreator.MapSimulator.Character
                 AttackActionName = attackActionName,
                 ClimbActionName = standActionName,
                 FloatActionName = standActionName,
-                HitActionName = standActionName
+                HitActionName = standActionName,
+                ExitActionName = exitActionName
             };
         }
 

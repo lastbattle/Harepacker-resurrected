@@ -733,6 +733,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _preparedSkill = null;
 
             ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
+            _player.ClearSkillAvatarTransform(prepared.SkillId);
             OnPreparedSkillReleased?.Invoke(prepared);
         }
 
@@ -2573,7 +2574,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
-            _preparedSkill = null;
+            if (_preparedSkill != null)
+            {
+                _player.ClearSkillAvatarTransform(_preparedSkill.SkillId);
+                _preparedSkill = null;
+            }
 
             // Remove all buff effects
             foreach (var buff in _buffs)
@@ -2587,7 +2592,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _skillLevels.Clear();
             _skillHotkeys.Clear();
             _availableSkills.Clear();
-            _player.ClearSkillAvatarTransform();
+            _player.ClearSkillAvatarTransformAndPlayExitAction();
             ClearSkillMount();
         }
 
@@ -2603,14 +2608,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             ClearSummonPuppets();
             _hitEffects.Clear();
             _currentCast = null;
-            _preparedSkill = null;
+            if (_preparedSkill != null)
+            {
+                _player.ClearSkillAvatarTransform(_preparedSkill.SkillId);
+                _preparedSkill = null;
+            }
 
             foreach (var buff in _buffs)
             {
                 ApplyBuffStats(buff, false);
             }
             _buffs.Clear();
-            _player.ClearSkillAvatarTransform();
+            _player.ClearSkillAvatarTransformAndPlayExitAction();
 
             foreach (var summon in _summons)
             {
@@ -2635,7 +2644,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             _summons.Clear();
             _hitEffects.Clear();
             _currentCast = null;
-            _preparedSkill = null;
+            if (_preparedSkill != null)
+            {
+                _player.ClearSkillAvatarTransform(_preparedSkill.SkillId);
+                _preparedSkill = null;
+            }
 
             if (!clearBuffs)
                 return;
@@ -2645,7 +2658,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ApplyBuffStats(buff, false);
             }
             _buffs.Clear();
-            _player.ClearSkillAvatarTransform();
+            _player.ClearSkillAvatarTransformAndPlayExitAction();
             ClearSkillMount();
         }
 
