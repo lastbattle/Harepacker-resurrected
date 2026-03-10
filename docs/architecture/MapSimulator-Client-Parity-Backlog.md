@@ -189,6 +189,7 @@ Confirmed changes since last pass:
 - `Key-down / charge HUD` ? Partial: prepared skills now drive a WZ-backed status-bar key-down gauge sourced from `UI/Basic.img/KeyDownBar*`, including live fill progress for held charge skills, but the client's variant selection and branch-specific timing rules are still incomplete.
 - `Summon aggro registration` ? Partial: active summons now register with the simulator's puppet/aggro system and force nearby mobs to chase summon positions, but summon-type-specific placement, follow, and aggro rules are still incomplete.
 - `Skill cooldown countdown feedback` ? Partial: QuickSlot cooldown masks now show live remaining-seconds text per assigned skill, but the simulator still lacks the client's broader status-bar cooldown tray and full skill feedback surface.
+- `Default avatar selection` ? Implemented for simulator startup defaults: `CharacterLoader.LoadDefaultMale` and `LoadDefaultFemale` now spawn a level 1 Beginner baseline with starter equipment (`1302000`, `1040002`, `1060002`, `1072005`) instead of the old SuperGM/Wizet debug preset, so the simulator's fallback avatar no longer boots into admin-only presentation.
 
 ## Remaining Parity Backlog
 
@@ -198,7 +199,7 @@ These are the biggest remaining gaps for visible client parity.
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
-| Partial | Default avatar selection | Current defaults are hardcoded SuperGM-style presets with specific item IDs, not validated against the client's actual startup/default selection path | The simulator loads a valid avatar, but not necessarily the same avatar the client would choose | `CharacterLoader.LoadDefaultMale`, `CharacterLoader.LoadDefaultFemale` (`CUser::LoadLayer`, `CUser::Update`) |
+| Implemented | Default avatar selection | Simulator-created fallback avatars now use a level 1 Beginner baseline with starter gear instead of the previous SuperGM/Wizet debug preset | The default simulator avatar now matches a normal player presentation instead of an admin/debug presentation | `CharacterLoader.LoadDefaultMale`, `CharacterLoader.LoadDefaultFemale` (`CUser::LoadLayer`, `CUser::Update`) |
 | Partial | Action coverage | Loader action lists cover common stand, walk, jump, ladder, rope, swim, fly, alert, heal, and attack actions, but not the full client action surface | Missing actions force fallback rendering or empty states during uncommon skills, mounts, or scripted actions | `CharacterLoader.StandardActions`, `CharacterLoader.AttackActions` (`CUser::PrepareActionLayer`, `CUser::SetMoveAction`, `CUserLocal::SetMoveAction`) |
 | Partial | Death / rare action frames | `PlayerCharacter` can enter `Dead`, but loader coverage is centered on standard and attack actions rather than a complete action inventory | Some state-to-animation mappings can degrade to fallback frames | `PlayerCharacter.GetCurrentAction`, `CharacterLoader` |
 | Partial | Facial expression behavior | Face data loads, but runtime selection is essentially `default` then `blink`; no client-like blink timing, hit-expression timing, or state-driven expression changes | The avatar renders, but feels static compared with the client | `CharacterAssembler.GetFaceFrame`, `CharacterLoader.LoadFaceExpressions` (`CUserLocal::Update` emotion reset path) |
