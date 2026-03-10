@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, SkillData> _skillCache = new();
         private readonly Dictionary<int, JobSkillBook> _jobCache = new();
         private readonly HashSet<int> _skillsWithoutCastSound = new();
+        private readonly HashSet<int> _skillsWithoutRepeatSound = new();
         private WzImage _skillSoundImage;
 
         public SkillLoader(WzFile skillWz, GraphicsDevice device, TexturePool texturePool)
@@ -111,6 +112,37 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             _skillsWithoutCastSound.Add(skill.SkillId);
+            return null;
+        }
+
+        public string EnsureRepeatSoundRegistered(SkillData skill, SoundManager soundManager)
+        {
+            if (skill == null || soundManager == null)
+                return null;
+
+            if (!string.IsNullOrEmpty(skill.RepeatSoundKey))
+                return skill.RepeatSoundKey;
+
+            if (_skillsWithoutRepeatSound.Contains(skill.SkillId))
+                return null;
+
+            var skillSoundNode = GetSkillSoundNode(skill.SkillId);
+            if (skillSoundNode == null)
+            {
+                _skillsWithoutRepeatSound.Add(skill.SkillId);
+                return null;
+            }
+
+            foreach (string preferredName in new[] { "Hit", "Attack1", "Loop" })
+            {
+                if (TryRegisterSkillSound(soundManager, skillSoundNode[preferredName], skill.SkillId, preferredName, out string soundKey))
+                {
+                    skill.RepeatSoundKey = soundKey;
+                    return soundKey;
+                }
+            }
+
+            _skillsWithoutRepeatSound.Add(skill.SkillId);
             return null;
         }
 
@@ -1047,14 +1079,23 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool TryRegisterSkillSound(SkillData skill, SoundManager soundManager, WzImageProperty soundProperty, string soundName)
         {
+            if (!TryRegisterSkillSound(soundManager, soundProperty, skill.SkillId, soundName, out string soundKey))
+                return false;
+
+            skill.CastSoundKey = soundKey;
+            return true;
+        }
+
+        private static bool TryRegisterSkillSound(SoundManager soundManager, WzImageProperty soundProperty, int skillId, string soundName, out string soundKey)
+        {
+            soundKey = null;
             WzBinaryProperty soundBinary = soundProperty as WzBinaryProperty
                                           ?? (soundProperty as WzUOLProperty)?.LinkValue as WzBinaryProperty;
             if (soundBinary == null)
                 return false;
 
-            string soundKey = $"Skill:{skill.SkillId}:{soundName}";
+            soundKey = $"Skill:{skillId}:{soundName}";
             soundManager.RegisterSound(soundKey, soundBinary);
-            skill.CastSoundKey = soundKey;
             return true;
         }
 

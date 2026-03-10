@@ -317,6 +317,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float SummonSpawnDistanceX { get; set; } = 50f;
         public ProjectileData Projectile { get; set; }       // Ball/projectile
         public string CastSoundKey { get; set; }             // Registered simulator sound key for cast SFX
+        public string RepeatSoundKey { get; set; }           // Registered simulator sound key for repeated hits/shots
 
         // Action
         public string ActionName { get; set; }       // Animation action to play

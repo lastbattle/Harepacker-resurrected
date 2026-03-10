@@ -145,6 +145,7 @@ namespace HaCreator.MapSimulator.Character
         private int _attackFrame;
         private int _attackFrameTimer;
         private string _forcedActionName;
+        private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
@@ -1060,6 +1061,11 @@ namespace HaCreator.MapSimulator.Character
             // Determine state based on physics
             if (State == PlayerState.Attacking)
             {
+                if (_sustainedSkillAnimation)
+                {
+                    return;
+                }
+
                 // Check if attack animation is complete
                 var anim = Assembler?.GetAnimation(CurrentActionName);
                 if (anim != null && anim.Length > 0)
@@ -1314,24 +1320,13 @@ namespace HaCreator.MapSimulator.Character
         {
             // Map action name to CharacterAction
             State = PlayerState.Attacking;
+            _sustainedSkillAnimation = false;
 
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
 
             _forcedActionName = actionName;
-            CurrentAction = actionName.ToLower() switch
-            {
-                "attack1" or "stabo1" => CharacterAction.StabO1,
-                "attack2" or "stabo2" => CharacterAction.StabO2,
-                "swingo1" => CharacterAction.SwingO1,
-                "swingo2" => CharacterAction.SwingO2,
-                "swingo3" => CharacterAction.SwingO3,
-                "swingof" => CharacterAction.SwingOF,
-                "shoot1" => CharacterAction.Shoot1,
-                "shoot2" => CharacterAction.Shoot2,
-                "pronestab" => CharacterAction.ProneStab,
-                _ => CharacterAction.SwingO1
-            };
+            CurrentAction = GetCharacterActionForActionName(actionName);
             CurrentActionName = actionName;
 
             _attackFrame = 0;
@@ -1339,6 +1334,34 @@ namespace HaCreator.MapSimulator.Character
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
 
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
+        }
+
+        public void BeginSustainedSkillAnimation(string actionName)
+        {
+            if (string.IsNullOrEmpty(actionName))
+                actionName = "attack1";
+
+            bool isSameAction = _sustainedSkillAnimation
+                && State == PlayerState.Attacking
+                && string.Equals(_forcedActionName, actionName, StringComparison.OrdinalIgnoreCase);
+
+            State = PlayerState.Attacking;
+            _sustainedSkillAnimation = true;
+            _forcedActionName = actionName;
+            CurrentAction = GetCharacterActionForActionName(actionName);
+            CurrentActionName = actionName;
+
+            if (!isSameAction)
+            {
+                _attackFrame = 0;
+                _attackFrameTimer = 0;
+                _animationStartTime = Environment.TickCount;
+            }
+        }
+
+        public void EndSustainedSkillAnimation()
+        {
+            _sustainedSkillAnimation = false;
         }
 
         public bool ApplySkillAvatarTransform(int skillId, string actionName)
@@ -1712,7 +1735,25 @@ namespace HaCreator.MapSimulator.Character
 
         private void ClearForcedActionName()
         {
+            _sustainedSkillAnimation = false;
             _forcedActionName = null;
+        }
+
+        private static CharacterAction GetCharacterActionForActionName(string actionName)
+        {
+            return actionName?.ToLower() switch
+            {
+                "attack1" or "stabo1" => CharacterAction.StabO1,
+                "attack2" or "stabo2" => CharacterAction.StabO2,
+                "swingo1" => CharacterAction.SwingO1,
+                "swingo2" => CharacterAction.SwingO2,
+                "swingo3" => CharacterAction.SwingO3,
+                "swingof" => CharacterAction.SwingOF,
+                "shoot1" => CharacterAction.Shoot1,
+                "shoot2" => CharacterAction.Shoot2,
+                "pronestab" => CharacterAction.ProneStab,
+                _ => CharacterAction.SwingO1
+            };
         }
 
         private string GetSkillTransformActionName(PlayerState state)

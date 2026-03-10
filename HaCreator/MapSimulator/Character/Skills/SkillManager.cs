@@ -702,6 +702,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void PlayRepeatSound(SkillData skill)
+        {
+            if (skill == null || _soundManager == null)
+                return;
+
+            string soundKey = _loader.EnsureRepeatSoundRegistered(skill, _soundManager);
+            if (!string.IsNullOrEmpty(soundKey))
+            {
+                _soundManager.PlaySound(soundKey);
+            }
+        }
+
         private void ExecuteSkillPayload(SkillData skill, int level, int currentTime)
         {
             if (skill.IsMovement)
@@ -791,6 +803,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (prepared.IsKeydownSkill)
             {
+                _player.EndSustainedSkillAnimation();
                 bool hadTransform = _player.HasSkillAvatarTransform(prepared.SkillId);
                 _player.ClearSkillAvatarTransform(prepared.SkillId);
 
@@ -825,6 +838,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 prepared.IsHolding = true;
                 prepared.HoldStartTime = currentTime;
                 prepared.LastRepeatTime = currentTime - GetKeydownRepeatInterval(prepared.SkillData);
+                _player.BeginSustainedSkillAnimation(GetKeydownActionName(prepared.SkillData));
             }
 
             if (!_player.IsAlive || !_player.CanAttack)
@@ -848,7 +862,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return;
                 }
 
-                TriggerSkillAnimation(prepared.SkillData, GetKeydownActionName(prepared.SkillData));
+                PlayRepeatSound(prepared.SkillData);
                 ExecuteSkillPayload(prepared.SkillData, prepared.Level, currentTime);
                 prepared.LastRepeatTime += repeatInterval;
             }
