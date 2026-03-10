@@ -194,6 +194,10 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestAvailableIcon;
         private Texture2D _npcQuestInProgressIcon;
         private Texture2D _npcQuestCompletableIcon;
+        private const int NPC_QUEST_FEEDBACK_BALLOON_DURATION_MS = 3200;
+        private int _npcQuestFeedbackNpcId;
+        private string _npcQuestFeedbackText;
+        private int _npcQuestFeedbackExpiresAt;
 
         // Consolidated effect management
         private readonly EffectManager _effectManager = new EffectManager();
@@ -1231,6 +1235,9 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay?.Close();
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
+            _npcQuestFeedbackNpcId = 0;
+            _npcQuestFeedbackText = null;
+            _npcQuestFeedbackExpiresAt = 0;
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeOwnerActive = false;
         }
@@ -2183,6 +2190,7 @@ namespace HaCreator.MapSimulator
             }
 
             UpdateDirectionModeState(currTickCount);
+            UpdateNpcQuestFeedbackState(currTickCount);
 
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
@@ -3271,8 +3279,45 @@ namespace HaCreator.MapSimulator
 
             if (result?.StateChanged == true)
             {
+                ShowNpcQuestFeedback(result, currTickCount);
                 OpenNpcInteraction(_activeNpcInteractionNpc, questId);
             }
+        }
+
+        private void ShowNpcQuestFeedback(QuestActionResult result, int currentTickCount)
+        {
+            if (_activeNpcInteractionNpcId == 0 || result?.Messages == null)
+            {
+                return;
+            }
+
+            string feedbackText = result.Messages.FirstOrDefault(message => !string.IsNullOrWhiteSpace(message));
+            if (string.IsNullOrWhiteSpace(feedbackText))
+            {
+                return;
+            }
+
+            int newlineIndex = feedbackText.IndexOf('\n');
+            if (newlineIndex >= 0)
+            {
+                feedbackText = feedbackText.Substring(0, newlineIndex);
+            }
+
+            _npcQuestFeedbackNpcId = _activeNpcInteractionNpcId;
+            _npcQuestFeedbackText = feedbackText.Trim();
+            _npcQuestFeedbackExpiresAt = currentTickCount + NPC_QUEST_FEEDBACK_BALLOON_DURATION_MS;
+        }
+
+        private void UpdateNpcQuestFeedbackState(int currentTickCount)
+        {
+            if (_npcQuestFeedbackNpcId == 0 || currentTickCount < _npcQuestFeedbackExpiresAt)
+            {
+                return;
+            }
+
+            _npcQuestFeedbackNpcId = 0;
+            _npcQuestFeedbackText = null;
+            _npcQuestFeedbackExpiresAt = 0;
         }
 
         private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
@@ -3349,6 +3394,55 @@ namespace HaCreator.MapSimulator
 
                 _spriteBatch.Draw(alertTexture, new Vector2(screenX, screenY), Color.White);
             }
+        }
+
+        private void DrawNpcQuestFeedback(in Managers.RenderContext renderContext)
+        {
+            if (_npcQuestFeedbackNpcId == 0 ||
+                string.IsNullOrWhiteSpace(_npcQuestFeedbackText) ||
+                _fontChat == null ||
+                _debugBoundaryTexture == null ||
+                _npcsArray == null)
+            {
+                return;
+            }
+
+            NpcItem npc = _npcsArray.FirstOrDefault(candidate =>
+                candidate?.NpcInstance?.NpcInfo != null &&
+                int.TryParse(candidate.NpcInstance.NpcInfo.ID, out int npcId) &&
+                npcId == _npcQuestFeedbackNpcId);
+            if (npc == null)
+            {
+                return;
+            }
+
+            IDXObject currentFrame = npc.GetCurrentFrame();
+            int npcTop = npc.CurrentY - (currentFrame?.Height ?? npc.NpcInstance.Height);
+            Vector2 textSize = _fontChat.MeasureString(_npcQuestFeedbackText);
+            int boxWidth = (int)Math.Ceiling(textSize.X) + 18;
+            int boxHeight = (int)Math.Ceiling(textSize.Y) + 12;
+            int boxX = npc.CurrentX - renderContext.MapShiftX + renderContext.MapCenterX - (boxWidth / 2);
+            int boxY = npcTop - renderContext.MapShiftY + renderContext.MapCenterY - boxHeight - 34;
+
+            if (boxX + boxWidth < 0 ||
+                boxY + boxHeight < 0 ||
+                boxX > renderContext.RenderParams.RenderWidth ||
+                boxY > renderContext.RenderParams.RenderHeight)
+            {
+                return;
+            }
+
+            float remainingAlpha = MathHelper.Clamp((_npcQuestFeedbackExpiresAt - renderContext.TickCount) / 400f, 0f, 1f);
+            Color backgroundColor = new Color(24, 34, 28) * (0.88f * remainingAlpha);
+            Color borderColor = new Color(243, 229, 170) * remainingAlpha;
+            Color textColor = new Color(255, 246, 214) * remainingAlpha;
+
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, boxWidth, boxHeight), backgroundColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, boxWidth, 2), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY + boxHeight - 2, boxWidth, 2), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX, boxY, 2, boxHeight), borderColor);
+            _spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(boxX + boxWidth - 2, boxY, 2, boxHeight), borderColor);
+            _spriteBatch.DrawString(_fontChat, _npcQuestFeedbackText, new Vector2(boxX + 9, boxY + 6), textColor);
         }
 
         private Texture2D GetNpcQuestAlertTexture(NpcInteractionEntryKind? alertKind)
@@ -4910,6 +5004,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawReactors(in renderContext); // reactors
             _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
             DrawNpcQuestAlerts(in renderContext);
+            DrawNpcQuestFeedback(in renderContext);
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
             _renderingManager.DrawBackgrounds(in renderContext, true); // front background
 
