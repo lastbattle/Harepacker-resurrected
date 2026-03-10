@@ -223,24 +223,19 @@ namespace HaCreator.MapSimulator.Character
                 if (mob?.AI == null)
                     continue;
 
-                bool isAttacking = mob.AI.State == MobAIState.Attack;
                 bool isUsingSkill = mob.AI.State == MobAIState.Skill;
-
-                if (!isAttacking && !isUsingSkill)
+                if (!isUsingSkill)
                     continue;
 
-                MobAttackEntry currentAttack = mob.AI.GetCurrentAttack();
                 MobSkillEntry currentSkill = mob.AI.GetCurrentSkill();
-                bool attackTriggered = isAttacking && mob.AI.ShouldDealDamage(currentTime);
                 bool skillTriggered = isUsingSkill && mob.AI.ShouldApplySkillEffect(currentTime);
-
-                if (!attackTriggered && !skillTriggered)
+                if (!skillTriggered)
                     continue;
 
-                Rectangle mobAttackHitbox = GetMobAttackHitbox(mob, currentAttack, skillTriggered ? currentSkill : null);
+                Rectangle mobAttackHitbox = GetMobAttackHitbox(mob, null, currentSkill);
                 if (playerHitbox.Intersects(mobAttackHitbox))
                 {
-                    ProcessPlayerHit(mob, currentTime, currentAttack, skillTriggered ? currentSkill : null);
+                    ProcessPlayerHit(mob, currentTime, null, currentSkill);
                     return; // Only take one hit per frame
                 }
             }

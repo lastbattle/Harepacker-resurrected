@@ -47,6 +47,17 @@ namespace HaCreator.MapSimulator.Combat
             public bool Triggered { get; set; }
         }
 
+        private sealed class ActiveMobDirectAttack
+        {
+            public MobItem SourceMob { get; set; }
+            public MobAttackEntry Attack { get; set; }
+            public Rectangle Area { get; set; }
+            public Vector2 EffectPosition { get; set; }
+            public int TriggerTime { get; set; }
+            public int ExpireTime { get; set; }
+            public bool Triggered { get; set; }
+        }
+
         private sealed class ScheduledMobVisualEffect
         {
             public List<IDXObject> Frames { get; set; }
@@ -58,6 +69,7 @@ namespace HaCreator.MapSimulator.Combat
         private readonly Random _random = new Random();
         private readonly List<ActiveMobProjectile> _activeMobProjectiles = new List<ActiveMobProjectile>();
         private readonly List<ActiveMobGroundAttack> _activeMobGroundAttacks = new List<ActiveMobGroundAttack>();
+        private readonly List<ActiveMobDirectAttack> _activeMobDirectAttacks = new List<ActiveMobDirectAttack>();
         private readonly List<ScheduledMobVisualEffect> _scheduledMobVisualEffects = new List<ScheduledMobVisualEffect>();
         private readonly Dictionary<long, int> _scheduledMobActions = new Dictionary<long, int>();
         private Func<float, float, float?> _groundResolver;
@@ -71,6 +83,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             _activeMobProjectiles.Clear();
             _activeMobGroundAttacks.Clear();
+            _activeMobDirectAttacks.Clear();
             _scheduledMobVisualEffects.Clear();
             _scheduledMobActions.Clear();
         }
@@ -103,6 +116,12 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            if (!attack.IsRanged)
+            {
+                QueueDirectAttack(mobItem, attack, currentTime);
+                return;
+            }
+
             QueueProjectileAttack(mobItem, attack, playerX, playerY, currentTime);
         }
 
@@ -111,6 +130,7 @@ namespace HaCreator.MapSimulator.Combat
             UpdateScheduledMobVisualEffects(currentTime, animationEffects);
             UpdateMobProjectiles(currentTime, deltaSeconds, playerManager, animationEffects);
             UpdateMobGroundAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
+            UpdateMobDirectAttacks(currentTime, playerManager, animationEffects);
             CleanupScheduledMobActions(currentTime);
         }
 
@@ -233,6 +253,27 @@ namespace HaCreator.MapSimulator.Combat
                     Flip = direction.X < 0f
                 });
             }
+        }
+
+        private void QueueDirectAttack(MobItem mobItem, MobAttackEntry attack, int currentTime)
+        {
+            Rectangle attackArea = BuildDirectAttackArea(mobItem, attack);
+            if (attackArea.IsEmpty)
+            {
+                return;
+            }
+
+            _activeMobDirectAttacks.Add(new ActiveMobDirectAttack
+            {
+                SourceMob = mobItem,
+                Attack = attack,
+                Area = attackArea,
+                EffectPosition = new Vector2(
+                    attackArea.X + attackArea.Width / 2f,
+                    attackArea.Y + attackArea.Height),
+                TriggerTime = currentTime + GetDirectAttackTriggerDelay(attack),
+                ExpireTime = currentTime + Math.Max(attack.Cooldown, 350),
+            });
         }
 
         private void QueueGroundAttack(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY, int currentTime)
@@ -383,6 +424,45 @@ namespace HaCreator.MapSimulator.Combat
                 if (currentTime >= groundAttack.ExpireTime)
                 {
                     _activeMobGroundAttacks.RemoveAt(i);
+                }
+            }
+        }
+
+        private void UpdateMobDirectAttacks(int currentTime, PlayerManager playerManager, AnimationEffects animationEffects)
+        {
+            for (int i = _activeMobDirectAttacks.Count - 1; i >= 0; i--)
+            {
+                ActiveMobDirectAttack directAttack = _activeMobDirectAttacks[i];
+                if (directAttack.SourceMob?.AI == null)
+                {
+                    _activeMobDirectAttacks.RemoveAt(i);
+                    continue;
+                }
+
+                if (!directAttack.Triggered && currentTime >= directAttack.TriggerTime)
+                {
+                    directAttack.Triggered = true;
+
+                    if (playerManager?.Combat != null && playerManager.IsPlayerActive)
+                    {
+                        playerManager.Combat.TryApplyMobHit(
+                            directAttack.SourceMob,
+                            directAttack.Area,
+                            currentTime,
+                            directAttack.Attack);
+                    }
+
+                    SpawnMobWorldEffects(
+                        directAttack.SourceMob,
+                        directAttack.Attack,
+                        directAttack.EffectPosition,
+                        currentTime,
+                        animationEffects);
+                }
+
+                if (currentTime >= directAttack.ExpireTime)
+                {
+                    _activeMobDirectAttacks.RemoveAt(i);
                 }
             }
         }
@@ -650,6 +730,70 @@ namespace HaCreator.MapSimulator.Combat
         private static int DetermineGroundAreaHeight(MobAttackEntry attack)
         {
             return Math.Max(60, attack.AreaHeight);
+        }
+
+        private static Rectangle BuildDirectAttackArea(MobItem mobItem, MobAttackEntry attack)
+        {
+            if (mobItem?.MovementInfo == null || attack == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            float mobX = mobItem.MovementInfo.X;
+            float mobY = mobItem.MovementInfo.Y;
+            bool facingRight = mobItem.MovementInfo.FlipX;
+
+            if (attack.HasRangeBounds)
+            {
+                int left = attack.RangeLeft;
+                int right = attack.RangeRight;
+                if (facingRight)
+                {
+                    left = -attack.RangeRight;
+                    right = -attack.RangeLeft;
+                }
+
+                int top = attack.RangeTop;
+                int bottom = attack.RangeBottom;
+                return new Rectangle(
+                    (int)mobX + left,
+                    (int)mobY + top,
+                    Math.Max(1, right - left),
+                    Math.Max(1, bottom - top));
+            }
+
+            int width = Math.Max(50, attack.Range);
+            int height = Math.Max(60, attack.AreaHeight);
+            return new Rectangle(
+                (int)mobX + (facingRight ? 0 : -width),
+                (int)mobY - height + 20,
+                width,
+                height);
+        }
+
+        private static int GetDirectAttackTriggerDelay(MobAttackEntry attack)
+        {
+            if (attack == null)
+            {
+                return 0;
+            }
+
+            if (attack.AttackAfter > 0)
+            {
+                return attack.AttackAfter;
+            }
+
+            if (attack.Delay > 0)
+            {
+                return attack.Delay;
+            }
+
+            if (attack.EffectAfter > 0)
+            {
+                return attack.EffectAfter;
+            }
+
+            return 200;
         }
 
         private Vector2 ResolveGroundPoint(float x, float preferredY)
