@@ -797,6 +797,18 @@ namespace HaCreator.MapSimulator.Loaders
                 // Clear any previously loaded skills.
                 skillWindow.ClearSkills();
 
+                var pathJobIds = GetDisplayedSkillBookJobIdsForJob(jobId);
+                var visibleTabs = new HashSet<int>();
+                foreach (int pathJobId in pathJobIds)
+                {
+                    visibleTabs.Add(GetSkillTabFromJobId(pathJobId));
+                }
+
+                // `CUISkill::GetSkillRootVisible` refreshes the visible skill roots from
+                // the current job path. Mirror that at the tab layer so the simulator only
+                // exposes books the active job can actually browse.
+                skillWindow.SetVisibleTabs(visibleTabs);
+
                 // Seed the default beginner book so tabs without a dedicated skill book
                 // can still render the same fallback icon the client uses.
                 Texture2D defaultBookIcon = SkillDataLoader.LoadJobIcon(0, device);
@@ -805,7 +817,6 @@ namespace HaCreator.MapSimulator.Loaders
                     skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
                 }
 
-                var pathJobIds = GetDisplayedSkillBookJobIdsForJob(jobId);
                 foreach (int pathJobId in pathJobIds)
                 {
                     int tabIndex = GetSkillTabFromJobId(pathJobId);
@@ -872,6 +883,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
 
                 skillWindow.ClearSkills();
+                skillWindow.SetVisibleTabs(new[] { 0, 1, 2, 3, 4 });
 
                 var skillsByTab = new Dictionary<int, Dictionary<int, SkillDisplayData>>
                 {

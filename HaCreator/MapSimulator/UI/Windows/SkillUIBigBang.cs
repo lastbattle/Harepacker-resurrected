@@ -111,6 +111,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D[] _tabEnabled = new Texture2D[5];
         private Texture2D[] _tabDisabled = new Texture2D[5];
         private Rectangle[] _tabRects = new Rectangle[5];
+        private readonly bool[] _tabVisible = new bool[5];
 
         // SP Up button textures
         private Texture2D _spUpNormal;
@@ -176,13 +177,7 @@ namespace HaCreator.MapSimulator.UI
             get => _currentTab;
             set
             {
-                if (value >= TAB_BEGINNER && value <= TAB_4TH)
-                {
-                    _currentTab = value;
-                    _scrollOffset = 0;
-                    _hoveredSkillIndex = -1;
-                    _selectedSkillIndex = -1;
-                }
+                ApplyCurrentTab(CoerceVisibleTab(value));
             }
         }
 
@@ -258,6 +253,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < 5; i++)
             {
                 _tabRects[i] = new Rectangle(10 + (i * 31), TAB_Y, 30, 20);
+                _tabVisible[i] = true;
             }
 
             // Create debug placeholder texture (1x1 white pixel)
@@ -332,6 +328,32 @@ namespace HaCreator.MapSimulator.UI
             {
                 _tooltipFrames[i] = tooltipFrames[i];
             }
+        }
+
+        public void SetVisibleTabs(IEnumerable<int> visibleTabs)
+        {
+            Array.Clear(_tabVisible, 0, _tabVisible.Length);
+
+            bool hasVisibleTab = false;
+            if (visibleTabs != null)
+            {
+                foreach (int tab in visibleTabs)
+                {
+                    int tabIndex = Math.Clamp(tab, TAB_BEGINNER, TAB_4TH);
+                    if (_tabVisible[tabIndex])
+                        continue;
+
+                    _tabVisible[tabIndex] = true;
+                    hasVisibleTab = true;
+                }
+            }
+
+            if (!hasVisibleTab)
+            {
+                _tabVisible[TAB_BEGINNER] = true;
+            }
+
+            ApplyCurrentTab(CoerceVisibleTab(_currentTab));
         }
 
         /// <summary>
@@ -932,17 +954,55 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = 0; i < 5; i++)
             {
+                if (!_tabVisible[i])
+                    continue;
+
                 Texture2D tabTexture = (i == _currentTab) ? _tabEnabled[i] : _tabDisabled[i];
                 if (tabTexture != null)
                 {
-                    Rectangle tabRect = new Rectangle(
-                        windowX + _tabRects[i].X,
-                        windowY + _tabRects[i].Y,
-                        tabTexture.Width,
-                        tabTexture.Height);
-                    sprite.Draw(tabTexture, tabRect, Color.White);
+                    sprite.Draw(tabTexture, GetTabBounds(windowX, windowY, i), Color.White);
                 }
             }
+        }
+
+        private Rectangle GetTabBounds(int windowX, int windowY, int tabIndex)
+        {
+            Texture2D tabTexture = (tabIndex == _currentTab) ? _tabEnabled[tabIndex] : _tabDisabled[tabIndex];
+            Rectangle tabRect = _tabRects[tabIndex];
+            return new Rectangle(
+                windowX + tabRect.X,
+                windowY + tabRect.Y,
+                tabTexture?.Width ?? tabRect.Width,
+                tabTexture?.Height ?? tabRect.Height);
+        }
+
+        private void ApplyCurrentTab(int tabIndex)
+        {
+            _currentTab = tabIndex;
+            _scrollOffset = 0;
+            _hoveredSkillIndex = -1;
+            _selectedSkillIndex = -1;
+        }
+
+        private int CoerceVisibleTab(int requestedTab)
+        {
+            int clampedTab = Math.Clamp(requestedTab, TAB_BEGINNER, TAB_4TH);
+            if (_tabVisible[clampedTab])
+                return clampedTab;
+
+            for (int tab = clampedTab - 1; tab >= TAB_BEGINNER; tab--)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            for (int tab = clampedTab + 1; tab <= TAB_4TH; tab++)
+            {
+                if (_tabVisible[tab])
+                    return tab;
+            }
+
+            return TAB_BEGINNER;
         }
 
         private Point GetSkillIconPosition(int visibleRowIndex)
@@ -1217,11 +1277,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 for (int i = 0; i < 5; i++)
                 {
-                    Rectangle tabRect = new Rectangle(
-                        Position.X + _tabRects[i].X,
-                        Position.Y + _tabRects[i].Y,
-                        _tabRects[i].Width,
-                        _tabRects[i].Height);
+                    if (!_tabVisible[i])
+                        continue;
+
+                    Rectangle tabRect = GetTabBounds(Position.X, Position.Y, i);
 
                     if (tabRect.Contains(mouseState.X, mouseState.Y))
                     {
