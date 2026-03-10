@@ -188,6 +188,9 @@ namespace HaCreator.MapSimulator
         // Pickup notice UI (displays meso/item pickup messages at bottom right)
         private readonly PickupNoticeUI _pickupNoticeUI = new PickupNoticeUI();
         private NpcInteractionOverlay _npcInteractionOverlay;
+        private readonly QuestRuntimeManager _questRuntime = new QuestRuntimeManager();
+        private NpcItem _activeNpcInteractionNpc;
+        private int _activeNpcInteractionNpcId;
 
         // Consolidated effect management
         private readonly EffectManager _effectManager = new EffectManager();
@@ -1220,6 +1223,8 @@ namespace HaCreator.MapSimulator
             // Deactivate chat input (but preserve message history)
             _chat.Deactivate();
             _npcInteractionOverlay?.Close();
+            _activeNpcInteractionNpc = null;
+            _activeNpcInteractionNpcId = 0;
         }
 
         /// <summary>
@@ -2152,7 +2157,13 @@ namespace HaCreator.MapSimulator
 
             if (isWindowActive)
             {
-                _npcInteractionOverlay?.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight);
+                NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
+                    ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
+                    : default;
+                if (npcOverlayResult.PrimaryActionRequested)
+                {
+                    HandleNpcOverlayPrimaryAction();
+                }
 
                 // Check if mouse is hovering over an NPC
                 CheckNpcHover(newMouseState);
@@ -3207,9 +3218,42 @@ namespace HaCreator.MapSimulator
             if (npc == null || !CanTalkToNpc(npc))
                 return;
 
-            _npcInteractionOverlay?.Open(
-                npc.NpcInstance?.NpcInfo?.StringName,
-                NpcDialogueResolver.ResolveInitialPages(npc));
+            OpenNpcInteraction(npc);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void OpenNpcInteraction(NpcItem npc, int? preferredQuestId = null)
+        {
+            if (npc == null || _npcInteractionOverlay == null)
+                return;
+
+            _activeNpcInteractionNpc = npc;
+            _activeNpcInteractionNpcId = int.TryParse(npc.NpcInstance?.NpcInfo?.ID, out int npcId) ? npcId : 0;
+            _npcInteractionOverlay.Open(_questRuntime.BuildInteractionState(npc, _playerManager?.Player?.Build, preferredQuestId));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void HandleNpcOverlayPrimaryAction()
+        {
+            if (_npcInteractionOverlay?.SelectedEntry?.QuestId is not int questId || _activeNpcInteractionNpc == null || _activeNpcInteractionNpcId == 0)
+                return;
+
+            QuestActionResult result = _questRuntime.TryPerformPrimaryAction(questId, _activeNpcInteractionNpcId, _playerManager?.Player?.Build);
+            if (result?.Messages != null)
+            {
+                for (int i = 0; i < result.Messages.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(result.Messages[i]))
+                    {
+                        _chat.AddMessage(result.Messages[i], new Color(255, 228, 151), currTickCount);
+                    }
+                }
+            }
+
+            if (result?.StateChanged == true)
+            {
+                OpenNpcInteraction(_activeNpcInteractionNpc, questId);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -3908,6 +3952,7 @@ namespace HaCreator.MapSimulator
             {
                 int currentTick = Environment.TickCount;
                 _combatEffects.AddDeathEffectForMob(mob, currentTick);
+                _questRuntime.RecordMobKill(mob?.MobInstance);
 
                 bool suppressRewards = mob?.AI?.DeathType == MobDeathType.Bomb ||
                                        mob?.AI?.DeathType == MobDeathType.Miss ||
