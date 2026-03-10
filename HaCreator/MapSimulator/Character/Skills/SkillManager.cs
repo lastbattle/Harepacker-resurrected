@@ -2291,7 +2291,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     SkillId = buff.SkillId,
                     SkillName = buff.SkillData?.Name ?? buff.SkillId.ToString(),
+                    Description = buff.SkillData?.Description ?? string.Empty,
                     IconKey = ResolveBuffIconKey(buff),
+                    IconTexture = buff.SkillData?.IconTexture,
                     StartTime = buff.StartTime,
                     DurationMs = buff.Duration,
                     RemainingMs = buff.GetRemainingTime(currentTime)
