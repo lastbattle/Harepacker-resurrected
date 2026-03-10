@@ -208,7 +208,7 @@ Confirmed changes since last pass:
 
 - `Boss HP bar` ? Implemented (both regular and boss HP bars).
 - `Damage numbers` (`ShowDamage`) ? Implemented with WZ-backed digit rendering.
-- `Ladder / rope lookup` ? Partial; core behavior works, but `CVecCtrl` still has stub/lookup callback coupling.
+- `Ladder / rope lookup` ? Implemented for the runtime seam: `PlayerCharacter` now configures ladder and rope search directly through `CVecCtrl`, the old vecctrl stub is gone, and grab / re-grab paths resolve ladder metadata through the controller instead of bypassing it.
 - `Floating-map parity` ? Partial; swim/fly states exist, but client-specific map/skill float behavior is incomplete.
 - `HP indicators` ? Implemented for regular mob and boss HP bars.
 - `Player skill catalog / invocation` ? Implemented for simulator use: the skill window now loads the full `Skill.wz` player-skill catalog grouped by advancement tab, active skills are learned into the runtime, and selected skills can be cast directly from the skill window.
@@ -293,7 +293,7 @@ This is no longer a blank area, but a refinement area.
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
-| Partial | Ladder / rope lookup | `CVecCtrl` still exposes stub-level ladder lookup helpers and depends on external lookup callbacks | Core climb behavior works, but the vector controller is not self-contained like the client | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
+| Implemented | Ladder / rope lookup | `CVecCtrl` now owns the ladder/rope lookup seam and resolves ladder metadata for grab/re-grab paths instead of exposing a stub helper | Core climb behavior now routes through the same vector-controller seam the client uses | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
 | Partial | Float collision | There is still a TODO for foothold lookup during floating collision | Swim/fly collision edge cases can differ from client behavior | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
 | Partial | Floating-map parity | Swim and fly states exist, but they remain generic float modes rather than map- or skill-specific client behaviors | The simulator supports movement without matching all map rules | `PlayerCharacter`, `CVecCtrl` (`CVecCtrl::CollisionDetectFloat`, `CUserLocal::Update`) |
 | Missing | Movement path parity | The client's move-path encode/decode/passive-pos flow is still not modeled as a full parity target | Network-faithful movement replay and sync are incomplete | `CVecCtrl`, broader movement serialization layer |

@@ -99,6 +99,25 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void GetLadderOrRope_UsesConfiguredVecCtrlLookup()
+        {
+            var physics = new CVecCtrl();
+            physics.SetLadderOrRopeLookup((x, y, range) =>
+                new LadderOrRopeInfo(x: 140, top: 60, bottom: 220, isLadder: false));
+
+            bool found = physics.TryGetLadderOrRope(135, 150, 18f, out LadderOrRopeInfo ladder);
+            bool simpleFound = physics.GetLadderOrRope(135, 150, out bool isLadder);
+
+            Assert.True(found);
+            Assert.True(simpleFound);
+            Assert.Equal(140, ladder.X);
+            Assert.Equal(60, ladder.Top);
+            Assert.Equal(220, ladder.Bottom);
+            Assert.False(ladder.IsLadder);
+            Assert.False(isLadder);
+        }
+
+        [Fact]
         public void TakingDamageWhileHoldingUp_RegrabsLadderBeforeFalling()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);

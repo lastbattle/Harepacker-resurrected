@@ -222,6 +222,8 @@ namespace HaCreator.MapSimulator.Physics
         /// </summary>
         public int LadderBottom { get; set; }
 
+        private Func<float, float, float, LadderOrRopeInfo?> _ladderOrRopeLookup;
+
         #endregion
 
         #region Movement State (m_nMoveAction)
@@ -529,10 +531,14 @@ namespace HaCreator.MapSimulator.Physics
             return CurrentFoothold;
         }
 
+        public void SetLadderOrRopeLookup(Func<float, float, float, LadderOrRopeInfo?> ladderOrRopeLookup)
+        {
+            _ladderOrRopeLookup = ladderOrRopeLookup;
+        }
+
         /// <summary>
         /// Get ladder or rope at the specified position.
         /// Client: CVecCtrl::GetLadderOrRope
-        /// This is a stub - actual implementation needs foothold/rope data.
         /// </summary>
         /// <param name="x">X position</param>
         /// <param name="y">Y position</param>
@@ -540,9 +546,32 @@ namespace HaCreator.MapSimulator.Physics
         /// <returns>True if ladder/rope found at position</returns>
         public bool GetLadderOrRope(double x, double y, out bool isLadder)
         {
+            if (TryGetLadderOrRope(x, y, 0f, out LadderOrRopeInfo ladderOrRope))
+            {
+                isLadder = ladderOrRope.IsLadder;
+                return true;
+            }
+
             isLadder = false;
-            // Stub - would need rope/ladder data from map
             return false;
+        }
+
+        public bool TryGetLadderOrRope(double x, double y, double searchRange, out LadderOrRopeInfo ladderOrRope)
+        {
+            ladderOrRope = default;
+            if (_ladderOrRopeLookup == null)
+            {
+                return false;
+            }
+
+            var result = _ladderOrRopeLookup((float)x, (float)y, (float)searchRange);
+            if (!result.HasValue)
+            {
+                return false;
+            }
+
+            ladderOrRope = result.Value;
+            return true;
         }
 
         #endregion
@@ -1675,6 +1704,7 @@ namespace HaCreator.MapSimulator.Physics
             IsFlyingMap = false;
             HasFlyingAbility = false;
             RequiresFlyingSkillForMap = false;
+            _ladderOrRopeLookup = null;
 
             // Float state preservation
             _savedX = 0;
@@ -1718,6 +1748,22 @@ namespace HaCreator.MapSimulator.Physics
         None = 0,
         Jumping = 1,  // Moving upward
         Falling = 2   // Moving downward
+    }
+
+    public readonly struct LadderOrRopeInfo
+    {
+        public LadderOrRopeInfo(int x, int top, int bottom, bool isLadder)
+        {
+            X = x;
+            Top = top;
+            Bottom = bottom;
+            IsLadder = isLadder;
+        }
+
+        public int X { get; }
+        public int Top { get; }
+        public int Bottom { get; }
+        public bool IsLadder { get; }
     }
 
     /// <summary>

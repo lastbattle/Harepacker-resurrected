@@ -236,6 +236,15 @@ namespace HaCreator.MapSimulator.Character
         public void SetLadderLookup(Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> findLadder)
         {
             _findLadder = findLadder;
+            Physics.SetLadderOrRopeLookup(findLadder == null
+                ? null
+                : (x, y, range) =>
+                {
+                    var ladder = findLadder(x, y, range);
+                    return ladder.HasValue
+                        ? new LadderOrRopeInfo(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder)
+                        : null;
+                });
         }
 
         public void SetSwimAreaCheck(Func<float, float, float, bool> checkSwimArea)
@@ -837,13 +846,10 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private void TryGrabLadder()
         {
-            if (_findLadder == null) return;
-
-            var ladder = _findLadder(X, Y, 50);
-            if (ladder.HasValue)
+            if (Physics.TryGetLadderOrRope(X, Y, 50f, out LadderOrRopeInfo ladder))
             {
-                Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
-                State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+                Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+                State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
             }
         }
 
@@ -853,19 +859,17 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private void TryGrabLadderDown()
         {
-            if (_findLadder == null) return;
             if (!Physics.IsOnFoothold()) return;
 
             // Search slightly below the player's current position to find ropes that start at/below their feet
             // The player stands on a platform, and the rope typically starts at or just below the platform
-            var ladder = _findLadder(X, Y + 15, 15);
-            if (ladder.HasValue)
+            if (Physics.TryGetLadderOrRope(X, Y + 15, 15f, out LadderOrRopeInfo ladder))
             {
                 // Can grab if character is at or above the rope's top (standing on platform above rope)
-                if (Y <= ladder.Value.top + 10)
+                if (Y <= ladder.Top + 10)
                 {
-                    Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
-                    State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+                    Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+                    State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
                 }
             }
         }
@@ -1508,24 +1512,25 @@ namespace HaCreator.MapSimulator.Character
             const float regrabHorizontalTolerance = 18f;
             const float regrabVerticalTolerance = 6f;
 
-            var ladder = _findLadder?.Invoke(X, Y, regrabHorizontalTolerance);
-            if (!ladder.HasValue &&
+            bool foundLadder = Physics.TryGetLadderOrRope(X, Y, regrabHorizontalTolerance, out LadderOrRopeInfo ladder);
+            if (!foundLadder &&
                 Math.Abs(X - _pendingLadderX) <= regrabHorizontalTolerance &&
                 Y >= _pendingLadderTop - regrabVerticalTolerance &&
                 Y <= _pendingLadderBottom + regrabVerticalTolerance)
             {
-                ladder = (_pendingLadderX, _pendingLadderTop, _pendingLadderBottom, _pendingLadderIsLadder);
+                ladder = new LadderOrRopeInfo(_pendingLadderX, _pendingLadderTop, _pendingLadderBottom, _pendingLadderIsLadder);
+                foundLadder = true;
             }
 
-            if (!ladder.HasValue ||
-                Y < ladder.Value.top - regrabVerticalTolerance ||
-                Y > ladder.Value.bottom + regrabVerticalTolerance)
+            if (!foundLadder ||
+                Y < ladder.Top - regrabVerticalTolerance ||
+                Y > ladder.Bottom + regrabVerticalTolerance)
             {
                 return false;
             }
 
-            Physics.GrabLadder(ladder.Value.x, ladder.Value.top, ladder.Value.bottom, ladder.Value.isLadder);
-            State = ladder.Value.isLadder ? PlayerState.Ladder : PlayerState.Rope;
+            Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
+            State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
             ClearPendingLadderRegrab();
             return true;
         }
