@@ -750,6 +750,7 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     // Update mob's target to puppet position
                     // The AI will now chase the puppet instead of the player
+                    mob.AI.ForceAggro(puppetX, puppetY, _lastUpdateTick);
                     mob.AI.SetAggroRange((int)aggroRange);
                     count++;
                 }

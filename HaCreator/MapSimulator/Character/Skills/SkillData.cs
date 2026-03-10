@@ -606,6 +606,7 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class ActiveSummon
     {
+        public int ObjectId { get; set; }
         public int SkillId { get; set; }
         public int Level { get; set; }
         public int StartTime { get; set; }

@@ -65,6 +65,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Counters
         private int _nextProjectileId = 1;
+        private int _nextSummonId = 1;
 
         private static readonly Random Random = new();
 
@@ -1608,6 +1609,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (_summons[i].SkillId == skill.SkillId)
                 {
+                    RemoveSummonPuppet(_summons[i]);
                     _summons.RemoveAt(i);
                 }
             }
@@ -1616,8 +1618,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             float offsetX = _player.FacingRight ? 50f : -50f;
             float offsetY = -25f;
 
-            _summons.Add(new ActiveSummon
+            var summon = new ActiveSummon
             {
+                ObjectId = _nextSummonId++,
                 SkillId = skill.SkillId,
                 Level = level,
                 StartTime = currentTime,
@@ -1628,19 +1631,27 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillData = skill,
                 LevelData = levelData,
                 FacingRight = _player.FacingRight
-            });
+            };
+
+            _summons.Add(summon);
+            SyncSummonPuppet(summon, currentTime);
         }
 
         private void UpdateSummons(int currentTime)
         {
+            _mobPool?.UpdatePuppets(currentTime);
+
             for (int i = _summons.Count - 1; i >= 0; i--)
             {
                 var summon = _summons[i];
                 if (summon.IsExpired(currentTime))
                 {
+                    RemoveSummonPuppet(summon);
                     _summons.RemoveAt(i);
                     continue;
                 }
+
+                SyncSummonPuppet(summon, currentTime);
 
                 if (currentTime - summon.LastAttackTime < 1000)
                     continue;
@@ -1717,6 +1728,48 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             float facingOffsetX = summon.FacingRight ? Math.Abs(summon.OffsetX) : -Math.Abs(summon.OffsetX);
             return new Vector2(_player.X + facingOffsetX, _player.Y + summon.OffsetY);
+        }
+
+        private void SyncSummonPuppet(ActiveSummon summon, int currentTime)
+        {
+            if (_mobPool == null || summon == null)
+                return;
+
+            Vector2 summonPosition = GetSummonPosition(summon);
+            int expirationTime = summon.Duration > 0 ? summon.StartTime + summon.Duration : 0;
+
+            _mobPool.RegisterPuppet(new PuppetInfo
+            {
+                ObjectId = summon.ObjectId,
+                X = summonPosition.X,
+                Y = summonPosition.Y,
+                OwnerId = 0,
+                AggroValue = 1,
+                ExpirationTime = expirationTime,
+                IsActive = true
+            });
+
+            float aggroRange = Math.Max(220f, Math.Abs(summon.OffsetX) + 170f);
+            _mobPool.LetMobChasePuppet(summonPosition.X, summonPosition.Y, aggroRange, summon.ObjectId);
+        }
+
+        private void RemoveSummonPuppet(ActiveSummon summon)
+        {
+            if (_mobPool == null || summon == null)
+                return;
+
+            _mobPool.RemovePuppet(summon.ObjectId);
+        }
+
+        private void ClearSummonPuppets()
+        {
+            if (_mobPool == null)
+                return;
+
+            foreach (ActiveSummon summon in _summons)
+            {
+                _mobPool.RemovePuppet(summon.ObjectId);
+            }
         }
 
         public IReadOnlyList<ActiveSummon> ActiveSummons => _summons;
@@ -2321,6 +2374,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void Clear()
         {
             _projectiles.Clear();
+            ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
             _preparedSkill = null;
@@ -2362,6 +2416,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void ClearActiveSkillState(bool clearBuffs)
         {
             _projectiles.Clear();
+            ClearSummonPuppets();
             _summons.Clear();
             _hitEffects.Clear();
             _currentCast = null;
