@@ -1554,9 +1554,8 @@ namespace HaCreator.MapSimulator.Physics
         /// Make a new movement path element.
         /// Client: CVecCtrl::MakeNewMovePathElem
         /// </summary>
-        public MovePathElement MakeNewMovePathElem(int? timeStampMs = null)
+        public MovePathElement MakeNewMovePathElem()
         {
-            int timeStamp = timeStampMs ?? Environment.TickCount;
             return new MovePathElement
             {
                 X = (int)X,
@@ -1565,8 +1564,7 @@ namespace HaCreator.MapSimulator.Physics
                 VelocityY = (short)VelocityY,
                 Action = CurrentAction,
                 FootholdId = CurrentFoothold?.num ?? 0,
-                TimeStamp = timeStamp,
-                FacingRight = FacingRight
+                TimeStamp = Environment.TickCount
             };
         }
 
@@ -1575,10 +1573,10 @@ namespace HaCreator.MapSimulator.Physics
         /// Client: CMovePath::MakeMovePath
         /// </summary>
         /// <returns>List of movement path elements</returns>
-        public List<MovePathElement> MakeMovePath(int? timeStampMs = null)
+        public List<MovePathElement> MakeMovePath()
         {
             var path = new List<MovePathElement>();
-            path.Add(MakeNewMovePathElem(timeStampMs));
+            path.Add(MakeNewMovePathElem());
             return path;
         }
 
@@ -1595,15 +1593,7 @@ namespace HaCreator.MapSimulator.Physics
             // Add path element at intervals
             if (currentTimeMs - _lastPathFlushTime >= PathFlushInterval)
             {
-                MovePathElement nextElement = MakeNewMovePathElem(currentTimeMs);
-                if (_movePath.Count > 0)
-                {
-                    MovePathElement previous = _movePath[^1];
-                    previous.Duration = (short)Math.Clamp(currentTimeMs - previous.TimeStamp, short.MinValue, short.MaxValue);
-                    _movePath[^1] = previous;
-                }
-
-                _movePath.Add(nextElement);
+                _movePath.Add(MakeNewMovePathElem());
                 _lastPathFlushTime = currentTimeMs;
 
                 // Limit path size
@@ -1637,12 +1627,11 @@ namespace HaCreator.MapSimulator.Physics
         /// <summary>
         /// Start recording movement path.
         /// </summary>
-        public void StartPathRecording(int currentTimeMs)
+        public void StartPathRecording()
         {
             IsRecordingPath = true;
             _movePath.Clear();
-            _lastPathFlushTime = currentTimeMs;
-            _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+            _lastPathFlushTime = Environment.TickCount;
         }
 
         /// <summary>
@@ -1652,28 +1641,6 @@ namespace HaCreator.MapSimulator.Physics
         {
             IsRecordingPath = false;
             _movePath.Clear();
-        }
-
-        /// <summary>
-        /// Build a passive-position snapshot from the current controller state.
-        /// This is the runtime seam a future movement serializer can consume.
-        /// </summary>
-        public PassivePositionSnapshot MakePassivePositionSnapshot(int? timeStampMs = null)
-        {
-            return new PassivePositionSnapshot
-            {
-                X = (int)X,
-                Y = (int)Y,
-                VelocityX = (short)VelocityX,
-                VelocityY = (short)VelocityY,
-                Action = CurrentAction,
-                FootholdId = CurrentFoothold?.num ?? 0,
-                FacingRight = FacingRight,
-                IsOnLadderOrRope = IsOnLadderOrRope,
-                IsInSwimArea = IsInSwimArea,
-                IsFlying = IsUserFlying(),
-                TimeStamp = timeStampMs ?? Environment.TickCount
-            };
         }
 
         #endregion
@@ -1854,24 +1821,6 @@ namespace HaCreator.MapSimulator.Physics
         /// Stat changed flag (for server validation)
         /// </summary>
         public bool StatChanged;
-    }
-
-    /// <summary>
-    /// Passive-position snapshot for future movement sync / serialization seams.
-    /// </summary>
-    public struct PassivePositionSnapshot
-    {
-        public int X;
-        public int Y;
-        public short VelocityX;
-        public short VelocityY;
-        public MoveAction Action;
-        public int FootholdId;
-        public bool FacingRight;
-        public bool IsOnLadderOrRope;
-        public bool IsInSwimArea;
-        public bool IsFlying;
-        public int TimeStamp;
     }
 
     /// <summary>

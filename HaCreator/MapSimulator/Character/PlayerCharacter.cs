@@ -130,7 +130,6 @@ namespace HaCreator.MapSimulator.Character
         public float X => (float)Physics.X;
         public float Y => (float)Physics.Y;
         public Vector2 Position => new Vector2(X, Y);
-        public bool IsRecordingMovementPath => Physics.IsRecordingPath;
 
         // Stats (from build) - use defaults for placeholder player
         public int HP { get => Build?.HP ?? 100; set { if (Build != null) Build.HP = Math.Clamp(value, 0, Build.MaxHP); } }
@@ -354,7 +353,6 @@ namespace HaCreator.MapSimulator.Character
             if (GmFlyMode)
             {
                 UpdateGmFlyMode(deltaTime);
-                RecordMovementSync(currentTime);
                 UpdateAnimation(currentTime);
                 UpdateFaceExpression(currentTime);
                 return;
@@ -389,33 +387,12 @@ namespace HaCreator.MapSimulator.Character
 
             // Update state machine
             UpdateStateMachine(currentTime);
-            RecordMovementSync(currentTime);
 
             // Update animation
             UpdateAnimation(currentTime);
             UpdateFaceExpression(currentTime);
 
             _wasJumpHeldLastFrame = _inputJump;
-        }
-
-        public PlayerMovementSyncSnapshot GetMovementSyncSnapshot(int currentTime, bool flushPath = true)
-        {
-            RecordMovementSync(currentTime);
-
-            return new PlayerMovementSyncSnapshot(
-                Physics.MakePassivePositionSnapshot(currentTime),
-                flushPath ? Physics.FlushMovePath() : Physics.MakeMovePath(currentTime));
-        }
-
-        private void RecordMovementSync(int currentTime)
-        {
-            if (!Physics.IsRecordingPath)
-            {
-                Physics.StartPathRecording(currentTime);
-                return;
-            }
-
-            Physics.MakeContinuousMovePath(currentTime);
         }
 
         private void RefreshSwimAreaState()
@@ -1938,17 +1915,5 @@ namespace HaCreator.MapSimulator.Character
         }
 
         #endregion
-    }
-
-    public sealed class PlayerMovementSyncSnapshot
-    {
-        public PlayerMovementSyncSnapshot(PassivePositionSnapshot passivePosition, System.Collections.Generic.IReadOnlyList<MovePathElement> movePath)
-        {
-            PassivePosition = passivePosition;
-            MovePath = movePath ?? Array.Empty<MovePathElement>();
-        }
-
-        public PassivePositionSnapshot PassivePosition { get; }
-        public System.Collections.Generic.IReadOnlyList<MovePathElement> MovePath { get; }
     }
 }
