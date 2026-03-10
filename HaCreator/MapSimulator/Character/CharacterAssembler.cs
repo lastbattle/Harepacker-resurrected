@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator.Character
     {
         private readonly CharacterBuild _build;
         private readonly Dictionary<string, AssembledFrame[]> _cachedAnimations = new();
+        private string _faceExpressionName = "default";
 
         // Map point names for alignment
         private const string MAP_NAVEL = "navel";
@@ -102,6 +103,22 @@ namespace HaCreator.MapSimulator.Character
         public CharacterAssembler(CharacterBuild build)
         {
             _build = build ?? throw new ArgumentNullException(nameof(build));
+        }
+
+        public string FaceExpressionName
+        {
+            get => _faceExpressionName;
+            set
+            {
+                string normalized = string.IsNullOrWhiteSpace(value) ? "default" : value;
+                if (string.Equals(_faceExpressionName, normalized, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _faceExpressionName = normalized;
+                ClearCache();
+            }
         }
 
         /// <summary>
@@ -282,7 +299,7 @@ namespace HaCreator.MapSimulator.Character
                 AddPart(parts, headFrame, headOffset.Value, CharacterPartType.Head, _build.Head);
 
                 // Add face - relative to head
-                var faceFrame = GetFaceFrame(_build.Face, frameIndex);
+                var faceFrame = GetFaceFrame(_build.Face, _faceExpressionName, frameIndex);
                 if (frameIndex == 0)
                     System.Diagnostics.Debug.WriteLine($"[Assembler] faceFrame: {faceFrame != null}");
 
@@ -441,7 +458,7 @@ namespace HaCreator.MapSimulator.Character
             return anim.Frames[idx];
         }
 
-        private CharacterFrame GetFaceFrame(FacePart face, int frameIndex)
+        private CharacterFrame GetFaceFrame(FacePart face, string expressionName, int frameIndex)
         {
             if (face == null) return null;
 
@@ -455,7 +472,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            var expr = face.GetExpression("default") ?? face.GetExpression("blink");
+            var expr = face.GetExpression(expressionName) ?? face.GetExpression("default") ?? face.GetExpression("blink");
             if (expr == null || expr.Frames.Count == 0)
             {
                 if (frameIndex == 0)

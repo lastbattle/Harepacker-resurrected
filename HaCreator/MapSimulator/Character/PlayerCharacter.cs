@@ -73,6 +73,10 @@ namespace HaCreator.MapSimulator.Character
 
         // Hit state duration (knockback stun)
         private const int HIT_STUN_DURATION = 400; // 400ms stun when hit by monster
+        private const int FACE_HIT_EXPRESSION_DURATION_MS = 450;
+        private const int FACE_BLINK_DURATION_MS = 120;
+        private const int FACE_BLINK_MIN_INTERVAL_MS = 2500;
+        private const int FACE_BLINK_MAX_INTERVAL_MS = 4500;
 
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
@@ -89,6 +93,7 @@ namespace HaCreator.MapSimulator.Character
         public PlayerState State { get; private set; } = PlayerState.Standing;
         public CharacterAction CurrentAction { get; private set; } = CharacterAction.Stand1;
         public string CurrentActionName { get; private set; } = CharacterPart.GetActionString(CharacterAction.Stand1);
+        public string CurrentFaceExpressionName { get; private set; } = "default";
         public bool FacingRight { get; set; } = true;
         public bool IsAlive => State != PlayerState.Dead;
         public bool CanMove => State != PlayerState.Dead && State != PlayerState.Hit && State != PlayerState.Attacking;
@@ -126,6 +131,10 @@ namespace HaCreator.MapSimulator.Character
         private int _attackFrame;
         private int _attackFrameTimer;
         private string _forcedActionName;
+        private readonly Random _faceExpressionRandom = new(Environment.TickCount);
+        private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
+        private int _blinkExpressionEndTime;
+        private int _hitExpressionEndTime;
 
         // Hit state tracking
         private int _hitStateStartTime;
@@ -320,6 +329,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
+                UpdateFaceExpression(currentTime);
                 return;
             }
 
@@ -355,6 +365,7 @@ namespace HaCreator.MapSimulator.Character
 
             // Update animation
             UpdateAnimation(currentTime);
+            UpdateFaceExpression(currentTime);
 
             _wasJumpHeldLastFrame = _inputJump;
         }
@@ -1166,6 +1177,45 @@ namespace HaCreator.MapSimulator.Character
             return currentTime - _animationStartTime;
         }
 
+        private void UpdateFaceExpression(int currentTime)
+        {
+            string expressionName = "default";
+
+            if (State == PlayerState.Hit || currentTime < _hitExpressionEndTime)
+            {
+                expressionName = "hit";
+            }
+            else if (State != PlayerState.Dead)
+            {
+                if (_blinkExpressionEndTime > 0 && currentTime >= _blinkExpressionEndTime)
+                {
+                    _blinkExpressionEndTime = 0;
+                    ScheduleNextBlink(currentTime);
+                }
+
+                if (_blinkExpressionEndTime == 0 && currentTime >= _nextBlinkTime)
+                {
+                    _blinkExpressionEndTime = currentTime + FACE_BLINK_DURATION_MS;
+                }
+
+                if (_blinkExpressionEndTime > 0 && currentTime < _blinkExpressionEndTime)
+                {
+                    expressionName = "blink";
+                }
+            }
+
+            CurrentFaceExpressionName = expressionName;
+            if (Assembler != null)
+            {
+                Assembler.FaceExpressionName = expressionName;
+            }
+        }
+
+        private void ScheduleNextBlink(int currentTime)
+        {
+            _nextBlinkTime = currentTime + _faceExpressionRandom.Next(FACE_BLINK_MIN_INTERVAL_MS, FACE_BLINK_MAX_INTERVAL_MS + 1);
+        }
+
         #endregion
 
         #region Combat
@@ -1294,6 +1344,7 @@ namespace HaCreator.MapSimulator.Character
             // Enter hit state (knockback stun)
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
+            _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
             Physics.CurrentAction = MoveAction.Hit;
             CacheLadderStateForRegrab();
 
@@ -1326,6 +1377,7 @@ namespace HaCreator.MapSimulator.Character
             // Enter hit state for knockback animation
             State = PlayerState.Hit;
             _hitStateStartTime = Environment.TickCount;
+            _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
             Physics.CurrentAction = MoveAction.Hit;
             CacheLadderStateForRegrab();
 
@@ -1425,6 +1477,9 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Dead;
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Dead);
             ClearForcedActionName();
+            _blinkExpressionEndTime = 0;
+            _hitExpressionEndTime = 0;
+            CurrentFaceExpressionName = "default";
 
             // Completely stop all physics - velocity, knockback, and movement state
             Physics.VelocityX = 0;
@@ -1460,6 +1515,10 @@ namespace HaCreator.MapSimulator.Character
             CurrentAction = CharacterAction.Stand1;
             CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
             ClearForcedActionName();
+            _blinkExpressionEndTime = 0;
+            _hitExpressionEndTime = 0;
+            CurrentFaceExpressionName = "default";
+            ScheduleNextBlink(Environment.TickCount);
             Physics.Reset();
             Physics.SetPosition(x, y);
         }

@@ -360,6 +360,39 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void TakingDamage_DrivesHitFaceExpressionUntilHitWindowExpires()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            int now = Environment.TickCount;
+
+            player.TakeDamage(10);
+            player.Update(now, 0.016f);
+
+            Assert.Equal("hit", player.CurrentFaceExpressionName);
+
+            player.Update(now + 500, 0.016f);
+
+            Assert.NotEqual("hit", player.CurrentFaceExpressionName);
+        }
+
+        [Fact]
+        public void FaceExpressionScheduler_CanEnterBlinkState()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var updateFaceExpression = typeof(PlayerCharacter).GetMethod("UpdateFaceExpression", BindingFlags.Instance | BindingFlags.NonPublic);
+            var nextBlinkTime = typeof(PlayerCharacter).GetField("_nextBlinkTime", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(updateFaceExpression);
+            Assert.NotNull(nextBlinkTime);
+
+            int now = Environment.TickCount;
+            nextBlinkTime!.SetValue(player, now);
+            updateFaceExpression!.Invoke(player, new object[] { now });
+
+            Assert.Equal("blink", player.CurrentFaceExpressionName);
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;
