@@ -514,21 +514,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             VelocityY = 0;
         }
 
-        public bool CanHitMob(int mobId)
+        public bool CanHitMob(int mobId, int maxHits)
         {
             if (HitMobIds.Contains(mobId)) return false;
-            if (!Data.Piercing && HitCount >= Data.MaxHits) return false;
+            if (HitCount >= maxHits) return false;
             return true;
         }
 
-        public void RegisterHit(int mobId, int currentTime)
+        public void RegisterHit(int mobId, int currentTime, int maxHits)
         {
             HitMobIds.Add(mobId);
             HitCount++;
 
-            if (!Data.Piercing && HitCount >= Data.MaxHits)
+            if (HitCount < maxHits)
             {
-                // Non-piercing projectile hit something
+                return;
+            }
+
+            if (Data.Piercing)
+            {
+                IsExpired = true;
+            }
+            else
+            {
                 Explode(currentTime);
             }
         }

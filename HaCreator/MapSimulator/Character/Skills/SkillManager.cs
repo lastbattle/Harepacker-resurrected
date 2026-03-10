@@ -1420,9 +1420,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private MobItem FindHomingProjectileTarget(ActiveProjectile proj, int currentTime)
         {
+            int maxHits = GetEffectiveProjectileHitLimit(proj);
             return _mobPool.ActiveMobs
                 .Where(IsMobAttackable)
-                .Where(mob => proj.CanHitMob(mob.PoolId))
+                .Where(mob => proj.CanHitMob(mob.PoolId, maxHits))
                 .Select(mob => new { Mob = mob, Hitbox = GetMobHitbox(mob, currentTime) })
                 .Where(entry => !entry.Hitbox.IsEmpty)
                 .Select(entry =>
@@ -1455,16 +1456,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Rectangle projHitbox = GetProjectileHitbox(proj, currentTime);
-            int maxTargets = Math.Max(1, proj.LevelData?.MobCount ?? proj.Data?.MaxHits ?? 1);
+            int maxTargets = GetEffectiveProjectileHitLimit(proj);
             int attackCount = Math.Max(1, proj.LevelData?.AttackCount ?? 1);
             var mobsToKill = new List<MobItem>();
 
             foreach (MobItem mob in ResolveProjectileCollisionTargets(proj, projHitbox, currentTime, maxTargets))
             {
-                if (!proj.CanHitMob(mob.PoolId))
+                if (!proj.CanHitMob(mob.PoolId, maxTargets))
                     continue;
 
-                proj.RegisterHit(mob.PoolId, currentTime);
+                proj.RegisterHit(mob.PoolId, currentTime, maxTargets);
 
                 bool died = ApplySkillAttackToMob(
                     skill,
@@ -1504,7 +1505,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return _mobPool.ActiveMobs
                 .Where(IsMobAttackable)
-                .Where(mob => proj.CanHitMob(mob.PoolId))
+                .Where(mob => proj.CanHitMob(mob.PoolId, maxTargets))
                 .Select(mob => new { Mob = mob, Hitbox = GetMobHitbox(mob, currentTime) })
                 .Where(entry => !entry.Hitbox.IsEmpty && projHitbox.Intersects(entry.Hitbox))
                 .Select(entry =>
@@ -1536,6 +1537,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Take(maxTargets)
                 .Select(entry => entry.Mob)
                 .ToList();
+        }
+
+        private static int GetEffectiveProjectileHitLimit(ActiveProjectile proj)
+        {
+            return Math.Max(1, Math.Max(proj?.LevelData?.MobCount ?? 0, proj?.Data?.MaxHits ?? 0));
         }
 
         private Rectangle GetProjectileHitbox(ActiveProjectile proj, int currentTime)
