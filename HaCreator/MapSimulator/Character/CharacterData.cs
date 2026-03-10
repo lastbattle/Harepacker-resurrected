@@ -293,6 +293,34 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterPart
     {
+        private static readonly IReadOnlyDictionary<string, string[]> ActionFallbackMap =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["stand2"] = new[] { "stand1" },
+                ["walk2"] = new[] { "walk1" },
+                ["rope"] = new[] { "ladder" },
+                ["ladder"] = new[] { "rope" },
+                ["heal"] = new[] { "stand1" },
+                ["alert"] = new[] { "stand1" },
+                ["ghost"] = new[] { "dead", "stand1" },
+                ["dead"] = new[] { "stand1" },
+                ["stabO2"] = new[] { "stabO1" },
+                ["stabOF"] = new[] { "stabO1" },
+                ["stabT2"] = new[] { "stabT1" },
+                ["stabTF"] = new[] { "stabT1" },
+                ["swingO2"] = new[] { "swingO1" },
+                ["swingO3"] = new[] { "swingO1" },
+                ["swingOF"] = new[] { "swingO1" },
+                ["swingT2"] = new[] { "swingT1" },
+                ["swingT3"] = new[] { "swingT1" },
+                ["swingTF"] = new[] { "swingT1" },
+                ["swingP2"] = new[] { "swingP1" },
+                ["swingPF"] = new[] { "swingP1" },
+                ["shoot2"] = new[] { "shoot1" },
+                ["shootF"] = new[] { "shoot1" },
+                ["proneStab"] = new[] { "stabO1" }
+            };
+
         public int ItemId { get; set; }
         public string Name { get; set; }
         public CharacterPartType Type { get; set; }
@@ -359,6 +387,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             yield return actionName;
+
+            if (ActionFallbackMap.TryGetValue(actionName, out string[] familyFallbacks))
+            {
+                foreach (string fallbackAction in familyFallbacks)
+                {
+                    yield return fallbackAction;
+                }
+            }
 
             if (string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase))
             {

@@ -344,6 +344,23 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void CharacterPart_ActionLookup_FollowsRawActionFamilyFallbacksBeforeStand()
+        {
+            var part = new BodyPart();
+            var stabAnimation = new CharacterAnimation();
+            stabAnimation.Frames.Add(new CharacterFrame());
+            part.Animations["stabO1"] = stabAnimation;
+
+            var ghostFallbackPart = new BodyPart();
+            var deadAnimation = new CharacterAnimation();
+            deadAnimation.Frames.Add(new CharacterFrame());
+            ghostFallbackPart.Animations["dead"] = deadAnimation;
+
+            Assert.Same(stabAnimation, part.GetAnimation("stabOF"));
+            Assert.Same(deadAnimation, ghostFallbackPart.GetAnimation("ghost"));
+        }
+
+        [Fact]
         public void TriggerSkillAnimation_PreservesRareActionNameUntilStateMachineClearsIt()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);
