@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private PreparedSkill _preparedSkill;
         private SkillCastInfo _currentCast;
         private SkillMountState _activeSkillMount;
+        private bool _buffControlledFlyingAbility;
 
         // Skill book
         private readonly Dictionary<int, int> _skillLevels = new(); // skillId -> level
@@ -2065,11 +2066,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 hitCount++;
             }
+
             if (hitCount > 0)
             {
                 summon.LastAttackAnimationStartTime = currentTime;
             }
-
 
             foreach (var mob in mobsToKill)
             {
@@ -2085,7 +2086,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             return (_player.State == PlayerState.Ladder || _player.State == PlayerState.Rope)
                 && !SummonMovementResolver.CanAttackWhileOwnerIsOnLadderOrRope(summon.SkillData.SkillId);
         }
-
 
         private Vector2 GetSummonPosition(ActiveSummon summon)
         {
@@ -2218,6 +2218,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     ApplyBuffStats(_buffs[i], false);
                     _player.ClearSkillAvatarTransform(_buffs[i].SkillId);
+                    ClearSkillMount(_buffs[i].SkillId);
                     OnBuffExpired?.Invoke(_buffs[i]);
                     _buffs.RemoveAt(i);
                 }
@@ -2238,6 +2239,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Apply buff effects to player stats
             ApplyBuffStats(buff, true);
+            RefreshBuffControlledFlyingAbility();
         }
 
         private void ApplyBuffStats(ActiveBuff buff, bool apply)
@@ -2260,6 +2262,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void UpdateBuffs(int currentTime)
         {
+            bool removedBuff = false;
             for (int i = _buffs.Count - 1; i >= 0; i--)
             {
                 var buff = _buffs[i];
@@ -2271,7 +2274,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ClearSkillMount(buff.SkillId);
                     _buffs.RemoveAt(i);
                     OnBuffExpired?.Invoke(buff);
+                    removedBuff = true;
                 }
+            }
+
+            if (removedBuff)
+            {
+                RefreshBuffControlledFlyingAbility();
             }
         }
 
@@ -2294,6 +2303,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private void RefreshBuffControlledFlyingAbility()
+        {
+            if (_player?.Physics == null)
+                return;
+
+            bool hasFlyingBuff = _buffs.Any(buff => SkillGrantsFlyingAbility(buff.SkillData));
+            if (hasFlyingBuff)
+            {
+                _player.Physics.HasFlyingAbility = true;
+            }
+            else if (_buffControlledFlyingAbility)
+            {
+                _player.Physics.HasFlyingAbility = false;
+            }
+
+            _buffControlledFlyingAbility = hasFlyingBuff;
+        }
+
+        private static bool SkillGrantsFlyingAbility(SkillData skill)
+        {
+            return ActionGrantsFlyingAbility(skill?.ActionName)
+                || ActionGrantsFlyingAbility(skill?.PrepareActionName)
+                || ActionGrantsFlyingAbility(skill?.KeydownActionName);
+        }
+
+        private static bool ActionGrantsFlyingAbility(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                && (actionName.IndexOf("fly", StringComparison.OrdinalIgnoreCase) >= 0
+                    || actionName.IndexOf("flying", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         public IReadOnlyList<ActiveBuff> ActiveBuffs => _buffs;
@@ -2398,6 +2439,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return mappedStatCount == 1 && !string.IsNullOrEmpty(iconKey)
                 ? iconKey
                 : GenericBuffIconKey;
+            return "united/buff";
         }
 
         #endregion
@@ -2892,8 +2934,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 ApplyBuffStats(buff, false);
+                _player.ClearSkillAvatarTransform(buff.SkillId);
+                ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
+            RefreshBuffControlledFlyingAbility();
 
             _cooldowns.Clear();
             _currentCast = null;
@@ -2925,9 +2970,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 ApplyBuffStats(buff, false);
+                _player.ClearSkillAvatarTransform(buff.SkillId);
+                ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
+            RefreshBuffControlledFlyingAbility();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
+            ClearSkillMount();
 
             foreach (var summon in _summons)
             {
@@ -2964,8 +3013,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 ApplyBuffStats(buff, false);
+                _player.ClearSkillAvatarTransform(buff.SkillId);
+                ClearSkillMount(buff.SkillId);
             }
             _buffs.Clear();
+            RefreshBuffControlledFlyingAbility();
             _player.ClearSkillAvatarTransformAndPlayExitAction();
             ClearSkillMount();
         }

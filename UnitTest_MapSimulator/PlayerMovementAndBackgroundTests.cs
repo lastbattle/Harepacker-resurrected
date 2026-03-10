@@ -344,6 +344,45 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SkillManager_FlyBuffTogglesFlyingAbilityForSkillGatedMaps()
+        {
+            var loader = (SkillLoader)RuntimeHelpers.GetUninitializedObject(typeof(SkillLoader));
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.Physics.IsFlyingMap = true;
+            player.Physics.RequiresFlyingSkillForMap = true;
+
+            var manager = new SkillManager(loader, player);
+            var applyBuff = typeof(SkillManager).GetMethod("ApplyBuff", BindingFlags.Instance | BindingFlags.NonPublic);
+            var updateBuffs = typeof(SkillManager).GetMethod("UpdateBuffs", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            var skill = new SkillData
+            {
+                SkillId = 9100000,
+                Name = "Test Flight",
+                IsBuff = true,
+                ActionName = "fly",
+                MaxLevel = 1
+            };
+            skill.Levels[1] = new SkillLevelData
+            {
+                Level = 1,
+                Time = 1
+            };
+
+            Assert.False(player.Physics.IsUserFlying());
+
+            applyBuff!.Invoke(manager, new object[] { skill, 1, 1000 });
+
+            Assert.True(player.Physics.HasFlyingAbility);
+            Assert.True(player.Physics.IsUserFlying());
+
+            updateBuffs!.Invoke(manager, new object[] { 2000 });
+
+            Assert.False(player.Physics.HasFlyingAbility);
+            Assert.False(player.Physics.IsUserFlying());
+        }
+
+        [Fact]
         public void StartPathRecording_SeedsInitialElementAndContinuousPathTracksDuration()
         {
             var physics = new CVecCtrl
