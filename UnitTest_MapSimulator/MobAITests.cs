@@ -194,5 +194,54 @@ namespace UnitTest_MapSimulator
 
             Assert.Null(exception);
         }
+
+        [Fact]
+        public void UpdateStatusEffects_PoisonTicksDamageUntilExpiry()
+        {
+            var ai = CreateDefaultMobAI();
+
+            ai.ApplyStatusEffect(MobStatusEffect.Poison, durationMs: 2500, currentTick: 0, value: 5, tickIntervalMs: 1000);
+
+            ai.Update(1000, 0, 0, null, null);
+            Assert.Equal(95, ai.CurrentHp);
+            Assert.True(ai.HasStatusEffect(MobStatusEffect.Poison));
+
+            ai.Update(2000, 0, 0, null, null);
+            Assert.Equal(90, ai.CurrentHp);
+
+            ai.Update(3000, 0, 0, null, null);
+            Assert.Equal(90, ai.CurrentHp);
+            Assert.False(ai.HasStatusEffect(MobStatusEffect.Poison));
+        }
+
+        [Fact]
+        public void ApplyStatusEffect_RaisesSetAndResetEvents()
+        {
+            var ai = CreateDefaultMobAI();
+            int setCount = 0;
+            int resetCount = 0;
+
+            ai.OnStatusSet += effect =>
+            {
+                if (effect == MobStatusEffect.Freeze)
+                {
+                    setCount++;
+                }
+            };
+            ai.OnStatusReset += effect =>
+            {
+                if (effect == MobStatusEffect.Freeze)
+                {
+                    resetCount++;
+                }
+            };
+
+            ai.ApplyStatusEffect(MobStatusEffect.Freeze, durationMs: 500, currentTick: 100);
+            ai.Update(700, 0, 0, null, null);
+
+            Assert.Equal(1, setCount);
+            Assert.Equal(1, resetCount);
+            Assert.False(ai.HasStatusEffect(MobStatusEffect.Freeze));
+        }
     }
 }

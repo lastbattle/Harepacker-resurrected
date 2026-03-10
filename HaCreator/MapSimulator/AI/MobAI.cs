@@ -211,6 +211,15 @@ namespace HaCreator.MapSimulator.AI
         public bool IsExpired(int currentTick) => currentTick - DisplayTime > Duration;
     }
 
+    public class MobStatusEntry
+    {
+        public MobStatusEffect Effect { get; set; }
+        public int ExpirationTime { get; set; }
+        public int Value { get; set; }
+        public int TickIntervalMs { get; set; }
+        public int NextTickTime { get; set; }
+    }
+
     /// <summary>
     /// Mob AI controller - handles state machine, combat, and behavior
     /// </summary>
@@ -267,7 +276,7 @@ namespace HaCreator.MapSimulator.AI
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
-        private readonly Dictionary<MobStatusEffect, int> _statusExpirations = new Dictionary<MobStatusEffect, int>();
+        private readonly Dictionary<MobStatusEffect, MobStatusEntry> _statusEntries = new Dictionary<MobStatusEffect, MobStatusEntry>();
 
         // Controller
         private MobControllerType _controllerType = MobControllerType.Local;
@@ -295,6 +304,7 @@ namespace HaCreator.MapSimulator.AI
         public IReadOnlyList<MobDamageInfo> DamageDisplays => _damageDisplays;
         public MobDeathType DeathType => _deathType;
         public int StateElapsed(int currentTick) => currentTick - _stateStartTime;
+        public IReadOnlyDictionary<MobStatusEffect, MobStatusEntry> StatusEntries => _statusEntries;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -439,6 +449,12 @@ namespace HaCreator.MapSimulator.AI
             if (_state == MobAIState.Death || _state == MobAIState.Removed)
             {
                 UpdateDeathState(currentTick);
+                return;
+            }
+
+            UpdateStatusEffects(currentTick);
+            if (IsDead)
+            {
                 return;
             }
 
@@ -988,7 +1004,7 @@ namespace HaCreator.MapSimulator.AI
             _currentAttackIndex = -1;
             _currentSkillIndex = -1;
             _statusEffects = MobStatusEffect.None;
-            _statusExpirations.Clear();
+            _statusEntries.Clear();
             _guidedTargetId = 0;
             _isGuidedTarget = false;
             _isAggroed = false;
@@ -1052,10 +1068,18 @@ namespace HaCreator.MapSimulator.AI
         /// <param name="effect">Effect to apply</param>
         /// <param name="durationMs">Duration in milliseconds</param>
         /// <param name="currentTick">Current tick count</param>
-        public void ApplyStatusEffect(MobStatusEffect effect, int durationMs, int currentTick)
+        public void ApplyStatusEffect(MobStatusEffect effect, int durationMs, int currentTick, int value = 0, int tickIntervalMs = 1000)
         {
             _statusEffects |= effect;
-            _statusExpirations[effect] = currentTick + durationMs;
+            bool wasActive = _statusEntries.ContainsKey(effect);
+            _statusEntries[effect] = new MobStatusEntry
+            {
+                Effect = effect,
+                ExpirationTime = currentTick + durationMs,
+                Value = Math.Max(0, value),
+                TickIntervalMs = Math.Max(1, tickIntervalMs),
+                NextTickTime = currentTick + Math.Max(1, tickIntervalMs)
+            };
 
             // Special handling for certain effects
             if (effect == MobStatusEffect.Stun || effect == MobStatusEffect.Freeze)
@@ -1066,6 +1090,11 @@ namespace HaCreator.MapSimulator.AI
                     SetState(MobAIState.Hit, currentTick);
                 }
             }
+
+            if (!wasActive)
+            {
+                OnStatusSet?.Invoke(effect);
+            }
         }
 
         /// <summary>
@@ -1074,7 +1103,10 @@ namespace HaCreator.MapSimulator.AI
         public void RemoveStatusEffect(MobStatusEffect effect)
         {
             _statusEffects &= ~effect;
-            _statusExpirations.Remove(effect);
+            if (_statusEntries.Remove(effect))
+            {
+                OnStatusReset?.Invoke(effect);
+            }
         }
 
         /// <summary>
@@ -1082,8 +1114,16 @@ namespace HaCreator.MapSimulator.AI
         /// </summary>
         public void ClearStatusEffects()
         {
-            _statusEffects = MobStatusEffect.None;
-            _statusExpirations.Clear();
+            if (_statusEntries.Count == 0)
+            {
+                _statusEffects = MobStatusEffect.None;
+                return;
+            }
+
+            foreach (MobStatusEffect effect in new List<MobStatusEffect>(_statusEntries.Keys))
+            {
+                RemoveStatusEffect(effect);
+            }
         }
 
         /// <summary>
@@ -1096,11 +1136,21 @@ namespace HaCreator.MapSimulator.AI
 
             // Check each active effect for expiration
             var expiredEffects = new List<MobStatusEffect>();
-            foreach (var kvp in _statusExpirations)
+            foreach (var kvp in _statusEntries)
             {
-                if (currentTick >= kvp.Value)
+                MobStatusEntry entry = kvp.Value;
+                if (currentTick >= entry.ExpirationTime)
                 {
                     expiredEffects.Add(kvp.Key);
+                    continue;
+                }
+
+                if (IsDotEffect(entry.Effect) &&
+                    entry.Value > 0 &&
+                    currentTick >= entry.NextTickTime)
+                {
+                    ApplyStatusTickDamage(entry.Value, currentTick);
+                    entry.NextTickTime = currentTick + entry.TickIntervalMs;
                 }
             }
 
@@ -1119,11 +1169,16 @@ namespace HaCreator.MapSimulator.AI
             if (!HasStatusEffect(effect))
                 return 0;
 
-            if (_statusExpirations.TryGetValue(effect, out int expiration))
+            if (_statusEntries.TryGetValue(effect, out MobStatusEntry entry))
             {
-                return Math.Max(0, expiration - currentTick);
+                return Math.Max(0, entry.ExpirationTime - currentTick);
             }
             return 0;
+        }
+
+        public int GetStatusEffectValue(MobStatusEffect effect)
+        {
+            return _statusEntries.TryGetValue(effect, out MobStatusEntry entry) ? entry.Value : 0;
         }
         #endregion
 
@@ -1311,6 +1366,35 @@ namespace HaCreator.MapSimulator.AI
 
             return 250;
         }
+
+        private static bool IsDotEffect(MobStatusEffect effect)
+        {
+            return effect == MobStatusEffect.Poison ||
+                   effect == MobStatusEffect.Venom ||
+                   effect == MobStatusEffect.Burned;
+        }
+
+        private void ApplyStatusTickDamage(int damage, int currentTick)
+        {
+            if (damage <= 0 || IsDead)
+            {
+                return;
+            }
+
+            _currentHp -= damage;
+            AddDamageDisplay(damage, currentTick, false);
+
+            if (_currentHp <= 0)
+            {
+                _currentHp = 0;
+                _deathType = MobDeathType.Normal;
+                _deathTime = currentTick;
+                SetState(MobAIState.Death, currentTick);
+            }
+        }
         #endregion
+
+        public event Action<MobStatusEffect> OnStatusSet;
+        public event Action<MobStatusEffect> OnStatusReset;
     }
 }

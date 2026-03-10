@@ -1173,6 +1173,42 @@ namespace HaCreator.MapSimulator.Entities
             return Math.Clamp((float)elapsed / SPAWN_FADE_DURATION_MS, 0f, 1f);
         }
 
+        private Color GetStatusTint(int tickCount)
+        {
+            if (AI == null || AI.StatusEffects == MobStatusEffect.None)
+            {
+                return Color.White;
+            }
+
+            float pulse = 0.78f + (float)((Math.Sin(tickCount / 140.0) + 1.0) * 0.09);
+            if (AI.HasStatusEffect(MobStatusEffect.Freeze))
+            {
+                return new Color(170, 225, 255) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Poison) || AI.HasStatusEffect(MobStatusEffect.Venom))
+            {
+                return new Color(150, 255, 160) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Burned))
+            {
+                return new Color(255, 200, 120) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Stun) || AI.HasStatusEffect(MobStatusEffect.Seal))
+            {
+                return new Color(220, 180, 255) * pulse;
+            }
+
+            if (AI.HasStatusEffect(MobStatusEffect.Web) || AI.HasStatusEffect(MobStatusEffect.Weakness))
+            {
+                return new Color(220, 220, 220) * pulse;
+            }
+
+            return Color.White;
+        }
+
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
@@ -1228,12 +1264,13 @@ namespace HaCreator.MapSimulator.Entities
                     renderParameters.RenderWidth, renderParameters.RenderHeight))
                 {
                     float spawnAlpha = GetSpawnAlpha(TickCount);
-                    if (spawnAlpha < 1f)
+                    Color statusTint = GetStatusTint(TickCount);
+                    if (spawnAlpha < 1f || statusTint != Color.White)
                     {
                         drawFrame.DrawBackground(sprite, skeletonMeshRenderer, gameTime,
                             drawFrame.X - adjustedShiftX,
                             drawFrame.Y - shiftCenteredY,
-                            Color.White * spawnAlpha,
+                            statusTint * spawnAlpha,
                             flip,
                             drawReflectionInfo);
                     }
