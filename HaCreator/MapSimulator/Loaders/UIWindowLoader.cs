@@ -1473,7 +1473,7 @@ namespace HaCreator.MapSimulator.Loaders
             return quest;
         }
 
-        private static QuickSlotUI CreateQuickSlotWindow(GraphicsDevice device, int screenWidth, int screenHeight)
+        private static QuickSlotUI CreateQuickSlotWindow(WzImage uiWindow2Image, GraphicsDevice device, int screenWidth, int screenHeight)
         {
             const int width = 286;
             const int height = 96;
@@ -1497,6 +1497,21 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject frame = new DXObject(0, 0, frameTexture, 0);
             QuickSlotUI quickSlot = new QuickSlotUI(frame, device);
             quickSlot.Position = new Point((screenWidth - width) / 2, Math.Max(20, screenHeight - height - 120));
+
+            WzSubProperty skillProperty = uiWindow2Image?["Skill"] as WzSubProperty;
+            WzSubProperty mainProperty = skillProperty?["main"] as WzSubProperty;
+            WzSubProperty coolTimeProperty = mainProperty?["CoolTime"] as WzSubProperty;
+            if (coolTimeProperty != null)
+            {
+                Texture2D[] cooldownMasks = new Texture2D[16];
+                for (int i = 0; i < cooldownMasks.Length; i++)
+                {
+                    cooldownMasks[i] = LoadCanvasTexture(coolTimeProperty, i.ToString(), device);
+                }
+
+                quickSlot.SetCooldownMasks(cooldownMasks);
+            }
+
             quickSlot.Show();
             return quickSlot;
         }
@@ -1634,7 +1649,7 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase skill = CreateSkillWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase quest = CreateQuestWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
-            QuickSlotUI quickSlot = CreateQuickSlotWindow(device, screenWidth, screenHeight);
+            QuickSlotUI quickSlot = CreateQuickSlotWindow(uiWindow2Image, device, screenWidth, screenHeight);
 
             // Seed the skill window with the requested job path only.
             if (skill is SkillUIBigBang skillBigBang)

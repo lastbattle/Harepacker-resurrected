@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _emptySlotTexture;
         private Texture2D _slotHighlightTexture;
         private Texture2D _cooldownOverlayTexture;
+        private Texture2D[] _cooldownMaskTextures = Array.Empty<Texture2D>();
 
         // Hover and selection
         private int _hoveredSlot = -1;
@@ -187,6 +188,11 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
         }
+
+        public void SetCooldownMasks(Texture2D[] cooldownMaskTextures)
+        {
+            _cooldownMaskTextures = cooldownMaskTextures ?? Array.Empty<Texture2D>();
+        }
         #endregion
 
         #region Drawing
@@ -242,11 +248,7 @@ namespace HaCreator.MapSimulator.UI
 
                         // Calculate cooldown progress (0-1)
                         float progress = Math.Clamp(remaining / (float)total, 0f, 1f);
-                        int overlayHeight = (int)(SLOT_SIZE * progress);
-
-                        sprite.Draw(_cooldownOverlayTexture,
-                            new Rectangle(slotX, slotY + SLOT_SIZE - overlayHeight, SLOT_SIZE, overlayHeight),
-                            Color.White);
+                        DrawCooldownMask(sprite, slotX, slotY, progress);
 
                         if (_font != null)
                         {
@@ -325,6 +327,26 @@ namespace HaCreator.MapSimulator.UI
         {
             sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor);
             sprite.DrawString(_font, text, position, color);
+        }
+
+        private void DrawCooldownMask(SpriteBatch sprite, int slotX, int slotY, float remainingProgress)
+        {
+            if (_cooldownMaskTextures.Length > 0)
+            {
+                int frameIndex = (int)Math.Round((1f - remainingProgress) * (_cooldownMaskTextures.Length - 1));
+                frameIndex = Math.Clamp(frameIndex, 0, _cooldownMaskTextures.Length - 1);
+                Texture2D maskTexture = _cooldownMaskTextures[frameIndex];
+                if (maskTexture != null)
+                {
+                    sprite.Draw(maskTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), Color.White);
+                    return;
+                }
+            }
+
+            int overlayHeight = (int)(SLOT_SIZE * remainingProgress);
+            sprite.Draw(_cooldownOverlayTexture,
+                new Rectangle(slotX, slotY + SLOT_SIZE - overlayHeight, SLOT_SIZE, overlayHeight),
+                Color.White);
         }
         #endregion
 
