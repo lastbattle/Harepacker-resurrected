@@ -1142,6 +1142,101 @@ namespace HaCreator.MapSimulator.UI
                 _scrollOffset++;
         }
 
+        private Rectangle GetSkillListBounds()
+        {
+            return new Rectangle(
+                Position.X + ROW_HIT_LEFT,
+                Position.Y + FIRST_ROW_TOP + ROW_HIT_TOP_OFFSET,
+                ROW_HIT_RIGHT - ROW_HIT_LEFT + 1,
+                (VISIBLE_SKILLS * SKILL_ROW_HEIGHT) - ROW_HIT_TOP_OFFSET + 1);
+        }
+
+        private void EnsureSkillVisible(int skillIndex)
+        {
+            if (skillIndex < 0)
+                return;
+
+            var skills = CurrentSkills;
+            int maxScroll = Math.Max(0, skills.Count - VISIBLE_SKILLS);
+            if (skillIndex < _scrollOffset)
+            {
+                _scrollOffset = skillIndex;
+            }
+            else if (skillIndex >= _scrollOffset + VISIBLE_SKILLS)
+            {
+                _scrollOffset = skillIndex - VISIBLE_SKILLS + 1;
+            }
+
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, maxScroll);
+        }
+
+        private void SelectSkillIndex(int skillIndex, bool notifySelection)
+        {
+            var skills = CurrentSkills;
+            if (skillIndex < 0 || skillIndex >= skills.Count)
+                return;
+
+            _selectedSkillIndex = skillIndex;
+            EnsureSkillVisible(skillIndex);
+
+            if (notifySelection)
+            {
+                OnSkillSelected?.Invoke(skills[skillIndex]);
+            }
+        }
+
+        private bool MoveSelection(int delta)
+        {
+            var skills = CurrentSkills;
+            if (skills.Count == 0)
+                return false;
+
+            int baseIndex = _selectedSkillIndex >= 0
+                ? _selectedSkillIndex
+                : (delta >= 0 ? 0 : skills.Count - 1);
+            int nextIndex = Math.Clamp(baseIndex + delta, 0, skills.Count - 1);
+            if (nextIndex == _selectedSkillIndex)
+                return false;
+
+            SelectSkillIndex(nextIndex, true);
+            return true;
+        }
+
+        private bool TryHandleSkillListKeyboardNavigation(KeyboardState keyboardState)
+        {
+            var skills = CurrentSkills;
+            if (skills.Count == 0)
+                return false;
+
+            bool WasPressed(Keys key) => keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+
+            if (WasPressed(Keys.Up))
+                return MoveSelection(-1);
+
+            if (WasPressed(Keys.Down))
+                return MoveSelection(1);
+
+            if (WasPressed(Keys.PageUp))
+                return MoveSelection(-VISIBLE_SKILLS);
+
+            if (WasPressed(Keys.PageDown))
+                return MoveSelection(VISIBLE_SKILLS);
+
+            if (WasPressed(Keys.Home))
+            {
+                SelectSkillIndex(0, true);
+                return true;
+            }
+
+            if (WasPressed(Keys.End))
+            {
+                SelectSkillIndex(skills.Count - 1, true);
+                return true;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Get skill at a position relative to window
         /// </summary>
@@ -1270,6 +1365,7 @@ namespace HaCreator.MapSimulator.UI
 
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+            Rectangle skillListBounds = GetSkillListBounds();
 
             // Handle tab clicks
             if (mouseState.LeftButton == ButtonState.Pressed &&
@@ -1292,7 +1388,7 @@ namespace HaCreator.MapSimulator.UI
                 int clickedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
                 if (clickedSkillIndex >= 0)
                 {
-                    _selectedSkillIndex = clickedSkillIndex;
+                    SelectSkillIndex(clickedSkillIndex, false);
                     var selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
                     if (selectedSkill != null)
                     {
@@ -1316,7 +1412,7 @@ namespace HaCreator.MapSimulator.UI
                 var selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
                 if (selectedSkill != null)
                 {
-                    _selectedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                    SelectSkillIndex(GetSkillIndexAtPosition(mouseState.X, mouseState.Y), false);
                     OnSkillSelected?.Invoke(selectedSkill);
                     OnSkillInvoked?.Invoke(selectedSkill.SkillId);
                 }
@@ -1326,12 +1422,17 @@ namespace HaCreator.MapSimulator.UI
             int scrollDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
             if (scrollDelta != 0)
             {
-                if (GetSkillIndexAtPosition(mouseState.X, mouseState.Y) >= 0)
+                if (skillListBounds.Contains(mouseState.X, mouseState.Y))
                 {
                     if (scrollDelta > 0)
                         ScrollUp();
                     else
                         ScrollDown();
+
+                    if (_selectedSkillIndex >= 0)
+                    {
+                        EnsureSkillVisible(_selectedSkillIndex);
+                    }
                 }
             }
 
@@ -1339,6 +1440,7 @@ namespace HaCreator.MapSimulator.UI
             _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
 
             KeyboardState keyboardState = Keyboard.GetState();
+            TryHandleSkillListKeyboardNavigation(keyboardState);
             bool invokeSelected = SelectedSkill != null &&
                                   ((keyboardState.IsKeyDown(Keys.Enter) && !_previousKeyboardState.IsKeyDown(Keys.Enter)) ||
                                    (keyboardState.IsKeyDown(Keys.Space) && !_previousKeyboardState.IsKeyDown(Keys.Space)));
