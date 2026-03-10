@@ -201,6 +201,7 @@ namespace HaCreator.MapSimulator
         private readonly DynamicFootholdSystem _dynamicFootholds = new DynamicFootholdSystem();
         private readonly TransportationField _transportField = new TransportationField();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
+        private TemporaryPortalField _temporaryPortalField;
 
         // Camera controller for smooth scrolling and zoom
         private readonly CameraController _cameraController = new CameraController();
@@ -262,13 +263,26 @@ namespace HaCreator.MapSimulator
         }
         private PortalFadeState _portalFadeState = PortalFadeState.None;
 
+        private sealed class SameMapTeleportTarget
+        {
+            public SameMapTeleportTarget(float x, float y)
+            {
+                X = x;
+                Y = y;
+            }
+
+            public float X { get; }
+            public float Y { get; }
+        }
+
         // Same-map portal teleport delay (no fade, just delay before teleport)
         // Default delay is 1000ms (1 second) if portal doesn't specify its own delay
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
+        private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
-        private PortalInstance _sameMapTeleportTarget = null;
+        private SameMapTeleportTarget _sameMapTeleportTarget = null;
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -945,6 +959,7 @@ namespace HaCreator.MapSimulator
 
             // Initialize limited view field (fog of war)
             _limitedViewField.Initialize(_DxDeviceManager.GraphicsDevice, _renderParams.RenderWidth, _renderParams.RenderHeight);
+            _temporaryPortalField = new TemporaryPortalField(_texturePool, _DxDeviceManager.GraphicsDevice);
 
             // Initialize combat effects (damage numbers, hit effects)
             _combatEffects.Initialize(_DxDeviceManager.GraphicsDevice, _fontDebugValues);
@@ -2151,40 +2166,15 @@ namespace HaCreator.MapSimulator
                 HandlePortalUpInteract();
             }
 
+            _temporaryPortalField?.Update(currTickCount);
+
             // Handle same-map portal teleport with delay (no fade, just wait for delay)
             if (_sameMapTeleportPending)
             {
                 int elapsed = currTickCount - _sameMapTeleportStartTime;
                 if (elapsed >= _sameMapTeleportDelay)
                 {
-                    // Delay complete - perform the teleport
-                    if (_sameMapTeleportTarget != null)
-                    {
-                        // Move player to target portal position
-                        _playerManager?.TeleportTo(_sameMapTeleportTarget.X, _sameMapTeleportTarget.Y);
-                        _playerManager?.SetSpawnPoint(_sameMapTeleportTarget.X, _sameMapTeleportTarget.Y);
-
-                        // Update camera to follow player
-                        if (_gameState.UseSmoothCamera)
-                        {
-                            _cameraController.TeleportTo(_sameMapTeleportTarget.X, _sameMapTeleportTarget.Y);
-                            mapShiftX = _cameraController.MapShiftX;
-                            mapShiftY = _cameraController.MapShiftY;
-                        }
-                        else
-                        {
-                            this.mapShiftX = _sameMapTeleportTarget.X;
-                            this.mapShiftY = _sameMapTeleportTarget.Y;
-                            SetCameraMoveX(true, false, 0);
-                            SetCameraMoveX(false, true, 0);
-                            SetCameraMoveY(true, false, 0);
-                            SetCameraMoveY(false, true, 0);
-                        }
-                    }
-
-                    // Clear same-map teleport state
-                    _sameMapTeleportPending = false;
-                    _sameMapTeleportTarget = null;
+                    CompleteSameMapTeleport();
                 }
             }
 
@@ -2199,11 +2189,11 @@ namespace HaCreator.MapSimulator
                     var targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _gameState.PendingPortalName);
                     if (targetPortal != null && !_sameMapTeleportPending)
                     {
-                        // Start same-map teleport delay
-                        _sameMapTeleportPending = true;
-                        _sameMapTeleportStartTime = currTickCount;
-                        _sameMapTeleportDelay = targetPortal.delay ?? SAME_MAP_PORTAL_DEFAULT_DELAY_MS;
-                        _sameMapTeleportTarget = targetPortal;
+                        StartSameMapTeleport(
+                            targetPortal.X,
+                            targetPortal.Y,
+                            targetPortal.delay ?? SAME_MAP_PORTAL_DEFAULT_DELAY_MS,
+                            currTickCount);
                     }
 
                     // Clear pending map change state (same-map teleport is now handled separately)
@@ -3695,7 +3685,7 @@ namespace HaCreator.MapSimulator
         private void HandlePortalUpInteract()
         {
             // Skip if map change is already pending
-            if (_gameState.PendingMapChange)
+            if (_gameState.PendingMapChange || _sameMapTeleportPending)
                 return;
 
             // Only handle when player control is enabled and player is active
@@ -3711,6 +3701,19 @@ namespace HaCreator.MapSimulator
             var playerPos = _playerManager.GetPlayerPosition();
             float playerX = playerPos.X;
             float playerY = playerPos.Y;
+
+            if (_temporaryPortalField != null
+                && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
+            {
+                PlayPortalSE();
+                _playerManager?.ForceStand();
+                StartSameMapTeleport(
+                    temporaryPortalDestination.X,
+                    temporaryPortalDestination.Y,
+                    temporaryPortalDestination.DelayMs,
+                    Environment.TickCount);
+                return;
+            }
 
             // Portal interaction range (in pixels)
             const int PORTAL_INTERACT_RANGE_X = 40; // Horizontal range
@@ -3792,6 +3795,43 @@ namespace HaCreator.MapSimulator
                 _gameState.PendingMapId = nearestHiddenPortal.tm;
                 _gameState.PendingPortalName = nearestHiddenPortal.tn;
             }
+        }
+
+        private void StartSameMapTeleport(float targetX, float targetY, int delayMs, int currentTime)
+        {
+            _sameMapTeleportPending = true;
+            _sameMapTeleportStartTime = currentTime;
+            _sameMapTeleportDelay = Math.Max(0, delayMs);
+            _sameMapTeleportTarget = new SameMapTeleportTarget(targetX, targetY - SAME_MAP_TELEPORT_Y_OFFSET);
+        }
+
+        private void CompleteSameMapTeleport()
+        {
+            SameMapTeleportTarget target = _sameMapTeleportTarget;
+            if (target != null)
+            {
+                _playerManager?.TeleportTo(target.X, target.Y);
+                _playerManager?.SetSpawnPoint(target.X, target.Y);
+
+                if (_gameState.UseSmoothCamera)
+                {
+                    _cameraController.TeleportTo(target.X, target.Y);
+                    mapShiftX = _cameraController.MapShiftX;
+                    mapShiftY = _cameraController.MapShiftY;
+                }
+                else
+                {
+                    mapShiftX = (int)MathF.Round(target.X);
+                    mapShiftY = (int)MathF.Round(target.Y);
+                    SetCameraMoveX(true, false, 0);
+                    SetCameraMoveX(false, true, 0);
+                    SetCameraMoveY(true, false, 0);
+                    SetCameraMoveY(false, true, 0);
+                }
+            }
+
+            _sameMapTeleportPending = false;
+            _sameMapTeleportTarget = null;
         }
 
         /// <summary>
@@ -4451,6 +4491,8 @@ namespace HaCreator.MapSimulator
             if (_playerManager?.Skills == null || uiWindowManager == null)
                 return;
 
+            _playerManager.Skills.OnSkillCast = HandlePlayerSkillCast;
+
             if (uiWindowManager.QuickSlotWindow != null)
             {
                 uiWindowManager.QuickSlotWindow.SetSkillManager(_playerManager.Skills);
@@ -4476,6 +4518,15 @@ namespace HaCreator.MapSimulator
 
                 skillWindow.UpdateSkillLevel(skill.SkillId, currentLevel, skill.MaxLevel);
             }
+        }
+
+        private void HandlePlayerSkillCast(SkillCastInfo castInfo)
+        {
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
+            if (currentMapId < 0)
+                return;
+
+            _temporaryPortalField?.TryCreateOpenGate(castInfo, currentMapId);
         }
 
         private bool TrySetPlayerJob(int jobId)
@@ -4644,6 +4695,17 @@ namespace HaCreator.MapSimulator
             _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             _renderingManager.DrawDrops(in renderContext); // item/meso drops
             _renderingManager.DrawPortals(in renderContext); // portals
+            _temporaryPortalField?.DrawCurrentMap(
+                _mapBoard.MapInfo.id,
+                _spriteBatch,
+                _skeletonMeshRenderer,
+                gameTime,
+                mapShiftX,
+                mapShiftY,
+                mapCenterX,
+                mapCenterY,
+                _renderParams,
+                TickCount);
             _renderingManager.DrawReactors(in renderContext); // reactors
             _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
