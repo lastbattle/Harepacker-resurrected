@@ -1554,7 +1554,7 @@ namespace HaCreator.MapSimulator.Physics
         /// Make a new movement path element.
         /// Client: CVecCtrl::MakeNewMovePathElem
         /// </summary>
-        public MovePathElement MakeNewMovePathElem()
+        public MovePathElement MakeNewMovePathElem(int? timeStampMs = null)
         {
             return new MovePathElement
             {
@@ -1564,7 +1564,10 @@ namespace HaCreator.MapSimulator.Physics
                 VelocityY = (short)VelocityY,
                 Action = CurrentAction,
                 FootholdId = CurrentFoothold?.num ?? 0,
-                TimeStamp = Environment.TickCount
+                TimeStamp = timeStampMs ?? Environment.TickCount,
+                Duration = 0,
+                FacingRight = FacingRight,
+                StatChanged = false
             };
         }
 
@@ -1573,10 +1576,37 @@ namespace HaCreator.MapSimulator.Physics
         /// Client: CMovePath::MakeMovePath
         /// </summary>
         /// <returns>List of movement path elements</returns>
-        public List<MovePathElement> MakeMovePath()
+        public List<MovePathElement> MakeMovePath(int? timeStampMs = null)
         {
             var path = new List<MovePathElement>();
-            path.Add(MakeNewMovePathElem());
+            path.Add(MakeNewMovePathElem(timeStampMs));
+            return path;
+        }
+
+        /// <summary>
+        /// Snapshot the current in-flight movement path without consuming it.
+        /// </summary>
+        public List<MovePathElement> GetMovePathSnapshot(int? timeStampMs = null)
+        {
+            int currentTimeMs = timeStampMs ?? Environment.TickCount;
+            if (_movePath.Count == 0)
+                return MakeMovePath(currentTimeMs);
+
+            var path = new List<MovePathElement>(_movePath);
+            var latest = MakeNewMovePathElem(currentTimeMs);
+            int lastIndex = path.Count - 1;
+
+            if (path[lastIndex].TimeStamp == latest.TimeStamp)
+            {
+                latest.Duration = path[lastIndex].Duration;
+                path[lastIndex] = latest;
+                return path;
+            }
+
+            var previous = path[lastIndex];
+            previous.Duration = (short)Math.Min(short.MaxValue, Math.Max(0, currentTimeMs - previous.TimeStamp));
+            path[lastIndex] = previous;
+            path.Add(latest);
             return path;
         }
 
@@ -1590,10 +1620,21 @@ namespace HaCreator.MapSimulator.Physics
             if (!IsRecordingPath)
                 return;
 
+            if (_movePath.Count == 0)
+            {
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+                _lastPathFlushTime = currentTimeMs;
+                return;
+            }
+
             // Add path element at intervals
             if (currentTimeMs - _lastPathFlushTime >= PathFlushInterval)
             {
-                _movePath.Add(MakeNewMovePathElem());
+                int lastIndex = _movePath.Count - 1;
+                MovePathElement previous = _movePath[lastIndex];
+                previous.Duration = (short)Math.Min(short.MaxValue, Math.Max(0, currentTimeMs - previous.TimeStamp));
+                _movePath[lastIndex] = previous;
+                _movePath.Add(MakeNewMovePathElem(currentTimeMs));
                 _lastPathFlushTime = currentTimeMs;
 
                 // Limit path size
@@ -1627,11 +1668,20 @@ namespace HaCreator.MapSimulator.Physics
         /// <summary>
         /// Start recording movement path.
         /// </summary>
-        public void StartPathRecording()
+        public void StartPathRecording(int currentTimeMs)
         {
             IsRecordingPath = true;
             _movePath.Clear();
-            _lastPathFlushTime = Environment.TickCount;
+            _lastPathFlushTime = currentTimeMs;
+            _movePath.Add(MakeNewMovePathElem(currentTimeMs));
+        }
+
+        /// <summary>
+        /// Start recording movement path.
+        /// </summary>
+        public void StartPathRecording()
+        {
+            StartPathRecording(Environment.TickCount);
         }
 
         /// <summary>
@@ -1641,6 +1691,24 @@ namespace HaCreator.MapSimulator.Physics
         {
             IsRecordingPath = false;
             _movePath.Clear();
+        }
+
+        /// <summary>
+        /// Snapshot the passive movement state at the current position.
+        /// </summary>
+        public PassivePositionSnapshot MakePassivePositionSnapshot(int? timeStampMs = null)
+        {
+            return new PassivePositionSnapshot
+            {
+                X = (int)X,
+                Y = (int)Y,
+                VelocityX = (short)VelocityX,
+                VelocityY = (short)VelocityY,
+                Action = CurrentAction,
+                FootholdId = CurrentFoothold?.num ?? 0,
+                TimeStamp = timeStampMs ?? Environment.TickCount,
+                FacingRight = FacingRight
+            };
         }
 
         #endregion
@@ -1821,6 +1889,21 @@ namespace HaCreator.MapSimulator.Physics
         /// Stat changed flag (for server validation)
         /// </summary>
         public bool StatChanged;
+    }
+
+    /// <summary>
+    /// Passive movement snapshot used alongside queued move-path elements.
+    /// </summary>
+    public struct PassivePositionSnapshot
+    {
+        public int X;
+        public int Y;
+        public short VelocityX;
+        public short VelocityY;
+        public MoveAction Action;
+        public int FootholdId;
+        public int TimeStamp;
+        public bool FacingRight;
     }
 
     /// <summary>

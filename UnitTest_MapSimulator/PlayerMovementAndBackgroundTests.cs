@@ -344,6 +344,62 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void StartPathRecording_SeedsInitialElementAndContinuousPathTracksDuration()
+        {
+            var physics = new CVecCtrl
+            {
+                CurrentAction = MoveAction.Walk,
+                FacingRight = false
+            };
+
+            physics.SetPosition(100, 200);
+            physics.SetVelocity(30, -10);
+            physics.StartPathRecording(1000);
+
+            physics.SetPosition(140, 190);
+            physics.SetVelocity(50, 0);
+            physics.MakeContinuousMovePath(1125);
+
+            var path = physics.FlushMovePath();
+
+            Assert.Equal(2, path.Count);
+            Assert.Equal(100, path[0].X);
+            Assert.Equal(200, path[0].Y);
+            Assert.Equal(1000, path[0].TimeStamp);
+            Assert.Equal(125, path[0].Duration);
+            Assert.False(path[0].FacingRight);
+            Assert.Equal(140, path[1].X);
+            Assert.Equal(190, path[1].Y);
+            Assert.Equal(1125, path[1].TimeStamp);
+            Assert.False(path[1].FacingRight);
+        }
+
+        [Fact]
+        public void PlayerCharacter_GetMovementSyncSnapshot_FlushesPathAndIncludesPassivePosition()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            player.SetPosition(20, 30);
+            player.ToggleGmFlyMode();
+            player.SetInput(left: false, right: true, up: false, down: false, jump: false, attack: false, pickup: false);
+
+            player.Update(1000, 0.25f);
+            player.Update(1120, 0.25f);
+
+            PlayerMovementSyncSnapshot snapshot = player.GetMovementSyncSnapshot(1120);
+
+            Assert.True(player.IsRecordingMovementPath);
+            Assert.Equal(220, snapshot.PassivePosition.X);
+            Assert.Equal(30, snapshot.PassivePosition.Y);
+            Assert.True(snapshot.PassivePosition.FacingRight);
+            Assert.Equal(2, snapshot.MovePath.Count);
+            Assert.Equal(1000, snapshot.MovePath[0].TimeStamp);
+            Assert.Equal(120, snapshot.MovePath[0].Duration);
+            Assert.Equal(120, snapshot.MovePath[0].X);
+            Assert.Equal(1120, snapshot.MovePath[1].TimeStamp);
+            Assert.Equal(220, snapshot.MovePath[1].X);
+        }
+
+        [Fact]
         public void PassengerSyncController_SyncPlayerToDynamicPlatform_LandsOnSyntheticFoothold()
         {
             var player = new PlayerCharacter(device: null, texturePool: null, build: null);

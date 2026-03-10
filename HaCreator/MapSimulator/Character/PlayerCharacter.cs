@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.Character
         public bool CanAttack => State != PlayerState.Dead && State != PlayerState.Hit &&
                                   State != PlayerState.Ladder && State != PlayerState.Rope &&
                                   State != PlayerState.Swimming; // Can't attack while swimming (official behavior)
+        public bool IsRecordingMovementPath => Physics?.IsRecordingPath == true;
 
         /// <summary>
         /// GM Fly Mode - allows free flying around the map ignoring physics
@@ -355,6 +356,7 @@ namespace HaCreator.MapSimulator.Character
                 UpdateGmFlyMode(deltaTime);
                 UpdateAnimation(currentTime);
                 UpdateFaceExpression(currentTime);
+                RecordMovementSync(currentTime);
                 return;
             }
 
@@ -391,6 +393,7 @@ namespace HaCreator.MapSimulator.Character
             // Update animation
             UpdateAnimation(currentTime);
             UpdateFaceExpression(currentTime);
+            RecordMovementSync(currentTime);
 
             _wasJumpHeldLastFrame = _inputJump;
         }
@@ -1247,6 +1250,39 @@ namespace HaCreator.MapSimulator.Character
             _nextBlinkTime = currentTime + _faceExpressionRandom.Next(FACE_BLINK_MIN_INTERVAL_MS, FACE_BLINK_MAX_INTERVAL_MS + 1);
         }
 
+        private void RecordMovementSync(int currentTime)
+        {
+            if (!Physics.IsRecordingPath)
+            {
+                Physics.StartPathRecording(currentTime);
+                return;
+            }
+
+            Physics.MakeContinuousMovePath(currentTime);
+        }
+
+        public PlayerMovementSyncSnapshot GetMovementSyncSnapshot(int currentTime, bool flushPath = true)
+        {
+            RecordMovementSync(currentTime);
+
+            PassivePositionSnapshot passivePosition = Physics.MakePassivePositionSnapshot(currentTime);
+            var movePath = flushPath
+                ? Physics.FlushMovePath()
+                : Physics.GetMovePathSnapshot(currentTime);
+
+            if (movePath.Count == 0)
+            {
+                movePath = Physics.MakeMovePath(currentTime);
+            }
+
+            if (flushPath && Physics.IsRecordingPath)
+            {
+                Physics.StartPathRecording(currentTime);
+            }
+
+            return new PlayerMovementSyncSnapshot(passivePosition, movePath);
+        }
+
         #endregion
 
         #region Combat
@@ -1915,5 +1951,17 @@ namespace HaCreator.MapSimulator.Character
         }
 
         #endregion
+    }
+
+    public sealed class PlayerMovementSyncSnapshot
+    {
+        public PlayerMovementSyncSnapshot(PassivePositionSnapshot passivePosition, System.Collections.Generic.List<MovePathElement> movePath)
+        {
+            PassivePosition = passivePosition;
+            MovePath = movePath ?? throw new ArgumentNullException(nameof(movePath));
+        }
+
+        public PassivePositionSnapshot PassivePosition { get; }
+        public System.Collections.Generic.List<MovePathElement> MovePath { get; }
     }
 }
