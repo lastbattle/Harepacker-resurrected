@@ -2677,6 +2677,12 @@ namespace HaCreator.MapSimulator
                 _playerManager.IsPlayerControlEnabled = _gameState.PlayerControlEnabled;
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive, isWindowActive);
 
+                if (_gameState.PlayerControlEnabled && _playerManager.IsPlayerActive)
+                {
+                    Vector2 updatedPlayerPosition = _playerManager.GetPlayerPosition();
+                    CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y);
+                }
+
                 // Update camera controller based on player/camera mode
                 var player = _playerManager.Player;
                 bool isPlayerDead = player != null && !player.IsAlive;
@@ -2761,6 +2767,8 @@ namespace HaCreator.MapSimulator
                     }
                 }
             }
+
+            UpdateReactorRuntime(currTickCount, deltaSeconds);
 
             // Update field effects (weather messages, fear effect, obstacles)
             // Pass deltaSeconds * 1000 to convert to milliseconds for frame-rate independence
@@ -3521,6 +3529,35 @@ namespace HaCreator.MapSimulator
             }
 
             return touchedReactors.Select(t => t.reactor).ToList();
+        }
+
+        private void UpdateReactorRuntime(int currentTick, float deltaSeconds)
+        {
+            if (_reactorPool == null || _reactorsArray == null || _reactorsArray.Length == 0)
+                return;
+
+            _reactorPool.Update(currentTick, deltaSeconds);
+
+            bool[] visibleReactors = new bool[_reactorsArray.Length];
+            foreach (var (reactor, index, _) in _reactorPool.GetRenderableReactors())
+            {
+                if (reactor == null || index < 0 || index >= _reactorsArray.Length)
+                    continue;
+
+                visibleReactors[index] = true;
+
+                var (state, _) = _reactorPool.GetReactorAnimationState(index);
+                reactor.SetAnimationState(state, currentTick);
+            }
+
+            for (int i = 0; i < _reactorsArray.Length; i++)
+            {
+                ReactorItem reactor = _reactorsArray[i];
+                if (reactor != null)
+                {
+                    reactor.SetVisible(visibleReactors[i]);
+                }
+            }
         }
 
         /// <summary>

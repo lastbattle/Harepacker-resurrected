@@ -12,6 +12,7 @@ using Microsoft.Xna.Framework.Graphics;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Pools;
+using HaSharedLibrary.Wz;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -35,26 +36,64 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device, ConcurrentBag<WzObject> usedProps)
         {
             ReactorInfo reactorInfo = (ReactorInfo)reactorInstance.BaseInfo;
-
-            List<IDXObject> frames = new List<IDXObject>();
-
             WzImage linkedReactorImage = reactorInfo.LinkedWzImage;
-            if (linkedReactorImage != null)
+            Dictionary<int, List<IDXObject>> stateFrames = LoadReactorStateFrames(
+                texturePool,
+                linkedReactorImage,
+                reactorInstance,
+                device,
+                usedProps);
+            if (stateFrames.Count == 0)
+                return null;
+
+            return new ReactorItem(reactorInstance, stateFrames);
+        }
+
+        private static Dictionary<int, List<IDXObject>> LoadReactorStateFrames(
+            TexturePool texturePool,
+            WzImage linkedReactorImage,
+            ReactorInstance reactorInstance,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            Dictionary<int, List<IDXObject>> stateFrames = new Dictionary<int, List<IDXObject>>();
+            if (linkedReactorImage == null)
+                return stateFrames;
+
+            for (int state = 0; state < 10; state++)
             {
-                WzImageProperty framesImage = (WzImageProperty)linkedReactorImage?["0"]?["0"];
-                if (framesImage != null)
+                WzImageProperty stateProperty = WzInfoTools.GetRealProperty(linkedReactorImage[state.ToString()]);
+                if (stateProperty == null)
                 {
-                    frames = MapSimulatorLoader.LoadFrames(texturePool, framesImage, reactorInstance.X, reactorInstance.Y, device, usedProps);
+                    if (state > 0)
+                        break;
+
+                    continue;
+                }
+
+                WzImageProperty framesSource = WzInfoTools.GetRealProperty(stateProperty["0"]);
+                if (framesSource == null)
+                {
+                    framesSource = WzInfoTools.GetRealProperty(stateProperty["hit"]);
+                }
+
+                if (framesSource == null)
+                    continue;
+
+                List<IDXObject> frames = MapSimulatorLoader.LoadFrames(
+                    texturePool,
+                    framesSource,
+                    reactorInstance.X,
+                    reactorInstance.Y,
+                    device,
+                    usedProps);
+                if (frames.Count > 0)
+                {
+                    stateFrames[state] = frames;
                 }
             }
-            if (frames.Count == 0)
-            {
-                //string error = string.Format("[MapSimulatorLoader] 0 frames loaded for reactor from src: '{0}'",  reactorInfo.ID);
 
-                //ErrorLogger.Log(ErrorLevel.IncorrectStructure, error);
-                return null;
-            }
-            return new ReactorItem(reactorInstance, frames);
+            return stateFrames;
         }
         #endregion
 
