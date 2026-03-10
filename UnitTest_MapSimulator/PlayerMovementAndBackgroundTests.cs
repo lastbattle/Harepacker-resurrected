@@ -393,6 +393,71 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void CharacterAssembler_WeaponFallback_UsesSharedNavelAnchorWithoutLiteralNudge()
+        {
+            var assembler = new CharacterAssembler(new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            });
+            var calculateEquipOffset = typeof(CharacterAssembler).GetMethod("CalculateEquipOffset", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(calculateEquipOffset);
+
+            var bodyFrame = new CharacterFrame();
+            bodyFrame.Map["navel"] = new Microsoft.Xna.Framework.Point(20, 30);
+
+            var equipFrame = new CharacterFrame();
+            equipFrame.Map["navel"] = new Microsoft.Xna.Framework.Point(4, 8);
+
+            var offset = (Microsoft.Xna.Framework.Point)calculateEquipOffset!.Invoke(assembler, new object[]
+            {
+                equipFrame,
+                bodyFrame,
+                null,
+                new Microsoft.Xna.Framework.Point(-20, -30),
+                null,
+                CharacterPartType.Weapon
+            })!;
+
+            Assert.Equal(new Microsoft.Xna.Framework.Point(-4, -8), offset);
+        }
+
+        [Fact]
+        public void CharacterAssembler_EarringFallback_UsesSharedHeadAnchorOrder()
+        {
+            var assembler = new CharacterAssembler(new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            });
+            var tryCalculateHeadEquipOffset = typeof(CharacterAssembler).GetMethod("TryCalculateHeadEquipOffset", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(tryCalculateHeadEquipOffset);
+
+            var headFrame = new CharacterFrame();
+            headFrame.Map["brow"] = new Microsoft.Xna.Framework.Point(6, 10);
+
+            var equipFrame = new CharacterFrame();
+            equipFrame.Map["brow"] = new Microsoft.Xna.Framework.Point(2, 4);
+
+            object[] args =
+            {
+                equipFrame,
+                headFrame,
+                new Microsoft.Xna.Framework.Point(100, 200),
+                CharacterPartType.Earrings,
+                null
+            };
+
+            bool resolved = (bool)tryCalculateHeadEquipOffset!.Invoke(assembler, args)!;
+            var offset = (Microsoft.Xna.Framework.Point)args[4]!;
+
+            Assert.True(resolved);
+            Assert.Equal(new Microsoft.Xna.Framework.Point(104, 206), offset);
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;

@@ -497,76 +497,29 @@ namespace HaCreator.MapSimulator.Character
                 return headBasedOffset;
             }
 
-            // Different equipment types connect at different map points
-            string mapPoint = type switch
+            string[] anchorCandidates = type switch
             {
                 CharacterPartType.Weapon or CharacterPartType.WeaponOverGlove or CharacterPartType.WeaponOverHand
-                    => MAP_HAND,
-                CharacterPartType.Glove => MAP_HAND,
-                CharacterPartType.Coat or CharacterPartType.Longcoat or CharacterPartType.Pants or CharacterPartType.Shoes
-                    => MAP_NAVEL,
-                CharacterPartType.Cape => MAP_NAVEL,
-                _ => MAP_NAVEL
+                    => new[] { MAP_HAND, MAP_HAND_MOVE, MAP_NAVEL },
+                CharacterPartType.Glove
+                    => new[] { MAP_HAND, MAP_HAND_MOVE, MAP_NAVEL },
+                CharacterPartType.Coat or CharacterPartType.Longcoat or CharacterPartType.Pants or CharacterPartType.Shoes or CharacterPartType.Cape
+                    => new[] { MAP_NAVEL, MAP_NECK },
+                _ => new[] { MAP_NAVEL, MAP_NECK }
             };
 
-            Point bodyAnchor;
-            Point equipAnchor;
-            string usedBodyAnchor = "";
-            string usedEquipAnchor = "";
-
-            // For weapons, try multiple map points in order of preference
-            if (type == CharacterPartType.Weapon || type == CharacterPartType.WeaponOverGlove || type == CharacterPartType.WeaponOverHand)
+            if (TryResolveAnchorOffset(bodyFrame, equipFrame, baseOffset, anchorCandidates, out Point anchorOffset, out string resolvedAnchor))
             {
-                // Try "hand" first, then "handMove", then "navel"
-                if (bodyFrame.Map.ContainsKey(MAP_HAND))
+                if (type == CharacterPartType.Weapon || type == CharacterPartType.WeaponOverGlove || type == CharacterPartType.WeaponOverHand)
                 {
-                    bodyAnchor = bodyFrame.Map[MAP_HAND];
-                    usedBodyAnchor = "hand";
-                }
-                else if (bodyFrame.Map.ContainsKey(MAP_HAND_MOVE))
-                {
-                    bodyAnchor = bodyFrame.Map[MAP_HAND_MOVE];
-                    usedBodyAnchor = "handMove";
-                }
-                else if (bodyFrame.Map.ContainsKey(MAP_NAVEL))
-                {
-                    // Use navel as fallback but offset for approximate hand position
-                    var navel = bodyFrame.Map[MAP_NAVEL];
-                    bodyAnchor = new Point(navel.X + 10, navel.Y - 15);
-                    usedBodyAnchor = "navel+offset";
-                }
-                else
-                {
-                    bodyAnchor = bodyFrame.Origin;
-                    usedBodyAnchor = "origin";
+                    System.Diagnostics.Debug.WriteLine($"[Assembler] Weapon positioning anchor={resolvedAnchor}, z={equipFrame.Z}");
                 }
 
-                // For weapon anchor, use "hand" or "handMove"
-                if (equipFrame.Map.ContainsKey(MAP_HAND))
-                {
-                    equipAnchor = equipFrame.Map[MAP_HAND];
-                    usedEquipAnchor = "hand";
-                }
-                else if (equipFrame.Map.ContainsKey(MAP_HAND_MOVE))
-                {
-                    equipAnchor = equipFrame.Map[MAP_HAND_MOVE];
-                    usedEquipAnchor = "handMove";
-                }
-                else
-                {
-                    equipAnchor = equipFrame.Origin;
-                    usedEquipAnchor = "origin";
-                }
-
-                // Debug: Log weapon positioning info (once per animation load)
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Weapon positioning: body.{usedBodyAnchor}={bodyAnchor}, weapon.{usedEquipAnchor}={equipAnchor}, z={equipFrame.Z}");
-            }
-            else
-            {
-                bodyAnchor = bodyFrame.GetMapPoint(mapPoint);
-                equipAnchor = equipFrame.GetMapPoint(mapPoint);
+                return anchorOffset;
             }
 
+            Point bodyAnchor = bodyFrame?.Origin ?? Point.Zero;
+            Point equipAnchor = equipFrame?.Origin ?? Point.Zero;
             return new Point(
                 baseOffset.X + bodyAnchor.X - equipAnchor.X,
                 baseOffset.Y + bodyAnchor.Y - equipAnchor.Y);
@@ -586,40 +539,69 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            string mapPoint = type switch
+            string[] anchorCandidates = type switch
             {
                 CharacterPartType.Cap or CharacterPartType.CapOverHair or CharacterPartType.CapBelowAccessory
-                    => MAP_BROW,
+                    => new[] { MAP_BROW, MAP_EAR, MAP_NECK },
                 CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair or CharacterPartType.Face_Accessory
-                    => MAP_BROW,
-                CharacterPartType.Eye_Accessory => MAP_BROW,
-                CharacterPartType.Earrings => MAP_EAR,
+                    => new[] { MAP_BROW, MAP_EAR, MAP_NECK },
+                CharacterPartType.Eye_Accessory
+                    => new[] { MAP_BROW, MAP_EAR, MAP_NECK },
+                CharacterPartType.Earrings
+                    => new[] { MAP_EAR, MAP_BROW, MAP_NECK },
                 _ => null
             };
 
-            if (string.IsNullOrEmpty(mapPoint))
+            if (anchorCandidates == null || anchorCandidates.Length == 0)
             {
                 return false;
             }
 
-            if (!headFrame.Map.ContainsKey(mapPoint) || !equipFrame.Map.ContainsKey(mapPoint))
+            if (!TryResolveAnchorOffset(headFrame, equipFrame, headOffset.Value, anchorCandidates, out offset, out _))
             {
-                if (mapPoint == MAP_EAR && headFrame.Map.ContainsKey(MAP_BROW) && equipFrame.Map.ContainsKey(MAP_BROW))
-                {
-                    mapPoint = MAP_BROW;
-                }
-                else
-                {
-                    return false;
-                }
+                return false;
             }
 
-            Point headAnchor = headFrame.GetMapPoint(mapPoint);
-            Point equipAnchor = equipFrame.GetMapPoint(mapPoint);
-            offset = new Point(
-                headOffset.Value.X + headAnchor.X - equipAnchor.X,
-                headOffset.Value.Y + headAnchor.Y - equipAnchor.Y);
             return true;
+        }
+
+        private static bool TryResolveAnchorOffset(
+            CharacterFrame sourceFrame,
+            CharacterFrame targetFrame,
+            Point baseOffset,
+            IReadOnlyList<string> anchorCandidates,
+            out Point offset,
+            out string resolvedAnchor)
+        {
+            offset = Point.Zero;
+            resolvedAnchor = null;
+
+            if (sourceFrame == null || targetFrame == null || anchorCandidates == null)
+            {
+                return false;
+            }
+
+            foreach (string anchorName in anchorCandidates)
+            {
+                if (string.IsNullOrWhiteSpace(anchorName))
+                {
+                    continue;
+                }
+
+                if (!sourceFrame.Map.TryGetValue(anchorName, out Point sourceAnchor) ||
+                    !targetFrame.Map.TryGetValue(anchorName, out Point targetAnchor))
+                {
+                    continue;
+                }
+
+                offset = new Point(
+                    baseOffset.X + sourceAnchor.X - targetAnchor.X,
+                    baseOffset.Y + sourceAnchor.Y - targetAnchor.Y);
+                resolvedAnchor = anchorName;
+                return true;
+            }
+
+            return false;
         }
 
         private static IReadOnlyList<string> GetVisibilityTokens(CharacterPart sourcePart, string zLayer)
