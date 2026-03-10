@@ -739,6 +739,24 @@ namespace HaCreator.MapSimulator.Loaders
             };
             skill.SetTooltipTextures(tooltipFrames);
 
+            WzSubProperty vScrollProperty = (WzSubProperty)basicImage?["VScr"];
+            if (vScrollProperty != null)
+            {
+                WzSubProperty enabledProperty = (WzSubProperty)vScrollProperty["enabled"];
+                WzSubProperty disabledProperty = (WzSubProperty)vScrollProperty["disabled"];
+                skill.SetScrollBarTextures(
+                    LoadCanvasTexture(enabledProperty, "prev0", device),
+                    LoadCanvasTexture(enabledProperty, "prev1", device),
+                    LoadCanvasTexture(enabledProperty, "next0", device),
+                    LoadCanvasTexture(enabledProperty, "next1", device),
+                    LoadCanvasTexture(enabledProperty, "base", device),
+                    LoadCanvasTexture(enabledProperty, "thumb0", device),
+                    LoadCanvasTexture(enabledProperty, "thumb1", device),
+                    LoadCanvasTexture(disabledProperty, "prev", device),
+                    LoadCanvasTexture(disabledProperty, "next", device),
+                    LoadCanvasTexture(disabledProperty, "base", device));
+            }
+
             // Load button sounds
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
             WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];

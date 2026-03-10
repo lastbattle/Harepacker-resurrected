@@ -79,6 +79,11 @@ namespace HaCreator.MapSimulator.UI
 
         // Tab positioning (from WZ origin data)
         private const int TAB_Y = 27;
+        private const int SCROLLBAR_X = 153;
+        private const int SCROLLBAR_Y = 93;
+        private const int SCROLLBAR_WIDTH = 12;
+        private const int SCROLLBAR_HEIGHT = 155;
+        private const int SCROLLBAR_BUTTON_HEIGHT = 12;
 
         // Job advancement tabs
         private const int TAB_BEGINNER = 0;
@@ -119,6 +124,16 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _spUpDisabled;
         private Texture2D _spUpMouseOver;
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
+        private Texture2D _scrollPrevNormal;
+        private Texture2D _scrollPrevPressed;
+        private Texture2D _scrollNextNormal;
+        private Texture2D _scrollNextPressed;
+        private Texture2D _scrollTrackEnabled;
+        private Texture2D _scrollThumbNormal;
+        private Texture2D _scrollThumbPressed;
+        private Texture2D _scrollPrevDisabled;
+        private Texture2D _scrollNextDisabled;
+        private Texture2D _scrollTrackDisabled;
 
         // Job header info (icon + name per tab)
         private readonly Dictionary<int, Texture2D> _jobIconsByTab;
@@ -155,6 +170,8 @@ namespace HaCreator.MapSimulator.UI
         private SkillDisplayData _dragSkill;
         private Vector2 _dragPosition;
         private int _dragSourceIndex = -1;
+        private bool _isDraggingScrollThumb;
+        private int _scrollThumbDragOffsetY;
 
         // Placeholder texture (1x1 white pixel for drawing colored rects)
         private Texture2D _debugPlaceholder;
@@ -330,6 +347,30 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void SetScrollBarTextures(
+            Texture2D prevNormal,
+            Texture2D prevPressed,
+            Texture2D nextNormal,
+            Texture2D nextPressed,
+            Texture2D trackEnabled,
+            Texture2D thumbNormal,
+            Texture2D thumbPressed,
+            Texture2D prevDisabled,
+            Texture2D nextDisabled,
+            Texture2D trackDisabled)
+        {
+            _scrollPrevNormal = prevNormal;
+            _scrollPrevPressed = prevPressed;
+            _scrollNextNormal = nextNormal;
+            _scrollNextPressed = nextPressed;
+            _scrollTrackEnabled = trackEnabled;
+            _scrollThumbNormal = thumbNormal;
+            _scrollThumbPressed = thumbPressed;
+            _scrollPrevDisabled = prevDisabled;
+            _scrollNextDisabled = nextDisabled;
+            _scrollTrackDisabled = trackDisabled;
+        }
+
         public void SetVisibleTabs(IEnumerable<int> visibleTabs)
         {
             Array.Clear(_tabVisible, 0, _tabVisible.Length);
@@ -436,6 +477,7 @@ namespace HaCreator.MapSimulator.UI
 
             // Draw skill rows
             DrawSkillRows(sprite, windowX, windowY);
+            DrawScrollBar(sprite);
 
             // Draw SP count
             DrawSkillPointCount(sprite, windowX, windowY);
@@ -588,6 +630,65 @@ namespace HaCreator.MapSimulator.UI
                 spText,
                 new Vector2(windowX + SP_DISPLAY_X_BASE - width, windowY + SP_DISPLAY_Y),
                 Color.Black);
+        }
+
+        private void DrawScrollBar(SpriteBatch sprite)
+        {
+            Rectangle upButtonBounds = GetScrollUpButtonBounds();
+            Rectangle downButtonBounds = GetScrollDownButtonBounds();
+            Rectangle trackBounds = GetScrollTrackBounds();
+            bool canScroll = CanScrollSkills();
+            bool leftPressed = Mouse.GetState().LeftButton == ButtonState.Pressed;
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && upButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollPrevPressed ?? _scrollPrevNormal
+                        : _scrollPrevNormal)
+                    : _scrollPrevDisabled ?? _scrollPrevNormal,
+                upButtonBounds);
+
+            DrawTiledTrack(sprite, canScroll ? _scrollTrackEnabled : _scrollTrackDisabled ?? _scrollTrackEnabled, trackBounds);
+
+            if (canScroll)
+            {
+                Rectangle thumbBounds = GetScrollThumbBounds();
+                bool thumbPressed = _isDraggingScrollThumb || (leftPressed && thumbBounds.Contains(_lastMousePosition));
+                DrawScrollTexture(sprite, thumbPressed ? _scrollThumbPressed ?? _scrollThumbNormal : _scrollThumbNormal, thumbBounds);
+            }
+
+            DrawScrollTexture(
+                sprite,
+                canScroll
+                    ? ((leftPressed && downButtonBounds.Contains(_lastMousePosition) && !_isDraggingScrollThumb)
+                        ? _scrollNextPressed ?? _scrollNextNormal
+                        : _scrollNextNormal)
+                    : _scrollNextDisabled ?? _scrollNextNormal,
+                downButtonBounds);
+        }
+
+        private void DrawTiledTrack(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture == null || bounds.Width <= 0 || bounds.Height <= 0)
+                return;
+
+            int tileHeight = Math.Max(1, texture.Height);
+            for (int y = bounds.Y; y < bounds.Bottom; y += tileHeight)
+            {
+                int height = Math.Min(tileHeight, bounds.Bottom - y);
+                Rectangle destination = new Rectangle(bounds.X, y, bounds.Width, height);
+                Rectangle source = new Rectangle(0, 0, texture.Width, height);
+                sprite.Draw(texture, destination, source, Color.White);
+            }
+        }
+
+        private void DrawScrollTexture(SpriteBatch sprite, Texture2D texture, Rectangle destination)
+        {
+            if (texture == null || destination.Width <= 0 || destination.Height <= 0)
+                return;
+
+            sprite.Draw(texture, destination, Color.White);
         }
 
         private void DrawHoveredSkillTooltip(SpriteBatch sprite, int windowX, int windowY, int renderWidth, int renderHeight)
@@ -1127,8 +1228,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ScrollUp()
         {
-            if (_scrollOffset > 0)
-                _scrollOffset--;
+            ScrollBy(-1);
         }
 
         /// <summary>
@@ -1136,10 +1236,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void ScrollDown()
         {
-            var skills = CurrentSkills;
-            int maxScroll = Math.Max(0, skills.Count - VISIBLE_SKILLS);
-            if (_scrollOffset < maxScroll)
-                _scrollOffset++;
+            ScrollBy(1);
         }
 
         private Rectangle GetSkillListBounds()
@@ -1149,6 +1246,130 @@ namespace HaCreator.MapSimulator.UI
                 Position.Y + FIRST_ROW_TOP + ROW_HIT_TOP_OFFSET,
                 ROW_HIT_RIGHT - ROW_HIT_LEFT + 1,
                 (VISIBLE_SKILLS * SKILL_ROW_HEIGHT) - ROW_HIT_TOP_OFFSET + 1);
+        }
+
+        private Rectangle GetScrollBarBounds()
+        {
+            return new Rectangle(Position.X + SCROLLBAR_X, Position.Y + SCROLLBAR_Y, SCROLLBAR_WIDTH, SCROLLBAR_HEIGHT);
+        }
+
+        private Rectangle GetScrollUpButtonBounds()
+        {
+            return new Rectangle(Position.X + SCROLLBAR_X, Position.Y + SCROLLBAR_Y, SCROLLBAR_WIDTH, SCROLLBAR_BUTTON_HEIGHT);
+        }
+
+        private Rectangle GetScrollDownButtonBounds()
+        {
+            return new Rectangle(
+                Position.X + SCROLLBAR_X,
+                Position.Y + SCROLLBAR_Y + SCROLLBAR_HEIGHT - SCROLLBAR_BUTTON_HEIGHT,
+                SCROLLBAR_WIDTH,
+                SCROLLBAR_BUTTON_HEIGHT);
+        }
+
+        private Rectangle GetScrollTrackBounds()
+        {
+            return new Rectangle(
+                Position.X + SCROLLBAR_X,
+                Position.Y + SCROLLBAR_Y + SCROLLBAR_BUTTON_HEIGHT,
+                SCROLLBAR_WIDTH,
+                SCROLLBAR_HEIGHT - (SCROLLBAR_BUTTON_HEIGHT * 2));
+        }
+
+        private Rectangle GetScrollThumbBounds()
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            int thumbHeight = Math.Min(trackBounds.Height, Math.Max(1, _scrollThumbNormal?.Height ?? SCROLLBAR_WIDTH));
+            int maxScroll = GetMaxScrollOffset();
+            if (maxScroll <= 0)
+                return new Rectangle(trackBounds.X, trackBounds.Y, trackBounds.Width, thumbHeight);
+
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int thumbY = trackBounds.Y;
+            if (travel > 0)
+            {
+                float ratio = _scrollOffset / (float)maxScroll;
+                thumbY += (int)Math.Round(travel * ratio);
+            }
+
+            return new Rectangle(trackBounds.X, thumbY, trackBounds.Width, thumbHeight);
+        }
+
+        private int GetMaxScrollOffset()
+        {
+            return Math.Max(0, CurrentSkills.Count - VISIBLE_SKILLS);
+        }
+
+        private bool CanScrollSkills()
+        {
+            return GetMaxScrollOffset() > 0;
+        }
+
+        private void SetScrollOffset(int offset)
+        {
+            _scrollOffset = Math.Clamp(offset, 0, GetMaxScrollOffset());
+        }
+
+        private void ScrollBy(int delta)
+        {
+            SetScrollOffset(_scrollOffset + delta);
+        }
+
+        private void SetScrollOffsetFromThumb(int mouseY)
+        {
+            Rectangle trackBounds = GetScrollTrackBounds();
+            int thumbHeight = Math.Min(trackBounds.Height, Math.Max(1, _scrollThumbNormal?.Height ?? SCROLLBAR_WIDTH));
+            int travel = Math.Max(0, trackBounds.Height - thumbHeight);
+            int maxScroll = GetMaxScrollOffset();
+            if (travel <= 0 || maxScroll <= 0)
+            {
+                SetScrollOffset(0);
+                return;
+            }
+
+            int thumbTop = Math.Clamp(mouseY - _scrollThumbDragOffsetY, trackBounds.Y, trackBounds.Y + travel);
+            float ratio = (thumbTop - trackBounds.Y) / (float)travel;
+            SetScrollOffset((int)Math.Round(ratio * maxScroll));
+        }
+
+        private bool TryHandleScrollBarMouseDown(MouseState mouseState)
+        {
+            if (!GetScrollBarBounds().Contains(mouseState.X, mouseState.Y))
+                return false;
+
+            if (!CanScrollSkills())
+                return true;
+
+            Rectangle upButtonBounds = GetScrollUpButtonBounds();
+            if (upButtonBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollUp();
+                return true;
+            }
+
+            Rectangle downButtonBounds = GetScrollDownButtonBounds();
+            if (downButtonBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollDown();
+                return true;
+            }
+
+            Rectangle thumbBounds = GetScrollThumbBounds();
+            if (thumbBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                _isDraggingScrollThumb = true;
+                _scrollThumbDragOffsetY = mouseState.Y - thumbBounds.Y;
+                return true;
+            }
+
+            Rectangle trackBounds = GetScrollTrackBounds();
+            if (trackBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                ScrollBy(mouseState.Y < thumbBounds.Y ? -VISIBLE_SKILLS : VISIBLE_SKILLS);
+                return true;
+            }
+
+            return false;
         }
 
         private void EnsureSkillVisible(int skillIndex)
@@ -1366,11 +1587,32 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             Rectangle skillListBounds = GetSkillListBounds();
+            Rectangle scrollBarBounds = GetScrollBarBounds();
+
+            if (_isDraggingScrollThumb)
+            {
+                if (mouseState.LeftButton == ButtonState.Pressed)
+                {
+                    SetScrollOffsetFromThumb(mouseState.Y);
+                }
+                else
+                {
+                    _isDraggingScrollThumb = false;
+                }
+            }
 
             // Handle tab clicks
             if (mouseState.LeftButton == ButtonState.Pressed &&
                 _previousMouseState.LeftButton == ButtonState.Released)
             {
+                if (TryHandleScrollBarMouseDown(mouseState))
+                {
+                    _hoveredSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                    _previousMouseState = mouseState;
+                    _previousKeyboardState = Keyboard.GetState();
+                    return;
+                }
+
                 for (int i = 0; i < 5; i++)
                 {
                     if (!_tabVisible[i])
@@ -1422,7 +1664,7 @@ namespace HaCreator.MapSimulator.UI
             int scrollDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
             if (scrollDelta != 0)
             {
-                if (skillListBounds.Contains(mouseState.X, mouseState.Y))
+                if (skillListBounds.Contains(mouseState.X, mouseState.Y) || scrollBarBounds.Contains(mouseState.X, mouseState.Y))
                 {
                     if (scrollDelta > 0)
                         ScrollUp();
