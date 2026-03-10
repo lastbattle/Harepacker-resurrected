@@ -10,6 +10,7 @@ namespace UnitTest_MapSimulator
         [InlineData(4341006, 0, SummonMovementStyle.Stationary, -50f)]
         [InlineData(33101008, 0, SummonMovementStyle.Stationary, -30f)]
         [InlineData(5211001, 0, SummonMovementStyle.Stationary, 45f)]
+        [InlineData(5211002, 0, SummonMovementStyle.Stationary, 45f)]
         public void Resolve_UsesClientPlacementOverrides(int skillId, int moveAbility, SummonMovementStyle style, float spawnDistanceX)
         {
             SummonMovementProfile profile = SummonMovementResolver.Resolve(skillId, new[] { "stand" });
@@ -73,6 +74,23 @@ namespace UnitTest_MapSimulator
 
             Assert.Equal(new Vector2(300f, 175f), facingRight);
             Assert.Equal(new Vector2(-100f, 175f), facingLeft);
+        }
+
+        [Theory]
+        [InlineData(5211001)]
+        [InlineData(5211002)]
+        [InlineData(33111003)]
+        [InlineData(33101008)]
+        [InlineData(35111011)]
+        public void CanAttackWhileOwnerIsOnLadderOrRope_ReturnsTrueForClientExemptSkills(int skillId)
+        {
+            Assert.True(SummonMovementResolver.CanAttackWhileOwnerIsOnLadderOrRope(skillId));
+        }
+
+        [Fact]
+        public void CanAttackWhileOwnerIsOnLadderOrRope_ReturnsFalseForNormalAssistSummons()
+        {
+            Assert.False(SummonMovementResolver.CanAttackWhileOwnerIsOnLadderOrRope(3111005));
         }
     }
 }

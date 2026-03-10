@@ -33,7 +33,20 @@ namespace HaCreator.MapSimulator.Character.Skills
         // `is_summon_octopus_skill` confirms 5211001 as one of the fixed-placement octopus summons.
         private static readonly HashSet<int> StationaryOctopusSkills = new()
         {
-            5211001
+            5211001,
+            5211002
+        };
+
+        private static readonly HashSet<int> SelfDestructSummonSkills = new()
+        {
+            33101008,
+            35101001,
+            35111002,
+            35111005,
+            35111011,
+            35121009,
+            35121010,
+            35121011
         };
 
         public static SummonMovementProfile Resolve(int skillId, IEnumerable<string> branchNames)
@@ -141,6 +154,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return style == SummonMovementStyle.Stationary
                 || style == SummonMovementStyle.HoverAroundAnchor;
+        }
+
+        public static bool CanAttackWhileOwnerIsOnLadderOrRope(int skillId)
+        {
+            return StationaryOctopusSkills.Contains(skillId)
+                || skillId == 33111003
+                || SelfDestructSummonSkills.Contains(skillId);
         }
 
         private static bool IsStationaryPlacementSkill(int skillId)

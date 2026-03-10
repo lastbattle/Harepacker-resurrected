@@ -1737,6 +1737,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (currentTime - summon.LastAttackTime < 1000)
                     continue;
 
+                if (IsSummonAttackBlockedByOwnerState(summon))
+                    continue;
+
                 summon.LastAttackTime = currentTime;
                 ProcessSummonAttack(summon, currentTime);
             }
@@ -1809,6 +1812,16 @@ namespace HaCreator.MapSimulator.Character.Skills
                 HandleMobDeath(mob, currentTime);
             }
         }
+
+        private bool IsSummonAttackBlockedByOwnerState(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+                return false;
+
+            return (_player.State == PlayerState.Ladder || _player.State == PlayerState.Rope)
+                && !SummonMovementResolver.CanAttackWhileOwnerIsOnLadderOrRope(summon.SkillData.SkillId);
+        }
+
 
         private Vector2 GetSummonPosition(ActiveSummon summon)
         {
