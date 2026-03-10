@@ -977,6 +977,14 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
             }
+            if (statusBarChatUI != null)
+            {
+                statusBarChatUI.SetFont(_fontChat);
+                statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarChatUI.SetChatRenderProvider(_chat.GetRenderState);
+                statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
+                statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
+            }
 
             // Initialize Ability/Stat window with player's CharacterBuild
             // This connects the stat window to the player's actual stats (STR, DEX, INT, LUK, etc.)
@@ -1438,6 +1446,14 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetPreparedSkillProvider(GetPreparedSkillBarData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+            }
+            if (statusBarChatUI != null)
+            {
+                statusBarChatUI.SetFont(_fontChat);
+                statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
+                statusBarChatUI.SetChatRenderProvider(_chat.GetRenderState);
+                statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
+                statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
             }
 
             // Reconnect Ability/Stat window to player's CharacterBuild after map change
@@ -4676,7 +4692,10 @@ namespace HaCreator.MapSimulator
             // Draw chat messages and input box
             if (!_gameState.HideUIMode)
             {
-                _chat.Draw(_spriteBatch, TickCount);
+                if (statusBarChatUI == null)
+                {
+                    _chat.Draw(_spriteBatch, TickCount);
+                }
 
                 // Draw pickup notices (meso/item gain messages at bottom right)
                 _pickupNoticeUI?.Draw(_spriteBatch);

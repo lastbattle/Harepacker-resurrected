@@ -24,6 +24,26 @@ namespace HaCreator.MapSimulator
         }
     }
 
+    public enum MapSimulatorChatTargetType
+    {
+        All = 0,
+        Friend = 1,
+        Party = 2,
+        Guild = 3,
+        Association = 4,
+        Expedition = 5
+    }
+
+    public sealed class MapSimulatorChatRenderState
+    {
+        public IReadOnlyList<ChatMessage> Messages { get; init; } = Array.Empty<ChatMessage>();
+        public bool IsActive { get; init; }
+        public string InputText { get; init; } = string.Empty;
+        public int CursorPosition { get; init; }
+        public MapSimulatorChatTargetType TargetType { get; init; }
+        public string WhisperTarget { get; init; } = string.Empty;
+    }
+
     /// <summary>
     /// Handles chat input, message history, and rendering for the MapSimulator
     /// </summary>
@@ -61,6 +81,8 @@ namespace HaCreator.MapSimulator
         private int _screenHeight;
 
         private readonly ChatCommandHandler _commandHandler = new ChatCommandHandler();
+        private MapSimulatorChatTargetType _chatTarget = MapSimulatorChatTargetType.All;
+        private string _whisperTarget = string.Empty;
 
         // Key repeat tracking
         private Keys _lastHeldKey = Keys.None;
@@ -137,8 +159,11 @@ namespace HaCreator.MapSimulator
                         _cursorPosition = 0;
                         ResetHistoryNavigation();
 
+                        if (TryHandleWhisperCommand(message, tickCount))
+                        {
+                        }
                         // Check if it's a command
-                        if (_commandHandler.IsCommand(message))
+                        else if (_commandHandler.IsCommand(message))
                         {
                             var result = _commandHandler.ExecuteCommand(message);
                             if (!string.IsNullOrEmpty(result.Message))
@@ -153,18 +178,21 @@ namespace HaCreator.MapSimulator
                         }
                         else
                         {
-                            // Regular chat message
-                            AddMessage(message, Color.White, tickCount);
+                            SendTargetedChatMessage(message, tickCount);
                         }
                     }
                     _isActive = false;
                 }
                 else
                 {
-                    _isActive = true;
-                    _cursorBlinkTimer = tickCount;
-                    ResetHistoryNavigation();
+                    Activate(tickCount);
                 }
+                return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
+            {
+                CycleTarget(newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift) ? -1 : 1);
                 return true;
             }
 
@@ -532,6 +560,50 @@ namespace HaCreator.MapSimulator
             _cursorPosition = 0;
         }
 
+        public void Activate(int tickCount)
+        {
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            ResetHistoryNavigation();
+        }
+
+        public void ToggleActive(int tickCount)
+        {
+            if (_isActive)
+            {
+                Deactivate();
+                return;
+            }
+
+            Activate(tickCount);
+        }
+
+        public void CycleTarget(int direction)
+        {
+            const int targetCount = 6;
+            int nextIndex = ((int)_chatTarget + direction) % targetCount;
+            if (nextIndex < 0)
+            {
+                nextIndex += targetCount;
+            }
+
+            _chatTarget = (MapSimulatorChatTargetType)nextIndex;
+            _whisperTarget = string.Empty;
+        }
+
+        public MapSimulatorChatRenderState GetRenderState()
+        {
+            return new MapSimulatorChatRenderState
+            {
+                Messages = _messages,
+                IsActive = _isActive,
+                InputText = _inputText.ToString(),
+                CursorPosition = _cursorPosition,
+                TargetType = _chatTarget,
+                WhisperTarget = _whisperTarget ?? string.Empty
+            };
+        }
+
         /// <summary>
         /// Clears all chat messages
         /// </summary>
@@ -625,5 +697,92 @@ namespace HaCreator.MapSimulator
             }
         }
         #endregion
+
+        private void SendTargetedChatMessage(string message, int tickCount)
+        {
+            string prefix = GetTargetPrefix(_chatTarget);
+            Color color = GetTargetColor(_chatTarget);
+            if (string.IsNullOrEmpty(prefix))
+            {
+                AddMessage(message, color, tickCount);
+                return;
+            }
+
+            AddMessage($"{prefix} {message}", color, tickCount);
+        }
+
+        private bool TryHandleWhisperCommand(string message, int tickCount)
+        {
+            if (string.IsNullOrWhiteSpace(message) || message[0] != '/')
+            {
+                return false;
+            }
+
+            string trimmedMessage = message.Trim();
+            if (trimmedMessage.StartsWith("/w ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/whisper ", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 3)
+                {
+                    AddMessage("Usage: /w <name> <message>", Color.IndianRed, tickCount);
+                    return true;
+                }
+
+                _whisperTarget = parts[1];
+                AddMessage($"> {_whisperTarget}: {parts[2]}", new Color(255, 170, 255), tickCount);
+                return true;
+            }
+
+            if (trimmedMessage.StartsWith("/r ", StringComparison.OrdinalIgnoreCase)
+                || trimmedMessage.StartsWith("/reply ", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(_whisperTarget))
+                {
+                    AddMessage("No whisper target selected.", Color.IndianRed, tickCount);
+                    return true;
+                }
+
+                string[] parts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2)
+                {
+                    AddMessage("Usage: /r <message>", Color.IndianRed, tickCount);
+                    return true;
+                }
+
+                AddMessage($"> {_whisperTarget}: {parts[1]}", new Color(255, 170, 255), tickCount);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string GetTargetPrefix(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => string.Empty,
+                MapSimulatorChatTargetType.Friend => "[Friend]",
+                MapSimulatorChatTargetType.Party => "[Party]",
+                MapSimulatorChatTargetType.Guild => "[Guild]",
+                MapSimulatorChatTargetType.Association => "[Alliance]",
+                MapSimulatorChatTargetType.Expedition => "[Expedition]",
+                _ => string.Empty
+            };
+        }
+
+        private static Color GetTargetColor(MapSimulatorChatTargetType targetType)
+        {
+            return targetType switch
+            {
+                MapSimulatorChatTargetType.All => Color.White,
+                MapSimulatorChatTargetType.Friend => new Color(255, 255, 120),
+                MapSimulatorChatTargetType.Party => new Color(124, 255, 172),
+                MapSimulatorChatTargetType.Guild => new Color(176, 255, 120),
+                MapSimulatorChatTargetType.Association => new Color(124, 236, 255),
+                MapSimulatorChatTargetType.Expedition => new Color(255, 216, 128),
+                _ => Color.White
+            };
+        }
     }
 }

@@ -1,4 +1,5 @@
 using HaCreator.MapEditor;
+using HaCreator.MapSimulator;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Pools;
@@ -247,6 +248,16 @@ namespace HaCreator.MapSimulator.Loaders
                     System.Drawing.Bitmap bitmap_lvNumber1 = ((WzCanvasProperty)mainBarProperties?["lvNumber/1"])?.GetLinkedWzCanvasBitmap();
 
                     // chat
+                    WzSubProperty subProperty_chatTarget = (WzSubProperty)mainBarProperties?["chatTarget"];
+                    WzSubProperty subProperty_chatTargetBase = subProperty_chatTarget?["base"] as WzSubProperty;
+                    UIObject obj_Ui_chatTarget = new UIObject(subProperty_chatTargetBase, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
+                        false,
+                        new Point(0, 0), device)
+                    {
+                    };
+                    obj_Ui_chatTarget.X = 2;
+                    obj_Ui_chatTarget.Y = 0;
+
                     WzSubProperty subProperty_chatOpen = (WzSubProperty)mainBarProperties?["chatOpen"];
                     WzSubProperty subProperty_chatClose = (WzSubProperty)mainBarProperties?["chatClose"];
                     UIObject obj_Ui_chatOpen = new UIObject(subProperty_chatOpen, binaryProp_BtMouseClickSoundProperty, binaryProp_BtMouseOverSoundProperty,
@@ -497,13 +508,17 @@ namespace HaCreator.MapSimulator.Loaders
 
                     StatusBarChatUI chatUI = new StatusBarChatUI(dxObj_chatUI, new Point(dxObj_chatUI.X, dxObj_chatUI.Y),
                          new List<UIObject> {
+                             obj_Ui_chatTarget,
                              obj_Ui_chatOpen,
                              obj_Ui_scrollUp, obj_Ui_scrollDown,
                              obj_Ui_BtChat, obj_Ui_BtClaim,
                              obj_Ui_BtCharacter, obj_Ui_BtStat, obj_Ui_BtQuest, obj_Ui_BtInven, obj_Ui_BtEquip, obj_Ui_BtSkill, obj_Ui_BtKeysetting
-                         }
+                          }
                         );
                     chatUI.InitializeButtons();
+                    chatUI.SetChatEnterTexture(LoadCanvasTexture(mainBarProperties?["chatEnter"] as WzCanvasProperty, device));
+                    chatUI.SetChatTargetTextures(LoadChatTargetTextures(subProperty_chatTarget, device));
+                    chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_scrollUp, obj_Ui_scrollDown);
 
                     return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
                 }
@@ -852,6 +867,37 @@ namespace HaCreator.MapSimulator.Loaders
             animation.FrameDelayMs = frameDelayMs;
             animation.FlashDurationMs = 500;
             return animation;
+        }
+
+        private static Dictionary<MapSimulatorChatTargetType, Texture2D> LoadChatTargetTextures(WzSubProperty chatTargetProperty, GraphicsDevice device)
+        {
+            var textures = new Dictionary<MapSimulatorChatTargetType, Texture2D>();
+            if (chatTargetProperty == null || device == null)
+            {
+                return textures;
+            }
+
+            AddChatTargetTexture(textures, chatTargetProperty, "all", MapSimulatorChatTargetType.All, device);
+            AddChatTargetTexture(textures, chatTargetProperty, "friend", MapSimulatorChatTargetType.Friend, device);
+            AddChatTargetTexture(textures, chatTargetProperty, "party", MapSimulatorChatTargetType.Party, device);
+            AddChatTargetTexture(textures, chatTargetProperty, "guild", MapSimulatorChatTargetType.Guild, device);
+            AddChatTargetTexture(textures, chatTargetProperty, "association", MapSimulatorChatTargetType.Association, device);
+            AddChatTargetTexture(textures, chatTargetProperty, "expedition", MapSimulatorChatTargetType.Expedition, device);
+            return textures;
+        }
+
+        private static void AddChatTargetTexture(
+            Dictionary<MapSimulatorChatTargetType, Texture2D> textures,
+            WzSubProperty chatTargetProperty,
+            string propertyName,
+            MapSimulatorChatTargetType targetType,
+            GraphicsDevice device)
+        {
+            Texture2D texture = LoadCanvasTexture(chatTargetProperty?[propertyName] as WzCanvasProperty, device);
+            if (texture != null)
+            {
+                textures[targetType] = texture;
+            }
         }
 
         private static void TryAddBuffIcon(Dictionary<string, Texture2D> buffIconTextures, WzImage uiBuffIcon,
