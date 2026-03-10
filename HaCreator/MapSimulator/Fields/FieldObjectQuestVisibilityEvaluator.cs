@@ -7,6 +7,16 @@ namespace HaCreator.MapSimulator.Fields
 {
     public static class FieldObjectQuestVisibilityEvaluator
     {
+        public static bool IsVisible(bool hiddenByMap, IReadOnlyList<ObjectInstanceQuest> questInfo, Func<int, QuestStateType> getQuestState)
+        {
+            if (hiddenByMap)
+            {
+                return false;
+            }
+
+            return IsVisible(questInfo, getQuestState);
+        }
+
         public static bool IsVisible(IReadOnlyList<ObjectInstanceQuest> questInfo, Func<int, QuestStateType> getQuestState)
         {
             if (questInfo == null || questInfo.Count == 0)

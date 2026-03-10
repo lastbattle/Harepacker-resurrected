@@ -46,5 +46,21 @@ namespace UnitTest_MapSimulator
 
             Assert.False(visible);
         }
+
+        [Fact]
+        public void IsVisible_ReturnsFalseWhenMapMarksObjectHidden()
+        {
+            var questInfo = new List<ObjectInstanceQuest>
+            {
+                new ObjectInstanceQuest(1000, QuestStateType.Started)
+            };
+
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                hiddenByMap: true,
+                questInfo,
+                questId => questId == 1000 ? QuestStateType.Started : QuestStateType.Not_Started);
+
+            Assert.False(visible);
+        }
     }
 }

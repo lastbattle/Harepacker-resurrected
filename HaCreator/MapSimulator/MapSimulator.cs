@@ -89,7 +89,7 @@ namespace HaCreator.MapSimulator
 
         // Arrays for faster iteration (converted from Lists after loading)
         private BaseDXDrawableItem[][] _mapObjectsArray;
-        private readonly Dictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> _questGatedMapObjects = new();
+        private readonly Dictionary<BaseDXDrawableItem, QuestGatedMapObjectState> _questGatedMapObjects = new();
         private NpcItem[] _npcsArray;
         private MobItem[] _mobsArray;
         private ReactorItem[] _reactorsArray;
@@ -332,6 +332,18 @@ namespace HaCreator.MapSimulator
         private string _navHelpTextMobOn;
         private string _navHelpTextMobOff;
         private readonly MobAttackSystem _mobAttackSystem = new MobAttackSystem();
+
+        private readonly struct QuestGatedMapObjectState
+        {
+            public QuestGatedMapObjectState(ObjectInstanceQuest[] questInfo, bool hiddenByMap)
+            {
+                QuestInfo = questInfo ?? Array.Empty<ObjectInstanceQuest>();
+                HiddenByMap = hiddenByMap;
+            }
+
+            public ObjectInstanceQuest[] QuestInfo { get; }
+            public bool HiddenByMap { get; }
+        }
 
         /// <summary>
         /// MapSimulator Constructor
@@ -651,7 +663,7 @@ namespace HaCreator.MapSimulator
 
             /////// Background and objects
             ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
-            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects = new();
+            ConcurrentDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects = new();
             
             // Objects
             Task t_tiles = Task.Run(() =>
@@ -1370,7 +1382,7 @@ namespace HaCreator.MapSimulator
             }
 
             ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
-            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects = new();
+            ConcurrentDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects = new();
 
             // Load map objects in parallel
             Task t_tiles = Task.Run(() =>
@@ -4424,17 +4436,19 @@ namespace HaCreator.MapSimulator
         private void RegisterQuestGatedMapObject(
             BaseDXDrawableItem mapItem,
             LayeredItem sourceItem,
-            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects)
+            ConcurrentDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects)
         {
             if (mapItem == null || sourceItem is not ObjectInstance objInst || objInst.QuestInfo == null || objInst.QuestInfo.Count == 0)
             {
                 return;
             }
 
-            questGatedMapObjects[mapItem] = objInst.QuestInfo.ToArray();
+            questGatedMapObjects[mapItem] = new QuestGatedMapObjectState(
+                objInst.QuestInfo.ToArray(),
+                objInst.hide == true);
         }
 
-        private void ReplaceQuestGatedMapObjects(IDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects)
+        private void ReplaceQuestGatedMapObjects(IDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects)
         {
             _questGatedMapObjects.Clear();
             if (questGatedMapObjects == null || questGatedMapObjects.Count == 0)
@@ -4442,20 +4456,23 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            foreach ((BaseDXDrawableItem mapItem, ObjectInstanceQuest[] questInfo) in questGatedMapObjects)
+            foreach ((BaseDXDrawableItem mapItem, QuestGatedMapObjectState state) in questGatedMapObjects)
             {
-                _questGatedMapObjects[mapItem] = questInfo;
+                _questGatedMapObjects[mapItem] = state;
             }
         }
 
         private void ApplyQuestObjectVisibility(BaseDXDrawableItem item)
         {
-            if (item == null || !_questGatedMapObjects.TryGetValue(item, out ObjectInstanceQuest[] questInfo))
+            if (item == null || !_questGatedMapObjects.TryGetValue(item, out QuestGatedMapObjectState state))
             {
                 return;
             }
 
-            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(questInfo, _questRuntime.GetCurrentState);
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                state.HiddenByMap,
+                state.QuestInfo,
+                _questRuntime.GetCurrentState);
             item.SetVisible(item.IsVisible && visible);
         }
 
