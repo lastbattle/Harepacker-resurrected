@@ -352,6 +352,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ParseSkillLevels(SkillData skill, WzImageProperty skillNode)
         {
+            int eventTamingMobId = GetInt(skillNode, "eventTamingMob");
             var levelNode = skillNode["level"];
             if (levelNode != null)
             {
@@ -361,6 +362,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                         continue;
 
                     var levelData = CreateLevelData(child, level);
+                    if (eventTamingMobId > 0 && levelData.ItemConNo <= 0)
+                    {
+                        levelData.ItemConNo = eventTamingMobId;
+                    }
+
                     skill.Levels[level] = levelData;
                 }
             }
@@ -374,6 +380,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 for (int level = 1; level <= maxLevel; level++)
                 {
                     var levelData = CreateLevelData(commonNode, level);
+                    if (eventTamingMobId > 0 && levelData.ItemConNo <= 0)
+                    {
+                        levelData.ItemConNo = eventTamingMobId;
+                    }
+
                     skill.Levels[level] = levelData;
                 }
             }

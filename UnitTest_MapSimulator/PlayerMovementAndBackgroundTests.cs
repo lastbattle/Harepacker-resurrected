@@ -634,6 +634,65 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void SkillManager_EventTamingMobBuffs_EquipRidePartAndRestorePreviousMount()
+        {
+            var build = new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            };
+            var player = new PlayerCharacter(device: null, texturePool: null, build);
+            var skillManager = new SkillManager(new SkillLoader(skillWz: null, device: null, texturePool: null), player);
+            var startCast = typeof(SkillManager).GetMethod("StartCast", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(startCast);
+
+            var originalMount = new CharacterPart
+            {
+                ItemId = 1902000,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+            var eventMount = new CharacterPart
+            {
+                ItemId = 1932017,
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+
+            build.Equip(originalMount);
+            skillManager.SetTamingMobLoader(itemId => itemId == eventMount.ItemId ? eventMount : null);
+
+            var rideSkill = new SkillData
+            {
+                SkillId = 80001045,
+                MaxLevel = 1,
+                IsBuff = true,
+                Levels =
+                {
+                    [1] = new SkillLevelData
+                    {
+                        Level = 1,
+                        Time = 1,
+                        ItemConNo = eventMount.ItemId
+                    }
+                }
+            };
+
+            startCast!.Invoke(skillManager, new object[] { rideSkill, 1, 1000 });
+            Assert.Same(eventMount, build.Equipment[EquipSlot.TamingMob]);
+
+            skillManager.Clear();
+            Assert.Same(originalMount, build.Equipment[EquipSlot.TamingMob]);
+
+            startCast.Invoke(skillManager, new object[] { rideSkill, 1, 2000 });
+            Assert.Same(eventMount, build.Equipment[EquipSlot.TamingMob]);
+
+            skillManager.Update(3201, 0.016f);
+            Assert.Same(originalMount, build.Equipment[EquipSlot.TamingMob]);
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;

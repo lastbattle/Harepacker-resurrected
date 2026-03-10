@@ -290,6 +290,7 @@ namespace HaCreator.MapSimulator.Character
                 Skills.SetMobPool(_mobPool);
                 Skills.SetCombatEffects(_combatEffects);
                 Skills.SetSoundManager(_soundManager);
+                Skills.SetTamingMobLoader(Loader.LoadEquipment);
 
                 // Keep only the player's current job path resident at startup.
                 Skills.LoadSkillsForJob(build.Job);

@@ -16,6 +16,12 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillManager
     {
+        private sealed class SkillMountState
+        {
+            public int SkillId { get; init; }
+            public CharacterPart PreviousMount { get; init; }
+        }
+
         private enum AttackResolutionMode
         {
             Melee,
@@ -44,6 +50,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly SkillLoader _loader;
         private readonly PlayerCharacter _player;
         private Func<SkillData, bool> _fieldSkillRestrictionEvaluator;
+        private Func<int, CharacterPart> _tamingMobLoader;
 
         // Active state
         private readonly List<ActiveProjectile> _projectiles = new();
@@ -53,6 +60,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _cooldowns = new(); // skillId -> lastCastTime
         private PreparedSkill _preparedSkill;
         private SkillCastInfo _currentCast;
+        private SkillMountState _activeSkillMount;
 
         // Skill book
         private readonly Dictionary<int, int> _skillLevels = new(); // skillId -> level
@@ -97,6 +105,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetCombatEffects(CombatEffects effects) => _combatEffects = effects;
         public void SetSoundManager(SoundManager soundManager) => _soundManager = soundManager;
         public void SetFieldSkillRestrictionEvaluator(Func<SkillData, bool> evaluator) => _fieldSkillRestrictionEvaluator = evaluator;
+        public void SetTamingMobLoader(Func<int, CharacterPart> loader) => _tamingMobLoader = loader;
 
         /// <summary>
         /// Load skills for player's job
@@ -530,6 +539,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             ConsumeSkillResources(skill, levelData, currentTime);
+            ApplySkillMount(skill, levelData);
             TriggerSkillAnimation(skill);
             PlayCastSound(skill);
             OnSkillCast?.Invoke(_currentCast);
@@ -571,6 +581,60 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             _player.ApplySkillAvatarTransform(skill.SkillId, actionName);
             _player.TriggerSkillAnimation(actionName);
+        }
+
+        private void ApplySkillMount(SkillData skill, SkillLevelData levelData)
+        {
+            if (_player.Build == null || _tamingMobLoader == null || levelData == null || levelData.ItemConNo <= 0)
+            {
+                return;
+            }
+
+            CharacterPart mountPart = _tamingMobLoader(levelData.ItemConNo);
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return;
+            }
+
+            CharacterPart previousMount = _activeSkillMount?.PreviousMount;
+            if (previousMount == null)
+            {
+                _player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out previousMount);
+            }
+
+            _player.Build.Equip(mountPart);
+            _activeSkillMount = new SkillMountState
+            {
+                SkillId = skill.SkillId,
+                PreviousMount = previousMount
+            };
+        }
+
+        private void ClearSkillMount()
+        {
+            if (_activeSkillMount == null || _player.Build == null)
+            {
+                return;
+            }
+
+            if (_activeSkillMount.PreviousMount != null)
+            {
+                _player.Build.Equip(_activeSkillMount.PreviousMount);
+            }
+            else
+            {
+                _player.Build.Unequip(EquipSlot.TamingMob);
+            }
+
+            _activeSkillMount = null;
+        }
+
+        private void ClearSkillMount(int skillId)
+        {
+            if (_activeSkillMount != null && _activeSkillMount.SkillId == skillId)
+            {
+                ClearSkillMount();
+            }
         }
 
         private void PlayCastSound(SkillData skill)
@@ -1847,6 +1911,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     // Remove buff effects
                     ApplyBuffStats(buff, false);
                     _player.ClearSkillAvatarTransform(buff.SkillId);
+                    ClearSkillMount(buff.SkillId);
                     _buffs.RemoveAt(i);
                     OnBuffExpired?.Invoke(buff);
                 }
@@ -2433,6 +2498,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             _skillHotkeys.Clear();
             _availableSkills.Clear();
             _player.ClearSkillAvatarTransform();
+            ClearSkillMount();
         }
 
         /// <summary>
@@ -2485,6 +2551,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             _buffs.Clear();
             _player.ClearSkillAvatarTransform();
+            ClearSkillMount();
         }
 
         private static bool IsFocusedSingleBookJob(int jobId)
