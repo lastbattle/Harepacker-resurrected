@@ -1775,10 +1775,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (frame?.Texture == null)
                 return;
 
-            int screenX = (int)cast.CasterX - mapShiftX + centerX;
-            int screenY = (int)cast.CasterY - mapShiftY + centerY;
+            // WZ effect origins are relative to the caster, so keep the cast visual attached
+            // to the player's live position instead of the position captured when casting started.
+            int screenX = (int)_player.X - mapShiftX + centerX;
+            int screenY = (int)_player.Y - mapShiftY + centerY;
 
-            bool shouldFlip = cast.FacingRight ^ frame.Flip;
+            bool shouldFlip = _player.FacingRight ^ frame.Flip;
 
             frame.Texture.DrawBackground(spriteBatch, null, null,
                 GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
