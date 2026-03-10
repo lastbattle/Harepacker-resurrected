@@ -1512,6 +1512,15 @@ namespace HaCreator.MapSimulator.Loaders
                 quickSlot.SetCooldownMasks(cooldownMasks);
             }
 
+            if (mainProperty != null)
+            {
+                Texture2D[] tooltipFrames = new Texture2D[3];
+                tooltipFrames[0] = LoadCanvasTexture(mainProperty, "tip0", device);
+                tooltipFrames[1] = LoadCanvasTexture(mainProperty, "tip1", device);
+                tooltipFrames[2] = LoadCanvasTexture(mainProperty, "tip2", device);
+                quickSlot.SetTooltipTextures(tooltipFrames);
+            }
+
             quickSlot.Show();
             return quickSlot;
         }
