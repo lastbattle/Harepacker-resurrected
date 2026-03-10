@@ -475,6 +475,66 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void CharacterAssembler_TamingMob_PreservesExactRideFramesAndFallsBackToSitOnlyVariants()
+        {
+            var assembler = new CharacterAssembler(new CharacterBuild
+            {
+                Body = new BodyPart(),
+                Head = new BodyPart()
+            });
+            var getPartFrame = typeof(CharacterAssembler).GetMethod("GetPartFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(getPartFrame);
+
+            var standardMount = new CharacterPart
+            {
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+
+            var standFrame = new CharacterFrame();
+            var standAnimation = new CharacterAnimation();
+            standAnimation.Frames.Add(standFrame);
+            standardMount.Animations["stand1"] = standAnimation;
+
+            var walkFrame = new CharacterFrame();
+            var walkAnimation = new CharacterAnimation();
+            walkAnimation.Frames.Add(walkFrame);
+            standardMount.Animations["walk1"] = walkAnimation;
+
+            var flyFrame = new CharacterFrame();
+            var flyAnimation = new CharacterAnimation();
+            flyAnimation.Frames.Add(flyFrame);
+            standardMount.Animations["fly"] = flyAnimation;
+
+            var passengerMount = new CharacterPart
+            {
+                Type = CharacterPartType.TamingMob,
+                Slot = EquipSlot.TamingMob
+            };
+
+            var sitFrame = new CharacterFrame();
+            var sitAnimation = new CharacterAnimation();
+            sitAnimation.Frames.Add(sitFrame);
+            passengerMount.Animations["sit"] = sitAnimation;
+
+            var standResult = (CharacterFrame)getPartFrame!.Invoke(assembler, new object[] { standardMount, "stand1", 0 })!;
+            var walkResult = (CharacterFrame)getPartFrame.Invoke(assembler, new object[] { standardMount, "walk1", 0 })!;
+            var flyResult = (CharacterFrame)getPartFrame.Invoke(assembler, new object[] { standardMount, "swim", 0 })!;
+
+            var passengerStandResult = (CharacterFrame)getPartFrame.Invoke(assembler, new object[] { passengerMount, "stand1", 0 })!;
+            var passengerWalkResult = (CharacterFrame)getPartFrame.Invoke(assembler, new object[] { passengerMount, "walk1", 0 })!;
+            var passengerAttackResult = (CharacterFrame)getPartFrame.Invoke(assembler, new object[] { passengerMount, "swingO1", 0 })!;
+
+            Assert.Same(standFrame, standResult);
+            Assert.Same(walkFrame, walkResult);
+            Assert.Same(flyFrame, flyResult);
+            Assert.Same(sitFrame, passengerStandResult);
+            Assert.Same(sitFrame, passengerWalkResult);
+            Assert.Same(sitFrame, passengerAttackResult);
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;

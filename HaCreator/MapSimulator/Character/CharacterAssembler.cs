@@ -88,6 +88,25 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterAssembler
     {
+        private static readonly IReadOnlyDictionary<string, string[]> TamingMobActionAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["stand1"] = new[] { "stand2", "sit" },
+                ["stand2"] = new[] { "stand1", "sit" },
+                ["walk1"] = new[] { "walk2", "sit", "move" },
+                ["walk2"] = new[] { "walk1", "sit", "move" },
+                ["jump"] = new[] { "fly", "sit", "move" },
+                ["prone"] = new[] { "sit", "stand1" },
+                ["swim"] = new[] { "fly", "sit", "move" },
+                ["fly"] = new[] { "walk1", "walk2", "sit", "move" },
+                ["ladder"] = new[] { "rope", "sit" },
+                ["rope"] = new[] { "ladder", "sit" },
+                ["alert"] = new[] { "stand1", "stand2", "sit" },
+                ["heal"] = new[] { "stand1", "stand2", "sit" },
+                ["dead"] = new[] { "sit", "stand1" },
+                ["ghost"] = new[] { "sit", "stand1" }
+            };
+
         private readonly CharacterBuild _build;
         private readonly Dictionary<string, AssembledFrame[]> _cachedAnimations = new();
         private string _faceExpressionName = "default";
@@ -448,7 +467,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            var anim = part.GetAnimation(actionName);
+            var anim = GetPartAnimation(part, actionName);
 
             if (anim == null || anim.Frames.Count == 0)
                 return null;
@@ -456,6 +475,104 @@ namespace HaCreator.MapSimulator.Character
             // Wrap frame index
             int idx = frameIndex % anim.Frames.Count;
             return anim.Frames[idx];
+        }
+
+        private CharacterAnimation GetPartAnimation(CharacterPart part, string actionName)
+        {
+            if (part == null)
+            {
+                return null;
+            }
+
+            if (part.Type == CharacterPartType.TamingMob)
+            {
+                if (part.Animations.TryGetValue(actionName, out CharacterAnimation mountAnimation))
+                {
+                    return mountAnimation;
+                }
+
+                foreach (string alias in GetPartActionAliases(part, actionName))
+                {
+                    if (part.Animations.TryGetValue(alias, out mountAnimation))
+                    {
+                        return mountAnimation;
+                    }
+                }
+
+                return part.GetAnimation(actionName);
+            }
+
+            CharacterAnimation animation = part.GetAnimation(actionName);
+            if (animation != null)
+            {
+                return animation;
+            }
+
+            foreach (string alias in GetPartActionAliases(part, actionName))
+            {
+                animation = part.GetAnimation(alias);
+                if (animation != null)
+                {
+                    return animation;
+                }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<string> GetPartActionAliases(CharacterPart part, string actionName)
+        {
+            if (part == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (part.Type == CharacterPartType.TamingMob)
+            {
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (TamingMobActionAliases.TryGetValue(actionName, out string[] aliases))
+                {
+                    foreach (string alias in aliases)
+                    {
+                        if (!string.IsNullOrWhiteSpace(alias) && seen.Add(alias))
+                        {
+                            yield return alias;
+                        }
+                    }
+                }
+
+                if (actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                    || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                    || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                    || actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (seen.Add("walk1"))
+                    {
+                        yield return "walk1";
+                    }
+
+                    if (seen.Add("walk2"))
+                    {
+                        yield return "walk2";
+                    }
+
+                    if (seen.Add("stand1"))
+                    {
+                        yield return "stand1";
+                    }
+
+                    if (seen.Add("move"))
+                    {
+                        yield return "move";
+                    }
+
+                    if (seen.Add("sit"))
+                    {
+                        yield return "sit";
+                    }
+                }
+            }
         }
 
         private CharacterFrame GetFaceFrame(FacePart face, string expressionName, int frameIndex)
