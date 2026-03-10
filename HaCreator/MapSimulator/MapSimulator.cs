@@ -4280,13 +4280,14 @@ namespace HaCreator.MapSimulator
                 return false;
             });
 
-            // Set up flying map flag (fly=true in map info allows free flying in entire map)
+            // Set up flying-map flags from map info.
             bool isFlyingMap = _mapBoard.MapInfo.fly == true;
+            bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
             if (isFlyingMap)
             {
-                Debug.WriteLine($"[FlyingMap] Map allows flying (fly=true in map info)");
+                Debug.WriteLine($"[FlyingMap] Map allows flying (fly=true, needSkillForFly={requiresFlyingSkillForMap})");
             }
-            _playerManager.SetFlyingMap(isFlyingMap);
+            _playerManager.SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
 
             // Create default player character
             if (!_playerManager.CreateDefaultPlayer())
@@ -4408,9 +4409,10 @@ namespace HaCreator.MapSimulator
                 return false;
             });
 
-            // Set up flying map flag
+            // Set up flying map flags
             bool isFlyingMap = _mapBoard.MapInfo.fly == true;
-            _playerManager.SetFlyingMap(isFlyingMap);
+            bool requiresFlyingSkillForMap = _mapBoard.MapInfo.needSkillForFly == true;
+            _playerManager.SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
 
             // Reconnect to new map's pools and effects
             _playerManager.ReconnectToMap(
@@ -4418,6 +4420,7 @@ namespace HaCreator.MapSimulator
                 _playerManager.GetLadderLookup(),
                 _playerManager.GetSwimAreaCheck(),
                 isFlyingMap,
+                requiresFlyingSkillForMap,
                 _mobPool,
                 _dropPool,
                 _combatEffects);

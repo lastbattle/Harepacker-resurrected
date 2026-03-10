@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Linq;
 using System.Reflection;
 using HaCreator.MapEditor.Instance.Shapes;
@@ -306,6 +307,39 @@ namespace UnitTest_MapSimulator
             physics.HasFlyingAbility = false;
             physics.IsFlying = true;
             Assert.True(physics.IsUserFlying());
+        }
+
+        [Fact]
+        public void PlayerManager_FlyingMapFlagsPersistAcrossCreateAndReconnect()
+        {
+            var manager = (PlayerManager)RuntimeHelpers.GetUninitializedObject(typeof(PlayerManager));
+            Func<float, float, float, FootholdLine> findFoothold = (_, _, _) => null!;
+            Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> findLadder = (_, _, _) => null;
+            Func<float, float, float, bool> checkSwimArea = (_, _, _) => false;
+
+            manager.SetFlyingMap(isFlyingMap: true, requiresFlyingSkillForMap: true);
+            Assert.True(manager.CreatePlaceholderPlayer());
+            Assert.NotNull(manager.Player);
+            Assert.True(manager.Player.Physics.IsFlyingMap);
+            Assert.True(manager.Player.Physics.RequiresFlyingSkillForMap);
+            Assert.False(manager.Player.Physics.IsUserFlying());
+
+            manager.Player.Physics.HasFlyingAbility = true;
+            Assert.True(manager.Player.Physics.IsUserFlying());
+
+            manager.PrepareForMapChange();
+            manager.ReconnectToMap(
+                findFoothold: findFoothold,
+                findLadder: findLadder,
+                checkSwimArea: checkSwimArea,
+                isFlyingMap: true,
+                requiresFlyingSkillForMap: true,
+                mobPool: null!,
+                dropPool: null!,
+                combatEffects: null!);
+
+            Assert.True(manager.Player.Physics.IsFlyingMap);
+            Assert.True(manager.Player.Physics.RequiresFlyingSkillForMap);
         }
 
         [Fact]

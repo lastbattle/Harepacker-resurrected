@@ -206,7 +206,7 @@ Confirmed changes since last pass:
 - `Damage numbers` (`ShowDamage`) ? Implemented with WZ-backed digit rendering.
 - `Ladder / rope lookup` ? Implemented for the runtime seam: `PlayerCharacter` now configures ladder and rope search directly through `CVecCtrl`, the old vecctrl stub is gone, and grab / re-grab paths resolve ladder metadata through the controller instead of bypassing it.
 - `Float collision` ? Implemented for the runtime seam: `CVecCtrl::CollisionDetectFloat` now resolves foothold landings through the configured foothold lookup, uses saved float-state crossing checks to avoid tunneling through platforms, and marks same-frame float landings so the player does not immediately collapse into prone while still holding `Down`.
-- `Floating-map parity` ? Partial; swim/fly states exist, but client-specific map/skill float behavior is incomplete.
+- `Floating-map parity` ? Partial: `MapSimulator` and `PlayerManager` now propagate both `MapInfo.fly` and `MapInfo.needSkillForFly` into `CVecCtrl`, so maps that require a flying skill no longer grant free-float movement unless the runtime is already in a flying-skill state, but broader client-only map/skill float branches are still incomplete.
 - `HP indicators` ? Implemented for regular mob and boss HP bars.
 - `Player skill catalog / invocation` ? Implemented for simulator use: the skill window now loads the full `Skill.wz` player-skill catalog grouped by advancement tab, active skills are learned into the runtime, and selected skills can be cast directly from the skill window.
 - `Runtime job swapping` ? Implemented for simulator debugging: `/job <jobId>` now updates the live player job label, reloads the runtime skill set for the normal advancement chain of that job (for example `412` => `0/400/410/411/412`) while keeping GM/SuperGM on their focused admin book behavior, refreshes the skill window to the same path-aware view without restarting the simulator, and clears active old-job projectiles/casts/buffs so stale transient skill state does not survive the swap and crash later updates.
@@ -293,7 +293,7 @@ This is no longer a blank area, but a refinement area.
 |--------|------|-----|----------------|--------------|
 | Implemented | Ladder / rope lookup | `CVecCtrl` now owns the ladder/rope lookup seam and resolves ladder metadata for grab/re-grab paths instead of exposing a stub helper | Core climb behavior now routes through the same vector-controller seam the client uses | `CVecCtrl.cs`, `PlayerCharacter.SetLadderLookup` (`CUserLocal::SetMoveAction`, `CUser::SetMoveAction`) |
 | Implemented | Float collision | `CVecCtrl::CollisionDetectFloat` now uses the configured foothold lookup plus saved float-state crossing checks to land on footholds during swim/fly motion instead of carrying a TODO block | Swim/fly landing and platform-contact behavior now runs inside the vector controller instead of a partial fallback path | `CVecCtrl.cs` (`CVecCtrl::CollisionDetectFloat`) |
-| Partial | Floating-map parity | Swim and fly states exist, but they remain generic float modes rather than map- or skill-specific client behaviors | The simulator supports movement without matching all map rules | `PlayerCharacter`, `CVecCtrl` (`CVecCtrl::CollisionDetectFloat`, `CUserLocal::Update`) |
+| Partial | Floating-map parity | The simulator now applies both `fly` and `needSkillForFly` map attributes to the player physics controller, but broader client-only map/skill float branches still remain outside the runtime | Flying maps that require a skill gate now behave closer to the client, but float behavior is still not fully parity-complete | `MapSimulator.cs`, `PlayerManager.cs`, `PlayerCharacter`, `CVecCtrl` (`CVecCtrl::CollisionDetectFloat`, `CUserLocal::Update`) |
 | Missing | Movement path parity | The client's move-path encode/decode/passive-pos flow is still not modeled as a full parity target | Network-faithful movement replay and sync are incomplete | `CVecCtrl`, broader movement serialization layer |
 | Missing | Dynamic foothold passenger sync | Dynamic footholds exist, but full player and mob sync with moving platforms is still listed as future work | Transport/platform maps still diverge under movement | `DynamicFoothold.cs`, `TransportationField.cs` |
 
@@ -365,7 +365,7 @@ These were either not documented at all or were buried in older parity notes ins
 8. Quest-alert, emotion-reset, balloon, and idle pet speech feedback loops are still missing.
 9. Passive transfer-field retries after one-time actions are still missing.
 10. Auto-follow requests and delayed direction-mode exit are still missing.
-11. Movement and float collision still have explicit stub/TODO points in `CVecCtrl.cs`.
+11. Movement-path parity still has dormant controller-only support in `CVecCtrl.cs`, but the full client passive-pos and move-path flow is not wired into the simulator runtime.
 
 ## Priority Order
 
@@ -391,5 +391,4 @@ Update this file directly, and always classify each item as one of:
 - `Missing`
 
 That keeps the backlog honest and prevents already-shipped work from reappearing as "missing".
-
 

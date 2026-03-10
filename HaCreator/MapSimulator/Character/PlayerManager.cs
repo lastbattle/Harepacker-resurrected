@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Character
         private Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> _findLadder;
         private Func<float, float, float, bool> _checkSwimArea;
         private bool _isFlyingMap;
+        private bool _requiresFlyingSkillForMap;
 
         // Mob/Drop pools for combat
         private MobPool _mobPool;
@@ -146,13 +147,16 @@ namespace HaCreator.MapSimulator.Character
 
         /// <summary>
         /// Set whether this is a flying map (fly=true in map info)
+        /// and whether the client-style flying-skill gate is required.
         /// </summary>
-        public void SetFlyingMap(bool isFlyingMap)
+        public void SetFlyingMap(bool isFlyingMap, bool requiresFlyingSkillForMap = false)
         {
             _isFlyingMap = isFlyingMap;
+            _requiresFlyingSkillForMap = requiresFlyingSkillForMap;
             if (Player != null)
             {
                 Player.Physics.IsFlyingMap = isFlyingMap;
+                Player.Physics.RequiresFlyingSkillForMap = requiresFlyingSkillForMap;
             }
         }
 
@@ -306,6 +310,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetSwimAreaCheck(_checkSwimArea);
             Player.SetJumpSoundCallback(_onJumpSound);
             Player.Physics.IsFlyingMap = _isFlyingMap;
+            Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
             // Set up attack callback
             Player.OnAttackHitbox = (player, hitbox) =>
@@ -415,6 +420,7 @@ namespace HaCreator.MapSimulator.Character
             if (_checkSwimArea != null)
                 Player.SetSwimAreaCheck(_checkSwimArea);
             Player.Physics.IsFlyingMap = _isFlyingMap;
+            Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
 
             // Set spawn position
             Player.SetPosition(_spawnPoint.X, _spawnPoint.Y);
@@ -1037,6 +1043,7 @@ namespace HaCreator.MapSimulator.Character
             _findLadder = null;
             _checkSwimArea = null;
             _isFlyingMap = false;
+            _requiresFlyingSkillForMap = false;
             _mobPool = null;
             _dropPool = null;
 
@@ -1070,6 +1077,7 @@ namespace HaCreator.MapSimulator.Character
             Func<float, float, float, (int x, int top, int bottom, bool isLadder)?> findLadder,
             Func<float, float, float, bool> checkSwimArea,
             bool isFlyingMap,
+            bool requiresFlyingSkillForMap,
             MobPool mobPool,
             DropPool dropPool,
             CombatEffects combatEffects)
@@ -1077,7 +1085,7 @@ namespace HaCreator.MapSimulator.Character
             SetFootholdLookup(findFoothold);
             SetLadderLookup(findLadder);
             SetSwimAreaCheck(checkSwimArea);
-            SetFlyingMap(isFlyingMap);
+            SetFlyingMap(isFlyingMap, requiresFlyingSkillForMap);
             SetMobPool(mobPool);
             SetDropPool(dropPool);
             SetCombatEffects(combatEffects);
