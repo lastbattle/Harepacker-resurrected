@@ -731,6 +731,14 @@ namespace HaCreator.MapSimulator.Loaders
                 skill.SetSpUpTextures(spUpNormal, spUpPressed, spUpDisabled, spUpMouseOver);
             }
 
+            Texture2D[] tooltipFrames =
+            {
+                LoadCanvasTexture(mainProperty, "tip0", device),
+                LoadCanvasTexture(mainProperty, "tip1", device),
+                LoadCanvasTexture(mainProperty, "tip2", device)
+            };
+            skill.SetTooltipTextures(tooltipFrames);
+
             // Load button sounds
             WzBinaryProperty btClickSound = (WzBinaryProperty)soundUIImage?["BtMouseClick"];
             WzBinaryProperty btOverSound = (WzBinaryProperty)soundUIImage?["BtMouseOver"];

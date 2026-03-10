@@ -59,15 +59,13 @@ namespace HaCreator.MapSimulator.UI
         private const int SP_DISPLAY_Y = 256;
 
         // Hover tooltip layout
-        private const int TOOLTIP_WIDTH = 320;
+        private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_ICON_GAP = 8;
         private const int TOOLTIP_TITLE_GAP = 8;
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
-        private const int TOOLTIP_TEXT_LEFT = 87;
-        private const int TOOLTIP_TEXT_RIGHT = 300;
 
         // Hit testing
         private const int ICON_HIT_LEFT = 13;
@@ -119,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _spUpPressed;
         private Texture2D _spUpDisabled;
         private Texture2D _spUpMouseOver;
+        private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
 
         // Job header info (icon + name per tab)
         private readonly Dictionary<int, Texture2D> _jobIconsByTab;
@@ -322,6 +321,17 @@ namespace HaCreator.MapSimulator.UI
             _spUpPressed = pressed;
             _spUpDisabled = disabled;
             _spUpMouseOver = mouseOver;
+        }
+
+        public void SetTooltipTextures(Texture2D[] tooltipFrames)
+        {
+            if (tooltipFrames == null)
+                return;
+
+            for (int i = 0; i < Math.Min(_tooltipFrames.Length, tooltipFrames.Length); i++)
+            {
+                _tooltipFrames[i] = tooltipFrames[i];
+            }
         }
 
         /// <summary>
@@ -586,8 +596,10 @@ namespace HaCreator.MapSimulator.UI
                 ? SanitizeFontText(skill.GetLevelDescription(nextLevel))
                 : string.Empty;
 
-            float titleWidth = TOOLTIP_TEXT_RIGHT - TOOLTIP_PADDING;
-            float sectionWidth = TOOLTIP_TEXT_RIGHT - TOOLTIP_TEXT_LEFT;
+            int tooltipWidth = ResolveTooltipWidth();
+            int textLeftOffset = TOOLTIP_PADDING + SKILL_ICON_SIZE + TOOLTIP_ICON_GAP;
+            float titleWidth = tooltipWidth - (TOOLTIP_PADDING * 2);
+            float sectionWidth = tooltipWidth - textLeftOffset - TOOLTIP_PADDING;
             string[] wrappedName = WrapTooltipText(skillName, titleWidth);
             string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
             string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
@@ -617,17 +629,25 @@ namespace HaCreator.MapSimulator.UI
 
             int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
             int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1; // tip1: draw to the right of the hovered skill by default.
 
-            if (tooltipX + TOOLTIP_WIDTH > renderWidth - TOOLTIP_PADDING)
-                tooltipX = _lastMousePosition.X - TOOLTIP_WIDTH - TOOLTIP_OFFSET_X;
+            if (tooltipX + tooltipWidth > renderWidth - TOOLTIP_PADDING)
+            {
+                tooltipX = _lastMousePosition.X - tooltipWidth - TOOLTIP_OFFSET_X;
+                tooltipFrameIndex = 0; // tip0: mirrored fallback on the left.
+            }
+
             if (tooltipX < TOOLTIP_PADDING)
                 tooltipX = TOOLTIP_PADDING;
-            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
-                tooltipY = Math.Max(TOOLTIP_PADDING, renderHeight - tooltipHeight - TOOLTIP_PADDING);
 
-            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, TOOLTIP_WIDTH, tooltipHeight);
-            sprite.Draw(_debugPlaceholder, backgroundRect, new Color(18, 18, 26, 235));
-            DrawTooltipBorder(sprite, backgroundRect);
+            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+            {
+                tooltipY = Math.Max(TOOLTIP_PADDING, _lastMousePosition.Y - tooltipHeight + TOOLTIP_OFFSET_Y);
+                tooltipFrameIndex = 2; // tip2: lift above when the lower edge would clip.
+            }
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
 
             int titleX = tooltipX + TOOLTIP_PADDING;
             int titleY = tooltipY + TOOLTIP_PADDING;
@@ -641,7 +661,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(icon, new Rectangle(iconX, contentY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
             }
 
-            int textX = tooltipX + TOOLTIP_TEXT_LEFT;
+            int textX = tooltipX + textLeftOffset;
             float sectionY = contentY;
             if (descriptionHeight > 0f)
             {
@@ -697,6 +717,28 @@ namespace HaCreator.MapSimulator.UI
                 height += 2f + nextDescriptionHeight;
 
             return height;
+        }
+
+        private int ResolveTooltipWidth()
+        {
+            int textureWidth = _tooltipFrames[1]?.Width ?? 0;
+            return textureWidth > 0 ? textureWidth : TOOLTIP_FALLBACK_WIDTH;
+        }
+
+        private void DrawTooltipBackground(SpriteBatch sprite, Rectangle rect, int tooltipFrameIndex)
+        {
+            Texture2D tooltipFrame = tooltipFrameIndex >= 0 && tooltipFrameIndex < _tooltipFrames.Length
+                ? _tooltipFrames[tooltipFrameIndex]
+                : null;
+
+            if (tooltipFrame != null)
+            {
+                sprite.Draw(tooltipFrame, rect, Color.White);
+                return;
+            }
+
+            sprite.Draw(_debugPlaceholder, rect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, rect);
         }
 
         private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
