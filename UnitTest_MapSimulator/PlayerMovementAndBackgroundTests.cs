@@ -475,7 +475,7 @@ namespace UnitTest_MapSimulator
             platforms.CreateHorizontalPlatform(startX: 100, y: 100, width: 80, height: 10, leftBound: 100, rightBound: 180, speed: 50);
             platforms.Update(currentTimeMs: 1000, deltaSeconds: 0.2f);
 
-            int synced = sync.SyncGroundMobPassengers(new[] { movement }, platforms);
+            int synced = sync.SyncGroundMobPassengers(new[] { movement }, platforms, transportField: null);
 
             Assert.Equal(1, synced);
             Assert.NotNull(movement.CurrentFoothold);

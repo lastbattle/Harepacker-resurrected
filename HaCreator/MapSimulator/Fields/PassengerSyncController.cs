@@ -40,7 +40,7 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        public int SyncGroundMobPassengers(IEnumerable<MobMovementInfo> movementInfos, DynamicFootholdSystem dynamicFootholds)
+        public int SyncGroundMobPassengers(IEnumerable<MobMovementInfo> movementInfos, DynamicFootholdSystem dynamicFootholds, TransportationField transportField)
         {
             if (movementInfos == null)
             {
@@ -50,38 +50,19 @@ namespace HaCreator.MapSimulator.Fields
             int syncedCount = 0;
             foreach (MobMovementInfo movement in movementInfos)
             {
-                if (movement == null || movement.MoveType == MobMoveType.Fly)
+                if (!CanAttachGroundMob(movement))
                 {
                     continue;
                 }
 
-                int platformId = dynamicFootholds?.GetPlatformAtPoint(movement.X, movement.Y, tolerance: 10f) ?? -1;
-                if (platformId < 0)
+                if (TryAttachGroundMobToDynamicPlatform(movement, dynamicFootholds)
+                    || TryAttachGroundMobToTransportDeck(movement, transportField))
                 {
-                    DetachSyntheticFoothold(movement);
+                    syncedCount++;
                     continue;
                 }
 
-                DynamicPlatform platform = dynamicFootholds.GetPlatform(platformId);
-                if (platform == null || !platform.IsActive || !platform.IsVisible)
-                {
-                    DetachSyntheticFoothold(movement);
-                    continue;
-                }
-
-                FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platformId, platform.X, platform.X + platform.Width, platform.Y);
-                movement.X += platform.DeltaX;
-                movement.Y = platform.Y;
-                movement.CurrentFoothold = foothold;
-                movement.PlatformLeft = (int)MathF.Round(platform.X);
-                movement.PlatformRight = (int)MathF.Round(platform.X + platform.Width);
-                movement.VelocityY = 0f;
-                if (movement.JumpState != MobJumpState.Jumping)
-                {
-                    movement.JumpState = MobJumpState.None;
-                }
-
-                syncedCount++;
+                DetachSyntheticFoothold(movement);
             }
 
             return syncedCount;
@@ -151,6 +132,80 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private bool TryAttachGroundMobToDynamicPlatform(MobMovementInfo movement, DynamicFootholdSystem dynamicFootholds)
+        {
+            if (dynamicFootholds == null)
+            {
+                return false;
+            }
+
+            int platformId = dynamicFootholds.GetPlatformAtPoint(movement.X, movement.Y, tolerance: 10f);
+            if (platformId < 0)
+            {
+                return false;
+            }
+
+            DynamicPlatform platform = dynamicFootholds.GetPlatform(platformId);
+            if (platform == null || !platform.IsActive || !platform.IsVisible)
+            {
+                return false;
+            }
+
+            FootholdLine foothold = GetOrCreateSyntheticFoothold(_dynamicPlatformFootholds, SyntheticFootholdBaseId - platformId, platform.X, platform.X + platform.Width, platform.Y);
+            movement.X += platform.DeltaX;
+            movement.Y = platform.Y;
+            movement.CurrentFoothold = foothold;
+            movement.PlatformLeft = (int)MathF.Round(platform.X);
+            movement.PlatformRight = (int)MathF.Round(platform.X + platform.Width);
+            movement.VelocityY = 0f;
+            if (movement.JumpState != MobJumpState.Jumping)
+            {
+                movement.JumpState = MobJumpState.None;
+            }
+
+            return true;
+        }
+
+        private bool TryAttachGroundMobToTransportDeck(MobMovementInfo movement, TransportationField transportField)
+        {
+            if (transportField == null)
+            {
+                return false;
+            }
+
+            if (!transportField.TryGetDeckBounds(out float deckLeft, out float deckRight, out float deckY))
+            {
+                return false;
+            }
+
+            if (!transportField.IsOnShipDeck(movement.X, movement.Y, deckY, deckRight - deckLeft))
+            {
+                return false;
+            }
+
+            _transportDeckFoothold = GetOrCreateSyntheticFoothold(
+                cache: null,
+                cacheKey: TransportDeckFootholdId,
+                leftX: deckLeft,
+                rightX: deckRight,
+                y: deckY,
+                existing: _transportDeckFoothold);
+
+            var shipDelta = transportField.GetShipDelta();
+            movement.X += shipDelta.X;
+            movement.Y = deckY;
+            movement.CurrentFoothold = _transportDeckFoothold;
+            movement.PlatformLeft = (int)MathF.Round(deckLeft);
+            movement.PlatformRight = (int)MathF.Round(deckRight);
+            movement.VelocityY = 0f;
+            if (movement.JumpState != MobJumpState.Jumping)
+            {
+                movement.JumpState = MobJumpState.None;
+            }
+
+            return true;
+        }
+
         private static bool CanAttachPlayer(PlayerCharacter player)
         {
             return !player.GmFlyMode
@@ -158,6 +213,13 @@ namespace HaCreator.MapSimulator.Fields
                    && !player.Physics.IsUserFlying()
                    && !player.Physics.IsInSwimArea
                    && player.Physics.VelocityY >= -20;
+        }
+
+        private static bool CanAttachGroundMob(MobMovementInfo movement)
+        {
+            return movement != null
+                   && movement.MoveType != MobMoveType.Fly
+                   && movement.VelocityY >= -20f;
         }
 
         private static FootholdLine GetOrCreateSyntheticFoothold(
@@ -176,13 +238,14 @@ namespace HaCreator.MapSimulator.Fields
 
             if (foothold == null)
             {
-                var first = new FootholdAnchor(board: null, x: (int)MathF.Round(leftX), y: (int)MathF.Round(y), layer: 0, zm: 0, user: true);
-                var second = new FootholdAnchor(board: null, x: (int)MathF.Round(rightX), y: (int)MathF.Round(y), layer: 0, zm: 0, user: true);
-                foothold = new FootholdLine(board: null, first, second)
-                {
-                    num = cacheKey
-                };
+                foothold = CreateSyntheticFoothold(cacheKey, leftX, rightX, y);
+                cache?[cacheKey] = foothold;
+                return foothold;
+            }
 
+            if (foothold.FirstDot.Board == null || foothold.SecondDot.Board == null)
+            {
+                foothold = CreateSyntheticFoothold(cacheKey, leftX, rightX, y);
                 cache?[cacheKey] = foothold;
                 return foothold;
             }
@@ -193,19 +256,21 @@ namespace HaCreator.MapSimulator.Fields
             return foothold;
         }
 
+        private static FootholdLine CreateSyntheticFoothold(int cacheKey, float leftX, float rightX, float y)
+        {
+            var first = new FootholdAnchor(board: null, x: (int)MathF.Round(leftX), y: (int)MathF.Round(y), layer: 0, zm: 0, user: true);
+            var second = new FootholdAnchor(board: null, x: (int)MathF.Round(rightX), y: (int)MathF.Round(y), layer: 0, zm: 0, user: true);
+            return new FootholdLine(board: null, first, second)
+            {
+                num = cacheKey
+            };
+        }
+
         private static void MoveSyntheticAnchor(MapleDot dot, float x, float y)
         {
             int roundedX = (int)MathF.Round(x);
             int roundedY = (int)MathF.Round(y);
-
-            if (dot.Board == null)
-            {
-                dot.MoveSilent(roundedX, roundedY);
-                return;
-            }
-
-            dot.X = roundedX;
-            dot.Y = roundedY;
+            dot.MoveSilent(roundedX, roundedY);
         }
 
         private static void DetachSyntheticFoothold(CVecCtrl physics)

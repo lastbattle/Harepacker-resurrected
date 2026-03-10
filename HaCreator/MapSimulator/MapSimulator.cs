@@ -2816,7 +2816,7 @@ namespace HaCreator.MapSimulator
                 : mapShiftY + _renderParams.RenderHeight / 2f;
             _limitedViewField.Update(gameTime, playerX, playerY);
 
-            _passengerSync.SyncGroundMobPassengers(_mobPool?.ActiveMobs.Select(m => m?.MovementInfo), _dynamicFootholds);
+            _passengerSync.SyncGroundMobPassengers(_mobPool?.ActiveMobs.Select(m => m?.MovementInfo), _dynamicFootholds, _transportField);
 
             // Update mob movement
             UpdateMobMovement(gameTime);

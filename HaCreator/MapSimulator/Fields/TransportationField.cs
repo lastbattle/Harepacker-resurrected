@@ -640,7 +640,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool TryGetDeckBounds(out float left, out float right, out float deckY)
         {
-            if (_currentAlpha <= 0f || _shipWidth <= 0 || _shipHeight <= 0)
+            if (_shipKind != 0 || _currentAlpha <= 0f || _shipWidth <= 0 || _shipHeight <= 0)
             {
                 left = 0f;
                 right = 0f;
