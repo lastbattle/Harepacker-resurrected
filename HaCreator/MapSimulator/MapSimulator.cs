@@ -4975,6 +4975,7 @@ namespace HaCreator.MapSimulator
                 {
                     SkillId = skillId,
                     SkillName = skill?.Name,
+                    Description = skill?.Description,
                     IconTexture = skill?.IconTexture,
                     RemainingMs = remainingMs,
                     DurationMs = Math.Max(remainingMs, durationMs)

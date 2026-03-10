@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI {
     {
         public int SkillId { get; set; }
         public string SkillName { get; set; }
+        public string Description { get; set; }
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
@@ -112,6 +113,8 @@ namespace HaCreator.MapSimulator.UI {
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<int, StatusBarBuffRenderData> _buffTooltipEntries = new Dictionary<int, StatusBarBuffRenderData>();
+        private readonly Dictionary<int, Rectangle> _cooldownIconHitboxes = new Dictionary<int, Rectangle>();
+        private readonly Dictionary<int, StatusBarCooldownRenderData> _cooldownTooltipEntries = new Dictionary<int, StatusBarCooldownRenderData>();
         private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private StatusBarWarningAnimation _hpWarningAnimation = new StatusBarWarningAnimation();
@@ -437,6 +440,7 @@ namespace HaCreator.MapSimulator.UI {
             // Use renderParameters to get screen height and calculate position from bottom
             DrawCharacterStats(sprite, renderParameters, TickCount);
             DrawHoveredBuffTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+            DrawHoveredCooldownTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         /// <summary>
@@ -823,6 +827,25 @@ namespace HaCreator.MapSimulator.UI {
             return false;
         }
 
+        private bool TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect)
+        {
+            Point mousePosition = new Point(Mouse.GetState().X, Mouse.GetState().Y);
+            foreach (KeyValuePair<int, Rectangle> hitbox in _cooldownIconHitboxes)
+            {
+                if (!hitbox.Value.Contains(mousePosition))
+                {
+                    continue;
+                }
+
+                iconRect = hitbox.Value;
+                return _cooldownTooltipEntries.TryGetValue(hitbox.Key, out cooldownEntry);
+            }
+
+            cooldownEntry = null;
+            iconRect = Rectangle.Empty;
+            return false;
+        }
+
         private void DrawBuffIconFrame(SpriteBatch sprite, Rectangle iconRect)
         {
             if (_pixelTexture == null)
@@ -839,6 +862,8 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawCooldownTray(SpriteBatch sprite, RenderParameters renderParameters, int currentTime)
         {
+            _cooldownIconHitboxes.Clear();
+            _cooldownTooltipEntries.Clear();
             if (_getCooldownStatus == null)
             {
                 return;
@@ -862,6 +887,8 @@ namespace HaCreator.MapSimulator.UI {
                     COOLDOWN_TRAY_TOP_MARGIN,
                     BUFF_ICON_SIZE,
                     BUFF_ICON_SIZE);
+                _cooldownIconHitboxes[cooldownEntry.SkillId] = iconRect;
+                _cooldownTooltipEntries[cooldownEntry.SkillId] = cooldownEntry;
 
                 DrawBuffIconFrame(sprite, iconRect);
                 if (cooldownEntry.IconTexture != null)
@@ -886,6 +913,56 @@ namespace HaCreator.MapSimulator.UI {
                     iconRect.Bottom - textSize.Y - 1);
 
                 DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
+            }
+        }
+
+        private void DrawHoveredCooldownTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_font == null || !TryGetHoveredCooldownEntry(out StatusBarCooldownRenderData cooldownEntry, out Rectangle iconRect))
+            {
+                return;
+            }
+
+            string title = SanitizeTooltipText(cooldownEntry.SkillName);
+            string remainingText = cooldownEntry.RemainingMs > 0
+                ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f))} sec"
+                : "Cooldown: --";
+            string[] descriptionLines = WrapTooltipText(
+                SanitizeTooltipText(cooldownEntry.Description),
+                TOOLTIP_FALLBACK_WIDTH - (TOOLTIP_PADDING * 2));
+
+            float textWidth = Math.Max(
+                _font.MeasureString(title).X,
+                _font.MeasureString(remainingText).X);
+            if (descriptionLines.Length > 0)
+            {
+                textWidth = Math.Max(textWidth, MeasureLongestLine(descriptionLines));
+            }
+
+            int tooltipWidth = Math.Max(
+                TOOLTIP_FALLBACK_WIDTH,
+                (int)Math.Ceiling(textWidth + (TOOLTIP_PADDING * 2)));
+            int tooltipHeight = (TOOLTIP_PADDING * 2) + _font.LineSpacing + TOOLTIP_TITLE_GAP + _font.LineSpacing;
+            if (descriptionLines.Length > 0)
+            {
+                tooltipHeight += TOOLTIP_SECTION_GAP + (int)Math.Ceiling(MeasureLinesHeight(descriptionLines));
+            }
+
+            Point tooltipPosition = GetTooltipPosition(iconRect, tooltipWidth, tooltipHeight, renderWidth, renderHeight);
+            Rectangle tooltipRect = new Rectangle(tooltipPosition.X, tooltipPosition.Y, tooltipWidth, tooltipHeight);
+
+            DrawTooltipBackground(sprite, tooltipRect);
+
+            float textY = tooltipRect.Y + TOOLTIP_PADDING;
+            DrawTooltipText(sprite, title, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), new Color(255, 238, 155));
+            textY += _font.LineSpacing + TOOLTIP_TITLE_GAP;
+            DrawTooltipText(sprite, remainingText, new Vector2(tooltipRect.X + TOOLTIP_PADDING, textY), Color.White);
+            textY += _font.LineSpacing;
+
+            if (descriptionLines.Length > 0)
+            {
+                textY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, descriptionLines, tooltipRect.X + TOOLTIP_PADDING, textY, new Color(219, 219, 219));
             }
         }
 
