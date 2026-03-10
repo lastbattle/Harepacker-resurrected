@@ -1002,8 +1002,19 @@ namespace HaCreator.MapSimulator.Entities
                     }
                     else
                     {
-                        // Most mob attacks are stationary until their queued attack entry fires.
-                        MovementInfo.Stop();
+                        // Stationary attacks still need immediate hit physics so knockback is not delayed
+                        // until the attack state ends.
+                        if (MovementInfo.IsInKnockback)
+                        {
+                            MovementInfo.Resume();
+                            MovementInfo.UpdateMovement(deltaTimeMs);
+                            this.flip = MovementInfo.FlipX;
+                        }
+                        else
+                        {
+                            // Most mob attacks are stationary until their queued attack entry fires.
+                            MovementInfo.Stop();
+                        }
                     }
 
                     UpdateAnimationAction(); // Update animation to show action
