@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Fields
         private ShipState _state = ShipState.Idle;
         private float _currentX, _currentY;
         private float _currentAlpha = 255f;
+        private float _deltaX, _deltaY;
         private int _moveStartTime;
         private float _startMoveX, _endMoveX;
         private float _startAlpha, _endAlpha;
@@ -395,6 +396,9 @@ namespace HaCreator.MapSimulator.Fields
 
         public void Update(int currentTimeMs, float deltaSeconds)
         {
+            float previousX = _currentX;
+            float previousY = _currentY;
+
             switch (_state)
             {
                 case ShipState.WaitingDeparture:
@@ -416,6 +420,8 @@ namespace HaCreator.MapSimulator.Fields
 
             // Update Balrog attack (separate from ship state)
             UpdateBalrogAttack(currentTimeMs);
+            _deltaX = _currentX - previousX;
+            _deltaY = _currentY - previousY;
 
             // Update announcements
             UpdateAnnouncements(currentTimeMs);
@@ -627,6 +633,28 @@ namespace HaCreator.MapSimulator.Fields
             return new Vector2(_currentX - _x, 0);
         }
 
+        public Vector2 GetShipDelta()
+        {
+            return new Vector2(_deltaX, _deltaY);
+        }
+
+        public bool TryGetDeckBounds(out float left, out float right, out float deckY)
+        {
+            if (_currentAlpha <= 0f || _shipWidth <= 0 || _shipHeight <= 0)
+            {
+                left = 0f;
+                right = 0f;
+                deckY = 0f;
+                return false;
+            }
+
+            float deckWidth = Math.Max(80f, _shipWidth * 0.7f);
+            left = _currentX - deckWidth / 2f;
+            right = _currentX + deckWidth / 2f;
+            deckY = _currentY - Math.Max(24f, _shipHeight * 0.35f);
+            return true;
+        }
+
         public bool IsOnShipDeck(float x, float y, float deckY, float deckWidth)
         {
             float shipLeft = _currentX - deckWidth / 2;
@@ -787,6 +815,8 @@ namespace HaCreator.MapSimulator.Fields
             _currentX = _shipKind == 0 ? _x0 : _x;
             _currentY = _y;
             _currentAlpha = _shipKind == 0 ? 255f : 0f;
+            _deltaX = 0f;
+            _deltaY = 0f;
             _balrogAlpha = 0f;
             _bgScrollX = 0;
             _announcements.Clear();

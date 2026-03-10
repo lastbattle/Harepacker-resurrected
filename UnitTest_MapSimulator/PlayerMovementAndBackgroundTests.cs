@@ -7,6 +7,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -340,6 +341,54 @@ namespace UnitTest_MapSimulator
 
             Assert.True(manager.Player.Physics.IsFlyingMap);
             Assert.True(manager.Player.Physics.RequiresFlyingSkillForMap);
+        }
+
+        [Fact]
+        public void PassengerSyncController_SyncPlayerToDynamicPlatform_LandsOnSyntheticFoothold()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var platforms = new DynamicFootholdSystem();
+            var sync = new PassengerSyncController();
+
+            platforms.CreateHorizontalPlatform(startX: 100, y: 100, width: 80, height: 10, leftBound: 100, rightBound: 180, speed: 50);
+            platforms.Update(currentTimeMs: 1000, deltaSeconds: 0.2f);
+
+            player.SetPosition(120, 100);
+
+            bool attached = sync.SyncPlayer(player, platforms, transportField: null);
+
+            Assert.True(attached);
+            Assert.True(player.Physics.IsOnFoothold());
+            Assert.NotNull(player.Physics.CurrentFoothold);
+            Assert.True(player.Physics.CurrentFoothold.num <= -1000000);
+            Assert.Equal(130f, player.X, precision: 1);
+            Assert.Equal(100f, player.Y, precision: 1);
+        }
+
+        [Fact]
+        public void PassengerSyncController_SyncGroundMobPassengers_ShiftsMobWithPlatformDelta()
+        {
+            var movement = new MobMovementInfo
+            {
+                MoveType = MobMoveType.Move,
+                X = 120,
+                Y = 100
+            };
+            var platforms = new DynamicFootholdSystem();
+            var sync = new PassengerSyncController();
+
+            platforms.CreateHorizontalPlatform(startX: 100, y: 100, width: 80, height: 10, leftBound: 100, rightBound: 180, speed: 50);
+            platforms.Update(currentTimeMs: 1000, deltaSeconds: 0.2f);
+
+            int synced = sync.SyncGroundMobPassengers(new[] { movement }, platforms);
+
+            Assert.Equal(1, synced);
+            Assert.NotNull(movement.CurrentFoothold);
+            Assert.True(movement.CurrentFoothold.num <= -1000000);
+            Assert.Equal(130f, movement.X, precision: 1);
+            Assert.Equal(100f, movement.Y, precision: 1);
+            Assert.Equal(110, movement.PlatformLeft);
+            Assert.Equal(190, movement.PlatformRight);
         }
 
         [Fact]
