@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.Character
         // State
         public PlayerState State { get; private set; } = PlayerState.Standing;
         public CharacterAction CurrentAction { get; private set; } = CharacterAction.Stand1;
+        public string CurrentActionName { get; private set; } = CharacterPart.GetActionString(CharacterAction.Stand1);
         public bool FacingRight { get; set; } = true;
         public bool IsAlive => State != PlayerState.Dead;
         public bool CanMove => State != PlayerState.Dead && State != PlayerState.Hit && State != PlayerState.Attacking;
@@ -124,6 +125,7 @@ namespace HaCreator.MapSimulator.Character
         private AttackType _currentAttackType;
         private int _attackFrame;
         private int _attackFrameTimer;
+        private string _forcedActionName;
 
         // Hit state tracking
         private int _hitStateStartTime;
@@ -1033,7 +1035,7 @@ namespace HaCreator.MapSimulator.Character
             if (State == PlayerState.Attacking)
             {
                 // Check if attack animation is complete
-                var anim = Assembler?.GetAnimation(CurrentAction);
+                var anim = Assembler?.GetAnimation(CurrentActionName);
                 if (anim != null && anim.Length > 0)
                 {
                     int attackDuration = 0;
@@ -1042,6 +1044,7 @@ namespace HaCreator.MapSimulator.Character
 
                     if (currentTime - _animationStartTime >= attackDuration)
                     {
+                        ClearForcedActionName();
                         State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
                         System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] Attack complete, returning to {State}");
                     }
@@ -1051,8 +1054,9 @@ namespace HaCreator.MapSimulator.Character
                     // No animation found - return to standing after short delay
                     if (currentTime - _animationStartTime >= 300)
                     {
+                        ClearForcedActionName();
                         State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
-                        System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] No attack anim found for {CurrentAction}, returning to {State}");
+                        System.Diagnostics.Debug.WriteLine($"[UpdateStateMachine] No attack anim found for {CurrentActionName}, returning to {State}");
                     }
                 }
             }
@@ -1112,15 +1116,20 @@ namespace HaCreator.MapSimulator.Character
                 _ => CharacterAction.Stand1
             };
 
+            string newActionName = State == PlayerState.Attacking && !string.IsNullOrWhiteSpace(_forcedActionName)
+                ? _forcedActionName
+                : CharacterPart.GetActionString(newAction);
+
             bool isFloatAction = IsFloatAnimationAction(newAction);
             bool isFloatMoving = isFloatAction && ShouldAnimateFloatAction();
 
-            if (newAction != CurrentAction || (isFloatAction && isFloatMoving != _isFloatAnimationMoving))
+            if (newAction != CurrentAction || !string.Equals(newActionName, CurrentActionName, StringComparison.Ordinal) || (isFloatAction && isFloatMoving != _isFloatAnimationMoving))
             {
                 _animationStartTime = currentTime;
             }
 
             CurrentAction = newAction;
+            CurrentActionName = newActionName;
             _isFloatAnimationMoving = isFloatMoving;
         }
 
@@ -1190,6 +1199,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             CurrentAction = GetAttackAction();
+            CurrentActionName = CharacterPart.GetActionString(CurrentAction);
+            _forcedActionName = null;
 
             // Trigger hitbox callback on attack frame
             var hitbox = GetAttackHitbox();
@@ -1236,6 +1247,7 @@ namespace HaCreator.MapSimulator.Character
             if (string.IsNullOrEmpty(actionName))
                 actionName = "attack1";
 
+            _forcedActionName = actionName;
             CurrentAction = actionName.ToLower() switch
             {
                 "attack1" or "stabo1" => CharacterAction.StabO1,
@@ -1249,12 +1261,13 @@ namespace HaCreator.MapSimulator.Character
                 "pronestab" => CharacterAction.ProneStab,
                 _ => CharacterAction.SwingO1
             };
+            CurrentActionName = actionName;
 
             _attackFrame = 0;
             _attackFrameTimer = 0;
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
 
-            System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentAction}, State={State}");
+            System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
         }
 
         /// <summary>
@@ -1410,6 +1423,8 @@ namespace HaCreator.MapSimulator.Character
             HP = 0;
             State = PlayerState.Dead;
             CurrentAction = CharacterAction.Dead;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Dead);
+            ClearForcedActionName();
 
             // Completely stop all physics - velocity, knockback, and movement state
             Physics.VelocityX = 0;
@@ -1443,6 +1458,8 @@ namespace HaCreator.MapSimulator.Character
             MP = MaxMP;
             State = PlayerState.Standing;
             CurrentAction = CharacterAction.Stand1;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            ClearForcedActionName();
             Physics.Reset();
             Physics.SetPosition(x, y);
         }
@@ -1458,6 +1475,8 @@ namespace HaCreator.MapSimulator.Character
 
             State = PlayerState.Standing;
             CurrentAction = CharacterAction.Stand1;
+            CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            ClearForcedActionName();
             Physics.VelocityX = 0;
 
             // Clear input states to prevent resuming movement
@@ -1488,7 +1507,7 @@ namespace HaCreator.MapSimulator.Character
             // Get current frame
             int animTime = GetRenderAnimationTime(currentTime);
 
-            var frame = Assembler.GetFrameAtTime(CurrentAction, animTime);
+            var frame = Assembler.GetFrameAtTime(CurrentActionName, animTime);
 
             if (frame != null)
             {
@@ -1562,6 +1581,11 @@ namespace HaCreator.MapSimulator.Character
                 (int)Y + HITBOX_OFFSET_Y,
                 HITBOX_WIDTH,
                 HITBOX_HEIGHT);
+        }
+
+        private void ClearForcedActionName()
+        {
+            _forcedActionName = null;
         }
 
         /// <summary>

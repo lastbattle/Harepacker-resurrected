@@ -137,6 +137,23 @@ namespace HaCreator.MapSimulator.Character
             if (frames == null || frames.Length == 0)
                 return null;
 
+            return GetFrameAtTime(frames, timeMs);
+        }
+
+        public AssembledFrame GetFrameAtTime(string actionName, int timeMs)
+        {
+            var frames = GetAnimation(actionName);
+            if (frames == null || frames.Length == 0)
+                return null;
+
+            return GetFrameAtTime(frames, timeMs);
+        }
+
+        private static AssembledFrame GetFrameAtTime(AssembledFrame[] frames, int timeMs)
+        {
+            if (frames == null || frames.Length == 0)
+                return null;
+
             // Single frame - no animation needed
             if (frames.Length == 1)
                 return frames[0];

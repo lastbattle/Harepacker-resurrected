@@ -344,6 +344,22 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void TriggerSkillAnimation_PreservesRareActionNameUntilStateMachineClearsIt()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+
+            player.TriggerSkillAnimation("ghost");
+
+            Assert.Equal(PlayerState.Attacking, player.State);
+            Assert.Equal("ghost", player.CurrentActionName);
+
+            player.Update(Environment.TickCount + 400, 0.016f);
+
+            Assert.Equal(PlayerState.Falling, player.State);
+            Assert.Equal("jump", player.CurrentActionName);
+        }
+
+        [Fact]
         public void VerticalMovingHVTiling_AppliesVerticalShiftBeforeDrawing()
         {
             var firstDrawY = int.MinValue;
