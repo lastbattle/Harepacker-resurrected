@@ -413,14 +413,15 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
-        /// Apply a simple knockback in a direction
+        /// Apply a simple grounded knockback in a direction.
+        /// Use the explicit velocity overload or ApplyImpact for launch effects.
         /// </summary>
         /// <param name="force">Knockback force</param>
         /// <param name="knockbackRight">True = knock right, False = knock left</param>
         public void ApplyKnockback(float force, bool knockbackRight)
         {
             float vx = knockbackRight ? force : -force;
-            float vy = -force * 0.5f; // Slight upward component
+            float vy = 0f;
             ApplyKnockback(vx, vy);
         }
 
@@ -662,6 +663,12 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         private void UpdateKnockbackPhysics(int deltaTimeMs, float speedFactor)
         {
+            if (CurrentFoothold != null && JumpState == MobJumpState.None && Math.Abs(VelocityY) <= 0.5f)
+            {
+                UpdateGroundedKnockbackPhysics(speedFactor);
+                return;
+            }
+
             // Apply gravity
             VelocityY += GravityAcc * speedFactor;
             if (VelocityY > MaxFallSpeed)
@@ -722,6 +729,43 @@ namespace HaCreator.MapSimulator.Entities
                 VelocityY = 0;
                 _knockbackRecoveryTime = 0;
                 FindCurrentFoothold(_allFootholds);
+            }
+        }
+
+        private void UpdateGroundedKnockbackPhysics(float speedFactor)
+        {
+            VelocityX *= (float)Math.Pow(CVecCtrl.GroundFriction, speedFactor);
+
+            int effectiveLeft = RX0;
+            int effectiveRight = RX1;
+            if (MapLeft != int.MinValue)
+                effectiveLeft = Math.Max(effectiveLeft, MapLeft + 30);
+            if (MapRight != int.MaxValue)
+                effectiveRight = Math.Min(effectiveRight, MapRight - 30);
+
+            int footholdLeft = Math.Min(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
+            int footholdRight = Math.Max(CurrentFoothold.FirstDot.X, CurrentFoothold.SecondDot.X);
+            effectiveLeft = Math.Max(effectiveLeft, footholdLeft);
+            effectiveRight = Math.Min(effectiveRight, footholdRight);
+
+            X += VelocityX * speedFactor;
+            if (X < effectiveLeft)
+            {
+                X = effectiveLeft;
+                VelocityX = 0;
+            }
+            else if (X > effectiveRight)
+            {
+                X = effectiveRight;
+                VelocityX = 0;
+            }
+
+            Y = CalculateYOnFoothold(CurrentFoothold, X);
+            VelocityY = 0;
+
+            if (Math.Abs(VelocityX) < 0.05f)
+            {
+                VelocityX = 0;
             }
         }
 

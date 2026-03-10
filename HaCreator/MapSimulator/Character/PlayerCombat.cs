@@ -36,8 +36,9 @@ namespace HaCreator.MapSimulator.Character
         private const float BASE_CRITICAL_CHANCE = 0.05f;
         private const float BASE_MISS_CHANCE = 0.05f;
         private const float CRITICAL_MULTIPLIER = 1.5f;
-        private const float KNOCKBACK_FORCE = 250f; // Horizontal knockback velocity (px/s) - matches official client feel
+        private const float KNOCKBACK_FORCE = 250f; // Player knockback velocity when hit by mobs (px/s)
         private const float KNOCKBACK_FORCE_Y = -150f; // Vertical knockback velocity (px/s, negative = up)
+        private const float MOB_HIT_KNOCKBACK_FORCE = 8f; // Grounded mob hit reaction in simulator movement units
         private const float SWIM_KNOCKBACK_FORCE_SCALE_X = 0.6f;
         private const float SWIM_KNOCKBACK_FORCE_SCALE_Y = 0.45f;
         private const int INVINCIBILITY_DURATION = 2000; // 2 seconds after hit
@@ -195,8 +196,7 @@ namespace HaCreator.MapSimulator.Character
             // Apply knockback
             if (mob.MovementInfo != null && !result.IsMiss)
             {
-                float knockback = KNOCKBACK_FORCE * result.KnockbackDirection;
-                mob.MovementInfo.ApplyKnockback(knockback, -2f);
+                mob.MovementInfo.ApplyKnockback(MOB_HIT_KNOCKBACK_FORCE, result.KnockbackDirection > 0);
             }
         }
 
