@@ -343,6 +343,34 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
+        public void PlayerMovementSyncSnapshot_RecordsMovePathAndPassivePosition()
+        {
+            var player = new PlayerCharacter(device: null, texturePool: null, build: null);
+            var foothold = CreateFoothold(0, 100, 200, 100);
+
+            player.SetPosition(100, 100);
+            player.Physics.LandOnFoothold(foothold);
+            player.SetFootholdLookup(CreateFootholdLookup(foothold));
+            player.SetInput(left: false, right: true, up: false, down: false, jump: false, attack: false, pickup: false);
+
+            player.Update(1000, 0.016f);
+            player.Update(1100, 0.016f);
+
+            PlayerMovementSyncSnapshot snapshot = player.GetMovementSyncSnapshot(1100);
+
+            Assert.True(player.IsRecordingMovementPath);
+            Assert.NotEmpty(snapshot.MovePath);
+            Assert.True(snapshot.PassivePosition.X >= 100);
+            Assert.Equal((int)player.X, snapshot.PassivePosition.X);
+            Assert.Equal((int)player.Y, snapshot.PassivePosition.Y);
+            Assert.Equal(player.Physics.CurrentAction, snapshot.PassivePosition.Action);
+            Assert.Equal(player.FacingRight, snapshot.PassivePosition.FacingRight);
+            Assert.Equal(player.Physics.CurrentFoothold?.num ?? 0, snapshot.PassivePosition.FootholdId);
+            Assert.Equal(snapshot.PassivePosition.X, snapshot.MovePath[^1].X);
+            Assert.Equal(snapshot.PassivePosition.Action, snapshot.MovePath[^1].Action);
+        }
+
+        [Fact]
         public void CharacterLoader_StandardActionsIncludeSwimAndFly()
         {
             var standardActionsField = typeof(CharacterLoader).GetField("StandardActions", BindingFlags.Static | BindingFlags.NonPublic);
