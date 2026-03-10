@@ -166,6 +166,7 @@ namespace HaCreator.MapSimulator.UI {
         private const int TOOLTIP_SECTION_GAP = 6;
         private const int TOOLTIP_OFFSET_X = 12;
         private const int TOOLTIP_OFFSET_Y = -4;
+        private const int PREPARED_SKILL_LABEL_GAP = 6;
         private static readonly Vector2 KEYDOWN_BAR_POS = new Vector2(214, -22);
         private static readonly Point KEYDOWN_BAR_GAUGE_OFFSET = new Point(2, 2);
 
@@ -797,8 +798,9 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            float progress = Math.Clamp(preparedSkill.Progress, 0f, 1f);
-            StatusBarKeyDownBarTextures textures = ResolveKeyDownBarTextures(preparedSkill.SkinKey);
+            PreparedSkillHudProfile hudProfile = ResolvePreparedSkillHudProfile(preparedSkill);
+            float progress = ResolvePreparedSkillHudProgress(preparedSkill, hudProfile);
+            StatusBarKeyDownBarTextures textures = ResolveKeyDownBarTextures(hudProfile.SkinKey ?? preparedSkill.SkinKey);
             Rectangle barRect = GetKeyDownBarRectangle(basePosGauge, textures);
 
             if (textures?.Bar != null)
@@ -816,6 +818,8 @@ namespace HaCreator.MapSimulator.UI {
             {
                 sprite.Draw(textures.Graduation, barRect, Color.White);
             }
+
+            DrawPreparedSkillHudText(sprite, preparedSkill, hudProfile, barRect, progress);
         }
 
         private void DrawPreparedSkillGauge(SpriteBatch sprite, Rectangle barRect, float progress, StatusBarKeyDownBarTextures textures)
@@ -839,6 +843,105 @@ namespace HaCreator.MapSimulator.UI {
             {
                 sprite.Draw(_pixelTexture, gaugeRect, new Color(255, 207, 76));
             }
+        }
+
+        private void DrawPreparedSkillHudText(SpriteBatch sprite, StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile, Rectangle barRect, float progress)
+        {
+            if (_font == null || preparedSkill == null)
+            {
+                return;
+            }
+
+            string title = SanitizeTooltipText(preparedSkill.SkillName);
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                Vector2 titleSize = _font.MeasureString(title);
+                Vector2 titlePos = new Vector2(
+                    barRect.X + Math.Max(0f, (barRect.Width - titleSize.X) * 0.5f),
+                    barRect.Y - _font.LineSpacing - PREPARED_SKILL_LABEL_GAP);
+                DrawTooltipText(sprite, title, titlePos, new Color(255, 238, 155));
+            }
+
+            string statusText = BuildPreparedSkillStatusText(preparedSkill, hudProfile, progress);
+            if (string.IsNullOrWhiteSpace(statusText))
+            {
+                return;
+            }
+
+            Vector2 statusSize = _font.MeasureString(statusText);
+            Vector2 statusPos = new Vector2(
+                barRect.Right - statusSize.X,
+                barRect.Y - _font.LineSpacing - PREPARED_SKILL_LABEL_GAP);
+            DrawTooltipText(sprite, statusText, statusPos, Color.White);
+        }
+
+        private static string BuildPreparedSkillStatusText(StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile, float progress)
+        {
+            if (preparedSkill == null)
+            {
+                return string.Empty;
+            }
+
+            if (hudProfile.GaugeDurationMs > 0)
+            {
+                return progress >= 0.999f
+                    ? "Ready"
+                    : $"{Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
+            }
+
+            if (preparedSkill.RemainingMs > 0)
+            {
+                return $"{Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
+            }
+
+            return $"{Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
+        }
+
+        private static float ResolvePreparedSkillHudProgress(StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile)
+        {
+            if (preparedSkill == null)
+            {
+                return 0f;
+            }
+
+            if (hudProfile.GaugeDurationMs > 0)
+            {
+                int elapsedMs = Math.Max(0, preparedSkill.DurationMs - preparedSkill.RemainingMs);
+                return Math.Clamp(elapsedMs / (float)hudProfile.GaugeDurationMs, 0f, 1f);
+            }
+
+            return Math.Clamp(preparedSkill.Progress, 0f, 1f);
+        }
+
+        private static PreparedSkillHudProfile ResolvePreparedSkillHudProfile(StatusBarPreparedSkillRenderData preparedSkill)
+        {
+            if (preparedSkill == null)
+            {
+                return PreparedSkillHudProfile.Default;
+            }
+
+            return preparedSkill.SkillId switch
+            {
+                35121003 => new PreparedSkillHudProfile("KeyDownBar4", 2000),
+                4341002 => new PreparedSkillHudProfile("KeyDownBar1", 600),
+                5101004 => new PreparedSkillHudProfile("KeyDownBar1", 1000),
+                15101003 => new PreparedSkillHudProfile("KeyDownBar1", 1000),
+                2121001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
+                2221001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
+                2321001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
+                3121004 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
+                3221001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 900),
+                4341003 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1200),
+                5201002 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
+                13111002 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 1000),
+                22121000 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 500),
+                22151001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 500),
+                33101005 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 900),
+                33121009 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
+                35001001 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
+                35101009 => new PreparedSkillHudProfile(preparedSkill.SkinKey, 2000),
+                _ => new PreparedSkillHudProfile(preparedSkill.SkinKey, 0)
+            };
         }
 
         private Point GetTooltipPosition(Rectangle anchorRect, int tooltipWidth, int tooltipHeight, int renderWidth, int renderHeight)
@@ -1039,6 +1142,20 @@ namespace HaCreator.MapSimulator.UI {
 
             _keyDownBarTextures.TryGetValue("KeyDownBar", out StatusBarKeyDownBarTextures defaultTextures);
             return defaultTextures;
+        }
+
+        private readonly struct PreparedSkillHudProfile
+        {
+            public static PreparedSkillHudProfile Default => new PreparedSkillHudProfile("KeyDownBar", 0);
+
+            public PreparedSkillHudProfile(string skinKey, int gaugeDurationMs)
+            {
+                SkinKey = string.IsNullOrWhiteSpace(skinKey) ? "KeyDownBar" : skinKey;
+                GaugeDurationMs = gaugeDurationMs;
+            }
+
+            public string SkinKey { get; }
+            public int GaugeDurationMs { get; }
         }
 
         /// <summary>
