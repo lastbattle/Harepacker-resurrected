@@ -4340,7 +4340,16 @@ namespace HaCreator.MapSimulator
 
         private void ConfigureSkillUIBindings()
         {
-            if (_playerManager?.Skills == null || uiWindowManager?.SkillWindow is not SkillUIBigBang skillWindow)
+            if (_playerManager?.Skills == null || uiWindowManager == null)
+                return;
+
+            if (uiWindowManager.QuickSlotWindow != null)
+            {
+                uiWindowManager.QuickSlotWindow.SetSkillManager(_playerManager.Skills);
+                uiWindowManager.QuickSlotWindow.SetSkillLoader(_playerManager.SkillLoader);
+            }
+
+            if (uiWindowManager.SkillWindow is not SkillUIBigBang skillWindow)
                 return;
 
             skillWindow.OnSkillInvoked = skillId =>

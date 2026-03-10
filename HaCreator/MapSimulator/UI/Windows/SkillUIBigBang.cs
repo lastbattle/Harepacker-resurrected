@@ -137,6 +137,13 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
 
+        // Drag and drop
+        private bool _isDraggingSkill;
+        private int _dragSkillId;
+        private SkillDisplayData _dragSkill;
+        private Vector2 _dragPosition;
+        private int _dragSourceIndex = -1;
+
         // Placeholder texture (1x1 white pixel for drawing colored rects)
         private Texture2D _debugPlaceholder;
         #endregion
@@ -146,6 +153,12 @@ namespace HaCreator.MapSimulator.UI
 
         public Action<int> OnSkillInvoked { get; set; }
         public Action<SkillDisplayData> OnSkillSelected { get; set; }
+        public bool IsDraggingSkill => _isDraggingSkill;
+        public int DraggedSkillId => _isDraggingSkill ? _dragSkillId : 0;
+        public Vector2 DragPosition => _dragPosition;
+        public SkillDisplayData DraggedSkill => _isDraggingSkill ? _dragSkill : null;
+        public Action<int, SkillDisplayData> OnDragStart { get; set; }
+        public Action OnDragEnd { get; set; }
 
         public int CurrentTab
         {
@@ -779,6 +792,12 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetSkillIndexAtPosition(int mouseX, int mouseY)
         {
+            return GetSkillIndexAtPosition(mouseX, mouseY, out _);
+        }
+
+        private int GetSkillIndexAtPosition(int mouseX, int mouseY, out bool hitIcon)
+        {
+            hitIcon = false;
             int relX = mouseX - Position.X;
             int relY = mouseY - Position.Y;
             var skills = CurrentSkills;
@@ -791,13 +810,16 @@ namespace HaCreator.MapSimulator.UI
 
                 int nTop = FIRST_ROW_TOP + (rowIndex * SKILL_ROW_HEIGHT);
 
-                bool hitIcon =
+                bool isIconHit =
                     relX >= ICON_HIT_LEFT &&
                     relX <= ICON_HIT_RIGHT &&
                     relY >= nTop + ICON_HIT_TOP_OFFSET &&
                     relY <= nTop + ICON_HIT_BOTTOM_OFFSET;
-                if (hitIcon)
+                if (isIconHit)
+                {
+                    hitIcon = true;
                     return skillIndex;
+                }
 
                 bool hitRow =
                     relX >= ROW_HIT_LEFT &&
@@ -809,6 +831,67 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return -1;
+        }
+
+        public void OnSkillMouseDown(int mouseX, int mouseY)
+        {
+            int skillIndex = GetSkillIndexAtPosition(mouseX, mouseY, out bool hitIcon);
+            if (!hitIcon || skillIndex < 0)
+                return;
+
+            SkillDisplayData skill = GetSkillAtPosition(mouseX, mouseY);
+            if (skill == null || skill.CurrentLevel <= 0)
+                return;
+
+            _isDraggingSkill = true;
+            _dragSkillId = skill.SkillId;
+            _dragSkill = skill;
+            _dragSourceIndex = skillIndex;
+            _dragPosition = new Vector2(mouseX, mouseY);
+            OnDragStart?.Invoke(_dragSkillId, skill);
+        }
+
+        public void OnSkillMouseMove(int mouseX, int mouseY)
+        {
+            if (_isDraggingSkill)
+            {
+                _dragPosition = new Vector2(mouseX, mouseY);
+            }
+        }
+
+        public void OnSkillMouseUp()
+        {
+            if (!_isDraggingSkill)
+                return;
+
+            _isDraggingSkill = false;
+            _dragSkillId = 0;
+            _dragSkill = null;
+            _dragSourceIndex = -1;
+            OnDragEnd?.Invoke();
+        }
+
+        public void CancelDrag()
+        {
+            _isDraggingSkill = false;
+            _dragSkillId = 0;
+            _dragSkill = null;
+            _dragSourceIndex = -1;
+        }
+
+        public void DrawDraggedSkill(SpriteBatch sprite)
+        {
+            if (!_isDraggingSkill || _dragSkill?.IconTexture == null)
+                return;
+
+            sprite.Draw(
+                _dragSkill.IconTexture,
+                new Rectangle(
+                    (int)_dragPosition.X - SKILL_ICON_SIZE / 2,
+                    (int)_dragPosition.Y - SKILL_ICON_SIZE / 2,
+                    SKILL_ICON_SIZE,
+                    SKILL_ICON_SIZE),
+                Color.White * 0.7f);
         }
         #endregion
 
@@ -897,6 +980,11 @@ namespace HaCreator.MapSimulator.UI
             if (invokeSelected)
             {
                 OnSkillInvoked?.Invoke(SelectedSkill.SkillId);
+            }
+
+            if (_isDraggingSkill)
+            {
+                _dragPosition = new Vector2(mouseState.X, mouseState.Y);
             }
 
             _previousMouseState = mouseState;

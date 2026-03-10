@@ -635,12 +635,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 var mouseState = Mouse.GetState();
                 _dragPosition = new Vector2(mouseState.X, mouseState.Y);
-
-                // End drag if mouse button released
-                if (mouseState.LeftButton == ButtonState.Released)
-                {
-                    OnSkillMouseUp();
-                }
             }
         }
         #endregion

@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
 
         // Last key states for toggle detection
         private KeyboardState _previousKeyState;
+        private MouseState _previousMouseState;
         #endregion
 
         #region Properties
@@ -274,7 +275,10 @@ namespace HaCreator.MapSimulator.UI
             foreach (var window in windows)
             {
                 window.ResetDragState();
+                CancelSkillDrag(window);
             }
+
+            QuickSlotWindow?.CancelDrag();
         }
 
         /// <summary>
@@ -354,6 +358,8 @@ namespace HaCreator.MapSimulator.UI
                         drawReflectionInfo, renderParameters, tickCount);
                 }
             }
+
+            DrawDraggedSkillOverlay(sprite);
         }
         #endregion
 
@@ -364,6 +370,22 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
+
+            if (HandleSkillDrag(mouseState, leftJustPressed, leftJustReleased))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            if (HandleQuickSlotInteraction(mouseState, leftJustPressed, leftJustReleased, rightJustPressed))
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
             // If mouse button is released, clear the dragging window
             if (mouseState.LeftButton == ButtonState.Released)
             {
@@ -376,6 +398,7 @@ namespace HaCreator.MapSimulator.UI
                 if (_draggingWindow.IsVisible)
                 {
                     _draggingWindow.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                    _previousMouseState = mouseState;
                     return false; // Don't consume - just like minimap
                 }
                 else
@@ -401,6 +424,7 @@ namespace HaCreator.MapSimulator.UI
                         _draggingWindow = window;
                         BringToFront(window);
                         window.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+                        _previousMouseState = mouseState;
                         return false; // Don't consume - just like minimap
                     }
 
@@ -411,17 +435,213 @@ namespace HaCreator.MapSimulator.UI
                         bool handled = window.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
                         if (handled)
                         {
+                            _previousMouseState = mouseState;
                             return true;
                         }
                         // Mouse is over this window but didn't click a button - stop checking windows below
+                        _previousMouseState = mouseState;
                         return false;
                     }
                 }
             }
 
+            _previousMouseState = mouseState;
             return false;
         }
         #endregion
+
+        private bool HandleSkillDrag(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
+        {
+            UIWindowBase activeDragSource = GetActiveSkillDragSource();
+            if (activeDragSource != null)
+            {
+                UpdateSkillDrag(activeDragSource, mouseState.X, mouseState.Y);
+
+                if (leftJustReleased)
+                {
+                    int skillId = GetDraggedSkillId(activeDragSource);
+                    bool dropped = skillId > 0 &&
+                                   QuickSlotWindow?.IsVisible == true &&
+                                   QuickSlotWindow.AcceptSkillDrop(skillId, mouseState.X, mouseState.Y);
+                    EndSkillDrag(activeDragSource);
+
+                    if (dropped && QuickSlotWindow != null)
+                    {
+                        BringToFront(QuickSlotWindow);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!leftJustPressed)
+                return false;
+
+            UIWindowBase hoveredWindow = GetTopmostWindowAt(mouseState.X, mouseState.Y);
+            if (hoveredWindow == null)
+                return false;
+
+            if (!TryBeginSkillDrag(hoveredWindow, mouseState.X, mouseState.Y))
+                return false;
+
+            BringToFront(hoveredWindow);
+            _draggingWindow = null;
+            return true;
+        }
+
+        private bool HandleQuickSlotInteraction(MouseState mouseState, bool leftJustPressed, bool leftJustReleased, bool rightJustPressed)
+        {
+            if (QuickSlotWindow == null || !QuickSlotWindow.IsVisible)
+                return false;
+
+            QuickSlotWindow.OnMouseMove(mouseState.X, mouseState.Y);
+
+            if (QuickSlotWindow.IsDraggingSlot)
+            {
+                if (leftJustReleased)
+                {
+                    QuickSlotWindow.OnMouseUp(mouseState.X, mouseState.Y);
+                }
+
+                return true;
+            }
+
+            if (!QuickSlotWindow.ContainsPoint(mouseState.X, mouseState.Y))
+                return false;
+
+            int slot = QuickSlotWindow.GetSlotAtPosition(mouseState.X, mouseState.Y);
+            if (slot < 0)
+                return false;
+
+            if (rightJustPressed)
+            {
+                BringToFront(QuickSlotWindow);
+                QuickSlotWindow.OnMouseDown(mouseState.X, mouseState.Y, false, true);
+                return true;
+            }
+
+            if (leftJustPressed)
+            {
+                BringToFront(QuickSlotWindow);
+                QuickSlotWindow.OnMouseDown(mouseState.X, mouseState.Y, true, false);
+                return true;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed)
+                return true;
+
+            return false;
+        }
+
+        private UIWindowBase GetTopmostWindowAt(int x, int y)
+        {
+            for (int i = windows.Count - 1; i >= 0; i--)
+            {
+                if (windows[i].IsVisible && windows[i].ContainsPoint(x, y))
+                    return windows[i];
+            }
+
+            return null;
+        }
+
+        private UIWindowBase GetActiveSkillDragSource()
+        {
+            foreach (var window in windows)
+            {
+                if (IsDraggingSkill(window))
+                    return window;
+            }
+
+            return null;
+        }
+
+        private static bool TryBeginSkillDrag(UIWindowBase window, int mouseX, int mouseY)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseDown(mouseX, mouseY);
+                    return skillWindow.IsDraggingSkill;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseDown(mouseX, mouseY);
+                    return skillWindow.IsDraggingSkill;
+                default:
+                    return false;
+            }
+        }
+
+        private static void UpdateSkillDrag(UIWindowBase window, int mouseX, int mouseY)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseMove(mouseX, mouseY);
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseMove(mouseX, mouseY);
+                    break;
+            }
+        }
+
+        private static void EndSkillDrag(UIWindowBase window)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.OnSkillMouseUp();
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.OnSkillMouseUp();
+                    break;
+            }
+        }
+
+        private static void CancelSkillDrag(UIWindowBase window)
+        {
+            switch (window)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.CancelDrag();
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.CancelDrag();
+                    break;
+            }
+        }
+
+        private static bool IsDraggingSkill(UIWindowBase window)
+        {
+            return window switch
+            {
+                SkillUI skillWindow => skillWindow.IsDraggingSkill,
+                SkillUIBigBang skillWindow => skillWindow.IsDraggingSkill,
+                _ => false
+            };
+        }
+
+        private static int GetDraggedSkillId(UIWindowBase window)
+        {
+            return window switch
+            {
+                SkillUI skillWindow => skillWindow.DraggedSkillId,
+                SkillUIBigBang skillWindow => skillWindow.DraggedSkillId,
+                _ => 0
+            };
+        }
+
+        private void DrawDraggedSkillOverlay(SpriteBatch sprite)
+        {
+            UIWindowBase dragSource = GetActiveSkillDragSource();
+            switch (dragSource)
+            {
+                case SkillUI skillWindow:
+                    skillWindow.DrawDraggedSkill(sprite);
+                    break;
+                case SkillUIBigBang skillWindow:
+                    skillWindow.DrawDraggedSkill(sprite);
+                    break;
+            }
+        }
 
         #region Utility
         /// <summary>

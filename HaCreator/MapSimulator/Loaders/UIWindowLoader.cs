@@ -1465,6 +1465,34 @@ namespace HaCreator.MapSimulator.Loaders
             return quest;
         }
 
+        private static QuickSlotUI CreateQuickSlotWindow(GraphicsDevice device, int screenWidth, int screenHeight)
+        {
+            const int width = 286;
+            const int height = 96;
+
+            Texture2D frameTexture = new Texture2D(device, width, height);
+            Color[] data = new Color[width * height];
+            Color fill = new Color(18, 24, 34, 130);
+            Color border = new Color(85, 98, 120, 180);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    bool isBorder = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+                    data[(y * width) + x] = isBorder ? border : fill;
+                }
+            }
+
+            frameTexture.SetData(data);
+
+            IDXObject frame = new DXObject(0, 0, frameTexture, 0);
+            QuickSlotUI quickSlot = new QuickSlotUI(frame, device);
+            quickSlot.Position = new Point((screenWidth - width) / 2, Math.Max(20, screenHeight - height - 120));
+            quickSlot.Show();
+            return quickSlot;
+        }
+
         private static Texture2D LoadQuestIcon(WzSubProperty questIconProperty, string iconNum, GraphicsDevice device)
         {
             WzSubProperty iconSub = (WzSubProperty)questIconProperty[iconNum];
@@ -1598,6 +1626,7 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowBase skill = CreateSkillWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase quest = CreateQuestWindowUnified(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
             UIWindowBase ability = CreateAbilityWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, screenWidth, screenHeight, isBigBang);
+            QuickSlotUI quickSlot = CreateQuickSlotWindow(device, screenWidth, screenHeight);
 
             // Seed the skill window with the requested job path only.
             if (skill is SkillUIBigBang skillBigBang)
@@ -1619,6 +1648,7 @@ namespace HaCreator.MapSimulator.Loaders
             manager.RegisterSkillWindow(skill);
             manager.RegisterQuestWindow(quest);
             manager.RegisterAbilityWindow(ability);
+            manager.RegisterQuickSlotWindow(quickSlot);
 
             if (skillMacro != null)
             {

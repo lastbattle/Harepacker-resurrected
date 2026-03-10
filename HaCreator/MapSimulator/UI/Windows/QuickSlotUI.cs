@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "QuickSlot";
+        public bool IsDraggingSlot => _isDragging;
 
         public int CurrentBar
         {
@@ -427,6 +428,13 @@ namespace HaCreator.MapSimulator.UI
                 _dragSourceSlot = -1;
                 _dragSkillId = 0;
             }
+        }
+
+        public void CancelDrag()
+        {
+            _isDragging = false;
+            _dragSourceSlot = -1;
+            _dragSkillId = 0;
         }
 
         /// <summary>
