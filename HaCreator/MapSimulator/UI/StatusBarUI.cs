@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.UI {
         public string SkillName { get; set; }
         public string Description { get; set; }
         public string IconKey { get; set; } = "united/buff";
+        public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
     }
@@ -155,11 +156,12 @@ namespace HaCreator.MapSimulator.UI {
         // content anchored 51px above the frame bottom instead of to the viewport.
         private static readonly Point STATUS_BAR_LEFT_BASE_OFFSET = new Point(0, 43);
         private static readonly Point STATUS_BAR_GAUGE_BASE_OFFSET = new Point(155, 52);
-        private static readonly Vector2 BUFF_TRAY_POS = new Vector2(429, -7);
         private const int BUFF_ICON_SIZE = 32;
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
         private const int BUFF_TRAY_ROWS = 2;
+        private const int BUFF_TRAY_TOP_MARGIN = 8;
+        private const int BUFF_TRAY_RIGHT_MARGIN = 8;
         private const int TOOLTIP_FALLBACK_WIDTH = 320;
         private const int TOOLTIP_PADDING = 10;
         private const int TOOLTIP_TITLE_GAP = 8;
@@ -428,7 +430,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Draw gauge bars first (under the text)
             DrawGaugeBars(sprite, stats, basePosGauge, currentTime);
-            DrawBuffTray(sprite, basePosGauge, currentTime);
+            DrawBuffTray(sprite, renderParameters, currentTime);
             DrawPreparedSkillBar(sprite, basePosGauge, currentTime);
 
             // Skip text rendering if no font
@@ -643,7 +645,7 @@ namespace HaCreator.MapSimulator.UI {
                 new Color(fallbackColor.R, fallbackColor.G, fallbackColor.B, alpha));
         }
 
-        private void DrawBuffTray(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)
+        private void DrawBuffTray(SpriteBatch sprite, RenderParameters renderParameters, int currentTime)
         {
             if (_getBuffStatus == null)
             {
@@ -658,17 +660,20 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            Vector2 trayOrigin = basePosGauge + BUFF_TRAY_POS;
             int maxEntries = BUFF_TRAY_COLUMNS * BUFF_TRAY_ROWS;
+            int visibleCount = Math.Min(buffEntries.Count, maxEntries);
 
-            for (int i = 0; i < buffEntries.Count && i < maxEntries; i++)
+            for (int i = 0; i < visibleCount; i++)
             {
                 StatusBarBuffRenderData buffEntry = buffEntries[i];
                 int row = i / BUFF_TRAY_COLUMNS;
                 int col = i % BUFF_TRAY_COLUMNS;
+                int entriesInRow = Math.Min(BUFF_TRAY_COLUMNS, visibleCount - (row * BUFF_TRAY_COLUMNS));
+                int currentRowWidth = (BUFF_ICON_SIZE * entriesInRow) + (BUFF_ICON_SPACING * Math.Max(0, entriesInRow - 1));
+                int rowStartX = renderParameters.RenderWidth - BUFF_TRAY_RIGHT_MARGIN - currentRowWidth;
                 Rectangle iconRect = new Rectangle(
-                    (int)trayOrigin.X + col * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
-                    (int)trayOrigin.Y + row * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
+                    rowStartX + col * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
+                    BUFF_TRAY_TOP_MARGIN + row * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
                     BUFF_ICON_SIZE,
                     BUFF_ICON_SIZE);
 
@@ -676,8 +681,8 @@ namespace HaCreator.MapSimulator.UI {
                 _buffTooltipEntries[buffEntry.SkillId] = buffEntry;
                 DrawBuffIconFrame(sprite, iconRect);
 
-                Texture2D iconTexture = null;
-                if (!_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
+                Texture2D iconTexture = buffEntry.IconTexture;
+                if (iconTexture == null && !_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
                 {
                     _buffIconTextures.TryGetValue("united/buff", out iconTexture);
                 }

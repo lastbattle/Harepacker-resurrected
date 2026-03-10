@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -304,6 +305,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Animations
         public IDXObject Icon { get; set; }
+        public Texture2D IconTexture { get; set; }
         public IDXObject IconDisabled { get; set; }
         public IDXObject IconMouseOver { get; set; }
         public SkillAnimation Effect { get; set; }           // Effect on caster

@@ -886,6 +886,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     var texture = bitmap.ToTexture2DAndDispose(_device);
                     skill.Icon = new DXObject(0, 0, texture);
+                    skill.IconTexture = texture;
                 }
             }
 

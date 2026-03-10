@@ -4782,7 +4782,9 @@ namespace HaCreator.MapSimulator
                 {
                     SkillId = buffEntry.SkillId,
                     SkillName = buffEntry.SkillName,
+                    Description = buffEntry.Description,
                     IconKey = buffEntry.IconKey,
+                    IconTexture = buffEntry.IconTexture,
                     RemainingMs = buffEntry.RemainingMs,
                     DurationMs = buffEntry.DurationMs
                 });
