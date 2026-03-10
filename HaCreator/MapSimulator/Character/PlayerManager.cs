@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Character
         // Mob/Drop pools for combat
         private MobPool _mobPool;
         private DropPool _dropPool;
+        private int _lastPickupAttemptTime = int.MinValue;
 
         // Combat effects reference
         private CombatEffects _combatEffects;
@@ -469,9 +470,17 @@ namespace HaCreator.MapSimulator.Character
                 Input.ApplyToPlayer(Player);
 
                 // Handle pickup input separately
-                if (Input.IsPressed(InputAction.Pickup) && _dropPool != null)
+                bool pickupHeld = Input.IsHeld(InputAction.Pickup);
+                bool pickupPressed = Input.IsPressed(InputAction.Pickup);
+
+                if (_dropPool != null && ShouldAttemptPickup(pickupHeld, pickupPressed, currentTime, _lastPickupAttemptTime))
                 {
                     Combat?.TryPickupDrop(_dropPool, currentTime);
+                    _lastPickupAttemptTime = currentTime;
+                }
+                else if (!pickupHeld)
+                {
+                    _lastPickupAttemptTime = int.MinValue;
                 }
 
                 // Handle GM fly mode toggle (G key)
@@ -1024,6 +1033,8 @@ namespace HaCreator.MapSimulator.Character
                 Player.ClearInput();
             }
 
+            _lastPickupAttemptTime = int.MinValue;
+
             // Combat reference will be re-established
             // Note: We intentionally do NOT clear:
             // - Player (character appearance, stats)
@@ -1058,6 +1069,21 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetMobPool(mobPool);
             Skills?.SetCombatEffects(combatEffects);
             Skills?.SetSoundManager(_soundManager);
+        }
+
+        private static bool ShouldAttemptPickup(bool pickupHeld, bool pickupPressed, int currentTime, int lastPickupAttemptTime)
+        {
+            if (!pickupHeld)
+            {
+                return false;
+            }
+
+            if (pickupPressed || lastPickupAttemptTime == int.MinValue)
+            {
+                return true;
+            }
+
+            return currentTime - lastPickupAttemptTime >= DropItem.PICKUP_DURATION;
         }
 
         #endregion
