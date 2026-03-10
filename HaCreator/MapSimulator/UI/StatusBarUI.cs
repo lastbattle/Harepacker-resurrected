@@ -142,6 +142,9 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Vector2 LEVEL_TEXT_POS = new Vector2(45, 10);  // Level number (offset adjusted for digit count)
         private static readonly Vector2 JOB_TEXT_POS = new Vector2(75, 7);     // Job name
         private static readonly Vector2 NAME_TEXT_POS = new Vector2(75, 19);   // Character name
+        private const float JOB_TEXT_SCALE = 0.75f;
+        private const float JOB_TEXT_MAX_WIDTH = 92f;
+        private static readonly Color JOB_TEXT_COLOR = new Color(132, 182, 104);
 
         // gaugeBackgrd area - HP/MP/EXP text and gauges
         // lvBacktrnd is ~64px wide, so gauge area starts at X~64
@@ -493,7 +496,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Job name
             Vector2 jobPos = basePosLeft + JOB_TEXT_POS;
-            DrawTextWithShadow(sprite, stats.Job, jobPos, Color.Yellow, Color.Black, 0.8f);
+            DrawTextWithShadow(sprite, FormatStatusBarJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, Color.Black, JOB_TEXT_SCALE);
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = basePosLeft + NAME_TEXT_POS;
@@ -1323,6 +1326,44 @@ namespace HaCreator.MapSimulator.UI {
                 .Replace("\r", string.Empty)
                 .Replace("\n", " ")
                 .Replace("\t", " ");
+        }
+
+        private string FormatStatusBarJobLabel(string jobName)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(jobName) ? "Beginner" : jobName.Trim();
+            int openParen = resolvedName.IndexOf('(');
+            int closeParen = resolvedName.IndexOf(')', openParen + 1);
+            if (openParen >= 0 && closeParen > openParen + 1)
+            {
+                resolvedName = resolvedName.Substring(openParen + 1, closeParen - openParen - 1).Trim();
+            }
+
+            return FitTextToWidth(resolvedName, JOB_TEXT_MAX_WIDTH, JOB_TEXT_SCALE);
+        }
+
+        private string FitTextToWidth(string text, float maxWidth, float scale)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+            {
+                return text ?? string.Empty;
+            }
+
+            if (_font.MeasureString(text).X * scale <= maxWidth)
+            {
+                return text;
+            }
+
+            const string ellipsis = "...";
+            for (int length = text.Length - 1; length > 0; length--)
+            {
+                string candidate = text.Substring(0, length).TrimEnd() + ellipsis;
+                if (_font.MeasureString(candidate).X * scale <= maxWidth)
+                {
+                    return candidate;
+                }
+            }
+
+            return ellipsis;
         }
 
         private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures)
