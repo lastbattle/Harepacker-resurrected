@@ -70,6 +70,22 @@ namespace HaCreator.MapSimulator.Managers
         public bool PlayerControlEnabled { get; set; } = true;
 
         /// <summary>
+        /// True while scripted UI or field sequences should block player input without enabling free camera.
+        /// </summary>
+        public bool DirectionModeActive { get; private set; } = false;
+
+        /// <summary>
+        /// Tick count when a delayed direction-mode release should occur.
+        /// int.MinValue means no delayed release is pending.
+        /// </summary>
+        public int DirectionModeReleaseAt { get; private set; } = int.MinValue;
+
+        /// <summary>
+        /// True when local gameplay input should reach the player character.
+        /// </summary>
+        public bool IsPlayerInputEnabled => PlayerControlEnabled && !DirectionModeActive;
+
+        /// <summary>
         /// Enable smooth camera scrolling
         /// </summary>
         public bool UseSmoothCamera { get; set; } = true;
@@ -166,6 +182,8 @@ namespace HaCreator.MapSimulator.Managers
 
             // Reset camera/control state
             PlayerControlEnabled = true;
+            DirectionModeActive = false;
+            DirectionModeReleaseAt = int.MinValue;
             UseSmoothCamera = true;
 
             // Reset UI/debug state
@@ -208,6 +226,54 @@ namespace HaCreator.MapSimulator.Managers
         public void TogglePlayerControl()
         {
             PlayerControlEnabled = !PlayerControlEnabled;
+        }
+
+        /// <summary>
+        /// Enter direction mode immediately and cancel any pending delayed release.
+        /// </summary>
+        public void EnterDirectionMode()
+        {
+            DirectionModeActive = true;
+            DirectionModeReleaseAt = int.MinValue;
+        }
+
+        /// <summary>
+        /// Schedule direction mode to end after a delay, mirroring the client's deferred release.
+        /// </summary>
+        public void RequestLeaveDirectionMode(int currentTickCount, int delayMs)
+        {
+            if (!DirectionModeActive)
+            {
+                DirectionModeReleaseAt = int.MinValue;
+                return;
+            }
+
+            DirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
+        }
+
+        /// <summary>
+        /// Immediately clear direction mode and any pending delayed release.
+        /// </summary>
+        public void ExitDirectionModeImmediate()
+        {
+            DirectionModeActive = false;
+            DirectionModeReleaseAt = int.MinValue;
+        }
+
+        /// <summary>
+        /// Advance delayed direction-mode release timers.
+        /// </summary>
+        public void UpdateDirectionMode(int currentTickCount)
+        {
+            if (!DirectionModeActive || DirectionModeReleaseAt == int.MinValue)
+            {
+                return;
+            }
+
+            if (unchecked(currentTickCount - DirectionModeReleaseAt) >= 0)
+            {
+                ExitDirectionModeImmediate();
+            }
         }
 
         /// <summary>

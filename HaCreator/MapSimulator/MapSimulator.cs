@@ -286,10 +286,12 @@ namespace HaCreator.MapSimulator
         // Default delay is 1000ms (1 second) if portal doesn't specify its own delay
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
         private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
+        private const int DIRECTION_MODE_RELEASE_DELAY_MS = 300;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
         private SameMapTeleportTarget _sameMapTeleportTarget = null;
+        private bool _scriptedDirectionModeOwnerActive = false;
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -1229,6 +1231,8 @@ namespace HaCreator.MapSimulator
             _npcInteractionOverlay?.Close();
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
+            _gameState.ExitDirectionModeImmediate();
+            _scriptedDirectionModeOwnerActive = false;
         }
 
         /// <summary>
@@ -2178,6 +2182,8 @@ namespace HaCreator.MapSimulator
                 HandlePortalDoubleClick(newMouseState);
             }
 
+            UpdateDirectionModeState(currTickCount);
+
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
             {
@@ -2628,7 +2634,7 @@ namespace HaCreator.MapSimulator
             if (newKeyboardState.IsKeyUp(Keys.C) && _oldKeyboardState.IsKeyDown(Keys.C)
                 && !newKeyboardState.IsKeyDown(Keys.LeftShift) && !newKeyboardState.IsKeyDown(Keys.RightShift))
             {
-                if (_playerManager != null && _playerManager.IsPlayerActive && _gameState.PlayerControlEnabled)
+                if (_playerManager != null && _playerManager.IsPlayerActive && _gameState.IsPlayerInputEnabled)
                 {
                     bool attacked = _playerManager.TryDoingRandomAttack(currTickCount);
                     if (attacked)
@@ -2679,10 +2685,10 @@ namespace HaCreator.MapSimulator
             // Pass chat state to block movement/jump input while typing
             if (_playerManager != null)
             {
-                _playerManager.IsPlayerControlEnabled = _gameState.PlayerControlEnabled;
+                _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive, isWindowActive);
 
-                if (_gameState.PlayerControlEnabled && _playerManager.IsPlayerActive)
+                if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)
                 {
                     Vector2 updatedPlayerPosition = _playerManager.GetPlayerPosition();
                     CheckReactorTouch(updatedPlayerPosition.X, updatedPlayerPosition.Y);
@@ -3866,11 +3872,9 @@ namespace HaCreator.MapSimulator
                 return;
 
             // Only handle when player control is enabled and player is active
-            if (!_gameState.PlayerControlEnabled || _playerManager == null || !_playerManager.IsPlayerActive)
+            if (!_gameState.IsPlayerInputEnabled || _playerManager == null || !_playerManager.IsPlayerActive)
                 return;
 
-            // Check if UP key (Interact) was just pressed (tap, not hold)
-            // Note: Input.SyncState() is called after map change to ensure held keys don't trigger this
             if (!_playerManager.Input.IsPressed(InputAction.Interact))
                 return;
 
@@ -3980,6 +3984,23 @@ namespace HaCreator.MapSimulator
             _sameMapTeleportStartTime = currentTime;
             _sameMapTeleportDelay = Math.Max(0, delayMs);
             _sameMapTeleportTarget = new SameMapTeleportTarget(targetX, targetY - SAME_MAP_TELEPORT_Y_OFFSET);
+        }
+
+        private void UpdateDirectionModeState(int currentTime)
+        {
+            bool scriptedOwnerActive = _npcInteractionOverlay?.IsVisible == true;
+
+            if (scriptedOwnerActive)
+            {
+                _gameState.EnterDirectionMode();
+            }
+            else if (_scriptedDirectionModeOwnerActive)
+            {
+                _gameState.RequestLeaveDirectionMode(currentTime, DIRECTION_MODE_RELEASE_DELAY_MS);
+            }
+
+            _scriptedDirectionModeOwnerActive = scriptedOwnerActive;
+            _gameState.UpdateDirectionMode(currentTime);
         }
 
         private void CompleteSameMapTeleport()
