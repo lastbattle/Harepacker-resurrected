@@ -85,6 +85,8 @@ namespace HaCreator.MapSimulator.UI {
         // Loaded from UI.wz/Basic.img/ItemNo/ (digits 0-9, slash, percent, etc.)
         private Texture2D[] _digitTextures;       // 0-9
         private Point[] _digitOrigins;            // Origins for digits 0-9
+        private Texture2D[] _levelDigitTextures;  // 0-9 for StatusBar2 mainBar/lvNumber
+        private Point[] _levelDigitOrigins;       // Origins for level digits
         private Texture2D _slashTexture;          // For HP/MP display like "100/100"
         private Point _slashOrigin;
         private Texture2D _percentTexture;        // For EXP percentage
@@ -96,6 +98,7 @@ namespace HaCreator.MapSimulator.UI {
         private Texture2D _dotTexture;            // For decimal point
         private Point _dotOrigin;
         private bool _useBitmapFont = false;      // Whether to use bitmap font or SpriteFont
+        private bool _useLevelBitmapFont = false; // Whether to use lvNumber textures for the level label
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
         private readonly Dictionary<int, StatusBarBuffRenderData> _buffTooltipEntries = new Dictionary<int, StatusBarBuffRenderData>();
@@ -343,6 +346,16 @@ namespace HaCreator.MapSimulator.UI {
             }
         }
 
+        public void SetLevelDigitTextures(Texture2D[] digitTextures, Point[] digitOrigins)
+        {
+            if (digitTextures != null && digitTextures.Length >= 10)
+            {
+                _levelDigitTextures = digitTextures;
+                _levelDigitOrigins = digitOrigins ?? new Point[10];
+                _useLevelBitmapFont = true;
+            }
+        }
+
         /// <summary>
         /// Add UI buttons to be rendered
         /// </summary>
@@ -443,7 +456,14 @@ namespace HaCreator.MapSimulator.UI {
             // Adjust X based on number of digits (from IDA: offset 0 for 1-9, 6 for 10-99, 12 for 100+)
             int levelOffset = stats.Level <= 9 ? 0 : (stats.Level <= 99 ? 6 : 12);
             Vector2 levelPos = basePosLeft + new Vector2(LEVEL_TEXT_POS.X - levelOffset, LEVEL_TEXT_POS.Y);
-            DrawTextWithShadow(sprite, levelText, levelPos, Color.White, Color.Black);
+            if (_useLevelBitmapFont)
+            {
+                DrawDigitBitmapString(sprite, levelText, levelPos, _levelDigitTextures, _levelDigitOrigins, 1.0f);
+            }
+            else
+            {
+                DrawTextWithShadow(sprite, levelText, levelPos, Color.White, Color.Black);
+            }
 
             // Job name
             Vector2 jobPos = basePosLeft + JOB_TEXT_POS;
@@ -451,7 +471,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = basePosLeft + NAME_TEXT_POS;
-            DrawTextWithShadow(sprite, stats.Name, namePos, Color.White, Color.Black, 0.8f);
+            DrawDiagonalShadowText(sprite, stats.Name, namePos, Color.White, Color.Black, 0.8f);
 
             // Draw gauge text section (HP/MP/EXP area) - use basePosGauge
             // HP text - format from client: [HP/MaxHP]
@@ -476,7 +496,7 @@ namespace HaCreator.MapSimulator.UI {
             double expPercent = stats.MaxEXP > 0 ? (double)stats.EXP / stats.MaxEXP * 100.0 : 0.0;
             // Cap at 99.99% like the client does
             if (expPercent > 99.99) expPercent = 99.99;
-            string expText = $"[{expPercent:F2}%]";
+            string expText = $"{Math.Max(0L, stats.EXP)}[{expPercent:F2}%]";
             Vector2 expPos = basePosGauge + EXP_TEXT_POS;
             if (_useBitmapFont) {
                 DrawBitmapString(sprite, expText, expPos, 1.0f);
@@ -1252,6 +1272,15 @@ namespace HaCreator.MapSimulator.UI {
             sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
+        private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f)
+        {
+            sprite.DrawString(_font, text, position + new Vector2(-1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position + new Vector2(1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position + new Vector2(-1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position + new Vector2(1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+        }
+
         /// <summary>
         /// Draw a string using bitmap font textures (MapleStory style).
         /// Falls back to SpriteFont for characters without bitmap textures.
@@ -1297,6 +1326,38 @@ namespace HaCreator.MapSimulator.UI {
                     Vector2 charSize = _font.MeasureString(charStr) * scale * 0.8f;
                     xOffset += (int)charSize.X + CHAR_SPACING;
                 }
+            }
+
+            return xOffset;
+        }
+
+        private int DrawDigitBitmapString(SpriteBatch sprite, string text, Vector2 position, Texture2D[] digitTextures, Point[] digitOrigins, float scale = 1.0f)
+        {
+            if (digitTextures == null || digitTextures.Length < 10)
+                return 0;
+
+            int xOffset = 0;
+            int baselineY = digitOrigins != null && digitOrigins.Length > 0 ? digitOrigins[0].Y : 0;
+
+            foreach (char c in text)
+            {
+                if (c < '0' || c > '9')
+                    continue;
+
+                int index = c - '0';
+                Texture2D texture = digitTextures[index];
+                if (texture == null)
+                    continue;
+
+                Point origin = digitOrigins != null && digitOrigins.Length > index ? digitOrigins[index] : Point.Zero;
+                int yAdjust = baselineY - origin.Y;
+                Rectangle destRect = new Rectangle(
+                    (int)(position.X + xOffset - origin.X * scale),
+                    (int)(position.Y + yAdjust * scale),
+                    (int)(texture.Width * scale),
+                    (int)(texture.Height * scale));
+                sprite.Draw(texture, destRect, Color.White);
+                xOffset += (int)(texture.Width * scale);
             }
 
             return xOffset;

@@ -413,6 +413,8 @@ namespace HaCreator.MapSimulator.Loaders
                     if (gaugeNumberProp != null) {
                         Texture2D[] digitTextures = new Texture2D[10];
                         Point[] digitOrigins = new Point[10];
+                        Texture2D[] levelDigitTextures = new Texture2D[10];
+                        Point[] levelDigitOrigins = new Point[10];
                         bool hasDigits = false;
 
                         // Helper to get origin from canvas
@@ -423,6 +425,24 @@ namespace HaCreator.MapSimulator.Loaders
                                 return new Point(origin.X.Value, origin.Y.Value);
                             }
                             return Point.Zero;
+                        }
+
+                        WzSubProperty levelNumberProp = mainBarProperties?["lvNumber"] as WzSubProperty;
+                        if (levelNumberProp != null) {
+                            for (int i = 0; i < 10; i++) {
+                                WzCanvasProperty levelDigitCanvas = levelNumberProp[i.ToString()] as WzCanvasProperty;
+                                if (levelDigitCanvas == null) {
+                                    continue;
+                                }
+
+                                var levelBitmap = levelDigitCanvas.GetLinkedWzCanvasBitmap();
+                                if (levelBitmap == null) {
+                                    continue;
+                                }
+
+                                levelDigitTextures[i] = levelBitmap.ToTexture2DAndDispose(device);
+                                levelDigitOrigins[i] = GetCanvasOrigin(levelDigitCanvas);
+                            }
                         }
 
                         // Load digits 0-9 with origins
@@ -504,6 +524,10 @@ namespace HaCreator.MapSimulator.Loaders
                                 bracketLeftTexture, bracketLeftOrigin,
                                 bracketRightTexture, bracketRightOrigin,
                                 dotTexture, dotOrigin);
+
+                            if (levelDigitTextures[0] != null) {
+                                statusBar.SetLevelDigitTextures(levelDigitTextures, levelDigitOrigins);
+                            }
                         }
                     }
 
