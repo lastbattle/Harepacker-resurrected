@@ -441,6 +441,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.PrepareActionName = GetString(prepareNode, "action");
                 skill.PrepareDurationMs = ResolveAnimationDuration(prepareNode);
+
+                var prepareAnimation = LoadSkillAnimation(prepareNode, "prepare");
+                if (prepareAnimation.Frames.Count > 0)
+                {
+                    skill.PrepareEffect = prepareAnimation;
+                }
             }
 
             var keydownNode = skillNode["keydown"] ?? skillNode["keyDown"];
@@ -449,6 +455,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.KeydownActionName = GetString(keydownNode, "action");
                 skill.KeydownDurationMs = ResolveAnimationDuration(keydownNode);
                 skill.KeydownRepeatIntervalMs = ResolveKeydownRepeatInterval(keydownNode);
+
+                var keydownAnimation = LoadSkillAnimation(keydownNode, "keydown");
+                if (keydownAnimation.Frames.Count > 0)
+                {
+                    keydownAnimation.Loop = true;
+                    skill.KeydownEffect = keydownAnimation;
+                }
             }
 
             var keydownEndNode = skillNode["keydownend"] ?? skillNode["keyDownEnd"];
@@ -456,6 +469,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.KeydownEndActionName = GetString(keydownEndNode, "action");
                 skill.KeydownEndDurationMs = ResolveAnimationDuration(keydownEndNode);
+
+                var keydownEndAnimation = LoadSkillAnimation(keydownEndNode, "keydownend");
+                if (keydownEndAnimation.Frames.Count > 0)
+                {
+                    skill.KeydownEndEffect = keydownEndAnimation;
+                }
             }
 
             skill.IsKeydownSkill = keydownNode != null || keydownEndNode != null || skill.IsRapidAttack;

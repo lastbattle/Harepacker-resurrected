@@ -307,6 +307,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         public IDXObject IconDisabled { get; set; }
         public IDXObject IconMouseOver { get; set; }
         public SkillAnimation Effect { get; set; }           // Effect on caster
+        public SkillAnimation PrepareEffect { get; set; }    // Startup effect for prepare/keydown skills
+        public SkillAnimation KeydownEffect { get; set; }    // Looping effect while keydown skill is held
+        public SkillAnimation KeydownEndEffect { get; set; } // Exit effect when keydown skill ends
         public SkillAnimation HitEffect { get; set; }        // Effect on target
         public SkillAnimation AffectedEffect { get; set; }   // Effect while buff active
         public SkillAnimation SummonSpawnAnimation { get; set; } // Initial summon spawn sequence
@@ -579,6 +582,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Level { get; set; }
         public SkillData SkillData { get; set; }
         public SkillLevelData LevelData { get; set; }
+        public SkillAnimation EffectAnimation { get; set; }
 
         public int CastTime { get; set; }
         public int CasterId { get; set; }

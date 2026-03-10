@@ -177,12 +177,28 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     TickCount);
             }
+
+            DrawOverlay(sprite, skeletonMeshRenderer, gameTime,
+                mapShiftX, mapShiftY, centerX, centerY,
+                drawReflectionInfo, renderParameters, TickCount);
         }
 
         /// <summary>
         /// Override in derived classes to draw window-specific content
         /// </summary>
         protected virtual void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            // Base implementation does nothing - override in derived classes
+        }
+
+        /// <summary>
+        /// Override in derived classes to draw overlays that must appear above buttons.
+        /// </summary>
+        protected virtual void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
             int mapShiftX, int mapShiftY, int centerX, int centerY,
             ReflectionDrawableBoundary drawReflectionInfo,
             RenderParameters renderParameters,
