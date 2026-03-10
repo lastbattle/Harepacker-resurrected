@@ -1206,6 +1206,18 @@ namespace HaCreator.MapSimulator.Entities
             CurrentAction = MobAction.Jump;
         }
 
+        public bool TryTriggerJump()
+        {
+            if (MoveType != MobMoveType.Jump)
+            {
+                return false;
+            }
+
+            MobJumpState previousState = JumpState;
+            TriggerJump();
+            return JumpState != previousState;
+        }
+
         /// <summary>
         /// Check if the jumping mob has landed on a foothold (MapleNecrocer style)
         /// </summary>

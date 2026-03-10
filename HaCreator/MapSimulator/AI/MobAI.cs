@@ -130,6 +130,9 @@ namespace HaCreator.MapSimulator.AI
         public int AreaCount { get; set; }          // Number of possible area slots from attackN/info/range/areaCount
         public int AttackCount { get; set; }        // Number of chosen area slots from attackN/info/range/attackCount
         public int StartOffset { get; set; }        // Starting slot offset from attackN/info/range/start
+        public bool IsRushAttack { get; set; }      // attackN/info/rush or info/attack/N/rush
+        public bool IsJumpAttack { get; set; }      // attackN/info/jumpAttack or info/attack/N/jumpAttack
+        public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
 
         // Runtime state
         public int LastUseTime { get; set; }        // Tick when last used

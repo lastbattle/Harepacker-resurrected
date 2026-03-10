@@ -608,6 +608,9 @@ namespace HaCreator.MapSimulator.Entities
                 int areaHeight = attackInfo?.HasRangeBounds == true
                     ? System.Math.Max(attackInfo.RangeBounds.Height, 1)
                     : (isArea ? (isBoss ? 90 : 70) : 60);
+                bool isRushAttack = attackInfo?.IsRushAttack == true || attackMeta?.Rush == true;
+                bool isJumpAttack = attackInfo?.IsJumpAttack == true || attackMeta?.JumpAttack == true;
+                bool tremble = attackInfo?.Tremble == true || attackMeta?.Tremble == true;
 
                 if ((attackMeta?.Magic ?? 0) > 0 && mobData.MADamage > 0)
                 {
@@ -647,7 +650,10 @@ namespace HaCreator.MapSimulator.Entities
                     RangeBottom = attackInfo?.RangeBounds.Bottom ?? 0,
                     AreaCount = attackInfo?.AreaCount ?? 0,
                     AttackCount = attackInfo?.AttackCount ?? 0,
-                    StartOffset = attackInfo?.StartOffset ?? 0
+                    StartOffset = attackInfo?.StartOffset ?? 0,
+                    IsRushAttack = isRushAttack,
+                    IsJumpAttack = isJumpAttack,
+                    Tremble = tremble
                 });
             }
 
@@ -952,8 +958,46 @@ namespace HaCreator.MapSimulator.Entities
                 // Don't move while attacking or casting
                 if (isPerformingAction)
                 {
-                    // Stop movement during attack/skill animation
-                    MovementInfo.Stop();
+                    MobAttackEntry currentAttack = AI.GetCurrentAttack();
+                    bool canRushDuringAttack = currentAttack?.IsRushAttack == true &&
+                                               MovementInfo.MoveType != MobMoveType.Stand;
+                    bool canJumpDuringAttack = currentAttack?.IsJumpAttack == true &&
+                                               MovementInfo.MoveType == MobMoveType.Jump;
+
+                    if (canJumpDuringAttack && MovementInfo.JumpState == MobJumpState.None)
+                    {
+                        MovementInfo.TryTriggerJump();
+                    }
+
+                    if (canRushDuringAttack)
+                    {
+                        int chaseDir = AI.GetChaseDirection(MovementInfo.X);
+                        if (chaseDir != 0)
+                        {
+                            MovementInfo.ForceDirection(
+                                chaseDir > 0 ? MobMoveDirection.Right : MobMoveDirection.Left,
+                                currentFrameIndex,
+                                frameCount);
+                        }
+
+                        MovementInfo.SetSpeedMultiplier(Math.Max(AI.GetSpeedMultiplier(), 2.4f));
+                        MovementInfo.Resume();
+                        MovementInfo.UpdateMovement(deltaTimeMs);
+                        this.flip = MovementInfo.FlipX;
+                    }
+                    else if (canJumpDuringAttack && MovementInfo.JumpState != MobJumpState.None)
+                    {
+                        MovementInfo.SetSpeedMultiplier(Math.Max(AI.GetSpeedMultiplier(), 1.25f));
+                        MovementInfo.Resume();
+                        MovementInfo.UpdateMovement(deltaTimeMs);
+                        this.flip = MovementInfo.FlipX;
+                    }
+                    else
+                    {
+                        // Most mob attacks are stationary until their queued attack entry fires.
+                        MovementInfo.Stop();
+                    }
+
                     UpdateAnimationAction(); // Update animation to show action
 
                     // Check if action animation has completed - notify AI to transition back to chase

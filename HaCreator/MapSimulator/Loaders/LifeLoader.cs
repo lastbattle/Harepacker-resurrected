@@ -272,7 +272,10 @@ namespace HaCreator.MapSimulator.Loaders
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,
-                HasAreaWarning = infoNode["areaWarning"] != null
+                HasAreaWarning = infoNode["areaWarning"] != null,
+                IsRushAttack = InfoTool.GetInt(infoNode["rush"], 0) > 0,
+                IsJumpAttack = InfoTool.GetInt(infoNode["jumpAttack"], 0) > 0,
+                Tremble = InfoTool.GetInt(infoNode["tremble"], 0) > 0
             };
 
             WzSubProperty rangeNode = infoNode["range"] as WzSubProperty;

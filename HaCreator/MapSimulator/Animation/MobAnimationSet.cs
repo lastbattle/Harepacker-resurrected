@@ -44,6 +44,9 @@ namespace HaCreator.MapSimulator.Animation
             public int StartOffset { get; set; }
             public bool HasPrimaryEffect { get; set; }
             public bool HasAreaWarning { get; set; }
+            public bool IsRushAttack { get; set; }
+            public bool IsJumpAttack { get; set; }
+            public bool Tremble { get; set; }
         }
 
         public sealed class AttackEffectNode

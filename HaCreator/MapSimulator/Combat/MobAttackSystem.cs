@@ -51,8 +51,6 @@ namespace HaCreator.MapSimulator.Combat
         {
             public MobItem SourceMob { get; set; }
             public MobAttackEntry Attack { get; set; }
-            public Rectangle Area { get; set; }
-            public Vector2 EffectPosition { get; set; }
             public int TriggerTime { get; set; }
             public int ExpireTime { get; set; }
             public bool Triggered { get; set; }
@@ -96,7 +94,7 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             MobAttackEntry attack = mobItem.AI.GetCurrentAttack();
-            if (attack == null || (!attack.IsRanged && !attack.IsAreaOfEffect))
+            if (attack == null)
             {
                 return;
             }
@@ -130,7 +128,7 @@ namespace HaCreator.MapSimulator.Combat
             UpdateScheduledMobVisualEffects(currentTime, animationEffects);
             UpdateMobProjectiles(currentTime, deltaSeconds, playerManager, animationEffects);
             UpdateMobGroundAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
-            UpdateMobDirectAttacks(currentTime, playerManager, animationEffects);
+            UpdateMobDirectAttacks(currentTime, playerManager, animationEffects, onBossGroundImpact);
             CleanupScheduledMobActions(currentTime);
         }
 
@@ -267,10 +265,6 @@ namespace HaCreator.MapSimulator.Combat
             {
                 SourceMob = mobItem,
                 Attack = attack,
-                Area = attackArea,
-                EffectPosition = new Vector2(
-                    attackArea.X + attackArea.Width / 2f,
-                    attackArea.Y + attackArea.Height),
                 TriggerTime = currentTime + GetDirectAttackTriggerDelay(attack),
                 ExpireTime = currentTime + Math.Max(attack.Cooldown, 350),
             });
@@ -415,7 +409,7 @@ namespace HaCreator.MapSimulator.Combat
 
                     SpawnMobWorldEffects(groundAttack.SourceMob, groundAttack.Attack, groundAttack.EffectPosition, currentTime, animationEffects);
 
-                    if (groundAttack.SourceMob.AI.IsBoss)
+                    if (groundAttack.SourceMob.AI.IsBoss || groundAttack.Attack?.Tremble == true)
                     {
                         onBossGroundImpact?.Invoke(currentTime);
                     }
@@ -428,7 +422,7 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private void UpdateMobDirectAttacks(int currentTime, PlayerManager playerManager, AnimationEffects animationEffects)
+        private void UpdateMobDirectAttacks(int currentTime, PlayerManager playerManager, AnimationEffects animationEffects, Action<int> onBossGroundImpact)
         {
             for (int i = _activeMobDirectAttacks.Count - 1; i >= 0; i--)
             {
@@ -442,12 +436,18 @@ namespace HaCreator.MapSimulator.Combat
                 if (!directAttack.Triggered && currentTime >= directAttack.TriggerTime)
                 {
                     directAttack.Triggered = true;
+                    Rectangle attackArea = BuildDirectAttackArea(directAttack.SourceMob, directAttack.Attack);
+                    Vector2 effectPosition = new Vector2(
+                        attackArea.X + attackArea.Width / 2f,
+                        attackArea.Y + attackArea.Height);
 
-                    if (playerManager?.Combat != null && playerManager.IsPlayerActive)
+                    if (playerManager?.Combat != null &&
+                        playerManager.IsPlayerActive &&
+                        !attackArea.IsEmpty)
                     {
                         playerManager.Combat.TryApplyMobHit(
                             directAttack.SourceMob,
-                            directAttack.Area,
+                            attackArea,
                             currentTime,
                             directAttack.Attack);
                     }
@@ -455,9 +455,14 @@ namespace HaCreator.MapSimulator.Combat
                     SpawnMobWorldEffects(
                         directAttack.SourceMob,
                         directAttack.Attack,
-                        directAttack.EffectPosition,
+                        effectPosition,
                         currentTime,
                         animationEffects);
+
+                    if (directAttack.Attack?.Tremble == true)
+                    {
+                        onBossGroundImpact?.Invoke(currentTime);
+                    }
                 }
 
                 if (currentTime >= directAttack.ExpireTime)
