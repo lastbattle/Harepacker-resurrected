@@ -205,6 +205,8 @@ namespace HaCreator.MapSimulator.UI
             if (_skillManager == null)
                 return;
 
+            _skillManager.RevalidateHotkeys();
+
             int slotCount = SlotCount;
             int slotOffset = SlotOffset;
             int slotsPerRow = _currentBar == BAR_FUNCTION ? 6 : SLOTS_PER_ROW;
@@ -441,8 +443,10 @@ namespace HaCreator.MapSimulator.UI
                     if (_dragSourceSlot >= 0 && _dragSourceSlot != absoluteTarget)
                     {
                         int targetSkill = _skillManager?.GetHotkeySkill(absoluteTarget) ?? 0;
-                        _skillManager?.SetHotkey(absoluteTarget, _dragSkillId);
-                        _skillManager?.SetHotkey(_dragSourceSlot, targetSkill);
+                        if (_skillManager?.TrySetHotkey(absoluteTarget, _dragSkillId) == true)
+                        {
+                            _skillManager.SetHotkey(_dragSourceSlot, targetSkill);
+                        }
                     }
                 }
 
@@ -468,7 +472,9 @@ namespace HaCreator.MapSimulator.UI
             if (slot < 0) return false;
 
             int absoluteSlot = SlotOffset + slot;
-            _skillManager?.SetHotkey(absoluteSlot, skillId);
+            if (_skillManager?.TrySetHotkey(absoluteSlot, skillId) != true)
+                return false;
+
             OnSkillDropped?.Invoke(absoluteSlot, skillId);
             return true;
         }
@@ -478,6 +484,8 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
+
+            _skillManager?.RevalidateHotkeys();
 
             // Get mouse state for hover detection
             var mouseState = Mouse.GetState();

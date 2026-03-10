@@ -164,6 +164,8 @@ namespace HaCreator.MapSimulator.Character
             {
                 skillManager.SetSkillLevel(kv.Key, kv.Value);
             }
+
+            skillManager.RevalidateHotkeys();
         }
 
         /// <summary>

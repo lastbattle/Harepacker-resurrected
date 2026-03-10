@@ -198,17 +198,29 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public void SetHotkey(int slotIndex, int skillId)
         {
+            TrySetHotkey(slotIndex, skillId);
+        }
+
+        /// <summary>
+        /// Try to set a skill hotkey by absolute slot index (0-27).
+        /// Returns false when the requested skill is not a learned, visible active skill.
+        /// </summary>
+        public bool TrySetHotkey(int slotIndex, int skillId)
+        {
             if (slotIndex < 0 || slotIndex >= TOTAL_SLOT_COUNT)
-                return;
+                return false;
 
             if (skillId <= 0)
             {
                 _skillHotkeys.Remove(slotIndex);
+                return true;
             }
-            else
-            {
-                _skillHotkeys[slotIndex] = skillId;
-            }
+
+            if (!CanAssignHotkeySkill(skillId))
+                return false;
+
+            _skillHotkeys[slotIndex] = skillId;
+            return true;
         }
 
         /// <summary>
@@ -216,7 +228,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public int GetHotkeySkill(int slotIndex)
         {
-            return _skillHotkeys.TryGetValue(slotIndex, out int skillId) ? skillId : 0;
+            if (!_skillHotkeys.TryGetValue(slotIndex, out int skillId))
+                return 0;
+
+            if (CanAssignHotkeySkill(skillId))
+                return skillId;
+
+            _skillHotkeys.Remove(slotIndex);
+            return 0;
         }
 
         /// <summary>
@@ -283,6 +302,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public int FindSkillSlot(int skillId)
         {
+            RevalidateHotkeys();
+
             foreach (var kv in _skillHotkeys)
             {
                 if (kv.Value == skillId)
@@ -297,6 +318,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         public Dictionary<int, int> GetAllHotkeys()
         {
+            RevalidateHotkeys();
             return new Dictionary<int, int>(_skillHotkeys);
         }
 
@@ -318,11 +340,58 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         /// <summary>
+        /// Whether the given skill can appear in a quick slot.
+        /// Mirrors the client skill-side validation by rejecting unlearned, passive, and hidden skills.
+        /// </summary>
+        public bool CanAssignHotkeySkill(int skillId)
+        {
+            if (skillId <= 0)
+                return false;
+
+            SkillData skill = FindKnownSkillData(skillId);
+            if (skill == null || skill.IsPassive || skill.Invisible)
+                return false;
+
+            return GetSkillLevel(skillId) > 0;
+        }
+
+        /// <summary>
+        /// Revalidates quick-slot assignments against the current learned skill state.
+        /// Returns the number of removed stale assignments.
+        /// </summary>
+        public int RevalidateHotkeys()
+        {
+            int removed = 0;
+
+            foreach (int slotIndex in _skillHotkeys.Keys.ToList())
+            {
+                if (CanAssignHotkeySkill(_skillHotkeys[slotIndex]))
+                    continue;
+
+                _skillHotkeys.Remove(slotIndex);
+                removed++;
+            }
+
+            return removed;
+        }
+
+        /// <summary>
         /// Clear all hotkeys
         /// </summary>
         public void ClearAllHotkeys()
         {
             _skillHotkeys.Clear();
+        }
+
+        private SkillData FindKnownSkillData(int skillId)
+        {
+            foreach (var skill in _availableSkills)
+            {
+                if (skill?.SkillId == skillId)
+                    return skill;
+            }
+
+            return _loader?.LoadSkill(skillId);
         }
 
         #endregion
