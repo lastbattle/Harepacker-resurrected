@@ -45,6 +45,7 @@ using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Combat;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator
 {
@@ -186,6 +187,7 @@ namespace HaCreator.MapSimulator
 
         // Pickup notice UI (displays meso/item pickup messages at bottom right)
         private readonly PickupNoticeUI _pickupNoticeUI = new PickupNoticeUI();
+        private NpcInteractionOverlay _npcInteractionOverlay;
 
         // Consolidated effect management
         private readonly EffectManager _effectManager = new EffectManager();
@@ -934,6 +936,8 @@ namespace HaCreator.MapSimulator
 
             // Initialize chat system
             _chat.Initialize(_fontChat, _debugBoundaryTexture, Height);
+            _npcInteractionOverlay = new NpcInteractionOverlay(GraphicsDevice);
+            _npcInteractionOverlay.SetFont(_fontChat);
             RegisterChatCommands();
 
             // Initialize pickup notice UI (bottom right corner messages)
@@ -1190,6 +1194,7 @@ namespace HaCreator.MapSimulator
 
             // Deactivate chat input (but preserve message history)
             _chat.Deactivate();
+            _npcInteractionOverlay?.Close();
         }
 
         /// <summary>
@@ -2114,8 +2119,11 @@ namespace HaCreator.MapSimulator
 
             if (isWindowActive)
             {
+                _npcInteractionOverlay?.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight);
+
                 // Check if mouse is hovering over an NPC
                 CheckNpcHover(newMouseState);
+                HandleNpcTalkClick(newMouseState);
 
                 // Handle portal double-click for teleportation
                 HandlePortalDoubleClick(newMouseState);
@@ -3148,6 +3156,9 @@ namespace HaCreator.MapSimulator
             if (_npcsArray == null || _npcsArray.Length == 0)
                 return;
 
+            if (_npcInteractionOverlay?.ContainsPoint(mouseState.X, mouseState.Y, _renderParams.RenderWidth, _renderParams.RenderHeight) == true)
+                return;
+
             // Convert screen coordinates to map coordinates (same as portal detection)
             int mouseMapX = mouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
             int mouseMapY = mouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
@@ -3161,6 +3172,61 @@ namespace HaCreator.MapSimulator
                     return; // Only need to find one NPC
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void HandleNpcTalkClick(MouseState mouseState)
+        {
+            if (_npcsArray == null || _npcsArray.Length == 0)
+                return;
+
+            bool isLeftClick = mouseState.LeftButton == ButtonState.Released && _oldMouseState.LeftButton == ButtonState.Pressed;
+            if (!isLeftClick)
+                return;
+
+            if (uiWindowManager?.ContainsPoint(mouseState.X, mouseState.Y) == true)
+                return;
+
+            if (_npcInteractionOverlay?.ContainsPoint(mouseState.X, mouseState.Y, _renderParams.RenderWidth, _renderParams.RenderHeight) == true)
+                return;
+
+            int mouseMapX = mouseState.X + mapShiftX - _mapBoard.CenterPoint.X;
+            int mouseMapY = mouseState.Y + mapShiftY - _mapBoard.CenterPoint.Y;
+
+            NpcItem npc = FindNpcAtMapPoint(mouseMapX, mouseMapY);
+            if (npc == null || !CanTalkToNpc(npc))
+                return;
+
+            _npcInteractionOverlay?.Open(
+                npc.NpcInstance?.NpcInfo?.StringName,
+                NpcDialogueResolver.ResolveInitialPages(npc));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private NpcItem FindNpcAtMapPoint(int mapX, int mapY)
+        {
+            if (_npcsArray == null)
+                return null;
+
+            for (int i = 0; i < _npcsArray.Length; i++)
+            {
+                NpcItem npc = _npcsArray[i];
+                if (npc != null && npc.ContainsMapPoint(mapX, mapY))
+                    return npc;
+            }
+
+            return null;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool CanTalkToNpc(NpcItem npc)
+        {
+            if (npc == null || _playerManager?.Player == null)
+                return false;
+
+            float deltaX = Math.Abs(_playerManager.Player.X - npc.CurrentX);
+            float deltaY = Math.Abs(_playerManager.Player.Y - npc.CurrentY);
+            return deltaX <= 180f && deltaY <= 120f;
         }
 
         /// <summary>
@@ -4901,6 +4967,7 @@ namespace HaCreator.MapSimulator
             // Windows are drawn ON TOP of minimap, so they get priority when starting a new drag
             // Once dragging starts, that element keeps exclusive control until mouse is released
             bool minimapIsDragging = miniMapUi != null && miniMapUi.IsDragging;
+            bool npcOverlayIsVisible = _npcInteractionOverlay?.IsVisible == true;
 
             if (uiWindowManager != null)
             {
@@ -4915,7 +4982,7 @@ namespace HaCreator.MapSimulator
                     uiWindowManager.ResetAllDragStates();
                 }
                 // Check UI windows - but not if minimap is ALREADY being dragged
-                else if (!minimapIsDragging)
+                else if (!minimapIsDragging && !npcOverlayIsVisible)
                 {
                     uiWindowManager.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
                 }
@@ -4925,6 +4992,8 @@ namespace HaCreator.MapSimulator
                     uiWindowManager.ResetAllDragStates();
                 }
             }
+
+            _npcInteractionOverlay?.Draw(_spriteBatch, _renderParams.RenderWidth, _renderParams.RenderHeight);
 
             // Minimap mouse events
             if (miniMapUi != null && isWindowActive)
@@ -4938,8 +5007,9 @@ namespace HaCreator.MapSimulator
                 {
                     // Not dragging yet - only start if no window is being dragged or contains the mouse point
                     // Windows have priority since they're drawn on top
-                    bool windowBlocksMinimap = uiWindowManager != null &&
-                        (uiWindowManager.IsDraggingWindow || uiWindowManager.ContainsPoint(mouseState.X, mouseState.Y));
+                    bool windowBlocksMinimap = npcOverlayIsVisible ||
+                        (uiWindowManager != null &&
+                         (uiWindowManager.IsDraggingWindow || uiWindowManager.ContainsPoint(mouseState.X, mouseState.Y)));
 
                     if (!windowBlocksMinimap)
                     {
