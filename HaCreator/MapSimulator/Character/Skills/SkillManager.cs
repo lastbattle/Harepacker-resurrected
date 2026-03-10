@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private readonly SkillLoader _loader;
         private readonly PlayerCharacter _player;
+        private Func<SkillData, bool> _fieldSkillRestrictionEvaluator;
 
         // Active state
         private readonly List<ActiveProjectile> _projectiles = new();
@@ -95,6 +96,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetMobPool(MobPool mobPool) => _mobPool = mobPool;
         public void SetCombatEffects(CombatEffects effects) => _combatEffects = effects;
         public void SetSoundManager(SoundManager soundManager) => _soundManager = soundManager;
+        public void SetFieldSkillRestrictionEvaluator(Func<SkillData, bool> evaluator) => _fieldSkillRestrictionEvaluator = evaluator;
 
         /// <summary>
         /// Load skills for player's job
@@ -434,6 +436,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Check passive
             if (skill.IsPassive)
+                return false;
+
+            if (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(skill))
                 return false;
 
             // Check cooldown

@@ -4211,6 +4211,7 @@ namespace HaCreator.MapSimulator
                 RefreshSkillWindowForJob(_playerManager.Player.Build.Job);
             }
 
+            ConfigureSkillRestrictions();
             ConfigureSkillUIBindings();
 
             Debug.WriteLine($"Player spawned at ({spawnX}, {spawnY}), IsActive: {_playerManager.IsPlayerActive}");
@@ -4333,9 +4334,20 @@ namespace HaCreator.MapSimulator
             _playerManager.SetSpawnPoint(spawnX, spawnY);
             _playerManager.TeleportTo(spawnX, spawnY);
 
+            ConfigureSkillRestrictions();
             ConfigureSkillUIBindings();
 
             Debug.WriteLine($"[Player] Reconnected to new map, IsActive: {_playerManager.IsPlayerActive}");
+        }
+
+        private void ConfigureSkillRestrictions()
+        {
+            if (_playerManager?.Skills == null)
+                return;
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
+                skill => FieldSkillRestrictionEvaluator.CanUseSkill(fieldLimit, skill));
         }
 
         private void ConfigureSkillUIBindings()
