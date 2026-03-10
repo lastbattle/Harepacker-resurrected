@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator
 
         // Arrays for faster iteration (converted from Lists after loading)
         private BaseDXDrawableItem[][] _mapObjectsArray;
+        private readonly Dictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> _questGatedMapObjects = new();
         private NpcItem[] _npcsArray;
         private MobItem[] _mobsArray;
         private ReactorItem[] _reactorsArray;
@@ -650,6 +651,7 @@ namespace HaCreator.MapSimulator
 
             /////// Background and objects
             ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
+            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects = new();
             
             // Objects
             Task t_tiles = Task.Run(() =>
@@ -657,9 +659,22 @@ namespace HaCreator.MapSimulator
                 foreach (LayeredItem tileObj in _mapBoard.BoardItems.TileObjs)
                 {
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
+                    BaseDXDrawableItem mapItem = MapSimulatorLoader.CreateMapItemFromProperty(
+                        _texturePool,
+                        tileParent,
+                        tileObj.X,
+                        tileObj.Y,
+                        _mapBoard.CenterPoint,
+                        _DxDeviceManager.GraphicsDevice,
+                        usedProps,
+                        tileObj is IFlippable flippable && flippable.Flip);
+                    if (mapItem == null)
+                    {
+                        continue;
+                    }
 
-                    mapObjects[tileObj.LayerNumber].Add(
-                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
+                    mapObjects[tileObj.LayerNumber].Add(mapItem);
                 }
             });
 
@@ -807,6 +822,8 @@ namespace HaCreator.MapSimulator
             {
                 Thread.Sleep(100);
             }
+
+            ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
@@ -1176,6 +1193,7 @@ namespace HaCreator.MapSimulator
 
             // Clear arrays
             _mapObjectsArray = null;
+            _questGatedMapObjects.Clear();
             _npcsArray = null;
             _mobsArray = null;
             _reactorsArray = null;
@@ -1352,6 +1370,7 @@ namespace HaCreator.MapSimulator
             }
 
             ConcurrentBag<WzObject> usedProps = new ConcurrentBag<WzObject>();
+            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects = new();
 
             // Load map objects in parallel
             Task t_tiles = Task.Run(() =>
@@ -1359,8 +1378,22 @@ namespace HaCreator.MapSimulator
                 foreach (LayeredItem tileObj in _mapBoard.BoardItems.TileObjs)
                 {
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
-                    mapObjects[tileObj.LayerNumber].Add(
-                        MapSimulatorLoader.CreateMapItemFromProperty(_texturePool, tileParent, tileObj.X, tileObj.Y, _mapBoard.CenterPoint, _DxDeviceManager.GraphicsDevice, usedProps, tileObj is IFlippable ? ((IFlippable)tileObj).Flip : false));
+                    BaseDXDrawableItem mapItem = MapSimulatorLoader.CreateMapItemFromProperty(
+                        _texturePool,
+                        tileParent,
+                        tileObj.X,
+                        tileObj.Y,
+                        _mapBoard.CenterPoint,
+                        _DxDeviceManager.GraphicsDevice,
+                        usedProps,
+                        tileObj is IFlippable flippable && flippable.Flip);
+                    if (mapItem == null)
+                    {
+                        continue;
+                    }
+
+                    RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
+                    mapObjects[tileObj.LayerNumber].Add(mapItem);
                 }
             });
 
@@ -1483,6 +1516,7 @@ namespace HaCreator.MapSimulator
 
             // Wait for all loading tasks
             Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_uiWindows, t_cursor);
+            ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
@@ -2926,7 +2960,9 @@ namespace HaCreator.MapSimulator
                     BaseDXDrawableItem[] layerItems = _mapObjectsArray[layer];
                     for (int i = 0; i < layerItems.Length; i++)
                     {
-                        layerItems[i].UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, _frameNumber);
+                        BaseDXDrawableItem item = layerItems[i];
+                        item.UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, _frameNumber);
+                        ApplyQuestObjectVisibility(item);
                     }
                 }
             }
@@ -2962,8 +2998,10 @@ namespace HaCreator.MapSimulator
             _visibleMapObjectsCount = _mapObjectsGrid.QueryToArray(viewBounds, _visibleMapObjects);
             for (int i = 0; i < _visibleMapObjectsCount; i++)
             {
-                _visibleMapObjects[i].SetVisible(true);
-                _visibleMapObjects[i].UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, _frameNumber);
+                BaseDXDrawableItem item = _visibleMapObjects[i];
+                item.SetVisible(true);
+                item.UpdateVisibility(mapShiftX, mapShiftY, centerX, centerY, viewWidth, viewHeight, _frameNumber);
+                ApplyQuestObjectVisibility(item);
             }
 
             // Query and mark visible portals
@@ -4381,6 +4419,44 @@ namespace HaCreator.MapSimulator
 
             // Initialize spatial partitioning if map has enough objects
             InitializeSpatialPartitioning();
+        }
+
+        private void RegisterQuestGatedMapObject(
+            BaseDXDrawableItem mapItem,
+            LayeredItem sourceItem,
+            ConcurrentDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects)
+        {
+            if (mapItem == null || sourceItem is not ObjectInstance objInst || objInst.QuestInfo == null || objInst.QuestInfo.Count == 0)
+            {
+                return;
+            }
+
+            questGatedMapObjects[mapItem] = objInst.QuestInfo.ToArray();
+        }
+
+        private void ReplaceQuestGatedMapObjects(IDictionary<BaseDXDrawableItem, ObjectInstanceQuest[]> questGatedMapObjects)
+        {
+            _questGatedMapObjects.Clear();
+            if (questGatedMapObjects == null || questGatedMapObjects.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((BaseDXDrawableItem mapItem, ObjectInstanceQuest[] questInfo) in questGatedMapObjects)
+            {
+                _questGatedMapObjects[mapItem] = questInfo;
+            }
+        }
+
+        private void ApplyQuestObjectVisibility(BaseDXDrawableItem item)
+        {
+            if (item == null || !_questGatedMapObjects.TryGetValue(item, out ObjectInstanceQuest[] questInfo))
+            {
+                return;
+            }
+
+            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(questInfo, _questRuntime.GetCurrentState);
+            item.SetVisible(item.IsVisible && visible);
         }
 
         /// <summary>

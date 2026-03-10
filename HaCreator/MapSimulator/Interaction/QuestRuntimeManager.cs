@@ -118,6 +118,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public QuestStateType GetCurrentState(int questId)
+        {
+            return GetQuestState(questId);
+        }
+
         public NpcInteractionState BuildInteractionState(NpcItem npc, CharacterBuild build, int? preferredQuestId = null)
         {
             string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
