@@ -53,6 +53,10 @@ namespace HaCreator.MapSimulator.UI
         private const int ROW_BG_Y_OFFSET = -19;
         private const int LINE_X = 10;
         private const int LINE_Y_OFFSET = 18;
+        private const int SP_UP_BUTTON_X = 135;
+        private const int SP_UP_BUTTON_Y_OFFSET = 1;
+        private const int SP_UP_BUTTON_FALLBACK_WIDTH = 18;
+        private const int SP_UP_BUTTON_FALLBACK_HEIGHT = 18;
 
         // SP display
         private const int SP_DISPLAY_X_BASE = 104;
@@ -99,6 +103,8 @@ namespace HaCreator.MapSimulator.UI
         private int _currentTab = TAB_BEGINNER;
         private int _scrollOffset = 0;
         private int _hoveredSkillIndex = -1;
+        private int _hoveredSpUpSkillIndex = -1;
+        private int _pressedSpUpSkillIndex = -1;
         private int _selectedSkillIndex = -1;
         private int _lastClickedSkillIndex = -1;
         private int _lastClickTime;
@@ -185,6 +191,7 @@ namespace HaCreator.MapSimulator.UI
 
         public Action<int> OnSkillInvoked { get; set; }
         public Action<SkillDisplayData> OnSkillSelected { get; set; }
+        public Func<SkillDisplayData, bool> OnSkillLevelUpRequested { get; set; }
         public bool IsDraggingSkill => _isDraggingSkill;
         public int DraggedSkillId => _isDraggingSkill ? _dragSkillId : 0;
         public Vector2 DragPosition => _dragPosition;
@@ -601,7 +608,8 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_debugPlaceholder, selectionRect, new Color(80, 140, 255, 70));
             }
 
-            Texture2D icon = skill.GetIconForState(canLevelUp, isHovered);
+            bool isUnlearned = skill.CurrentLevel <= 0;
+            Texture2D icon = skill.GetIconForState(isUnlearned, isHovered && !isUnlearned);
             int iconX = windowX + ICON_X;
             int iconY = windowY + nTop + ICON_Y_OFFSET;
 
@@ -628,9 +636,15 @@ namespace HaCreator.MapSimulator.UI
                     levelColor);
             }
 
-            if (_spUpNormal != null && canLevelUp)
+            if (skill.CurrentLevel < skill.MaxLevel)
             {
-                sprite.Draw(_spUpNormal, new Vector2(windowX + 135, windowY + nTop + 1), Color.White);
+                int visibleRowIndex = (nTop - FIRST_ROW_TOP) / SKILL_ROW_HEIGHT;
+                Texture2D spUpTexture = GetSpUpTexture(canLevelUp, _scrollOffset + visibleRowIndex);
+                if (spUpTexture != null)
+                {
+                    Rectangle spUpBounds = GetSpUpButtonBounds(visibleRowIndex);
+                    sprite.Draw(spUpTexture, new Vector2(spUpBounds.X, spUpBounds.Y), Color.White);
+                }
             }
         }
 
@@ -650,6 +664,73 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return 0;
+        }
+
+        private Texture2D GetSpUpTexture(bool canLevelUp, int skillIndex)
+        {
+            if (!canLevelUp)
+                return _spUpDisabled ?? _spUpNormal;
+
+            if (_pressedSpUpSkillIndex == skillIndex)
+                return _spUpPressed ?? _spUpMouseOver ?? _spUpNormal;
+
+            if (_hoveredSpUpSkillIndex == skillIndex)
+                return _spUpMouseOver ?? _spUpNormal;
+
+            return _spUpNormal;
+        }
+
+        private Rectangle GetSpUpButtonBounds(int visibleRowIndex)
+        {
+            int nTop = FIRST_ROW_TOP + (visibleRowIndex * SKILL_ROW_HEIGHT);
+            Texture2D texture = _spUpNormal ?? _spUpMouseOver ?? _spUpPressed ?? _spUpDisabled;
+            int width = texture?.Width ?? SP_UP_BUTTON_FALLBACK_WIDTH;
+            int height = texture?.Height ?? SP_UP_BUTTON_FALLBACK_HEIGHT;
+            return new Rectangle(
+                Position.X + SP_UP_BUTTON_X,
+                Position.Y + nTop + SP_UP_BUTTON_Y_OFFSET,
+                width,
+                height);
+        }
+
+        private int GetSpUpSkillIndexAtPosition(int mouseX, int mouseY)
+        {
+            var skills = CurrentSkills;
+            int availableSp = GetCurrentSkillPoints();
+
+            for (int rowIndex = 0; rowIndex < VISIBLE_SKILLS; rowIndex++)
+            {
+                int skillIndex = _scrollOffset + rowIndex;
+                if (skillIndex >= skills.Count)
+                    break;
+
+                SkillDisplayData skill = skills[skillIndex];
+                if (skill == null || skill.CurrentLevel >= skill.MaxLevel || availableSp <= 0)
+                    continue;
+
+                if (GetSpUpButtonBounds(rowIndex).Contains(mouseX, mouseY))
+                    return skillIndex;
+            }
+
+            return -1;
+        }
+
+        private bool TryHandleSkillLevelUp(int skillIndex)
+        {
+            var skills = CurrentSkills;
+            if (skillIndex < 0 || skillIndex >= skills.Count)
+                return false;
+
+            SkillDisplayData skill = skills[skillIndex];
+            if (skill == null || skill.CurrentLevel >= skill.MaxLevel || GetCurrentSkillPoints() <= 0)
+                return false;
+
+            if (OnSkillLevelUpRequested != null && !OnSkillLevelUpRequested(skill))
+                return false;
+
+            skill.CurrentLevel = Math.Min(skill.MaxLevel, skill.CurrentLevel + 1);
+            skillPointsByTab[_currentTab] = Math.Max(0, GetCurrentSkillPoints() - 1);
+            return true;
         }
 
         private void DrawSkillPointCount(SpriteBatch sprite, int windowX, int windowY)
@@ -1115,6 +1196,8 @@ namespace HaCreator.MapSimulator.UI
             _currentTab = tabIndex;
             _scrollOffset = 0;
             _hoveredSkillIndex = -1;
+            _hoveredSpUpSkillIndex = -1;
+            _pressedSpUpSkillIndex = -1;
             _selectedSkillIndex = -1;
         }
 
@@ -1223,6 +1306,25 @@ namespace HaCreator.MapSimulator.UI
             skillPointsByTab[tab] = Math.Max(0, points);
         }
 
+        public void RecalculateSkillPointsFromCurrentLevels()
+        {
+            foreach (var entry in skillsByTab)
+            {
+                int remainingPoints = 0;
+                List<SkillDisplayData> skills = entry.Value;
+                for (int i = 0; i < skills.Count; i++)
+                {
+                    SkillDisplayData skill = skills[i];
+                    if (skill == null)
+                        continue;
+
+                    remainingPoints += Math.Max(0, skill.MaxLevel - skill.CurrentLevel);
+                }
+
+                skillPointsByTab[entry.Key] = remainingPoints;
+            }
+        }
+
         /// <summary>
         /// Get skill points for current tab
         /// </summary>
@@ -1241,7 +1343,13 @@ namespace HaCreator.MapSimulator.UI
             foreach (var kvp in skillsByTab)
             {
                 kvp.Value.Clear();
+                skillPointsByTab[kvp.Key] = 0;
             }
+
+            _hoveredSkillIndex = -1;
+            _hoveredSpUpSkillIndex = -1;
+            _pressedSpUpSkillIndex = -1;
+            _selectedSkillIndex = -1;
         }
 
         /// <summary>
@@ -1621,6 +1729,7 @@ namespace HaCreator.MapSimulator.UI
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             Rectangle skillListBounds = GetSkillListBounds();
             Rectangle scrollBarBounds = GetScrollBarBounds();
+            _hoveredSpUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
 
             if (_isDraggingScrollThumb)
             {
@@ -1660,6 +1769,19 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
 
+                int clickedSpUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                if (clickedSpUpSkillIndex >= 0)
+                {
+                    _pressedSpUpSkillIndex = clickedSpUpSkillIndex;
+                    SelectSkillIndex(clickedSpUpSkillIndex, true);
+                    TryHandleSkillLevelUp(clickedSpUpSkillIndex);
+                    _lastClickedSkillIndex = -1;
+                    _lastClickTime = 0;
+                    _previousMouseState = mouseState;
+                    _previousKeyboardState = Keyboard.GetState();
+                    return;
+                }
+
                 int clickedSkillIndex = GetSkillIndexAtPosition(mouseState.X, mouseState.Y);
                 if (clickedSkillIndex >= 0)
                 {
@@ -1684,13 +1806,19 @@ namespace HaCreator.MapSimulator.UI
             if (mouseState.RightButton == ButtonState.Pressed &&
                 _previousMouseState.RightButton == ButtonState.Released)
             {
-                var selectedSkill = GetSkillAtPosition(mouseState.X, mouseState.Y);
+                int spUpSkillIndex = GetSpUpSkillIndexAtPosition(mouseState.X, mouseState.Y);
+                var selectedSkill = spUpSkillIndex >= 0 ? null : GetSkillAtPosition(mouseState.X, mouseState.Y);
                 if (selectedSkill != null)
                 {
                     SelectSkillIndex(GetSkillIndexAtPosition(mouseState.X, mouseState.Y), false);
                     OnSkillSelected?.Invoke(selectedSkill);
                     OnSkillInvoked?.Invoke(selectedSkill.SkillId);
                 }
+            }
+
+            if (mouseState.LeftButton == ButtonState.Released)
+            {
+                _pressedSpUpSkillIndex = -1;
             }
 
             // Handle scroll wheel

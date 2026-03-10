@@ -4809,6 +4809,7 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.Skills.TryCastSkill(skillId, currTickCount);
             };
+            skillWindow.OnSkillLevelUpRequested = TryHandleSkillUiLevelUp;
 
             foreach (var skill in _playerManager.Skills.GetAllSkills())
             {
@@ -4821,6 +4822,22 @@ namespace HaCreator.MapSimulator
 
                 skillWindow.UpdateSkillLevel(skill.SkillId, currentLevel, skill.MaxLevel);
             }
+
+            skillWindow.RecalculateSkillPointsFromCurrentLevels();
+        }
+
+        private bool TryHandleSkillUiLevelUp(SkillDisplayData skill)
+        {
+            if (skill == null || _playerManager?.Skills == null)
+                return false;
+
+            int currentLevel = _playerManager.Skills.GetSkillLevel(skill.SkillId);
+            int targetLevel = Math.Min(skill.MaxLevel, Math.Max(currentLevel, skill.CurrentLevel) + 1);
+            if (targetLevel <= currentLevel)
+                return false;
+
+            _playerManager.Skills.SetSkillLevel(skill.SkillId, targetLevel);
+            return true;
         }
 
         private void HandlePlayerSkillCast(SkillCastInfo castInfo)
