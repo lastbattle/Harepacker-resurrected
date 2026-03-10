@@ -2273,6 +2273,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _player.ClearSkillAvatarTransform(buff.SkillId);
                     ClearSkillMount(buff.SkillId);
                     _buffs.RemoveAt(i);
+                    RefreshBuffControlledFlyingAbility();
                     OnBuffExpired?.Invoke(buff);
                     removedBuff = true;
                 }
