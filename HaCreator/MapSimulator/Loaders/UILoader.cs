@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <param name="bBigBang"></param>
         /// <returns></returns>
         public static Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBarFromProperty(
-            WzImage uiStatusBar, WzImage uiStatusBar2, Board mapBoard, GraphicsDevice device,
+            WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
             float UserScreenScaleFactor, RenderParameters renderParams, WzImage soundUIImage, bool bBigBang)
         {
             // Pre-big bang maplestory status bar
@@ -382,7 +382,8 @@ namespace HaCreator.MapSimulator.Loaders
 
                     // Set gauge textures if loaded from WZ files
                     if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null) {
-                        statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
 
                     // Load bitmap font digit textures from StatusBar2.img/mainBar/gauge/number
@@ -643,7 +644,8 @@ namespace HaCreator.MapSimulator.Loaders
                     // Set gauge textures if loaded
                     if (hpGaugeTexture != null || mpGaugeTexture != null || expGaugeTexture != null)
                     {
-                        statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
+                    statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
 
                     // Load bitmap font digit textures from StatusBar.img/number
@@ -753,6 +755,49 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
             return null;
+        }
+
+        private static Dictionary<string, Texture2D> LoadBuffIconTextures(WzImage uiBuffIcon, GraphicsDevice device)
+        {
+            var buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+            if (uiBuffIcon == null || device == null)
+            {
+                return buffIconTextures;
+            }
+
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "united/buff/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incPAD/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incPDD/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incMAD/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incMDD/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incACC/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incEVA/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incSpeed/0");
+            TryAddBuffIcon(buffIconTextures, uiBuffIcon, device, "buff/incJump/0");
+
+            return buffIconTextures;
+        }
+
+        private static void TryAddBuffIcon(Dictionary<string, Texture2D> buffIconTextures, WzImage uiBuffIcon,
+            GraphicsDevice device, string path)
+        {
+            if (buffIconTextures.ContainsKey(path))
+            {
+                return;
+            }
+
+            if (!(uiBuffIcon[path] is WzCanvasProperty iconCanvas))
+            {
+                return;
+            }
+
+            var bitmap = iconCanvas.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return;
+            }
+
+            buffIconTextures[path] = bitmap.ToTexture2DAndDispose(device);
         }
 
         #endregion

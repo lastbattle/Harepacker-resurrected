@@ -23,6 +23,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             Projectile
         }
 
+        private const string GenericBuffIconKey = "united/buff";
+
         #region Constants
 
         // Hotkey slot counts
@@ -1761,6 +1763,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public IReadOnlyList<ActiveBuff> ActiveBuffs => _buffs;
 
+        public IReadOnlyList<StatusBarBuffEntry> GetStatusBarBuffEntries(int currentTime)
+        {
+            if (_buffs.Count == 0)
+            {
+                return Array.Empty<StatusBarBuffEntry>();
+            }
+
+            var entries = new List<StatusBarBuffEntry>(_buffs.Count);
+            foreach (var buff in _buffs.OrderBy(activeBuff => activeBuff.StartTime).ThenBy(activeBuff => activeBuff.SkillId))
+            {
+                entries.Add(new StatusBarBuffEntry
+                {
+                    SkillId = buff.SkillId,
+                    SkillName = buff.SkillData?.Name ?? buff.SkillId.ToString(),
+                    IconKey = ResolveBuffIconKey(buff),
+                    StartTime = buff.StartTime,
+                    DurationMs = buff.Duration,
+                    RemainingMs = buff.GetRemainingTime(currentTime)
+                });
+            }
+
+            return entries;
+        }
+
         /// <summary>
         /// Get total buff stat bonus
         /// </summary>
@@ -1799,6 +1825,42 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
             }
             return false;
+        }
+
+        private static string ResolveBuffIconKey(ActiveBuff buff)
+        {
+            var levelData = buff?.LevelData;
+            if (levelData == null)
+            {
+                return GenericBuffIconKey;
+            }
+
+            int mappedStatCount = 0;
+            string iconKey = null;
+
+            void Track(int value, string key)
+            {
+                if (value <= 0)
+                {
+                    return;
+                }
+
+                mappedStatCount++;
+                iconKey = key;
+            }
+
+            Track(levelData.PAD, "buff/incPAD");
+            Track(levelData.PDD, "buff/incPDD");
+            Track(levelData.MAD, "buff/incMAD");
+            Track(levelData.MDD, "buff/incMDD");
+            Track(levelData.ACC, "buff/incACC");
+            Track(levelData.EVA, "buff/incEVA");
+            Track(levelData.Speed, "buff/incSpeed");
+            Track(levelData.Jump, "buff/incJump");
+
+            return mappedStatCount == 1 && !string.IsNullOrEmpty(iconKey)
+                ? iconKey
+                : GenericBuffIconKey;
         }
 
         #endregion

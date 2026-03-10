@@ -5,6 +5,7 @@ using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Wz;
 using HaCreator.MapSimulator.Entities;
@@ -515,6 +516,7 @@ namespace HaCreator.MapSimulator
             WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
             WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img"); //
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img"); // doesnt exist before big-bang
+            WzImage uiBuffIconImage = Program.FindImage("UI", "BuffIcon.img");
 
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
             WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
@@ -745,7 +747,7 @@ namespace HaCreator.MapSimulator
             // Statusbar
             Task t_statusBar = Task.Run(() => {
                 if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap) {
-                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, uiBuffIconImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
                     if (statusBar != null) {
                         statusBarUi = statusBar.Item1;
                         statusBarChatUI = statusBar.Item2;
@@ -966,6 +968,7 @@ namespace HaCreator.MapSimulator
             if (statusBarUi != null)
             {
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
+                statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
             }
 
@@ -1217,6 +1220,7 @@ namespace HaCreator.MapSimulator
             WzImage uiBasicImage = Program.FindImage("UI", "Basic.img");
             WzImage uiWindow1Image = Program.FindImage("UI", "UIWindow.img");
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiBuffIconImage = Program.FindImage("UI", "BuffIcon.img");
             WzImage uiStatusBarImage = Program.FindImage("UI", "StatusBar.img");
             WzImage uiStatus2BarImage = Program.FindImage("UI", "StatusBar2.img");
 
@@ -1382,7 +1386,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap)
                 {
-                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
+                    Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, uiBuffIconImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
                     if (statusBar != null)
                     {
                         statusBarUi = statusBar.Item1;
@@ -1424,6 +1428,7 @@ namespace HaCreator.MapSimulator
             if (statusBarUi != null)
             {
                 statusBarUi.SetCharacterStatsProvider(_fontDebugValues, GetCharacterStatsData);
+                statusBarUi.SetBuffStatusProvider(GetStatusBarBuffData);
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
             }
 
@@ -4407,6 +4412,35 @@ namespace HaCreator.MapSimulator
                 EXP = player.Build?.Exp ?? 0,
                 MaxEXP = player.Build?.ExpToNextLevel ?? 100
             };
+        }
+
+        private IReadOnlyList<StatusBarBuffRenderData> GetStatusBarBuffData(int currentTime)
+        {
+            if (_playerManager?.Skills == null)
+            {
+                return Array.Empty<StatusBarBuffRenderData>();
+            }
+
+            IReadOnlyList<StatusBarBuffEntry> buffEntries = _playerManager.Skills.GetStatusBarBuffEntries(currentTime);
+            if (buffEntries.Count == 0)
+            {
+                return Array.Empty<StatusBarBuffRenderData>();
+            }
+
+            List<StatusBarBuffRenderData> renderData = new List<StatusBarBuffRenderData>(buffEntries.Count);
+            foreach (StatusBarBuffEntry buffEntry in buffEntries)
+            {
+                renderData.Add(new StatusBarBuffRenderData
+                {
+                    SkillId = buffEntry.SkillId,
+                    SkillName = buffEntry.SkillName,
+                    IconKey = buffEntry.IconKey,
+                    RemainingMs = buffEntry.RemainingMs,
+                    DurationMs = buffEntry.DurationMs
+                });
+            }
+
+            return renderData;
         }
 
         /// <summary>

@@ -29,6 +29,15 @@ namespace HaCreator.MapSimulator.UI {
         public string Job { get; set; } = "Beginner";
     }
 
+    public class StatusBarBuffRenderData
+    {
+        public int SkillId { get; set; }
+        public string SkillName { get; set; }
+        public string IconKey { get; set; } = "united/buff";
+        public int RemainingMs { get; set; }
+        public int DurationMs { get; set; }
+    }
+
     public class StatusBarUI : BaseDXDrawableItem, IUIObjectEvents {
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
@@ -37,6 +46,7 @@ namespace HaCreator.MapSimulator.UI {
         // Level at (45, 552), Job at (75, 549), Name at (75, 561) (absolute screen positions)
         private SpriteFont _font;
         private Func<CharacterStatsData> _getCharacterStats;
+        private Func<int, IReadOnlyList<StatusBarBuffRenderData>> _getBuffStatus;
         private Texture2D _pixelTexture;
 
         // Gauge textures loaded from UI.wz/StatusBar2.img/mainBar/gauge/hp/0, mp/0, exp/0
@@ -59,6 +69,8 @@ namespace HaCreator.MapSimulator.UI {
         private Texture2D _dotTexture;            // For decimal point
         private Point _dotOrigin;
         private bool _useBitmapFont = false;      // Whether to use bitmap font or SpriteFont
+        private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
 
         // Text positions relative to status bar (from IDA Pro analysis)
         // The status bar is composed of: lvBacktrnd (left ~64px) + gaugeBackgrd (center) + buttons
@@ -97,6 +109,11 @@ namespace HaCreator.MapSimulator.UI {
         private static readonly Color MP_GAUGE_BG_COLOR = new Color(20, 40, 80);     // Dark blue background
         private static readonly Color EXP_GAUGE_COLOR = new Color(255, 255, 50);     // Yellow for EXP
         private static readonly Color EXP_GAUGE_BG_COLOR = new Color(60, 60, 20);    // Dark yellow background
+        private static readonly Vector2 BUFF_TRAY_POS = new Vector2(429, -7);
+        private const int BUFF_ICON_SIZE = 32;
+        private const int BUFF_ICON_SPACING = 2;
+        private const int BUFF_TRAY_COLUMNS = 10;
+        private const int BUFF_TRAY_ROWS = 2;
 
         /// <summary>
         /// Constructor for the status bar window
@@ -138,6 +155,11 @@ namespace HaCreator.MapSimulator.UI {
             _getCharacterStats = getCharacterStats;
         }
 
+        public void SetBuffStatusProvider(Func<int, IReadOnlyList<StatusBarBuffRenderData>> getBuffStatus)
+        {
+            _getBuffStatus = getBuffStatus;
+        }
+
         /// <summary>
         /// Set the pixel texture for drawing gauge bars
         /// </summary>
@@ -157,6 +179,23 @@ namespace HaCreator.MapSimulator.UI {
             _hpGaugeTexture = hpGauge;
             _mpGaugeTexture = mpGauge;
             _expGaugeTexture = expGauge;
+        }
+
+        public void SetBuffIconTextures(Dictionary<string, Texture2D> buffIconTextures)
+        {
+            _buffIconTextures.Clear();
+            if (buffIconTextures == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, Texture2D> iconEntry in buffIconTextures)
+            {
+                if (!string.IsNullOrWhiteSpace(iconEntry.Key) && iconEntry.Value != null)
+                {
+                    _buffIconTextures[iconEntry.Key] = iconEntry.Value;
+                }
+            }
         }
 
         /// <summary>
@@ -256,14 +295,14 @@ namespace HaCreator.MapSimulator.UI {
 
             // Draw character stats (HP, MP, EXP, Level, Name)
             // Use renderParameters to get screen height and calculate position from bottom
-            DrawCharacterStats(sprite, renderParameters);
+            DrawCharacterStats(sprite, renderParameters, TickCount);
         }
 
         /// <summary>
         /// Draw character stats (HP, MP, EXP, Level, Name) on the status bar.
         /// Positions derived from IDA Pro analysis of CUIStatusBar::SetNumberValue and CUIStatusBar::SetStatusValue.
         /// </summary>
-        private void DrawCharacterStats(SpriteBatch sprite, RenderParameters renderParameters) {
+        private void DrawCharacterStats(SpriteBatch sprite, RenderParameters renderParameters, int currentTime) {
             if (_getCharacterStats == null)
                 return;
 
@@ -283,6 +322,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Draw gauge bars first (under the text)
             DrawGaugeBars(sprite, stats, basePosGauge);
+            DrawBuffTray(sprite, basePosGauge, currentTime);
 
             // Skip text rendering if no font
             if (_font == null)
@@ -371,6 +411,77 @@ namespace HaCreator.MapSimulator.UI {
             } else if (_pixelTexture != null) {
                 DrawGaugeBar(sprite, basePos, EXP_GAUGE_RECT, expRatio, EXP_GAUGE_COLOR, EXP_GAUGE_BG_COLOR);
             }
+        }
+
+        private void DrawBuffTray(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)
+        {
+            if (_getBuffStatus == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<StatusBarBuffRenderData> buffEntries = _getBuffStatus(currentTime);
+            _buffIconHitboxes.Clear();
+            if (buffEntries == null || buffEntries.Count == 0)
+            {
+                return;
+            }
+
+            Vector2 trayOrigin = basePosGauge + BUFF_TRAY_POS;
+            int maxEntries = BUFF_TRAY_COLUMNS * BUFF_TRAY_ROWS;
+
+            for (int i = 0; i < buffEntries.Count && i < maxEntries; i++)
+            {
+                StatusBarBuffRenderData buffEntry = buffEntries[i];
+                int row = i / BUFF_TRAY_COLUMNS;
+                int col = i % BUFF_TRAY_COLUMNS;
+                Rectangle iconRect = new Rectangle(
+                    (int)trayOrigin.X + col * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
+                    (int)trayOrigin.Y + row * (BUFF_ICON_SIZE + BUFF_ICON_SPACING),
+                    BUFF_ICON_SIZE,
+                    BUFF_ICON_SIZE);
+
+                _buffIconHitboxes[buffEntry.SkillId] = iconRect;
+                DrawBuffIconFrame(sprite, iconRect);
+
+                Texture2D iconTexture = null;
+                if (!_buffIconTextures.TryGetValue(buffEntry.IconKey ?? string.Empty, out iconTexture))
+                {
+                    _buffIconTextures.TryGetValue("united/buff", out iconTexture);
+                }
+
+                if (iconTexture != null)
+                {
+                    sprite.Draw(iconTexture, iconRect, Color.White);
+                }
+
+                if (_font == null || buffEntry.RemainingMs <= 0)
+                {
+                    continue;
+                }
+
+                string remainingText = Math.Max(1, (int)Math.Ceiling(buffEntry.RemainingMs / 1000f)).ToString();
+                Vector2 textSize = _font.MeasureString(remainingText) * 0.5f;
+                Vector2 textPosition = new Vector2(
+                    iconRect.Right - textSize.X - 2,
+                    iconRect.Bottom - textSize.Y - 1);
+
+                DrawTextWithShadow(sprite, remainingText, textPosition, Color.White, Color.Black, 0.5f);
+            }
+        }
+
+        private void DrawBuffIconFrame(SpriteBatch sprite, Rectangle iconRect)
+        {
+            if (_pixelTexture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixelTexture, iconRect, new Color(18, 18, 28, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, iconRect.Width, 1), new Color(92, 92, 110));
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), new Color(42, 42, 54));
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), new Color(92, 92, 110));
+            sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), new Color(42, 42, 54));
         }
 
         /// <summary>
