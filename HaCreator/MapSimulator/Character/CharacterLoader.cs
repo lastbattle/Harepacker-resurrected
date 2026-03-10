@@ -16,6 +16,10 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class CharacterLoader
     {
+        private const int DefaultWizetHatId = 1002140;
+        private const int DefaultWizetSuitId = 1042003;
+        private const int DefaultWizetPantsId = 1062007;
+        private const int DefaultWizetSuitcaseId = 1322013;
         private const int DefaultBeginnerSwordId = 1302000;
         private const int DefaultBeginnerCoatId = 1040002;
         private const int DefaultBeginnerPantsId = 1060002;
@@ -1547,9 +1551,9 @@ namespace HaCreator.MapSimulator.Character
                 Face = LoadFace(20000),   // Default male face
                 Hair = LoadHair(30000),   // Default male hair
                 Name = "Default Male",
-                Level = 1,
-                Job = 0,
-                JobName = "Beginner"
+                Level = 200,              // Level 200
+                Job = 910,                // SuperGM
+                JobName = "SuperGM"
             };
 
             EquipDefaultSimulatorGear(build);
@@ -1571,9 +1575,9 @@ namespace HaCreator.MapSimulator.Character
                 Face = LoadFace(21000),   // Default female face
                 Hair = LoadHair(31000),   // Default female hair
                 Name = "Default Female",
-                Level = 1,
-                Job = 0,
-                JobName = "Beginner"
+                Level = 200,              // Level 200
+                Job = 910,                // SuperGM
+                JobName = "SuperGM"
             };
 
             EquipDefaultSimulatorGear(build);
@@ -1607,10 +1611,11 @@ namespace HaCreator.MapSimulator.Character
             if (build == null)
                 return;
 
-            EquipDefaultItem(build, DefaultBeginnerCoatId, "coat");
-            EquipDefaultItem(build, DefaultBeginnerPantsId, "pants");
+            EquipDefaultItem(build, DefaultWizetHatId, "hat");
+            EquipDefaultItem(build, DefaultWizetSuitId, "coat", DefaultBeginnerCoatId);
+            EquipDefaultItem(build, DefaultWizetPantsId, "pants", DefaultBeginnerPantsId);
             EquipDefaultItem(build, DefaultBeginnerShoesId, "shoes");
-            EquipDefaultItem(build, DefaultBeginnerSwordId, "weapon");
+            EquipDefaultItem(build, DefaultWizetSuitcaseId, "weapon", DefaultBeginnerSwordId);
         }
 
         private void EquipDefaultItem(CharacterBuild build, int itemId, string label, int? fallbackItemId = null)
