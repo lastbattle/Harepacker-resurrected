@@ -154,7 +154,9 @@ namespace HaCreator.MapSimulator.Pools
                 Hide = instance?.Hide == true,
                 Info = instance?.Info,
                 Team = instance?.Team,
-                RespawnTimeMs = NormalizeRespawnTime(instance?.MobTime, mobData?.IsBoss ?? false),
+                RespawnTimeMs = mobData?.Escort > 0
+                    ? -1
+                    : NormalizeRespawnTime(instance?.MobTime, mobData?.IsBoss ?? false),
                 IsBoss = mobData?.IsBoss ?? false,
                 IsActive = true
             };

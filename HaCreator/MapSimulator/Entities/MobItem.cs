@@ -525,9 +525,17 @@ namespace HaCreator.MapSimulator.Entities
                 int exp = mobData.Exp > 0 ? mobData.Exp : 0;
                 bool isBoss = mobData.IsBoss;
                 bool isUndead = mobData.Undead > 0;
-                bool autoAggro = mobData.FirstAttack;  // FirstAttack = mob attacks first (auto-aggro)
+                bool isEscortMob = mobData.Escort > 0;
+                bool canTargetPlayer = !isEscortMob && !mobData.Friendly;
+                bool autoAggro = canTargetPlayer && mobData.FirstAttack;  // FirstAttack = mob attacks first (auto-aggro)
 
                 AI.Initialize(maxHp, level, exp, isBoss, isUndead, autoAggro);
+                AI.ConfigureSpecialBehavior(
+                    canTargetPlayer,
+                    isEscortMob,
+                    mobData.SelfDestruction?.Hp ?? -1,
+                    mobData.SelfDestruction?.Action ?? -1,
+                    mobData.SelfDestruction?.RemoveAfter > 0 ? mobData.SelfDestruction.RemoveAfter * 1000 : -1);
 
                 // Set aggro range based on mob level/boss status
                 if (isBoss)

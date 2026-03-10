@@ -122,6 +122,19 @@ namespace UnitTest_MapSimulator
             Assert.Equal(9, pool.ActiveMobCount);
         }
 
+        [Fact]
+        public void Initialize_EscortMobDisablesRespawn()
+        {
+            var mob = CreateMob(mobTimeSeconds: 10, escort: 1);
+            var pool = new MobPool();
+
+            pool.Initialize(new[] { mob });
+
+            MobSpawnPoint spawnPoint = GetSpawnPoints(pool).Single();
+
+            Assert.Equal(-1, spawnPoint.RespawnTimeMs);
+        }
+
         private static List<MobSpawnPoint> GetSpawnPoints(MobPool pool)
         {
             return (List<MobSpawnPoint>)typeof(MobPool)
@@ -129,12 +142,15 @@ namespace UnitTest_MapSimulator
                 .GetValue(pool)!;
         }
 
-        private static MobItem CreateMob(int? mobTimeSeconds = null, int yShift = 0)
+        private static MobItem CreateMob(int? mobTimeSeconds = null, int yShift = 0, byte escort = 0)
         {
             var mobInfo = new MobInfo(new DrawingBitmap(1, 1), DrawingPoint.Empty, "100100", "Test Mob", null);
             typeof(MobInfo)
                 .GetField("_mobData", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .SetValue(mobInfo, new MobData());
+                .SetValue(mobInfo, new MobData
+                {
+                    Escort = escort
+                });
 
             var mobInstance = new MobInstance(
                 mobInfo,

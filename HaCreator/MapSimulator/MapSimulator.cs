@@ -3,6 +3,7 @@ using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Misc;
 using HaCreator.MapEditor.Instance.Shapes;
+using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
@@ -3781,6 +3782,16 @@ namespace HaCreator.MapSimulator
             {
                 int currentTick = Environment.TickCount;
                 _combatEffects.AddDeathEffectForMob(mob, currentTick);
+
+                bool suppressRewards = mob?.AI?.DeathType == MobDeathType.Bomb ||
+                                       mob?.AI?.DeathType == MobDeathType.Miss ||
+                                       mob?.AI?.DeathType == MobDeathType.Swallowed ||
+                                       mob?.AI?.DeathType == MobDeathType.Timeout ||
+                                       (mob?.MobInstance?.MobInfo?.MobData?.Escort ?? 0) > 0;
+                if (suppressRewards)
+                {
+                    return;
+                }
 
                 // Play drop item sound
                 PlayDropItemSE();

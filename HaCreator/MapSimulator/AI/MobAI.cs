@@ -265,6 +265,8 @@ namespace HaCreator.MapSimulator.AI
         private float _chaseSpeedMultiplier = DEFAULT_CHASE_SPEED_MULT;
         private bool _isAggroed = false;  // True if mob has been hit and should chase
         private bool _autoAggro = false;  // True if mob auto-aggros when player enters range
+        private bool _canTargetPlayer = true;
+        private bool _isEscortMob = false;
 
         // Boss aggro timeout tracking
         private int _bossAggroStartTime = 0;      // When boss first aggroed (0 = never aggroed)
@@ -273,6 +275,14 @@ namespace HaCreator.MapSimulator.AI
         // Death
         private MobDeathType _deathType = MobDeathType.Normal;
         private int _deathTime = 0;
+
+        // Special mob interactions
+        private int _selfDestructHpThreshold = -1;
+        private int _selfDestructAction = -1;
+        private int _selfDestructRemoveAfterMs = -1;
+        private int _specialSpawnTime = int.MinValue;
+        private bool _selfDestructTriggered = false;
+        private bool _selfDestructPending = false;
 
         // Status effects
         private MobStatusEffect _statusEffects = MobStatusEffect.None;
@@ -305,6 +315,8 @@ namespace HaCreator.MapSimulator.AI
         public MobDeathType DeathType => _deathType;
         public int StateElapsed(int currentTick) => currentTick - _stateStartTime;
         public IReadOnlyDictionary<MobStatusEffect, MobStatusEntry> StatusEntries => _statusEntries;
+        public bool IsEscortMob => _isEscortMob;
+        public bool CanTargetPlayer => _canTargetPlayer;
 
         // Status effect properties
         public MobStatusEffect StatusEffects => _statusEffects;
@@ -347,6 +359,14 @@ namespace HaCreator.MapSimulator.AI
             _isBoss = isBoss;
             _isUndead = isUndead;
             _autoAggro = autoAggro;  // Determined by Mob.wz firstAttack property
+            _canTargetPlayer = true;
+            _isEscortMob = false;
+            _selfDestructHpThreshold = -1;
+            _selfDestructAction = -1;
+            _selfDestructRemoveAfterMs = -1;
+            _specialSpawnTime = int.MinValue;
+            _selfDestructTriggered = false;
+            _selfDestructPending = false;
 
             // Bosses have larger aggro range
             if (isBoss)
@@ -354,6 +374,30 @@ namespace HaCreator.MapSimulator.AI
                 _aggroRange = DEFAULT_AGGRO_RANGE * 2;
                 _attackRange = DEFAULT_ATTACK_RANGE * 2;
                 // Note: autoAggro is determined by firstAttack from Mob.wz, not forced for bosses
+            }
+        }
+
+        public void ConfigureSpecialBehavior(
+            bool canTargetPlayer,
+            bool isEscortMob,
+            int selfDestructHpThreshold = -1,
+            int selfDestructAction = -1,
+            int selfDestructRemoveAfterMs = -1)
+        {
+            _canTargetPlayer = canTargetPlayer;
+            _isEscortMob = isEscortMob;
+            _selfDestructHpThreshold = selfDestructHpThreshold;
+            _selfDestructAction = selfDestructAction;
+            _selfDestructRemoveAfterMs = selfDestructRemoveAfterMs;
+            _specialSpawnTime = int.MinValue;
+            _selfDestructTriggered = false;
+            _selfDestructPending = false;
+
+            if (!canTargetPlayer)
+            {
+                _target.IsValid = false;
+                _target.Distance = float.MaxValue;
+                _isAggroed = false;
             }
         }
 
@@ -458,6 +502,12 @@ namespace HaCreator.MapSimulator.AI
                 return;
             }
 
+            UpdateSpecialInteractions(currentTick);
+            if (IsDead)
+            {
+                return;
+            }
+
             // Boss aggro timeout check - bosses become passive after timeout
             // as long as player is still around (even if dead)
             if (_isBoss && !_bossAggroTimedOut && _bossAggroStartTime > 0 && playerX.HasValue)
@@ -514,6 +564,13 @@ namespace HaCreator.MapSimulator.AI
 
         private void UpdateTarget(int currentTick, float mobX, float mobY, float? playerX, float? playerY)
         {
+            if (!_canTargetPlayer)
+            {
+                _target.IsValid = false;
+                _target.Distance = float.MaxValue;
+                return;
+            }
+
             if (!playerX.HasValue || !playerY.HasValue)
             {
                 // If aggroed, keep tracking the last known target position
@@ -681,6 +738,13 @@ namespace HaCreator.MapSimulator.AI
         {
             if (_state == MobAIState.Attack || _state == MobAIState.Skill)
             {
+                if (_selfDestructPending)
+                {
+                    _selfDestructPending = false;
+                    Kill(currentTick, MobDeathType.Bomb);
+                    return;
+                }
+
                 SetState(MobAIState.Chase, currentTick);
             }
         }
@@ -746,7 +810,7 @@ namespace HaCreator.MapSimulator.AI
             AddDamageDisplay(damage, currentTick, isCritical);
 
             // AGGRO: When hit, the mob should chase the attacker (unless boss aggro timed out)
-            if (attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
+            if (_canTargetPlayer && attackerX.HasValue && attackerY.HasValue && !_bossAggroTimedOut)
             {
                 // Set/update target to attacker position - this triggers aggro
                 _target.TargetX = attackerX.Value;
@@ -769,7 +833,7 @@ namespace HaCreator.MapSimulator.AI
             {
                 SetState(MobAIState.Hit, currentTick);
             }
-            else if (_isBoss && attackerX.HasValue && !_bossAggroTimedOut)
+            else if (_canTargetPlayer && _isBoss && attackerX.HasValue && !_bossAggroTimedOut)
             {
                 // Bosses don't stun but still aggro - go straight to chase
                 if (_state == MobAIState.Idle || _state == MobAIState.Patrol)
@@ -797,6 +861,9 @@ namespace HaCreator.MapSimulator.AI
         public void ForceAggro(float targetX, float targetY, int currentTick)
         {
             if (IsDead)
+                return;
+
+            if (!_canTargetPlayer)
                 return;
 
             // Don't aggro if boss aggro has timed out
@@ -830,6 +897,7 @@ namespace HaCreator.MapSimulator.AI
             _currentHp = 0;
             _deathType = deathType;
             _deathTime = currentTick;
+            _selfDestructPending = false;
             SetState(MobAIState.Death, currentTick);
         }
 
@@ -1008,6 +1076,9 @@ namespace HaCreator.MapSimulator.AI
             _guidedTargetId = 0;
             _isGuidedTarget = false;
             _isAggroed = false;
+            _specialSpawnTime = int.MinValue;
+            _selfDestructTriggered = false;
+            _selfDestructPending = false;
 
             // Reset boss aggro timeout state
             _bossAggroStartTime = 0;
@@ -1268,8 +1339,18 @@ namespace HaCreator.MapSimulator.AI
         #region Helpers
         private int FindAvailableAttackIndex(int currentTick)
         {
+            if (!_canTargetPlayer)
+            {
+                return -1;
+            }
+
             for (int i = 0; i < _attacks.Count; i++)
             {
+                if (IsReservedSelfDestructAttack(i))
+                {
+                    continue;
+                }
+
                 if (!_attacks[i].IsOnCooldown(currentTick) && _target.Distance <= _attacks[i].Range)
                 {
                     return i;
@@ -1281,7 +1362,7 @@ namespace HaCreator.MapSimulator.AI
 
         private int FindAvailableSkillIndex(int currentTick)
         {
-            if (IsSealed)
+            if (IsSealed || !_canTargetPlayer)
             {
                 return -1;
             }
@@ -1372,6 +1453,96 @@ namespace HaCreator.MapSimulator.AI
             return effect == MobStatusEffect.Poison ||
                    effect == MobStatusEffect.Venom ||
                    effect == MobStatusEffect.Burned;
+        }
+
+        private void UpdateSpecialInteractions(int currentTick)
+        {
+            if (_specialSpawnTime == int.MinValue)
+            {
+                _specialSpawnTime = currentTick;
+            }
+
+            if (_selfDestructTriggered || _selfDestructPending)
+            {
+                return;
+            }
+
+            if (_selfDestructHpThreshold >= 0 && _currentHp > 0 && _currentHp <= _selfDestructHpThreshold)
+            {
+                TriggerSelfDestruction(currentTick);
+                return;
+            }
+
+            if (_selfDestructRemoveAfterMs > 0 && currentTick - _specialSpawnTime >= _selfDestructRemoveAfterMs)
+            {
+                TriggerSelfDestruction(currentTick);
+            }
+        }
+
+        private void TriggerSelfDestruction(int currentTick)
+        {
+            _selfDestructTriggered = true;
+
+            if (TryStartSelfDestructionAction(currentTick))
+            {
+                return;
+            }
+
+            Kill(currentTick, MobDeathType.Bomb);
+        }
+
+        private bool TryStartSelfDestructionAction(int currentTick)
+        {
+            if (_selfDestructAction <= 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _attacks.Count; i++)
+            {
+                MobAttackEntry attack = _attacks[i];
+                if (attack.AttackId != _selfDestructAction &&
+                    !string.Equals(attack.AnimationName, $"attack{_selfDestructAction}", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _currentAttackIndex = i;
+                attack.LastUseTime = currentTick;
+                _selfDestructPending = true;
+                SetState(MobAIState.Attack, currentTick);
+                return true;
+            }
+
+            for (int i = 0; i < _skills.Count; i++)
+            {
+                MobSkillEntry skill = _skills[i];
+                if (skill.ActionIndex != _selfDestructAction &&
+                    !string.Equals(skill.AnimationName, $"skill{_selfDestructAction}", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _currentSkillIndex = i;
+                skill.LastUseTime = currentTick;
+                _selfDestructPending = true;
+                SetState(MobAIState.Skill, currentTick);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool IsReservedSelfDestructAttack(int attackIndex)
+        {
+            if (_selfDestructTriggered || _selfDestructAction <= 0 || attackIndex < 0 || attackIndex >= _attacks.Count)
+            {
+                return false;
+            }
+
+            MobAttackEntry attack = _attacks[attackIndex];
+            return attack.AttackId == _selfDestructAction ||
+                   string.Equals(attack.AnimationName, $"attack{_selfDestructAction}", StringComparison.OrdinalIgnoreCase);
         }
 
         private void ApplyStatusTickDamage(int damage, int currentTick)

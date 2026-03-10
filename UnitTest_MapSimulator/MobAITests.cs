@@ -243,5 +243,55 @@ namespace UnitTest_MapSimulator
             Assert.Equal(1, resetCount);
             Assert.False(ai.HasStatusEffect(MobStatusEffect.Freeze));
         }
+
+        [Fact]
+        public void Update_SelfDestructionThresholdStartsConfiguredActionAndBombsOnCompletion()
+        {
+            var ai = new MobAI();
+            ai.Initialize(maxHp: 100, level: 10, exp: 50, isBoss: false, isUndead: false, autoAggro: true);
+            ai.AddAttack(1, "attack1", damage: 10, range: 50, cooldown: 1000);
+            ai.AddAttack(4, "attack4", damage: 25, range: 70, cooldown: 1000);
+            ai.ConfigureSpecialBehavior(canTargetPlayer: true, isEscortMob: false, selfDestructHpThreshold: 30, selfDestructAction: 4);
+
+            ai.TakeDamage(70, 1000);
+            ai.Update(1100, 0, 0, 20, 0);
+
+            Assert.Equal(MobAIState.Attack, ai.State);
+            Assert.Equal("attack4", ai.GetCurrentAttack()?.AnimationName);
+
+            ai.NotifyAttackAnimationComplete(1400);
+
+            Assert.True(ai.IsDead);
+            Assert.Equal(MobDeathType.Bomb, ai.DeathType);
+        }
+
+        [Fact]
+        public void Update_SelfDestructionRemoveAfterKillsMob()
+        {
+            var ai = CreateDefaultMobAI();
+            ai.ConfigureSpecialBehavior(canTargetPlayer: true, isEscortMob: false, selfDestructRemoveAfterMs: 500);
+
+            ai.Update(0, 0, 0, null, null);
+            ai.Update(600, 0, 0, null, null);
+
+            Assert.True(ai.IsDead);
+            Assert.Equal(MobDeathType.Bomb, ai.DeathType);
+        }
+
+        [Fact]
+        public void EscortMob_DoesNotTargetOrAggroPlayer()
+        {
+            var ai = CreateDefaultMobAI();
+            ai.ConfigureSpecialBehavior(canTargetPlayer: false, isEscortMob: true);
+
+            ai.Update(1000, 0, 0, 20, 0);
+            ai.TakeDamage(5, 1100, false, 20, 0);
+            ai.ForceAggro(20, 0, 1200);
+
+            Assert.False(ai.Target.IsValid);
+            Assert.False(ai.IsAggroed);
+            Assert.False(ai.IsAggressive);
+            Assert.True(ai.IsEscortMob);
+        }
     }
 }
