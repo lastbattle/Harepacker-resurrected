@@ -4474,14 +4474,21 @@ namespace HaCreator.MapSimulator
             LayeredItem sourceItem,
             ConcurrentDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects)
         {
-            if (mapItem == null || sourceItem is not ObjectInstance objInst || objInst.QuestInfo == null || objInst.QuestInfo.Count == 0)
+            if (mapItem == null || sourceItem is not ObjectInstance objInst)
+            {
+                return;
+            }
+
+            bool hiddenByMap = objInst.hide == true;
+            bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
+            if (!hiddenByMap && !hasQuestInfo)
             {
                 return;
             }
 
             questGatedMapObjects[mapItem] = new QuestGatedMapObjectState(
-                objInst.QuestInfo.ToArray(),
-                objInst.hide == true);
+                objInst.QuestInfo?.ToArray(),
+                hiddenByMap);
         }
 
         private void ReplaceQuestGatedMapObjects(IDictionary<BaseDXDrawableItem, QuestGatedMapObjectState> questGatedMapObjects)
