@@ -218,6 +218,7 @@ namespace HaCreator.MapSimulator
         private readonly PassengerSyncController _passengerSync = new PassengerSyncController();
         private readonly LimitedViewField _limitedViewField = new LimitedViewField();
         private TemporaryPortalField _temporaryPortalField;
+        private FieldRuleRuntime _fieldRuleRuntime;
 
         // Camera controller for smooth scrolling and zoom
         private readonly CameraController _cameraController = new CameraController();
@@ -309,6 +310,8 @@ namespace HaCreator.MapSimulator
         private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
         private const int DIRECTION_MODE_RELEASE_DELAY_MS = 300;
         private const int PASSIVE_TRANSFER_REQUEST_DURATION_MS = 1200;
+        private const int FIELD_RULE_DAMAGE_MIST_DURATION_MS = 650;
+        private const int FIELD_RULE_MESSAGE_COOLDOWN_MS = 1200;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
@@ -317,6 +320,8 @@ namespace HaCreator.MapSimulator
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
         private int _passiveTransferRequestExpiresAt = int.MinValue;
+        private int _lastFieldRestrictionMessageTime = int.MinValue;
+        private string _lastFieldRestrictionMessage = null;
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -887,6 +892,7 @@ namespace HaCreator.MapSimulator
             _mapCenterY = _mapBoard.CenterPoint.Y;
             // Spawn at portal spawn point (spawnX, spawnY set above from StartPoint portal)
             InitializePlayerManager(spawnX, spawnY);
+            InitializeFieldRuleRuntime(currTickCount);
 
             // Initialize camera controller
             _cameraController.Initialize(
@@ -1172,10 +1178,14 @@ namespace HaCreator.MapSimulator
 
             // Clear combat effects (only map-specific effects like mob HP bars)
             _combatEffects?.ClearMapState();
+            _fieldEffects?.ResetAllEffects();
 
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
             _passengerSync.Clear();
+            _fieldRuleRuntime = null;
+            _lastFieldRestrictionMessageTime = int.MinValue;
+            _lastFieldRestrictionMessage = null;
 
             // Clear arrays
             _mapObjectsArray = null;
@@ -1576,6 +1586,7 @@ namespace HaCreator.MapSimulator
             {
                 InitializePlayerManager(spawnX, spawnY);
             }
+            InitializeFieldRuleRuntime(currTickCount);
 
             // Initialize camera controller for smooth scrolling
             _cameraController.Initialize(
@@ -2794,6 +2805,7 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            UpdateFieldRuleRuntime(currTickCount);
             UpdateReactorRuntime(currTickCount, deltaSeconds);
 
             // Update field effects (weather messages, fear effect, obstacles)
@@ -4960,6 +4972,8 @@ namespace HaCreator.MapSimulator
             long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
             _playerManager.Skills.SetFieldSkillRestrictionEvaluator(
                 skill => FieldSkillRestrictionEvaluator.CanUseSkill(fieldLimit, skill));
+            _playerManager.Skills.SetFieldSkillRestrictionMessageProvider(
+                skill => FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill));
         }
 
         private void ConfigureSkillUIBindings()
@@ -4968,6 +4982,7 @@ namespace HaCreator.MapSimulator
                 return;
 
             _playerManager.Skills.OnSkillCast = HandlePlayerSkillCast;
+            _playerManager.Skills.OnFieldSkillCastRejected = HandleFieldSkillCastRejected;
 
             if (uiWindowManager.QuickSlotWindow != null)
             {
@@ -5026,6 +5041,101 @@ namespace HaCreator.MapSimulator
             }
 
             _temporaryPortalField?.TryCreateOpenGate(castInfo, currentMapId);
+        }
+
+        private void HandleFieldSkillCastRejected(SkillData skill, string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return;
+
+            bool isRepeatedMessage = string.Equals(_lastFieldRestrictionMessage, message, StringComparison.Ordinal);
+            if (isRepeatedMessage && currTickCount - _lastFieldRestrictionMessageTime < FIELD_RULE_MESSAGE_COOLDOWN_MS)
+                return;
+
+            _lastFieldRestrictionMessage = message;
+            _lastFieldRestrictionMessageTime = currTickCount;
+            PushFieldRuleMessage(message, currTickCount, true);
+        }
+
+        private void InitializeFieldRuleRuntime(int currentTime)
+        {
+            _fieldRuleRuntime = new FieldRuleRuntime(_mapBoard?.MapInfo);
+            if (_fieldRuleRuntime == null || !_fieldRuleRuntime.IsActive)
+            {
+                _fieldRuleRuntime = null;
+                return;
+            }
+
+            IReadOnlyList<string> entryMessages = _fieldRuleRuntime.Reset(currentTime);
+            for (int i = 0; i < entryMessages.Count; i++)
+            {
+                PushFieldRuleMessage(entryMessages[i], currentTime, false);
+            }
+        }
+
+        private void UpdateFieldRuleRuntime(int currentTime)
+        {
+            if (_fieldRuleRuntime == null)
+                return;
+
+            FieldRuleUpdateResult updateResult = _fieldRuleRuntime.Update(
+                currentTime,
+                _playerManager?.Player?.IsAlive == true,
+                _gameState.PendingMapChange);
+
+            if (updateResult == null)
+                return;
+
+            for (int i = 0; i < updateResult.Messages.Count; i++)
+            {
+                PushFieldRuleMessage(updateResult.Messages[i], currentTime, false, true);
+            }
+
+            for (int i = 0; i < updateResult.OverlayMessages.Count; i++)
+            {
+                PushFieldRuleMessage(updateResult.OverlayMessages[i], currentTime, true, false);
+            }
+
+            if (updateResult.EnvironmentalDamage > 0 && _playerManager?.Player?.IsAlive == true)
+            {
+                _playerManager.Player.TakeDamage(updateResult.EnvironmentalDamage, 0f, 0f);
+                if (updateResult.TriggerDamageMist)
+                {
+                    _fieldEffects.TriggerDamageMist(0.45f, FIELD_RULE_DAMAGE_MIST_DURATION_MS, currentTime);
+                }
+            }
+
+            if (updateResult.TransferMapId > 0)
+            {
+                QueueFieldTransfer(updateResult.TransferMapId);
+            }
+        }
+
+        private void PushFieldRuleMessage(string message, int currentTime, bool showOverlay, bool addChat = true)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return;
+
+            if (addChat)
+            {
+                _chat.AddMessage(message, new Color(255, 228, 151), currentTime);
+            }
+            if (showOverlay)
+            {
+                _fieldEffects.AddWeatherMessage(message, WeatherEffectType.None, currentTime);
+            }
+        }
+
+        private bool QueueFieldTransfer(int targetMapId)
+        {
+            if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap || _gameState.PendingMapChange)
+                return false;
+
+            _playerManager?.ForceStand();
+            _gameState.PendingMapChange = true;
+            _gameState.PendingMapId = targetMapId;
+            _gameState.PendingPortalName = null;
+            return true;
         }
 
         private bool TryResolveMysticDoorReturnTarget(out int returnMapId, out float returnX, out float returnY)

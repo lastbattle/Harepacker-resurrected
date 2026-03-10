@@ -37,5 +37,27 @@ namespace UnitTest_MapSimulator
 
             Assert.True(canUse);
         }
+
+        [Fact]
+        public void GetRestrictionMessage_ReturnsSkillUsageMessageWhenFieldBlocksAllSkills()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Unable_To_Use_Skill;
+            var skill = new SkillData { IsAttack = true };
+
+            string message = FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill);
+
+            Assert.Equal("This field forbids skill usage.", message);
+        }
+
+        [Fact]
+        public void GetRestrictionMessage_ReturnsMovementOnlyMessageWhenNonMovementSkillIsBlocked()
+        {
+            long fieldLimit = 1L << (int)FieldLimitType.Move_Skill_Only;
+            var skill = new SkillData { IsAttack = true };
+
+            string message = FieldSkillRestrictionEvaluator.GetRestrictionMessage(fieldLimit, skill);
+
+            Assert.Equal("Only movement skills can be used in this field.", message);
+        }
     }
 }

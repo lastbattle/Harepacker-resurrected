@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly SkillLoader _loader;
         private readonly PlayerCharacter _player;
         private Func<SkillData, bool> _fieldSkillRestrictionEvaluator;
+        private Func<SkillData, string> _fieldSkillRestrictionMessageProvider;
         private Func<int, CharacterPart> _tamingMobLoader;
 
         // Active state
@@ -81,6 +82,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Callbacks
         public Action<SkillCastInfo> OnSkillCast;
+        public Action<SkillData, string> OnFieldSkillCastRejected;
         public Action<ActiveProjectile, MobItem> OnProjectileHit;
         public Action<ActiveBuff> OnBuffApplied;
         public Action<ActiveBuff> OnBuffExpired;
@@ -106,6 +108,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public void SetCombatEffects(CombatEffects effects) => _combatEffects = effects;
         public void SetSoundManager(SoundManager soundManager) => _soundManager = soundManager;
         public void SetFieldSkillRestrictionEvaluator(Func<SkillData, bool> evaluator) => _fieldSkillRestrictionEvaluator = evaluator;
+        public void SetFieldSkillRestrictionMessageProvider(Func<SkillData, string> provider) => _fieldSkillRestrictionMessageProvider = provider;
         public void SetTamingMobLoader(Func<int, CharacterPart> loader) => _tamingMobLoader = loader;
 
         /// <summary>
@@ -477,6 +480,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 ReleasePreparedSkill(currentTime);
                 return true;
+            }
+
+            if (_fieldSkillRestrictionEvaluator != null && !_fieldSkillRestrictionEvaluator(skill))
+            {
+                string message = _fieldSkillRestrictionMessageProvider?.Invoke(skill);
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    OnFieldSkillCastRejected?.Invoke(skill, message);
+                }
+                return false;
             }
 
             // Check if can cast
