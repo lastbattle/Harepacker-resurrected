@@ -527,6 +527,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Parse ball properties
             projectile.Speed = GetInt(ballNode, "speed", 400);
+            projectile.Gravity = GetInt(ballNode, "gravity", 0);
 
             // Check for special behaviors
             if (GetInt(ballNode, "pierce") == 1)
@@ -955,7 +956,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             var lt = GetVector(node, "lt");
             levelData.RangeR = rb?.X ?? levelData.Range;
             levelData.RangeL = Math.Abs(lt?.X ?? levelData.Range);
-            levelData.RangeY = Math.Abs(lt?.Y ?? 0) + Math.Abs(rb?.Y ?? 0);
+            levelData.RangeTop = lt?.Y ?? 0;
+            levelData.RangeBottom = rb?.Y ?? 0;
+            levelData.RangeY = Math.Abs(levelData.RangeTop) + Math.Abs(levelData.RangeBottom);
 
             levelData.PAD = GetInt(node, "pad", 0, level);
             levelData.MAD = GetInt(node, "mad", 0, level);

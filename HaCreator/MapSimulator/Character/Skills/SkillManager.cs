@@ -16,6 +16,13 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillManager
     {
+        private enum AttackResolutionMode
+        {
+            Melee,
+            Magic,
+            Projectile
+        }
+
         #region Constants
 
         // Hotkey slot counts
@@ -600,6 +607,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
+            if (skill.AttackType == SkillAttackType.Magic)
+            {
+                ProcessMagicAttack(skill, level, currentTime);
+                return;
+            }
+
             ProcessMeleeAttack(skill, level, currentTime);
         }
 
@@ -993,80 +1006,237 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ProcessMeleeAttack(SkillData skill, int level, int currentTime)
         {
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Melee);
+        }
+
+        private void ProcessMagicAttack(SkillData skill, int level, int currentTime)
+        {
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Magic);
+        }
+
+        private void ProcessDirectionalAttack(SkillData skill, int level, int currentTime, AttackResolutionMode mode)
+        {
             if (_mobPool == null)
                 return;
 
             var levelData = skill.GetLevel(level);
-            var hitbox = skill.GetAttackRange(level, _player.FacingRight);
-            if (hitbox.Width <= 0 || hitbox.Height <= 0)
+            if (levelData == null)
+                return;
+
+            Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode);
+            int maxTargets = Math.Max(1, levelData.MobCount);
+            int attackCount = Math.Max(1, levelData.AttackCount);
+            List<MobItem> targets = ResolveTargetsInHitbox(worldHitbox, currentTime, maxTargets, mode);
+            if (targets.Count == 0)
+                return;
+
+            var mobsToKill = new List<MobItem>();
+            foreach (MobItem mob in targets)
             {
-                hitbox = GetDefaultMeleeHitbox(skill, levelData, _player.FacingRight);
+                bool died = ApplySkillAttackToMob(
+                    skill,
+                    level,
+                    levelData,
+                    mob,
+                    currentTime,
+                    attackCount,
+                    mode,
+                    skill.HitEffect,
+                    _player.FacingRight);
+
+                if (died && !mobsToKill.Contains(mob))
+                {
+                    mobsToKill.Add(mob);
+                }
             }
 
-            // Adjust hitbox to world position
-            var worldHitbox = new Rectangle(
-                (int)_player.X + hitbox.X,
-                (int)_player.Y + hitbox.Y,
-                hitbox.Width,
-                hitbox.Height);
-
-            int hitCount = 0;
-            int maxTargets = levelData?.MobCount ?? 1;
-            int attackCount = levelData?.AttackCount ?? 1;
-
-            foreach (var mob in _mobPool.ActiveMobs)
+            foreach (MobItem mob in mobsToKill)
             {
-                if (hitCount >= maxTargets)
-                    break;
-
-                if (mob?.AI == null || mob.AI.State == MobAIState.Death)
-                    continue;
-
-                var mobHitbox = GetMobHitbox(mob);
-                if (!worldHitbox.Intersects(mobHitbox))
-                    continue;
-
-                // Calculate damage for each hit
-                for (int i = 0; i < attackCount; i++)
-                {
-                    int damage = CalculateSkillDamage(skill, level);
-
-                    // Apply damage with sound effects and aggro
-                    mob.ApplyDamage(damage, currentTime, damage > levelData.Damage, _player.X, _player.Y);
-
-                    // Show damage number
-                    if (_combatEffects != null)
-                    {
-                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
-
-                        _combatEffects.AddDamageNumber(
-                            damage,
-                            damageAnchor.X,
-                            damageAnchor.Y,
-                            damage > levelData.Damage,
-                            false,
-                            currentTime,
-                            i);
-                    }
-
-                    // Show hit effect
-                    if (skill.HitEffect != null)
-                    {
-                        SpawnHitEffect(skill, mob.MovementInfo?.X ?? 0, (mob.MovementInfo?.Y ?? 0) - 20, currentTime);
-                    }
-
-                    // Check death
-                    if (mob.AI.State == MobAIState.Death)
-                        break;
-                }
-
-                hitCount++;
+                HandleMobDeath(mob, currentTime);
             }
         }
 
-        private Rectangle GetMobHitbox(MobItem mob)
+        private Rectangle GetWorldAttackHitbox(SkillData skill, int level, SkillLevelData levelData, AttackResolutionMode mode)
+        {
+            Rectangle hitbox = skill.GetAttackRange(level, _player.FacingRight);
+            if (hitbox.Width <= 0 || hitbox.Height <= 0)
+            {
+                hitbox = mode == AttackResolutionMode.Magic
+                    ? GetDefaultMagicHitbox(skill, levelData, _player.FacingRight)
+                    : GetDefaultMeleeHitbox(skill, levelData, _player.FacingRight);
+            }
+
+            return new Rectangle(
+                (int)_player.X + hitbox.X,
+                (int)_player.Y + hitbox.Y,
+                Math.Max(1, hitbox.Width),
+                Math.Max(1, hitbox.Height));
+        }
+
+        private List<MobItem> ResolveTargetsInHitbox(Rectangle worldHitbox, int currentTime, int maxTargets, AttackResolutionMode mode)
+        {
+            if (_mobPool == null || maxTargets <= 0)
+                return new List<MobItem>();
+
+            float areaCenterX = worldHitbox.Left + worldHitbox.Width * 0.5f;
+            float areaCenterY = worldHitbox.Top + worldHitbox.Height * 0.5f;
+
+            return _mobPool.ActiveMobs
+                .Where(IsMobAttackable)
+                .Select(mob => new { Mob = mob, Hitbox = GetMobHitbox(mob, currentTime) })
+                .Where(entry => !entry.Hitbox.IsEmpty && worldHitbox.Intersects(entry.Hitbox))
+                .Select(entry =>
+                {
+                    float mobCenterX = entry.Hitbox.Left + entry.Hitbox.Width * 0.5f;
+                    float mobCenterY = entry.Hitbox.Top + entry.Hitbox.Height * 0.5f;
+                    float deltaX = mobCenterX - _player.X;
+                    float forwardDistance = _player.FacingRight ? deltaX : -deltaX;
+                    float forwardPenalty = forwardDistance < 0f ? 100000f + MathF.Abs(forwardDistance) : forwardDistance;
+                    float verticalDistance = MathF.Abs(mobCenterY - _player.Y);
+                    float areaDistance = Vector2.Distance(
+                        new Vector2(mobCenterX, mobCenterY),
+                        new Vector2(areaCenterX, areaCenterY));
+
+                    return new
+                    {
+                        entry.Mob,
+                        Primary = mode == AttackResolutionMode.Magic ? areaDistance : forwardPenalty,
+                        Secondary = mode == AttackResolutionMode.Magic ? forwardPenalty : areaDistance,
+                        Tertiary = verticalDistance
+                    };
+                })
+                .OrderBy(entry => entry.Primary)
+                .ThenBy(entry => entry.Secondary)
+                .ThenBy(entry => entry.Tertiary)
+                .Take(maxTargets)
+                .Select(entry => entry.Mob)
+                .ToList();
+        }
+
+        private static bool IsMobAttackable(MobItem mob)
+        {
+            return mob?.AI != null
+                && mob.AI.State != MobAIState.Death
+                && mob.AI.State != MobAIState.Removed;
+        }
+
+        private bool ApplySkillAttackToMob(
+            SkillData skill,
+            int level,
+            SkillLevelData levelData,
+            MobItem mob,
+            int currentTime,
+            int attackCount,
+            AttackResolutionMode mode,
+            SkillAnimation impactAnimation,
+            bool impactFacingRight)
+        {
+            if (!IsMobAttackable(mob))
+                return false;
+
+            for (int i = 0; i < attackCount; i++)
+            {
+                int damage = CalculateSkillDamage(skill, level);
+                bool isCritical = IsSkillCritical(levelData);
+                if (isCritical)
+                {
+                    damage = (int)MathF.Round(damage * 1.5f);
+                }
+
+                bool died = mob.ApplyDamage(damage, currentTime, isCritical, _player.X, _player.Y);
+
+                ShowSkillDamageNumber(mob, damage, isCritical, currentTime, i);
+                SpawnHitEffect(
+                    skill.SkillId,
+                    impactAnimation ?? skill.HitEffect,
+                    GetMobImpactX(mob),
+                    GetMobImpactY(mob),
+                    impactFacingRight,
+                    currentTime);
+
+                if (died)
+                    return true;
+
+                ApplySkillKnockback(mode, mob, damage, impactFacingRight);
+
+                if (!IsMobAttackable(mob))
+                    return true;
+            }
+
+            return mob.AI?.State == MobAIState.Death;
+        }
+
+        private static bool IsSkillCritical(SkillLevelData levelData)
+        {
+            return levelData?.CriticalRate > 0 && Random.Next(100) < levelData.CriticalRate;
+        }
+
+        private void ShowSkillDamageNumber(MobItem mob, int damage, bool isCritical, int currentTime, int hitIndex)
+        {
+            if (_combatEffects == null)
+                return;
+
+            Vector2 damageAnchor = mob.GetDamageNumberAnchor();
+            _combatEffects.OnMobDamaged(mob, currentTime);
+            _combatEffects.AddDamageNumber(
+                damage,
+                damageAnchor.X,
+                damageAnchor.Y,
+                isCritical,
+                false,
+                currentTime,
+                hitIndex);
+        }
+
+        private void ApplySkillKnockback(AttackResolutionMode mode, MobItem mob, int damage, bool knockRight)
         {
             if (mob?.MovementInfo == null)
+                return;
+
+            float knockbackForce = mode switch
+            {
+                AttackResolutionMode.Magic => 4f + (damage / 80f),
+                AttackResolutionMode.Projectile => 5f + (damage / 95f),
+                _ => 6f + (damage / 60f)
+            };
+
+            float cap = mode switch
+            {
+                AttackResolutionMode.Magic => 8f,
+                AttackResolutionMode.Projectile => 10f,
+                _ => 12f
+            };
+
+            mob.MovementInfo.ApplyKnockback(Math.Min(knockbackForce, cap), knockRight);
+        }
+
+        private float GetMobImpactX(MobItem mob)
+        {
+            if (mob == null)
+                return 0f;
+
+            return mob.MovementInfo?.X ?? mob.CurrentX;
+        }
+
+        private float GetMobImpactY(MobItem mob)
+        {
+            if (mob == null)
+                return 0f;
+
+            float baseY = mob.MovementInfo?.Y ?? mob.CurrentY;
+            return baseY - Math.Max(20f, mob.GetVisualHeight() * 0.5f);
+        }
+
+        private Rectangle GetMobHitbox(MobItem mob, int currentTime)
+        {
+            if (mob == null)
+                return Rectangle.Empty;
+
+            Rectangle bodyHitbox = mob.GetBodyHitbox(currentTime);
+            if (!bodyHitbox.IsEmpty)
+                return bodyHitbox;
+
+            if (mob.MovementInfo == null)
                 return Rectangle.Empty;
 
             return new Rectangle(
@@ -1074,6 +1244,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 (int)mob.MovementInfo.Y - 50,
                 40,
                 50);
+        }
+
+        private Rectangle GetMobHitbox(MobItem mob)
+        {
+            return GetMobHitbox(mob, Environment.TickCount);
         }
 
         private int CalculateSkillDamage(SkillData skill, int level)
@@ -1113,20 +1288,26 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// </summary>
         private void SpawnHitEffect(SkillData skill, float x, float y, int currentTime)
         {
-            if (skill.HitEffect == null)
+            if (skill == null)
                 return;
 
-            var hitEffect = new ActiveHitEffect
+            SpawnHitEffect(skill.SkillId, skill.HitEffect, x, y, _player.FacingRight, currentTime);
+        }
+
+        private void SpawnHitEffect(int skillId, SkillAnimation animation, float x, float y, bool facingRight, int currentTime)
+        {
+            if (animation == null)
+                return;
+
+            _hitEffects.Add(new ActiveHitEffect
             {
-                SkillId = skill.SkillId,
+                SkillId = skillId,
                 X = x,
                 Y = y,
                 StartTime = currentTime,
-                Animation = skill.HitEffect,
-                FacingRight = _player.FacingRight
-            };
-
-            _hitEffects.Add(hitEffect);
+                Animation = animation,
+                FacingRight = facingRight
+            });
         }
 
         #endregion
@@ -1137,6 +1318,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var levelData = skill.GetLevel(level);
             int bulletCount = levelData?.BulletCount ?? 1;
+            float speed = GetProjectileSpeed(skill.Projectile, levelData);
 
             for (int i = 0; i < bulletCount; i++)
             {
@@ -1157,7 +1339,6 @@ namespace HaCreator.MapSimulator.Character.Skills
                 };
 
                 // Set velocity
-                float speed = skill.Projectile.Speed;
                 proj.VelocityX = _player.FacingRight ? speed : -speed;
                 proj.VelocityY = 0;
 
@@ -1173,11 +1354,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private static float GetProjectileSpeed(ProjectileData projectileData, SkillLevelData levelData)
+        {
+            float speed = levelData?.BulletSpeed > 0
+                ? levelData.BulletSpeed
+                : projectileData?.Speed ?? 0f;
+            return speed > 0f ? speed : 400f;
+        }
+
         private void UpdateProjectiles(int currentTime, float deltaTime)
         {
             for (int i = _projectiles.Count - 1; i >= 0; i--)
             {
                 var proj = _projectiles[i];
+                UpdateProjectileBehavior(proj, currentTime);
                 proj.Update(deltaTime, currentTime);
 
                 // Check for expired
@@ -1199,71 +1389,174 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void UpdateProjectileBehavior(ActiveProjectile proj, int currentTime)
+        {
+            if (proj?.Data == null || proj.IsExploding || _mobPool == null)
+                return;
+
+            if (proj.Data.Behavior != ProjectileBehavior.Homing)
+                return;
+
+            MobItem target = FindHomingProjectileTarget(proj, currentTime);
+            if (target == null)
+                return;
+
+            Rectangle targetHitbox = GetMobHitbox(target, currentTime);
+            float targetX = targetHitbox.Left + targetHitbox.Width * 0.5f;
+            float targetY = targetHitbox.Top + targetHitbox.Height * 0.5f;
+            float deltaX = targetX - proj.X;
+            float deltaY = targetY - proj.Y;
+            float distance = MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (distance <= 0.001f)
+                return;
+
+            float speed = GetProjectileSpeed(proj.Data, proj.LevelData);
+            proj.VelocityX = deltaX / distance * speed;
+            proj.VelocityY = deltaY / distance * speed;
+            proj.FacingRight = proj.VelocityX >= 0f;
+        }
+
+        private MobItem FindHomingProjectileTarget(ActiveProjectile proj, int currentTime)
+        {
+            return _mobPool.ActiveMobs
+                .Where(IsMobAttackable)
+                .Where(mob => proj.CanHitMob(mob.PoolId))
+                .Select(mob => new { Mob = mob, Hitbox = GetMobHitbox(mob, currentTime) })
+                .Where(entry => !entry.Hitbox.IsEmpty)
+                .Select(entry =>
+                {
+                    float centerX = entry.Hitbox.Left + entry.Hitbox.Width * 0.5f;
+                    float centerY = entry.Hitbox.Top + entry.Hitbox.Height * 0.5f;
+                    float deltaX = centerX - proj.X;
+                    float deltaY = centerY - proj.Y;
+                    float distanceSq = deltaX * deltaX + deltaY * deltaY;
+                    float forward = proj.VelocityX >= 0f ? deltaX : -deltaX;
+                    float forwardPenalty = forward < 0f ? 100000f + MathF.Abs(forward) : forward;
+                    return new { entry.Mob, DistanceSq = distanceSq, ForwardPenalty = forwardPenalty };
+                })
+                .OrderBy(entry => entry.ForwardPenalty)
+                .ThenBy(entry => entry.DistanceSq)
+                .Select(entry => entry.Mob)
+                .FirstOrDefault();
+        }
+
         private void CheckProjectileCollisions(ActiveProjectile proj, int currentTime)
         {
-            var projHitbox = proj.GetHitbox();
-            int maxTargets = proj.LevelData?.MobCount ?? 1;
+            if (_mobPool == null)
+                return;
 
-            foreach (var mob in _mobPool.ActiveMobs)
+            SkillData skill = GetSkillData(proj.SkillId);
+            if (skill == null)
+            {
+                proj.IsExpired = true;
+                return;
+            }
+
+            Rectangle projHitbox = GetProjectileHitbox(proj, currentTime);
+            int maxTargets = Math.Max(1, proj.LevelData?.MobCount ?? proj.Data?.MaxHits ?? 1);
+            int attackCount = Math.Max(1, proj.LevelData?.AttackCount ?? 1);
+            var mobsToKill = new List<MobItem>();
+
+            foreach (MobItem mob in ResolveProjectileCollisionTargets(proj, projHitbox, currentTime, maxTargets))
             {
                 if (!proj.CanHitMob(mob.PoolId))
                     continue;
 
-                if (mob?.AI == null || mob.AI.State == MobAIState.Death)
-                    continue;
+                proj.RegisterHit(mob.PoolId, currentTime);
 
-                var mobHitbox = GetMobHitbox(mob);
-                if (!projHitbox.Intersects(mobHitbox))
-                    continue;
+                bool died = ApplySkillAttackToMob(
+                    skill,
+                    proj.SkillLevel,
+                    proj.LevelData,
+                    mob,
+                    currentTime,
+                    attackCount,
+                    AttackResolutionMode.Projectile,
+                    proj.Data.HitAnimation ?? skill.HitEffect,
+                    proj.FacingRight);
 
-                // Hit!
-                proj.RegisterHit(mob.PoolId);
-
-                // Calculate damage
-                int attackCount = proj.LevelData?.AttackCount ?? 1;
-                var skill = GetSkillData(proj.SkillId);
-                if (skill == null)
+                if (died && !mobsToKill.Contains(mob))
                 {
-                    proj.IsExpired = true;
-                    break;
-                }
-
-                for (int i = 0; i < attackCount; i++)
-                {
-                    int damage = CalculateSkillDamage(skill, proj.SkillLevel);
-
-                    mob.ApplyDamage(damage, currentTime, false, _player.X, _player.Y);
-
-                    if (_combatEffects != null)
-                    {
-                        Vector2 damageAnchor = mob.GetDamageNumberAnchor();
-
-                        _combatEffects.AddDamageNumber(
-                            damage,
-                            damageAnchor.X,
-                            damageAnchor.Y,
-                            false,
-                            false,
-                            currentTime,
-                            i);
-                    }
-
-                    // Spawn hit effect at mob position
-                    if (skill?.HitEffect != null)
-                    {
-                        SpawnHitEffect(skill, mob.MovementInfo?.X ?? 0, (mob.MovementInfo?.Y ?? 0) - 20, currentTime);
-                    }
+                    mobsToKill.Add(mob);
                 }
 
                 OnProjectileHit?.Invoke(proj, mob);
 
-                // Check if should stop (non-piercing already handled in RegisterHit)
-                if (proj.IsExploding || proj.IsExpired)
-                    break;
-
-                if (proj.HitCount >= maxTargets)
+                if (proj.IsExploding || proj.IsExpired || proj.HitCount >= maxTargets)
                     break;
             }
+
+            foreach (MobItem mob in mobsToKill)
+            {
+                HandleMobDeath(mob, currentTime);
+            }
+        }
+
+        private List<MobItem> ResolveProjectileCollisionTargets(ActiveProjectile proj, Rectangle projHitbox, int currentTime, int maxTargets)
+        {
+            if (_mobPool == null || maxTargets <= 0)
+                return new List<MobItem>();
+
+            float speedSq = (proj.VelocityX * proj.VelocityX) + (proj.VelocityY * proj.VelocityY);
+            float speed = speedSq > 0.001f ? MathF.Sqrt(speedSq) : 0f;
+
+            return _mobPool.ActiveMobs
+                .Where(IsMobAttackable)
+                .Where(mob => proj.CanHitMob(mob.PoolId))
+                .Select(mob => new { Mob = mob, Hitbox = GetMobHitbox(mob, currentTime) })
+                .Where(entry => !entry.Hitbox.IsEmpty && projHitbox.Intersects(entry.Hitbox))
+                .Select(entry =>
+                {
+                    float centerX = entry.Hitbox.Left + entry.Hitbox.Width * 0.5f;
+                    float centerY = entry.Hitbox.Top + entry.Hitbox.Height * 0.5f;
+                    float deltaX = centerX - proj.X;
+                    float deltaY = centerY - proj.Y;
+                    float progress = speedSq > 0.001f
+                        ? ((deltaX * proj.VelocityX) + (deltaY * proj.VelocityY)) / speedSq
+                        : MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
+                    float progressPenalty = progress < 0f ? 100000f + MathF.Abs(progress) : progress;
+                    float lateralOffset = speed > 0.001f
+                        ? MathF.Abs((deltaX * proj.VelocityY) - (deltaY * proj.VelocityX)) / speed
+                        : 0f;
+                    float distanceSq = (deltaX * deltaX) + (deltaY * deltaY);
+
+                    return new
+                    {
+                        entry.Mob,
+                        ProgressPenalty = progressPenalty,
+                        LateralOffset = lateralOffset,
+                        DistanceSq = distanceSq
+                    };
+                })
+                .OrderBy(entry => entry.ProgressPenalty)
+                .ThenBy(entry => entry.LateralOffset)
+                .ThenBy(entry => entry.DistanceSq)
+                .Take(maxTargets)
+                .Select(entry => entry.Mob)
+                .ToList();
+        }
+
+        private Rectangle GetProjectileHitbox(ActiveProjectile proj, int currentTime)
+        {
+            if (proj?.Data == null)
+                return Rectangle.Empty;
+
+            SkillAnimation animation = proj.IsExploding ? proj.Data.ExplosionAnimation : proj.Data.Animation;
+            int animationTime = proj.IsExploding ? currentTime - proj.ExplodeTime : currentTime - proj.SpawnTime;
+            SkillFrame frame = animation?.GetFrameAtTime(animationTime);
+            int width = frame?.Bounds.Width ?? 0;
+            int height = frame?.Bounds.Height ?? 0;
+            if (width <= 0 || height <= 0)
+                return proj.GetHitbox();
+
+            width = Math.Max(12, width);
+            height = Math.Max(12, height);
+
+            return new Rectangle(
+                (int)proj.X - width / 2,
+                (int)proj.Y - height / 2,
+                width,
+                height);
         }
 
         public IReadOnlyList<ActiveProjectile> ActiveProjectiles => _projectiles;
@@ -1861,6 +2154,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             int offsetX = facingRight ? 10 : -(width + 10);
 
             return new Rectangle(offsetX, -height - 10, width, height);
+        }
+
+        private Rectangle GetDefaultMagicHitbox(SkillData skill, SkillLevelData levelData, bool facingRight)
+        {
+            int width = Math.Max(120, Math.Max(levelData?.Range ?? 0, GetAnimationWidth(skill)));
+            int height = Math.Max(80, Math.Max(levelData?.RangeY ?? 0, GetAnimationHeight(skill)));
+            int offsetX = facingRight ? 20 : -(width + 20);
+
+            return new Rectangle(offsetX, -height - 20, width, height);
         }
 
         private static int GetAnimationWidth(SkillData skill)

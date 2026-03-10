@@ -128,6 +128,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RangeR { get; set; }              // Range right
         public int RangeL { get; set; }              // Range left (usually same as RangeR)
         public int RangeY { get; set; }              // Vertical range
+        public int RangeTop { get; set; }            // Raw top bound from WZ lt.y
+        public int RangeBottom { get; set; }         // Raw bottom bound from WZ rb.y
 
         // Buff stats
         public int PAD { get; set; }                 // Physical Attack boost
@@ -353,14 +355,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             var levelData = GetLevel(level);
             if (levelData == null) return Rectangle.Empty;
 
+            bool hasExplicitRangeBox = levelData.RangeL > 0
+                || levelData.RangeR > 0
+                || levelData.RangeTop != 0
+                || levelData.RangeBottom != 0;
+
+            if (hasExplicitRangeBox)
+            {
+                int left = -levelData.RangeL;
+                int right = levelData.RangeR;
+                if (!facingRight)
+                {
+                    (left, right) = (-right, -left);
+                }
+
+                int top = levelData.RangeTop;
+                int bottom = levelData.RangeBottom;
+                if (bottom <= top)
+                {
+                    int fallbackHeight = levelData.RangeY > 0 ? levelData.RangeY : 60;
+                    top = -fallbackHeight / 2;
+                    bottom = top + fallbackHeight;
+                }
+
+                return new Rectangle(
+                    left,
+                    top,
+                    Math.Max(1, right - left),
+                    Math.Max(1, bottom - top));
+            }
+
             int rangeX = facingRight ? levelData.RangeR : levelData.RangeL;
             if (rangeX == 0) rangeX = levelData.Range;
+            int height = levelData.RangeY > 0 ? levelData.RangeY : 60;
 
             return new Rectangle(
                 facingRight ? 0 : -rangeX,
-                -levelData.RangeY / 2,
-                rangeX,
-                levelData.RangeY > 0 ? levelData.RangeY : 60);
+                -height / 2,
+                Math.Max(1, rangeX),
+                Math.Max(1, height));
         }
     }
 
@@ -488,7 +521,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        public void RegisterHit(int mobId)
+        public void RegisterHit(int mobId, int currentTime)
         {
             HitMobIds.Add(mobId);
             HitCount++;
@@ -496,7 +529,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!Data.Piercing && HitCount >= Data.MaxHits)
             {
                 // Non-piercing projectile hit something
-                Explode(Environment.TickCount);
+                Explode(currentTime);
             }
         }
     }
