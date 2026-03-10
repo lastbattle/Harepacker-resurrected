@@ -22,7 +22,6 @@ namespace HaCreator.MapSimulator.Character.Skills
     {
         private static readonly string[] PreferredSummonAnimationBranches =
         {
-            "summoned",
             "stand",
             "fly",
             "move",
@@ -30,6 +29,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             "attack1",
             "attack",
             "die"
+        };
+
+        private static readonly string[] PreferredSummonSpawnBranches =
+        {
+            "summoned",
+            "create",
+            "summon"
         };
 
         private readonly WzFile _skillWz;
@@ -403,7 +409,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             var summonNode = skillNode["summon"];
             if (summonNode != null)
             {
-                skill.SummonAnimation = LoadSummonAnimation(summonNode);
+                LoadSummonAnimations(skill, summonNode);
             }
 
             // Load projectile/ball
@@ -473,31 +479,61 @@ namespace HaCreator.MapSimulator.Character.Skills
             return animation;
         }
 
-        private SkillAnimation LoadSummonAnimation(WzImageProperty summonNode)
+        private void LoadSummonAnimations(SkillData skill, WzImageProperty summonNode)
         {
             var directAnimation = LoadSkillAnimation(summonNode, "summon");
-            if (directAnimation.Frames.Count > 0)
+
+            string spawnBranchName = SelectPreferredSummonSpawnBranch(
+                summonNode.WzProperties.Select(child => child.Name));
+            if (spawnBranchName != null)
             {
-                return directAnimation;
+                var spawnBranch = summonNode[spawnBranchName];
+                if (spawnBranch != null)
+                {
+                    var spawnAnimation = LoadSkillAnimation(spawnBranch, spawnBranchName);
+                    if (spawnAnimation.Frames.Count > 0)
+                    {
+                        skill.SummonSpawnAnimation = spawnAnimation;
+                    }
+                }
             }
 
-            string preferredBranchName = SelectPreferredSummonAnimationBranch(
+            string preferredBranchName = SelectPreferredSummonIdleBranch(
                 summonNode.WzProperties.Select(child => child.Name));
             if (preferredBranchName == null)
             {
-                return directAnimation;
+                if (directAnimation.Frames.Count > 0)
+                {
+                    skill.SummonAnimation = directAnimation;
+                    if (skill.SummonSpawnAnimation == null)
+                    {
+                        skill.SummonSpawnAnimation = directAnimation;
+                    }
+                }
+
+                return;
             }
 
             var preferredBranch = summonNode[preferredBranchName];
             if (preferredBranch == null)
             {
-                return directAnimation;
+                if (directAnimation.Frames.Count > 0)
+                {
+                    skill.SummonAnimation = directAnimation;
+                }
+
+                return;
             }
 
             var summonAnimation = LoadSkillAnimation(preferredBranch, "summon");
             if (summonAnimation.Frames.Count == 0)
             {
-                return directAnimation;
+                if (directAnimation.Frames.Count > 0)
+                {
+                    skill.SummonAnimation = directAnimation;
+                }
+
+                return;
             }
 
             if (!summonAnimation.Loop
@@ -509,10 +545,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 summonAnimation.Loop = true;
             }
 
-            return summonAnimation;
+            skill.SummonAnimation = summonAnimation;
+            if (skill.SummonSpawnAnimation == null)
+            {
+                skill.SummonSpawnAnimation = summonAnimation;
+            }
         }
 
-        public static string SelectPreferredSummonAnimationBranch(IEnumerable<string> branchNames)
+        public static string SelectPreferredSummonSpawnBranch(IEnumerable<string> branchNames)
+        {
+            return SelectPreferredSummonBranch(branchNames, PreferredSummonSpawnBranches);
+        }
+
+        public static string SelectPreferredSummonIdleBranch(IEnumerable<string> branchNames)
+        {
+            return SelectPreferredSummonBranch(branchNames, PreferredSummonAnimationBranches);
+        }
+
+        private static string SelectPreferredSummonBranch(IEnumerable<string> branchNames, IEnumerable<string> preferredBranches)
         {
             if (branchNames == null)
             {
@@ -523,7 +573,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Where(name => !string.IsNullOrWhiteSpace(name))
                 .ToDictionary(name => name, name => name, StringComparer.OrdinalIgnoreCase);
 
-            foreach (string preferredBranch in PreferredSummonAnimationBranches)
+            foreach (string preferredBranch in preferredBranches)
             {
                 if (availableBranches.TryGetValue(preferredBranch, out string actualBranchName))
                 {

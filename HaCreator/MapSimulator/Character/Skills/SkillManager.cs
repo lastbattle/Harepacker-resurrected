@@ -2261,11 +2261,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void DrawSummonEffect(SpriteBatch spriteBatch, ActiveSummon summon,
             int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
         {
-            var animation = summon.SkillData?.SummonAnimation ?? summon.SkillData?.AffectedEffect ?? summon.SkillData?.Effect;
+            int elapsed = currentTime - summon.StartTime;
+            var animation = ResolveSummonAnimation(summon.SkillData, elapsed, out int animationTime)
+                ?? summon.SkillData?.AffectedEffect
+                ?? summon.SkillData?.Effect;
             if (animation == null)
                 return;
 
-            var frame = animation.GetFrameAtTime(currentTime - summon.StartTime);
+            var frame = animation.GetFrameAtTime(animationTime);
             if (frame?.Texture == null)
                 return;
 
@@ -2277,6 +2280,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             frame.Texture.DrawBackground(spriteBatch, null, null,
                 GetFrameDrawX(screenX, frame, shouldFlip), screenY - frame.Origin.Y,
                 Color.White, shouldFlip, null);
+        }
+
+        private static SkillAnimation ResolveSummonAnimation(SkillData skill, int elapsedTime, out int animationTime)
+        {
+            animationTime = Math.Max(0, elapsedTime);
+            if (skill == null)
+                return null;
+
+            var spawnAnimation = skill.SummonSpawnAnimation;
+            if (spawnAnimation?.Frames.Count > 0)
+            {
+                int spawnDuration = spawnAnimation.TotalDuration > 0
+                    ? spawnAnimation.TotalDuration
+                    : spawnAnimation.Frames.Sum(frame => frame.Delay);
+                if (spawnDuration > 0 && elapsedTime < spawnDuration)
+                {
+                    animationTime = elapsedTime;
+                    return spawnAnimation;
+                }
+
+                animationTime = Math.Max(0, elapsedTime - spawnDuration);
+            }
+
+            if (skill.SummonAnimation?.Frames.Count > 0)
+            {
+                return skill.SummonAnimation;
+            }
+
+            animationTime = Math.Max(0, elapsedTime);
+            return spawnAnimation;
         }
 
         #endregion
@@ -2402,10 +2435,21 @@ namespace HaCreator.MapSimulator.Character.Skills
         /// Clear map-specific state but preserve persistent data.
         /// Preserves: skill levels, hotkeys, available skills, cooldowns.
         /// Clears: active projectiles, hit effects, current cast, buffs.
+        /// Preserves: active summons and remaining summon durations.
         /// </summary>
         public void ClearMapState()
         {
-            ClearActiveSkillState(clearBuffs: true);
+            _projectiles.Clear();
+            ClearSummonPuppets();
+            _hitEffects.Clear();
+            _currentCast = null;
+            _preparedSkill = null;
+
+            foreach (var buff in _buffs)
+            {
+                ApplyBuffStats(buff, false);
+            }
+            _buffs.Clear();
 
             // Clear map-specific references
             _mobPool = null;

@@ -5,9 +5,9 @@ namespace UnitTest_MapSimulator
     public class SkillLoaderSummonBranchTests
     {
         [Fact]
-        public void SelectPreferredSummonAnimationBranch_PrefersSummonedOverIdleBranches()
+        public void SelectPreferredSummonSpawnBranch_PrefersSummonedOverIdleBranches()
         {
-            string branch = SkillLoader.SelectPreferredSummonAnimationBranch(new[]
+            string branch = SkillLoader.SelectPreferredSummonSpawnBranch(new[]
             {
                 "stand",
                 "summoned",
@@ -18,9 +18,9 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
-        public void SelectPreferredSummonAnimationBranch_FallsBackToStandWhenSummonedIsMissing()
+        public void SelectPreferredSummonIdleBranch_FallsBackToStandWhenSummonedIsMissing()
         {
-            string branch = SkillLoader.SelectPreferredSummonAnimationBranch(new[]
+            string branch = SkillLoader.SelectPreferredSummonIdleBranch(new[]
             {
                 "attack1",
                 "stand",
@@ -31,15 +31,28 @@ namespace UnitTest_MapSimulator
         }
 
         [Fact]
-        public void SelectPreferredSummonAnimationBranch_FallsBackToFirstAvailableBranch()
+        public void SelectPreferredSummonIdleBranch_FallsBackToFirstAvailableBranch()
         {
-            string branch = SkillLoader.SelectPreferredSummonAnimationBranch(new[]
+            string branch = SkillLoader.SelectPreferredSummonIdleBranch(new[]
             {
                 "customIdle",
                 "customAttack"
             });
 
             Assert.Equal("customIdle", branch);
+        }
+
+        [Fact]
+        public void SelectPreferredSummonIdleBranch_PrefersStandOverAttackBranches()
+        {
+            string branch = SkillLoader.SelectPreferredSummonIdleBranch(new[]
+            {
+                "attack1",
+                "fly",
+                "stand"
+            });
+
+            Assert.Equal("stand", branch);
         }
     }
 }
