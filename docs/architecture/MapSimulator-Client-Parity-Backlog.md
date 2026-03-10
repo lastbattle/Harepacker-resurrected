@@ -198,21 +198,6 @@ The project already has:
 The real parity gap is no longer "does the simulator have a feature at all?".
 The gap is now "how closely does the current implementation match client behavior, data selection, timing, and fallback rules?".
 
-## Corrections To The Old Documents
-
-The following items were previously tracked as missing, or were too stale to keep as backlog items:
-
-| Area | Old claim | Actual state |
-|------|-----------|--------------|
-| Player character | No player character simulation | Implemented across `PlayerCharacter`, `PlayerManager`, `CharacterLoader`, `CharacterAssembler`, `PlayerCombat`, `PlayerInput` |
-| Hidden portals | `FindPortal_Hidden`, `UpdateHiddenPortal`, `SetHiddenPortal` missing | Implemented in `PortalPool.cs` |
-| Portal properties | `GetPropPH`, `GetPropPSH`, `GetPropPV` missing | Implemented in `PortalPool.cs` |
-| Pet loot | `TryPickUpDropByPet` missing | Implemented in `DropPool.cs` |
-| Damage numbers | `ShowDamage` missing | Implemented, including WZ-backed digit rendering in `CombatEffects.cs` and `DamageNumberRenderer.cs` |
-| Boss HP bar | HP indicator missing | Implemented with both regular mob HP bars and boss HP bars in `CombatEffects.cs` and `BossHPBarUI.cs` |
-| Skill UI constants | Generic TODO only | Layout constants were already updated from client analysis in `SkillUI.cs` |
-| Special fields | Snowball, Coconut, Wedding, GuildBoss listed as not implemented | Implemented in `MinigameFields.cs` and `SpecialEffectFields.cs` |
-
 ## Latest Parity Confirmation
 
 Confirmed changes since last pass:
