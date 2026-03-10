@@ -295,11 +295,14 @@ namespace HaCreator.MapSimulator
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
         private const int SAME_MAP_TELEPORT_Y_OFFSET = 10;
         private const int DIRECTION_MODE_RELEASE_DELAY_MS = 300;
+        private const int PASSIVE_TRANSFER_REQUEST_DURATION_MS = 1200;
         private bool _sameMapTeleportPending = false;
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
         private SameMapTeleportTarget _sameMapTeleportTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
+        private bool _passiveTransferRequestPending = false;
+        private int _passiveTransferRequestExpiresAt = int.MinValue;
 
         // Seamless map transition support (state managed by _gameState)
         private Func<int, Tuple<Board, string>> _loadMapCallback = null; // Callback to load new map
@@ -1236,6 +1239,7 @@ namespace HaCreator.MapSimulator
             // Reset same-map teleport state
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
+            ClearPassiveTransferRequest();
 
             // Deactivate chat input (but preserve message history)
             _chat.Deactivate();
@@ -2205,7 +2209,7 @@ namespace HaCreator.MapSimulator
             // Handle portal UP key interaction (player presses UP near portal)
             if (isWindowActive)
             {
-                HandlePortalUpInteract();
+                HandlePortalUpInteract(currTickCount);
             }
 
             _temporaryPortalField?.Update(currTickCount);
@@ -3969,23 +3973,71 @@ namespace HaCreator.MapSimulator
         /// triggers teleportation the same way as double-clicking the portal.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void HandlePortalUpInteract()
+        private void HandlePortalUpInteract(int currentTime)
         {
-            // Skip if map change is already pending
-            if (_gameState.PendingMapChange || _sameMapTeleportPending)
+            if (!CanAttemptPortalInteract())
+            {
+                ClearPassiveTransferRequest();
+                return;
+            }
+
+            bool interactPressed = _playerManager.Input.IsPressed(InputAction.Interact);
+            bool interactHeld = _playerManager.Input.IsHeld(InputAction.Interact);
+
+            if (_passiveTransferRequestPending)
+            {
+                if (!interactHeld || unchecked(currentTime - _passiveTransferRequestExpiresAt) >= 0)
+                {
+                    ClearPassiveTransferRequest();
+                }
+                else if (_playerManager.Player?.CanMove == true && TryHandlePortalInteractCore(currentTime))
+                {
+                    ClearPassiveTransferRequest();
+                    return;
+                }
+            }
+
+            if (!interactPressed)
                 return;
 
-            // Only handle when player control is enabled and player is active
-            if (!_gameState.IsPlayerInputEnabled || _playerManager == null || !_playerManager.IsPlayerActive)
-                return;
+            if (_playerManager.Player?.CanMove == true)
+            {
+                if (TryHandlePortalInteractCore(currentTime))
+                {
+                    ClearPassiveTransferRequest();
+                }
 
-            if (!_playerManager.Input.IsPressed(InputAction.Interact))
                 return;
+            }
 
+            _passiveTransferRequestPending = true;
+            _passiveTransferRequestExpiresAt = unchecked(currentTime + PASSIVE_TRANSFER_REQUEST_DURATION_MS);
+        }
+
+        private bool CanAttemptPortalInteract()
+        {
+            return !_gameState.PendingMapChange
+                   && !_sameMapTeleportPending
+                   && _gameState.IsPlayerInputEnabled
+                   && _playerManager != null
+                   && _playerManager.IsPlayerActive;
+        }
+
+        private void ClearPassiveTransferRequest()
+        {
+            _passiveTransferRequestPending = false;
+            _passiveTransferRequestExpiresAt = int.MinValue;
+        }
+
+        private bool TryHandlePortalInteractCore(int currentTime)
+        {
             // Get player position
             var playerPos = _playerManager.GetPlayerPosition();
             float playerX = playerPos.X;
             float playerY = playerPos.Y;
+
+            if (_gameState.IsPortalOnCooldown(currentTime))
+                return false;
 
             if (_temporaryPortalField != null
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
@@ -3996,8 +4048,8 @@ namespace HaCreator.MapSimulator
                     temporaryPortalDestination.X,
                     temporaryPortalDestination.Y,
                     temporaryPortalDestination.DelayMs,
-                    Environment.TickCount);
-                return;
+                    currentTime);
+                return true;
             }
 
             // Portal interaction range (in pixels)
@@ -4040,7 +4092,7 @@ namespace HaCreator.MapSimulator
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
                 _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
-                return;
+                return true;
             }
 
             // No visible portal found - check hidden portals from _mapBoard.BoardItems.Portals
@@ -4079,7 +4131,10 @@ namespace HaCreator.MapSimulator
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestHiddenPortal.tm;
                 _gameState.PendingPortalName = nearestHiddenPortal.tn;
+                return true;
             }
+
+            return false;
         }
 
         private void StartSameMapTeleport(float targetX, float targetY, int delayMs, int currentTime)
@@ -4134,6 +4189,7 @@ namespace HaCreator.MapSimulator
 
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
+            ClearPassiveTransferRequest();
         }
 
         /// <summary>
