@@ -191,6 +191,9 @@ namespace HaCreator.MapSimulator
         private readonly QuestRuntimeManager _questRuntime = new QuestRuntimeManager();
         private NpcItem _activeNpcInteractionNpc;
         private int _activeNpcInteractionNpcId;
+        private Texture2D _npcQuestAvailableIcon;
+        private Texture2D _npcQuestInProgressIcon;
+        private Texture2D _npcQuestCompletableIcon;
 
         // Consolidated effect management
         private readonly EffectManager _effectManager = new EffectManager();
@@ -794,6 +797,7 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize mob foothold references after all mobs are loaded
             InitializeMobFootholds();
@@ -1460,6 +1464,7 @@ namespace HaCreator.MapSimulator
 
             // Set fonts on UI windows after all tasks complete
             uiWindowManager?.SetFonts(_fontChat);
+            LoadNpcQuestAlertIcons(uiWindow1Image, uiWindow2Image);
 
             // Initialize status bar character stats display after map change
             if (statusBarUi != null)
@@ -3264,6 +3269,93 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void LoadNpcQuestAlertIcons(WzImage uiWindow1Image, WzImage uiWindow2Image)
+        {
+            WzSubProperty questIconProperty =
+                (WzSubProperty)uiWindow2Image?["QuestIcon"] ??
+                (WzSubProperty)uiWindow1Image?["QuestIcon"];
+            if (questIconProperty == null || GraphicsDevice == null)
+            {
+                _npcQuestAvailableIcon = null;
+                _npcQuestInProgressIcon = null;
+                _npcQuestCompletableIcon = null;
+                return;
+            }
+
+            _npcQuestAvailableIcon = LoadNpcQuestAlertIcon(questIconProperty, "0");
+            _npcQuestInProgressIcon = LoadNpcQuestAlertIcon(questIconProperty, "1");
+            _npcQuestCompletableIcon = LoadNpcQuestAlertIcon(questIconProperty, "2");
+        }
+
+        private Texture2D LoadNpcQuestAlertIcon(WzSubProperty questIconProperty, string iconKey)
+        {
+            WzSubProperty iconSubProperty = (WzSubProperty)questIconProperty?[iconKey];
+            if (iconSubProperty == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty iconCanvas = (WzCanvasProperty)iconSubProperty["0"]
+                                          ?? iconSubProperty.WzProperties.OfType<WzCanvasProperty>().FirstOrDefault();
+            if (iconCanvas == null)
+            {
+                return null;
+            }
+
+            return iconCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private void DrawNpcQuestAlerts(in Managers.RenderContext renderContext)
+        {
+            if (_npcsArray == null || _playerManager?.Player?.Build == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _npcsArray.Length; i++)
+            {
+                NpcItem npc = _npcsArray[i];
+                if (npc == null)
+                {
+                    continue;
+                }
+
+                NpcInteractionEntryKind? alertKind = _questRuntime.GetNpcQuestAlertKind(npc, _playerManager.Player.Build);
+                Texture2D alertTexture = GetNpcQuestAlertTexture(alertKind);
+                if (alertTexture == null)
+                {
+                    continue;
+                }
+
+                IDXObject currentFrame = npc.GetCurrentFrame();
+                int npcTop = npc.CurrentY - (currentFrame?.Height ?? npc.NpcInstance.Height);
+                int screenX = npc.CurrentX - renderContext.MapShiftX + renderContext.MapCenterX - (alertTexture.Width / 2);
+                int screenY = npcTop - renderContext.MapShiftY + renderContext.MapCenterY - alertTexture.Height - 10;
+                screenY += ((renderContext.TickCount / 180) % 2 == 0) ? 0 : -2;
+
+                if (screenX + alertTexture.Width < 0 ||
+                    screenY + alertTexture.Height < 0 ||
+                    screenX > renderContext.RenderParams.RenderWidth ||
+                    screenY > renderContext.RenderParams.RenderHeight)
+                {
+                    continue;
+                }
+
+                _spriteBatch.Draw(alertTexture, new Vector2(screenX, screenY), Color.White);
+            }
+        }
+
+        private Texture2D GetNpcQuestAlertTexture(NpcInteractionEntryKind? alertKind)
+        {
+            return alertKind switch
+            {
+                NpcInteractionEntryKind.AvailableQuest => _npcQuestAvailableIcon,
+                NpcInteractionEntryKind.InProgressQuest => _npcQuestInProgressIcon,
+                NpcInteractionEntryKind.CompletableQuest => _npcQuestCompletableIcon,
+                _ => null
+            };
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private NpcItem FindNpcAtMapPoint(int mapX, int mapY)
         {
@@ -4794,6 +4886,7 @@ namespace HaCreator.MapSimulator
                 TickCount);
             _renderingManager.DrawReactors(in renderContext); // reactors
             _renderingManager.DrawNpcs(in renderContext); // NPCs - rendered on top
+            DrawNpcQuestAlerts(in renderContext);
             _renderingManager.DrawTransportation(in renderContext); // ship/balrog
             _renderingManager.DrawBackgrounds(in renderContext, true); // front background
 

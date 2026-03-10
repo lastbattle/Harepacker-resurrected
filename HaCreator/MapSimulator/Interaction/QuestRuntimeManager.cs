@@ -252,6 +252,50 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public NpcInteractionEntryKind? GetNpcQuestAlertKind(NpcItem npc, CharacterBuild build)
+        {
+            int npcId = GetNpcId(npc?.NpcInstance);
+            if (npcId == 0)
+            {
+                return null;
+            }
+
+            EnsureDefinitionsLoaded();
+
+            bool hasAvailableQuest = false;
+            bool hasInProgressQuest = false;
+
+            foreach (QuestDefinition definition in _definitions.Values)
+            {
+                NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build);
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                switch (entry.Kind)
+                {
+                    case NpcInteractionEntryKind.CompletableQuest:
+                        return NpcInteractionEntryKind.CompletableQuest;
+                    case NpcInteractionEntryKind.AvailableQuest:
+                        hasAvailableQuest = true;
+                        break;
+                    case NpcInteractionEntryKind.InProgressQuest:
+                        hasInProgressQuest = true;
+                        break;
+                }
+            }
+
+            if (hasAvailableQuest)
+            {
+                return NpcInteractionEntryKind.AvailableQuest;
+            }
+
+            return hasInProgressQuest
+                ? NpcInteractionEntryKind.InProgressQuest
+                : null;
+        }
+
         private NpcInteractionEntry CreateNpcQuestEntry(QuestDefinition definition, int npcId, CharacterBuild build)
         {
             bool matchesStartNpc = definition.StartNpcId == npcId;
