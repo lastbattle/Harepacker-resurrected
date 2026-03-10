@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// <param name="bBigBang"></param>
         /// <returns></returns>
         public static Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBarFromProperty(
-            WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
+            WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBasic, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
             float UserScreenScaleFactor, RenderParameters renderParams, WzImage soundUIImage, bool bBigBang)
         {
             // Pre-big bang maplestory status bar
@@ -385,6 +385,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetKeyDownBarTextures(LoadKeyDownBarTextures(uiBasic, device));
 
                     // Load bitmap font digit textures from StatusBar2.img/mainBar/gauge/number
                     // This is the correct source for HP/MP/EXP display with proper origin alignment
@@ -647,6 +648,7 @@ namespace HaCreator.MapSimulator.Loaders
                     statusBar.SetGaugeTextures(hpGaugeTexture, mpGaugeTexture, expGaugeTexture);
                     statusBar.SetBuffIconTextures(LoadBuffIconTextures(uiBuffIcon, device));
                     }
+                    statusBar.SetKeyDownBarTextures(LoadKeyDownBarTextures(uiBasic, device));
 
                     // Load bitmap font digit textures from StatusBar.img/number
                     if (numberProperties != null)
@@ -778,6 +780,37 @@ namespace HaCreator.MapSimulator.Loaders
             return buffIconTextures;
         }
 
+        private static Dictionary<string, StatusBarKeyDownBarTextures> LoadKeyDownBarTextures(WzImage uiBasic, GraphicsDevice device)
+        {
+            var keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
+            if (uiBasic == null || device == null)
+            {
+                return keyDownBarTextures;
+            }
+
+            foreach (string skinKey in new[] { "KeyDownBar", "KeyDownBar1", "KeyDownBar2", "KeyDownBar3", "KeyDownBar4" })
+            {
+                if (!(uiBasic[skinKey] is WzSubProperty skinProperty))
+                {
+                    continue;
+                }
+
+                var textures = new StatusBarKeyDownBarTextures
+                {
+                    Bar = LoadCanvasTexture(skinProperty["bar"] as WzCanvasProperty, device),
+                    Gauge = LoadCanvasTexture(skinProperty["gauge"] as WzCanvasProperty, device),
+                    Graduation = LoadCanvasTexture(skinProperty["graduation"] as WzCanvasProperty, device)
+                };
+
+                if (textures.Bar != null || textures.Gauge != null || textures.Graduation != null)
+                {
+                    keyDownBarTextures[skinKey] = textures;
+                }
+            }
+
+            return keyDownBarTextures;
+        }
+
         private static void TryAddBuffIcon(Dictionary<string, Texture2D> buffIconTextures, WzImage uiBuffIcon,
             GraphicsDevice device, string path)
         {
@@ -798,6 +831,17 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             buffIconTextures[path] = bitmap.ToTexture2DAndDispose(device);
+        }
+
+        private static Texture2D LoadCanvasTexture(WzCanvasProperty canvas, GraphicsDevice device)
+        {
+            if (canvas == null || device == null)
+            {
+                return null;
+            }
+
+            var bitmap = canvas.GetLinkedWzCanvasBitmap();
+            return bitmap?.ToTexture2DAndDispose(device);
         }
 
         #endregion

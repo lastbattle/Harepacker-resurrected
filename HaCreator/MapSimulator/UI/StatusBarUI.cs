@@ -38,6 +38,23 @@ namespace HaCreator.MapSimulator.UI {
         public int DurationMs { get; set; }
     }
 
+    public class StatusBarPreparedSkillRenderData
+    {
+        public int SkillId { get; set; }
+        public string SkillName { get; set; }
+        public string SkinKey { get; set; } = "KeyDownBar";
+        public int RemainingMs { get; set; }
+        public int DurationMs { get; set; }
+        public float Progress { get; set; }
+    }
+
+    public class StatusBarKeyDownBarTextures
+    {
+        public Texture2D Bar { get; set; }
+        public Texture2D Gauge { get; set; }
+        public Texture2D Graduation { get; set; }
+    }
+
     public class StatusBarUI : BaseDXDrawableItem, IUIObjectEvents {
         private readonly List<UIObject> uiButtons = new List<UIObject>();
 
@@ -47,6 +64,7 @@ namespace HaCreator.MapSimulator.UI {
         private SpriteFont _font;
         private Func<CharacterStatsData> _getCharacterStats;
         private Func<int, IReadOnlyList<StatusBarBuffRenderData>> _getBuffStatus;
+        private Func<int, StatusBarPreparedSkillRenderData> _getPreparedSkillStatus;
         private Texture2D _pixelTexture;
 
         // Gauge textures loaded from UI.wz/StatusBar2.img/mainBar/gauge/hp/0, mp/0, exp/0
@@ -71,6 +89,7 @@ namespace HaCreator.MapSimulator.UI {
         private bool _useBitmapFont = false;      // Whether to use bitmap font or SpriteFont
         private readonly Dictionary<string, Texture2D> _buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, Rectangle> _buffIconHitboxes = new Dictionary<int, Rectangle>();
+        private readonly Dictionary<string, StatusBarKeyDownBarTextures> _keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
 
         // Text positions relative to status bar (from IDA Pro analysis)
         // The status bar is composed of: lvBacktrnd (left ~64px) + gaugeBackgrd (center) + buttons
@@ -114,6 +133,8 @@ namespace HaCreator.MapSimulator.UI {
         private const int BUFF_ICON_SPACING = 2;
         private const int BUFF_TRAY_COLUMNS = 10;
         private const int BUFF_TRAY_ROWS = 2;
+        private static readonly Vector2 KEYDOWN_BAR_POS = new Vector2(214, -22);
+        private static readonly Point KEYDOWN_BAR_GAUGE_OFFSET = new Point(2, 2);
 
         /// <summary>
         /// Constructor for the status bar window
@@ -160,6 +181,11 @@ namespace HaCreator.MapSimulator.UI {
             _getBuffStatus = getBuffStatus;
         }
 
+        public void SetPreparedSkillProvider(Func<int, StatusBarPreparedSkillRenderData> getPreparedSkillStatus)
+        {
+            _getPreparedSkillStatus = getPreparedSkillStatus;
+        }
+
         /// <summary>
         /// Set the pixel texture for drawing gauge bars
         /// </summary>
@@ -194,6 +220,23 @@ namespace HaCreator.MapSimulator.UI {
                 if (!string.IsNullOrWhiteSpace(iconEntry.Key) && iconEntry.Value != null)
                 {
                     _buffIconTextures[iconEntry.Key] = iconEntry.Value;
+                }
+            }
+        }
+
+        public void SetKeyDownBarTextures(Dictionary<string, StatusBarKeyDownBarTextures> keyDownBarTextures)
+        {
+            _keyDownBarTextures.Clear();
+            if (keyDownBarTextures == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<string, StatusBarKeyDownBarTextures> keyDownBarEntry in keyDownBarTextures)
+            {
+                if (!string.IsNullOrWhiteSpace(keyDownBarEntry.Key) && keyDownBarEntry.Value != null)
+                {
+                    _keyDownBarTextures[keyDownBarEntry.Key] = keyDownBarEntry.Value;
                 }
             }
         }
@@ -323,6 +366,7 @@ namespace HaCreator.MapSimulator.UI {
             // Draw gauge bars first (under the text)
             DrawGaugeBars(sprite, stats, basePosGauge);
             DrawBuffTray(sprite, basePosGauge, currentTime);
+            DrawPreparedSkillBar(sprite, basePosGauge, currentTime);
 
             // Skip text rendering if no font
             if (_font == null)
@@ -482,6 +526,84 @@ namespace HaCreator.MapSimulator.UI {
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Bottom - 1, iconRect.Width, 1), new Color(42, 42, 54));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.X, iconRect.Y, 1, iconRect.Height), new Color(92, 92, 110));
             sprite.Draw(_pixelTexture, new Rectangle(iconRect.Right - 1, iconRect.Y, 1, iconRect.Height), new Color(42, 42, 54));
+        }
+
+        private void DrawPreparedSkillBar(SpriteBatch sprite, Vector2 basePosGauge, int currentTime)
+        {
+            if (_getPreparedSkillStatus == null)
+            {
+                return;
+            }
+
+            StatusBarPreparedSkillRenderData preparedSkill = _getPreparedSkillStatus(currentTime);
+            if (preparedSkill == null)
+            {
+                return;
+            }
+
+            float progress = Math.Clamp(preparedSkill.Progress, 0f, 1f);
+            StatusBarKeyDownBarTextures textures = ResolveKeyDownBarTextures(preparedSkill.SkinKey);
+            Rectangle barRect = GetKeyDownBarRectangle(basePosGauge, textures);
+
+            if (textures?.Bar != null)
+            {
+                sprite.Draw(textures.Bar, barRect, Color.White);
+            }
+            else
+            {
+                DrawBuffIconFrame(sprite, barRect);
+            }
+
+            DrawPreparedSkillGauge(sprite, barRect, progress, textures);
+
+            if (textures?.Graduation != null)
+            {
+                sprite.Draw(textures.Graduation, barRect, Color.White);
+            }
+        }
+
+        private void DrawPreparedSkillGauge(SpriteBatch sprite, Rectangle barRect, float progress, StatusBarKeyDownBarTextures textures)
+        {
+            int gaugeHeight = textures?.Gauge?.Height ?? Math.Max(1, barRect.Height - (KEYDOWN_BAR_GAUGE_OFFSET.Y * 2));
+            int gaugeY = barRect.Y + KEYDOWN_BAR_GAUGE_OFFSET.Y;
+            int gaugeX = barRect.X + KEYDOWN_BAR_GAUGE_OFFSET.X;
+            int maxGaugeWidth = Math.Max(1, barRect.Width - (KEYDOWN_BAR_GAUGE_OFFSET.X * 2));
+            int filledWidth = Math.Clamp((int)Math.Round(maxGaugeWidth * progress), 0, maxGaugeWidth);
+            if (filledWidth <= 0)
+            {
+                return;
+            }
+
+            Rectangle gaugeRect = new Rectangle(gaugeX, gaugeY, filledWidth, gaugeHeight);
+            if (textures?.Gauge != null)
+            {
+                sprite.Draw(textures.Gauge, gaugeRect, Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, gaugeRect, new Color(255, 207, 76));
+            }
+        }
+
+        private Rectangle GetKeyDownBarRectangle(Vector2 basePosGauge, StatusBarKeyDownBarTextures textures)
+        {
+            Texture2D barTexture = textures?.Bar;
+            int width = barTexture?.Width ?? 72;
+            int height = barTexture?.Height ?? 12;
+            Vector2 barPos = basePosGauge + KEYDOWN_BAR_POS;
+            return new Rectangle((int)barPos.X, (int)barPos.Y, width, height);
+        }
+
+        private StatusBarKeyDownBarTextures ResolveKeyDownBarTextures(string skinKey)
+        {
+            if (!string.IsNullOrWhiteSpace(skinKey)
+                && _keyDownBarTextures.TryGetValue(skinKey, out StatusBarKeyDownBarTextures skinTextures))
+            {
+                return skinTextures;
+            }
+
+            _keyDownBarTextures.TryGetValue("KeyDownBar", out StatusBarKeyDownBarTextures defaultTextures);
+            return defaultTextures;
         }
 
         /// <summary>

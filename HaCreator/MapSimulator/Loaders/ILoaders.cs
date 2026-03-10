@@ -60,7 +60,7 @@ namespace HaCreator.MapSimulator.Loaders
         /// Creates the status bar UI
         /// </summary>
         Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBar(WzImage uiStatusBar, WzImage uiStatusBar2,
-            WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device, float userScreenScaleFactor,
+            WzImage uiBasic, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device, float userScreenScaleFactor,
             RenderParameters renderParams, WzImage soundUIImage, bool bBigBang);
 
         /// <summary>
@@ -184,11 +184,11 @@ namespace HaCreator.MapSimulator.Loaders
     internal class UILoaderImpl : IUILoader
     {
         public Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBar(WzImage uiStatusBar,
-            WzImage uiStatusBar2, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
+            WzImage uiStatusBar2, WzImage uiBasic, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
             float userScreenScaleFactor, RenderParameters renderParams,
             WzImage soundUIImage, bool bBigBang)
         {
-            return UILoader.CreateStatusBarFromProperty(uiStatusBar, uiStatusBar2, uiBuffIcon, mapBoard,
+            return UILoader.CreateStatusBarFromProperty(uiStatusBar, uiStatusBar2, uiBasic, uiBuffIcon, mapBoard,
                 device, userScreenScaleFactor, renderParams, soundUIImage, bBigBang);
         }
 

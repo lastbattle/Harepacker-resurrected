@@ -432,8 +432,8 @@ namespace HaCreator.MapSimulator {
         /// <param name="soundUIImage"></param>
         /// <param name="bBigBang"></param>
         /// <returns></returns>
-        public static Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBarFromProperty(WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, RenderParameters renderParams, WzImage soundUIImage, bool bBigBang) {
-            return UILoader.CreateStatusBarFromProperty(uiStatusBar, uiStatusBar2, uiBuffIcon, mapBoard, device, UserScreenScaleFactor, renderParams, soundUIImage, bBigBang);
+        public static Tuple<StatusBarUI, StatusBarChatUI> CreateStatusBarFromProperty(WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBasic, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device, float UserScreenScaleFactor, RenderParameters renderParams, WzImage soundUIImage, bool bBigBang) {
+            return UILoader.CreateStatusBarFromProperty(uiStatusBar, uiStatusBar2, uiBasic, uiBuffIcon, mapBoard, device, UserScreenScaleFactor, renderParams, soundUIImage, bBigBang);
         }
 
         /// <summary>
