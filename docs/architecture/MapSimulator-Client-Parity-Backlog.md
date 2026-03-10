@@ -209,12 +209,24 @@ The simulator has a generic skill runtime. It does not yet mirror the client's n
 |--------|------|-----|----------------|--------------|
 | Implemented | Generic skill casting | The simulator now loads the full player skill catalog from `Skill.wz`, learns active skills into the runtime, supports direct cast invocation from the skill window in addition to hotkey casting, keeps GM/SuperGM skill-book resolution compatible with both `900.img` and `910.img` layouts while focusing those jobs on their own job-book window instead of the global advancement catalog, evaluates Big Bang `common` formulas in IMG-mode data sets so skills like `Power Strike` are treated as castable attacks instead of passive placeholders, mirrors skill effect anchoring/hitbox fallback by facing direction for asymmetric melee effects, sanitizes unsupported SpriteFont glyphs in the skill window so WZ-backed names no longer crash row rendering, and resolves cast SFX from `Sound/Skill.img` so skill use now plays the corresponding `Use` or fallback attack sound through the simulator audio path | This closes the previous "can only use the current job's limited skill book" runtime/UI gap and keeps special-job skill tabs populated and executable across client data variants | `SkillManager.cs`, `SkillLoader.cs`, `SkillUIBigBang.cs`, `MapSimulator.cs`, `UIWindowLoader.cs` |
 | Implemented | Buff stat application | Buff logic now applies `PAD`, `PDD`, `MAD`, `MDD`, `ACC`, `EVA`, `Speed`, and `Jump` directly to the player build and cleanly removes them when buffs expire or refresh | Active buff skills now change simulator stats and movement-relevant values instead of only a partial subset | `SkillManager.ApplyBuffStats` |
+| Missing | Buff icon / temporary-stat UI parity | Active buffs now modify runtime stats and can draw world-space affected effects, but the status bar still has no client-like buff icon tray, duration feedback, or cancel interaction driven by the live buff list | Buff-heavy jobs are harder to validate because temporary states become invisible once the cast animation finishes | `SkillManager.ActiveBuffs`, `SkillManager.OnBuffApplied`, `SkillManager.OnBuffExpired`, `StatusBarUI.cs`, `UILoader.cs` (`CUIStatusBar::Draw`, `CUserLocal::Update`) |
 | Partial | Melee / ranged / magic resolution | The runtime distinguishes melee, projectile, and magic-oriented execution, but real client behavior is still collapsed into generic hitboxes, projectile flight, and simplified target selection | Skills are broadly usable, but their hit logic is still not client-perfect | `SkillManager.ProcessMeleeAttack`, `CheckProjectileCollisions` (`CUserLocal::DoActiveSkill_MeleeAttack`, `CUserLocal::DoActiveSkill_ShootAttack`, `CUserLocal::DoActiveSkill_MagicAttack`) |
 | Partial | `DoActiveSkill_*` family parity | Generic movement, summon, and prepare/charge families now execute, but the simulator still does not mirror every named client branch such as job-specific bound jumps, meso explosion, smoke shell, open gate, or admin-only rules one-for-one | The largest remaining gap is now fidelity of per-family behavior rather than total lack of execution support | `SkillManager`, `PlayerCharacter`, `PlayerCombat` (`CUserLocal::DoActiveSkill_*` family) |
 | Partial | Key-down / charge skills | The simulator now has a generic prepare/charge flow with release handling, but it still lacks the client's dedicated key-down UI bar and branch-specific timing rules | Charge-family skills can execute, but the presentation and some timing semantics are still simplified | `SkillManager`, UI layer (`CUserLocal::DoActiveSkill_Prepare`, `CUserLocal::TryDoingPreparedSkill`, `CUserLocal::DrawKeyDownBar`) |
 | Partial | Summon simulation | Summon-family skills now create a generic summon lifecycle with duration, rendering, and periodic nearby attacks, including deferred mob removal during summon attack resolution so kills no longer invalidate active mob iteration, but they do not yet reproduce client follow/placement/aggro rules per summon type | Summon-heavy jobs are now usable and more runtime-stable, but not yet client-parity | `SkillManager`, entity/pool layer |
 | Missing | Skill cooldown UI parity | QuickSlot overlays exist, but there is no full client-like status bar or per-skill feedback system | Cooling-down skills are only partially surfaced to the player | `QuickSlotUI.cs`, `StatusBarUI.cs` |
 | Missing | Skill restrictions by map/state | Client functions such as forbidden-skill checks and map-state gating are not modeled | Skills can cast in cases where the client would block them | `MapSimulator`, `SkillManager` (`CUserLocal::Update`, `CField::IsFearEffectOn`, `CField::OffFearEffect`) |
+
+Buff icon plan:
+
+1. Confirm asset sources and ordering:
+   Use `UI/BuffIcon.img` for temporary-stat icon chrome and `Skill/*/icon` for per-skill icon sourcing where the client uses the skill's own icon, then validate row ordering and refresh cadence against `CUIStatusBar::Draw` and `CUserLocal::Update`.
+2. Add a runtime-to-UI snapshot:
+   Expose a small status-bar model from `SkillManager` that includes `skillId`, applied stat family, start time, duration, and refresh/replace semantics so the UI does not need to inspect buff internals directly.
+3. Extend status-bar loading and drawing:
+   Teach `UILoader` and `StatusBarUI` to load buff-slot art, render the active icon row in the client-aligned status-bar region, and reserve the interaction seam for later right-click cancel behavior.
+4. Verify state synchronization:
+   Check short-duration buffs, long-duration buffs, same-skill refresh, natural expiry, and `/job` cleanup so icon removal stays synchronized with the runtime and does not fight quick-slot cooldown overlays.
 
 ### 3. Physics and movement parity
 
@@ -286,7 +298,7 @@ These were either not documented at all or were buried in older parity notes ins
 3. Action coverage is incomplete for less common avatar states.
 4. Equip-anchor fallback rules are still approximate in edge cases.
 5. The generic skill runtime exists, but the named `CUserLocal::DoActiveSkill_*` families are still mostly absent.
-6. Buff application only updates a subset of stats.
+6. Buff icon / temporary-stat status-bar parity is still missing.
 7. Mount, vehicle, mechanic, and summon presentation are still missing.
 8. Charge/prepare skills and their UI are still missing.
 9. Movement and float collision still have explicit stub/TODO points in `CVecCtrl.cs`.
@@ -300,7 +312,7 @@ If the goal is visible parity first, the next work should be sequenced like this
 2. Skill execution pass:
    Implement named active-skill families rather than extending the generic cast path indefinitely.
 3. UI feedback pass:
-   Add HP/MP flash, charge bars, and complete skill-window behavior.
+   Add HP/MP flash, buff icons, charge bars, and complete skill-window behavior.
 4. Movement refinement pass:
    Remove the remaining ladder/float stubs and tighten platform/dynamic foothold sync.
 5. Interaction pass:
