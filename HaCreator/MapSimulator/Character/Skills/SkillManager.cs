@@ -547,6 +547,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Level = level,
                 SkillData = skill,
                 LevelData = levelData,
+                EffectAnimation = GetInitialCastEffect(skill),
                 CastTime = currentTime,
                 CasterId = 0, // Player ID
                 CasterX = _player.X,
@@ -554,9 +555,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FacingRight = _player.FacingRight
             };
 
+            string prepareActionName = skill.IsKeydownSkill ? GetPrepareActionName(skill) : null;
+
             ApplySkillCooldown(skill, levelData, currentTime);
             ApplySkillMount(skill, levelData);
-            TriggerSkillAnimation(skill, skill.IsKeydownSkill ? GetPrepareActionName(skill) : null);
+            TriggerSkillAnimation(skill, prepareActionName);
+            if (skill.IsKeydownSkill)
+            {
+                _player.BeginSustainedSkillAnimation(prepareActionName);
+            }
             PlayCastSound(skill);
             OnSkillCast?.Invoke(_currentCast);
 
@@ -804,6 +811,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (prepared.IsKeydownSkill)
             {
                 _player.EndSustainedSkillAnimation();
+                UpdateCurrentCastEffect(prepared.SkillData?.KeydownEndEffect, currentTime);
                 bool hadTransform = _player.HasSkillAvatarTransform(prepared.SkillId);
                 _player.ClearSkillAvatarTransform(prepared.SkillId);
 
@@ -838,6 +846,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 prepared.IsHolding = true;
                 prepared.HoldStartTime = currentTime;
                 prepared.LastRepeatTime = currentTime - GetKeydownRepeatInterval(prepared.SkillData);
+                UpdateCurrentCastEffect(prepared.SkillData?.KeydownEffect, currentTime);
                 _player.BeginSustainedSkillAnimation(GetKeydownActionName(prepared.SkillData));
             }
 
@@ -890,6 +899,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return skill.KeydownEndActionName;
 
             return null;
+        }
+
+        private static SkillAnimation GetInitialCastEffect(SkillData skill)
+        {
+            if (skill == null)
+                return null;
+
+            return skill.IsKeydownSkill
+                ? skill.PrepareEffect ?? skill.Effect
+                : skill.Effect;
+        }
+
+        private void UpdateCurrentCastEffect(SkillAnimation animation, int currentTime)
+        {
+            if (_currentCast == null || animation == null)
+                return;
+
+            _currentCast.EffectAnimation = animation;
+            _currentCast.CastTime = currentTime;
+            _currentCast.IsComplete = false;
         }
 
         private static int GetKeydownRepeatInterval(SkillData skill)
@@ -2388,10 +2417,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (_currentCast != null)
             {
                 // Check if cast animation is complete
-                var skill = _currentCast.SkillData;
-                if (skill?.Effect != null)
+                var effectAnimation = _currentCast.EffectAnimation ?? _currentCast.SkillData?.Effect;
+                if (effectAnimation != null)
                 {
-                    if (skill.Effect.IsComplete(_currentCast.AnimationTime))
+                    if (effectAnimation.IsComplete(_currentCast.AnimationTime))
                     {
                         _currentCast.IsComplete = true;
                     }
@@ -2542,7 +2571,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private void DrawCastEffect(SpriteBatch spriteBatch, SkillCastInfo cast,
             int mapShiftX, int mapShiftY, int centerX, int centerY)
         {
-            var effect = cast.SkillData?.Effect;
+            var effect = cast.EffectAnimation ?? cast.SkillData?.Effect;
             if (effect == null)
                 return;
 
