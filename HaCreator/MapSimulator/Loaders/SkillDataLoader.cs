@@ -6,7 +6,10 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -293,6 +296,7 @@ namespace HaCreator.MapSimulator.Loaders
             // Get skill name and description from String.wz
             string skillName = $"Skill {skillId}";
             string description = "";
+            Dictionary<int, string> levelDescriptions = null;
 
             if (stringImage != null)
             {
@@ -306,10 +310,17 @@ namespace HaCreator.MapSimulator.Loaders
                     WzStringProperty descProp = (WzStringProperty)stringEntry["desc"];
                     if (descProp != null)
                         description = descProp.Value;
+
+                    if (string.IsNullOrWhiteSpace(description) && stringEntry["pdesc"] is WzStringProperty passiveDescProp)
+                        description = passiveDescProp.Value;
+
+                    levelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel));
                 }
             }
 
-            return new SkillDisplayData
+            description = NormalizeSkillText(description);
+
+            var displayData = new SkillDisplayData
             {
                 SkillId = skillId,
                 IconTexture = iconTexture,
@@ -317,9 +328,377 @@ namespace HaCreator.MapSimulator.Loaders
                 IconMouseOverTexture = mouseOverIconTexture,
                 SkillName = skillName,
                 Description = description,
-                CurrentLevel = 1, // Default to level 1 for display purposes
+                CurrentLevel = 0,
                 MaxLevel = Math.Max(1, maxLevel)
             };
+
+            if (levelDescriptions != null)
+            {
+                foreach (var entry in levelDescriptions)
+                    displayData.LevelDescriptions[entry.Key] = entry.Value;
+            }
+
+            return displayData;
+        }
+
+        private static Dictionary<int, string> BuildLevelDescriptions(WzSubProperty skillEntry, WzSubProperty stringEntry, int maxLevel)
+        {
+            if (skillEntry == null || stringEntry == null || maxLevel <= 0)
+                return null;
+
+            var result = new Dictionary<int, string>();
+            string sharedTemplate = GetStringValue(stringEntry, "h");
+            if (string.IsNullOrWhiteSpace(sharedTemplate))
+                sharedTemplate = GetStringValue(stringEntry, "ph");
+
+            for (int level = 1; level <= maxLevel; level++)
+            {
+                string explicitLevelText = GetStringValue(stringEntry, $"h{level}");
+                string resolved = explicitLevelText;
+
+                if (string.IsNullOrWhiteSpace(resolved) && !string.IsNullOrWhiteSpace(sharedTemplate))
+                    resolved = ResolveSkillTemplate(sharedTemplate, skillEntry, level, maxLevel);
+
+                string fallbackStats = BuildFallbackLevelDescription(skillEntry, level);
+                if (string.IsNullOrWhiteSpace(resolved) || ContainsUnresolvedSkillToken(resolved))
+                    resolved = fallbackStats;
+
+                resolved = NormalizeSkillText(resolved);
+                if (!string.IsNullOrWhiteSpace(resolved))
+                    result[level] = resolved;
+            }
+
+            return result.Count > 0 ? result : null;
+        }
+
+        private static string ResolveSkillTemplate(string template, WzSubProperty skillEntry, int level, int maxLevel)
+        {
+            if (string.IsNullOrWhiteSpace(template) || skillEntry == null)
+                return string.Empty;
+
+            return Regex.Replace(template, "#([A-Za-z0-9_]+)", match =>
+            {
+                string token = match.Groups[1].Value;
+                return TryResolveSkillToken(skillEntry, token, level, maxLevel, out string value)
+                    ? value
+                    : match.Value;
+            });
+        }
+
+        private static bool TryResolveSkillToken(WzSubProperty skillEntry, string token, int level, int maxLevel, out string value)
+        {
+            value = null;
+            if (skillEntry == null || string.IsNullOrWhiteSpace(token))
+                return false;
+
+            if (string.Equals(token, "level", StringComparison.OrdinalIgnoreCase))
+            {
+                value = level.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (string.Equals(token, "maxLevel", StringComparison.OrdinalIgnoreCase))
+            {
+                value = maxLevel.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
+            if (TryGetNumericPropertyValue(levelNode, token, level, out int numericValue) ||
+                TryGetNumericPropertyValue(skillEntry["common"], token, level, out numericValue) ||
+                TryGetNumericPropertyValue(skillEntry["info"], token, level, out numericValue))
+            {
+                value = numericValue.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            string stringValue = GetStringValue(levelNode, token)
+                                 ?? GetStringValue(skillEntry["common"], token)
+                                 ?? GetStringValue(skillEntry["info"], token);
+            if (!string.IsNullOrWhiteSpace(stringValue))
+            {
+                value = NormalizeSkillText(stringValue);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string BuildFallbackLevelDescription(WzSubProperty skillEntry, int level)
+        {
+            if (skillEntry == null || level <= 0)
+                return string.Empty;
+
+            WzImageProperty levelNode = skillEntry["level"]?[level.ToString(CultureInfo.InvariantCulture)];
+            WzImageProperty commonNode = skillEntry["common"];
+            WzImageProperty infoNode = skillEntry["info"];
+            var builder = new StringBuilder();
+
+            AppendPercentStat(builder, "Damage", skillEntry, levelNode, commonNode, infoNode, level, "damage");
+            AppendIntStat(builder, "Attack Count", skillEntry, levelNode, commonNode, infoNode, level, "attackCount");
+            AppendIntStat(builder, "Mob Count", skillEntry, levelNode, commonNode, infoNode, level, "mobCount");
+            AppendIntStat(builder, "MP Cost", skillEntry, levelNode, commonNode, infoNode, level, "mpCon");
+            AppendIntStat(builder, "HP Cost", skillEntry, levelNode, commonNode, infoNode, level, "hpCon");
+            AppendIntStat(builder, "Cooldown", skillEntry, levelNode, commonNode, infoNode, level, "cooltime", value => $"{value} sec");
+            AppendIntStat(builder, "Duration", skillEntry, levelNode, commonNode, infoNode, level, "time", value => $"{value} sec");
+            AppendRangeStat(builder, levelNode, commonNode, infoNode, level);
+            AppendPercentStat(builder, "Mastery", skillEntry, levelNode, commonNode, infoNode, level, "mastery");
+            AppendPercentStat(builder, "Critical Rate", skillEntry, levelNode, commonNode, infoNode, level, "cr");
+            AppendPercentStat(builder, "Chance", skillEntry, levelNode, commonNode, infoNode, level, "prop");
+            AppendIntStat(builder, "PAD", skillEntry, levelNode, commonNode, infoNode, level, "pad", FormatSignedValue);
+            AppendIntStat(builder, "MAD", skillEntry, levelNode, commonNode, infoNode, level, "mad", FormatSignedValue);
+            AppendIntStat(builder, "PDD", skillEntry, levelNode, commonNode, infoNode, level, "pdd", FormatSignedValue);
+            AppendIntStat(builder, "MDD", skillEntry, levelNode, commonNode, infoNode, level, "mdd", FormatSignedValue);
+            AppendIntStat(builder, "ACC", skillEntry, levelNode, commonNode, infoNode, level, "acc", FormatSignedValue);
+            AppendIntStat(builder, "EVA", skillEntry, levelNode, commonNode, infoNode, level, "eva", FormatSignedValue);
+            AppendIntStat(builder, "Speed", skillEntry, levelNode, commonNode, infoNode, level, "speed", FormatSignedValue);
+            AppendIntStat(builder, "Jump", skillEntry, levelNode, commonNode, infoNode, level, "jump", FormatSignedValue);
+            AppendIntStat(builder, "HP Recovery", skillEntry, levelNode, commonNode, infoNode, level, "hp");
+            AppendIntStat(builder, "MP Recovery", skillEntry, levelNode, commonNode, infoNode, level, "mp");
+            AppendIntStat(builder, "Bullet Count", skillEntry, levelNode, commonNode, infoNode, level, "bulletCount");
+            AppendIntStat(builder, "Bullet Speed", skillEntry, levelNode, commonNode, infoNode, level, "bulletSpeed");
+            AppendIntStat(builder, "X", skillEntry, levelNode, commonNode, infoNode, level, "x");
+            AppendIntStat(builder, "Y", skillEntry, levelNode, commonNode, infoNode, level, "y");
+            AppendIntStat(builder, "Z", skillEntry, levelNode, commonNode, infoNode, level, "z");
+
+            return builder.ToString().Trim();
+        }
+
+        private static void AppendPercentStat(
+            StringBuilder builder,
+            string label,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName)
+        {
+            AppendIntStat(builder, label, skillEntry, levelNode, commonNode, infoNode, level, propertyName, value => $"{value}%");
+        }
+
+        private static void AppendIntStat(
+            StringBuilder builder,
+            string label,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string propertyName,
+            Func<int, string> formatter = null)
+        {
+            if (!TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, propertyName, level, out int value))
+                return;
+
+            if (value == 0)
+                return;
+
+            AppendStatLine(builder, label, formatter != null ? formatter(value) : value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendRangeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level)
+        {
+            int left = 0;
+            int right = 0;
+            int vertical = 0;
+            int range = 0;
+            bool hasBounds = false;
+
+            if (TryGetVectorValue(levelNode, commonNode, infoNode, "lt", out int ltX, out int ltY))
+            {
+                left = Math.Abs(ltX);
+                vertical = Math.Max(vertical, Math.Abs(ltY));
+                hasBounds = true;
+            }
+
+            if (TryGetVectorValue(levelNode, commonNode, infoNode, "rb", out int rbX, out int rbY))
+            {
+                right = Math.Abs(rbX);
+                vertical = Math.Max(vertical, Math.Abs(rbY));
+                hasBounds = true;
+            }
+
+            if (!hasBounds && !TryGetLevelNumericValue(null, levelNode, commonNode, infoNode, "range", level, out range))
+                return;
+
+            if (!hasBounds)
+            {
+                left = range;
+                right = range;
+            }
+
+            string rangeText = vertical > 0
+                ? $"{left} / {right} / {vertical}"
+                : $"{left} / {right}";
+            AppendStatLine(builder, "Range", rangeText);
+        }
+
+        private static bool TryGetVectorValue(
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName,
+            out int x,
+            out int y)
+        {
+            x = 0;
+            y = 0;
+
+            if (TryReadVector(levelNode?[propertyName], out x, out y))
+                return true;
+            if (TryReadVector(commonNode?[propertyName], out x, out y))
+                return true;
+            return TryReadVector(infoNode?[propertyName], out x, out y);
+        }
+
+        private static bool TryReadVector(WzImageProperty property, out int x, out int y)
+        {
+            x = 0;
+            y = 0;
+
+            if (property is not WzVectorProperty vector)
+                return false;
+
+            x = vector.X?.Value ?? 0;
+            y = vector.Y?.Value ?? 0;
+            return true;
+        }
+
+        private static bool TryGetLevelNumericValue(
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            string propertyName,
+            int level,
+            out int value)
+        {
+            if (TryGetNumericPropertyValue(levelNode, propertyName, level, out value) ||
+                TryGetNumericPropertyValue(commonNode, propertyName, level, out value) ||
+                TryGetNumericPropertyValue(infoNode, propertyName, level, out value))
+            {
+                return true;
+            }
+
+            if (skillEntry != null)
+                return TryResolveSkillToken(skillEntry, propertyName, level, Math.Max(level, 1), out string resolved)
+                    && int.TryParse(resolved, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+
+            value = 0;
+            return false;
+        }
+
+        private static bool ContainsUnresolvedSkillToken(string text)
+        {
+            return !string.IsNullOrWhiteSpace(text) && Regex.IsMatch(text, "#[A-Za-z0-9_]+");
+        }
+
+        private static void AppendStatLine(StringBuilder builder, string label, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            if (builder.Length > 0)
+                builder.AppendLine();
+
+            builder.Append(label);
+            builder.Append(": ");
+            builder.Append(value);
+        }
+
+        private static string FormatSignedValue(int value)
+        {
+            return value > 0
+                ? $"+{value.ToString(CultureInfo.InvariantCulture)}"
+                : value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static bool TryGetNumericPropertyValue(WzImageProperty node, string name, int formulaX, out int value)
+        {
+            value = 0;
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return false;
+
+            WzImageProperty child = node[name];
+            switch (child)
+            {
+                case WzIntProperty intProp:
+                    value = intProp.Value;
+                    return true;
+                case WzShortProperty shortProp:
+                    value = shortProp.Value;
+                    return true;
+                case WzLongProperty longProp:
+                    value = (int)longProp.Value;
+                    return true;
+                case WzFloatProperty floatProp:
+                    value = (int)Math.Round(floatProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzDoubleProperty doubleProp:
+                    value = (int)Math.Round(doubleProp.Value, MidpointRounding.AwayFromZero);
+                    return true;
+                case WzStringProperty stringProp:
+                    return TryEvaluateFormula(stringProp.Value, formulaX, out value);
+                default:
+                    return false;
+            }
+        }
+
+        private static string GetStringValue(WzImageProperty node, string name)
+        {
+            if (node == null || string.IsNullOrWhiteSpace(name))
+                return null;
+
+            return node[name] is WzStringProperty stringProp
+                ? stringProp.Value
+                : null;
+        }
+
+        private static string NormalizeSkillText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string normalized = text
+                .Replace("\\r\\n", "\n")
+                .Replace("\\n", "\n")
+                .Replace("\\r", "\n")
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Replace('\u00A0', ' ');
+
+            normalized = Regex.Replace(normalized, "#([a-zA-Z])([^#]+)#", "$2");
+            normalized = normalized.Replace("##", "#");
+            normalized = Regex.Replace(normalized, "[ \t]+\n", "\n");
+            normalized = Regex.Replace(normalized, "\n{3,}", "\n\n");
+            normalized = Regex.Replace(normalized, "[ \t]{2,}", " ");
+
+            return normalized.Trim();
+        }
+
+        private static bool TryEvaluateFormula(string expression, int xValue, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrWhiteSpace(expression))
+                return false;
+
+            try
+            {
+                var parser = new FormulaParser(expression, xValue);
+                double result = parser.Parse();
+                value = (int)Math.Round(result, MidpointRounding.AwayFromZero);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -422,6 +801,160 @@ namespace HaCreator.MapSimulator.Loaders
                 return name;
 
             return $"Job {jobId}";
+        }
+
+        private sealed class FormulaParser
+        {
+            private readonly string _expression;
+            private readonly int _xValue;
+            private int _index;
+
+            public FormulaParser(string expression, int xValue)
+            {
+                _expression = expression ?? string.Empty;
+                _xValue = xValue;
+            }
+
+            public double Parse()
+            {
+                double value = ParseExpression();
+                SkipWhitespace();
+                if (_index < _expression.Length)
+                    throw new FormatException($"Unexpected token '{_expression[_index]}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private double ParseExpression()
+            {
+                double value = ParseTerm();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('+'))
+                        value += ParseTerm();
+                    else if (Match('-'))
+                        value -= ParseTerm();
+                    else
+                        return value;
+                }
+            }
+
+            private double ParseTerm()
+            {
+                double value = ParseFactor();
+                while (true)
+                {
+                    SkipWhitespace();
+                    if (Match('*'))
+                        value *= ParseFactor();
+                    else if (Match('/'))
+                        value /= ParseFactor();
+                    else
+                        return value;
+                }
+            }
+
+            private double ParseFactor()
+            {
+                SkipWhitespace();
+
+                if (Match('+'))
+                    return ParseFactor();
+                if (Match('-'))
+                    return -ParseFactor();
+
+                if (Match('('))
+                {
+                    double value = ParseExpression();
+                    Expect(')');
+                    return value;
+                }
+
+                if (TryParseIdentifier(out string identifier))
+                {
+                    if (string.Equals(identifier, "x", StringComparison.OrdinalIgnoreCase))
+                        return _xValue;
+
+                    if (identifier.Equals("u", StringComparison.OrdinalIgnoreCase) ||
+                        identifier.Equals("d", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Expect('(');
+                        double inner = ParseExpression();
+                        Expect(')');
+                        return identifier.Equals("u", StringComparison.OrdinalIgnoreCase)
+                            ? Math.Ceiling(inner)
+                            : Math.Floor(inner);
+                    }
+
+                    throw new FormatException($"Unsupported identifier '{identifier}' in '{_expression}'.");
+                }
+
+                return ParseNumber();
+            }
+
+            private double ParseNumber()
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length &&
+                       (char.IsDigit(_expression[_index]) || _expression[_index] == '.'))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                    throw new FormatException($"Expected number at position {_index} in '{_expression}'.");
+
+                string token = _expression[start.._index];
+                if (!double.TryParse(token, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                    throw new FormatException($"Invalid number '{token}' in '{_expression}'.");
+
+                return value;
+            }
+
+            private bool TryParseIdentifier(out string identifier)
+            {
+                SkipWhitespace();
+                int start = _index;
+
+                while (_index < _expression.Length && char.IsLetter(_expression[_index]))
+                {
+                    _index++;
+                }
+
+                if (start == _index)
+                {
+                    identifier = null;
+                    return false;
+                }
+
+                identifier = _expression[start.._index];
+                return true;
+            }
+
+            private bool Match(char ch)
+            {
+                SkipWhitespace();
+                if (_index >= _expression.Length || _expression[_index] != ch)
+                    return false;
+
+                _index++;
+                return true;
+            }
+
+            private void Expect(char ch)
+            {
+                if (!Match(ch))
+                    throw new FormatException($"Expected '{ch}' in '{_expression}'.");
+            }
+
+            private void SkipWhitespace()
+            {
+                while (_index < _expression.Length && char.IsWhiteSpace(_expression[_index]))
+                    _index++;
+            }
         }
     }
 }

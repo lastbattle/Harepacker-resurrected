@@ -58,6 +58,17 @@ namespace HaCreator.MapSimulator.UI
         private const int SP_DISPLAY_X_BASE = 104;
         private const int SP_DISPLAY_Y = 256;
 
+        // Hover tooltip layout
+        private const int TOOLTIP_WIDTH = 320;
+        private const int TOOLTIP_PADDING = 10;
+        private const int TOOLTIP_ICON_GAP = 8;
+        private const int TOOLTIP_TITLE_GAP = 8;
+        private const int TOOLTIP_SECTION_GAP = 6;
+        private const int TOOLTIP_OFFSET_X = 12;
+        private const int TOOLTIP_OFFSET_Y = -4;
+        private const int TOOLTIP_TEXT_LEFT = 87;
+        private const int TOOLTIP_TEXT_RIGHT = 300;
+
         // Hit testing
         private const int ICON_HIT_LEFT = 13;
         private const int ICON_HIT_RIGHT = 45;
@@ -136,6 +147,7 @@ namespace HaCreator.MapSimulator.UI
         // Mouse state
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
+        private Point _lastMousePosition;
 
         // Drag and drop
         private bool _isDraggingSkill;
@@ -397,6 +409,18 @@ namespace HaCreator.MapSimulator.UI
             DrawSkillPointCount(sprite, windowX, windowY);
         }
 
+        protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
+            int mapShiftX, int mapShiftY, int centerX, int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            int windowX = this.Position.X;
+            int windowY = this.Position.Y;
+
+            DrawHoveredSkillTooltip(sprite, windowX, windowY, renderParameters.RenderWidth, renderParameters.RenderHeight);
+        }
+
         /// <summary>
         /// Draw the job header row with job icon and name
         /// </summary>
@@ -534,6 +558,237 @@ namespace HaCreator.MapSimulator.UI
                 Color.Black);
         }
 
+        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int windowX, int windowY, int renderWidth, int renderHeight)
+        {
+            if (_font == null || _isDraggingSkill || _hoveredSkillIndex < 0)
+                return;
+
+            var skills = CurrentSkills;
+            if (_hoveredSkillIndex >= skills.Count)
+                return;
+
+            SkillDisplayData skill = skills[_hoveredSkillIndex];
+            if (skill == null)
+                return;
+
+            int currentLevel = Math.Clamp(skill.CurrentLevel, 0, Math.Max(0, skill.MaxLevel));
+            int previewLevel = currentLevel > 0 ? currentLevel : 1;
+            int nextLevel = Math.Min(skill.MaxLevel, previewLevel + (currentLevel > 0 ? 1 : 0));
+            string skillName = SanitizeFontText(skill.SkillName);
+            string description = SanitizeFontText(skill.Description);
+            string currentLevelHeader = currentLevel > 0 ? $"Current Level: {currentLevel}" : string.Empty;
+            string currentLevelDescription = currentLevel > 0
+                ? SanitizeFontText(skill.GetLevelDescription(currentLevel))
+                : string.Empty;
+            bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
+            string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
+            string nextLevelDescription = showNextLevel
+                ? SanitizeFontText(skill.GetLevelDescription(nextLevel))
+                : string.Empty;
+
+            float titleWidth = TOOLTIP_TEXT_RIGHT - TOOLTIP_PADDING;
+            float sectionWidth = TOOLTIP_TEXT_RIGHT - TOOLTIP_TEXT_LEFT;
+            string[] wrappedName = WrapTooltipText(skillName, titleWidth);
+            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
+            string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
+            string[] wrappedCurrentDescription = WrapTooltipText(currentLevelDescription, sectionWidth);
+            string[] wrappedNextHeader = WrapTooltipText(nextLevelHeader, sectionWidth);
+            string[] wrappedNextDescription = WrapTooltipText(nextLevelDescription, sectionWidth);
+
+            float titleHeight = MeasureLinesHeight(wrappedName);
+            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float currentHeaderHeight = MeasureLinesHeight(wrappedCurrentHeader);
+            float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
+            float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
+            float nextDescriptionHeight = MeasureLinesHeight(wrappedNextDescription);
+            float sectionHeight = CalculateTooltipSectionHeight(
+                descriptionHeight,
+                currentHeaderHeight,
+                currentDescriptionHeight,
+                nextHeaderHeight,
+                nextDescriptionHeight);
+            float iconBlockHeight = Math.Max(SKILL_ICON_SIZE, sectionHeight);
+
+            int tooltipHeight = (int)Math.Ceiling(
+                (TOOLTIP_PADDING * 2)
+                + titleHeight
+                + TOOLTIP_TITLE_GAP
+                + iconBlockHeight);
+
+            int tooltipX = _lastMousePosition.X + TOOLTIP_OFFSET_X;
+            int tooltipY = _lastMousePosition.Y + 20;
+
+            if (tooltipX + TOOLTIP_WIDTH > renderWidth - TOOLTIP_PADDING)
+                tooltipX = _lastMousePosition.X - TOOLTIP_WIDTH - TOOLTIP_OFFSET_X;
+            if (tooltipX < TOOLTIP_PADDING)
+                tooltipX = TOOLTIP_PADDING;
+            if (tooltipY + tooltipHeight > renderHeight - TOOLTIP_PADDING)
+                tooltipY = Math.Max(TOOLTIP_PADDING, renderHeight - tooltipHeight - TOOLTIP_PADDING);
+
+            Rectangle backgroundRect = new Rectangle(tooltipX, tooltipY, TOOLTIP_WIDTH, tooltipHeight);
+            sprite.Draw(_debugPlaceholder, backgroundRect, new Color(18, 18, 26, 235));
+            DrawTooltipBorder(sprite, backgroundRect);
+
+            int titleX = tooltipX + TOOLTIP_PADDING;
+            int titleY = tooltipY + TOOLTIP_PADDING;
+            DrawTooltipLines(sprite, wrappedName, titleX, titleY, new Color(255, 220, 120));
+
+            int contentY = tooltipY + TOOLTIP_PADDING + (int)Math.Ceiling(titleHeight) + TOOLTIP_TITLE_GAP;
+            int iconX = tooltipX + TOOLTIP_PADDING;
+            Texture2D icon = skill.GetIconForState(false, true) ?? skill.IconTexture;
+            if (icon != null)
+            {
+                sprite.Draw(icon, new Rectangle(iconX, contentY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), Color.White);
+            }
+
+            int textX = tooltipX + TOOLTIP_TEXT_LEFT;
+            float sectionY = contentY;
+            if (descriptionHeight > 0f)
+            {
+                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, Color.White);
+                sectionY += descriptionHeight;
+            }
+
+            if (currentHeaderHeight > 0f)
+            {
+                sectionY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, wrappedCurrentHeader, textX, sectionY, new Color(140, 200, 255));
+                sectionY += currentHeaderHeight;
+            }
+
+            if (currentDescriptionHeight > 0f)
+            {
+                sectionY += 2f;
+                DrawTooltipLines(sprite, wrappedCurrentDescription, textX, sectionY, new Color(180, 255, 210));
+                sectionY += currentDescriptionHeight;
+            }
+
+            if (nextHeaderHeight > 0f)
+            {
+                sectionY += TOOLTIP_SECTION_GAP;
+                DrawTooltipLines(sprite, wrappedNextHeader, textX, sectionY, new Color(255, 200, 140));
+                sectionY += nextHeaderHeight;
+            }
+
+            if (nextDescriptionHeight > 0f)
+            {
+                sectionY += 2f;
+                DrawTooltipLines(sprite, wrappedNextDescription, textX, sectionY, new Color(255, 238, 196));
+            }
+        }
+
+        private static float CalculateTooltipSectionHeight(
+            float descriptionHeight,
+            float currentHeaderHeight,
+            float currentDescriptionHeight,
+            float nextHeaderHeight,
+            float nextDescriptionHeight)
+        {
+            float height = 0f;
+            if (descriptionHeight > 0f)
+                height += descriptionHeight;
+            if (currentHeaderHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + currentHeaderHeight;
+            if (currentDescriptionHeight > 0f)
+                height += 2f + currentDescriptionHeight;
+            if (nextHeaderHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + nextHeaderHeight;
+            if (nextDescriptionHeight > 0f)
+                height += 2f + nextDescriptionHeight;
+
+            return height;
+        }
+
+        private void DrawTooltipBorder(SpriteBatch sprite, Rectangle rect)
+        {
+            Color borderColor = new Color(214, 174, 82);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y - 1, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Bottom, rect.Width + 2, 1), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.X - 1, rect.Y, 1, rect.Height), borderColor);
+            sprite.Draw(_debugPlaceholder, new Rectangle(rect.Right, rect.Y, 1, rect.Height), borderColor);
+        }
+
+        private void DrawTooltipLines(SpriteBatch sprite, string[] lines, int x, float y, Color color)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                DrawTooltipText(sprite, lines[i], new Vector2(x, y + (i * _font.LineSpacing)), color);
+            }
+        }
+
+        private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return;
+
+            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
+            sprite.DrawString(_font, text, position, color);
+        }
+
+        private float MeasureLongestLine(string[] lines)
+        {
+            float width = 0f;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                    width = Math.Max(width, _font.MeasureString(lines[i]).X);
+            }
+
+            return width;
+        }
+
+        private float MeasureLinesHeight(string[] lines)
+        {
+            if (lines == null || lines.Length == 0)
+                return 0f;
+
+            int nonEmptyLines = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(lines[i]))
+                    nonEmptyLines++;
+            }
+
+            return nonEmptyLines > 0 ? nonEmptyLines * _font.LineSpacing : 0f;
+        }
+
+        private string[] WrapTooltipText(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Array.Empty<string>();
+
+            var lines = new List<string>();
+            string[] paragraphs = text.Replace("\r\n", "\n").Split('\n');
+
+            foreach (string paragraph in paragraphs)
+            {
+                string trimmed = paragraph.Trim();
+                if (trimmed.Length == 0)
+                    continue;
+
+                string currentLine = string.Empty;
+                string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (string word in words)
+                {
+                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
+                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = word;
+                    }
+                    else
+                    {
+                        currentLine = candidate;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(currentLine))
+                    lines.Add(currentLine);
+            }
+
+            return lines.ToArray();
+        }
+
         private void DrawBookName(SpriteBatch sprite, int windowX, int windowY, string jobName)
         {
             if (_font == null || string.IsNullOrWhiteSpace(jobName))
@@ -646,6 +901,14 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(tabTexture, tabRect, Color.White);
                 }
             }
+        }
+
+        private Point GetSkillIconPosition(int visibleRowIndex)
+        {
+            int nTop = FIRST_ROW_TOP + (visibleRowIndex * SKILL_ROW_HEIGHT);
+            return new Point(
+                Position.X + ICON_X,
+                Position.Y + nTop + ICON_Y_OFFSET);
         }
         #endregion
 
@@ -904,6 +1167,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
 
             MouseState mouseState = Mouse.GetState();
+            _lastMousePosition = new Point(mouseState.X, mouseState.Y);
 
             // Handle tab clicks
             if (mouseState.LeftButton == ButtonState.Pressed &&

@@ -653,6 +653,7 @@ namespace HaCreator.MapSimulator.UI
         public string Description { get; set; }
         public int CurrentLevel { get; set; }
         public int MaxLevel { get; set; }
+        public Dictionary<int, string> LevelDescriptions { get; } = new Dictionary<int, string>();
 
         // Skill properties for tooltip
         public int Damage { get; set; }
@@ -671,6 +672,24 @@ namespace HaCreator.MapSimulator.UI
             if (isMouseOver && IconMouseOverTexture != null)
                 return IconMouseOverTexture;
             return IconTexture;
+        }
+
+        public string GetLevelDescription(int level)
+        {
+            if (LevelDescriptions.Count == 0)
+                return string.Empty;
+
+            int resolvedLevel = Math.Clamp(level, 1, Math.Max(1, MaxLevel));
+            if (LevelDescriptions.TryGetValue(resolvedLevel, out string description))
+                return description ?? string.Empty;
+
+            if (LevelDescriptions.TryGetValue(1, out description))
+                return description ?? string.Empty;
+
+            foreach (var entry in LevelDescriptions)
+                return entry.Value ?? string.Empty;
+
+            return string.Empty;
         }
     }
 }
