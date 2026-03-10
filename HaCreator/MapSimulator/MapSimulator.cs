@@ -291,6 +291,18 @@ namespace HaCreator.MapSimulator
             public float Y { get; }
         }
 
+        private sealed class PendingMapSpawnTarget
+        {
+            public PendingMapSpawnTarget(float x, float y)
+            {
+                X = x;
+                Y = y;
+            }
+
+            public float X { get; }
+            public float Y { get; }
+        }
+
         // Same-map portal teleport delay (no fade, just delay before teleport)
         // Default delay is 1000ms (1 second) if portal doesn't specify its own delay
         private const int SAME_MAP_PORTAL_DEFAULT_DELAY_MS = 1000;
@@ -301,6 +313,7 @@ namespace HaCreator.MapSimulator
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
         private SameMapTeleportTarget _sameMapTeleportTarget = null;
+        private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
         private int _passiveTransferRequestExpiresAt = int.MinValue;
@@ -858,46 +871,7 @@ namespace HaCreator.MapSimulator
             ///////////////////////////////////////////////
             ////// Default positioning for character //////
             ///////////////////////////////////////////////
-            bool spawnPositionSet = false;
-            float spawnX = 0, spawnY = 0;
-
-            // First, check if we're spawning from a portal teleport (has target portal name)
-            if (!string.IsNullOrEmpty(_spawnPortalName))
-            {
-                // Find the portal with the matching name
-                var targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
-                if (targetPortal != null)
-                {
-                    this.mapShiftX = targetPortal.X;
-                    this.mapShiftY = targetPortal.Y;
-                    spawnX = targetPortal.X;
-                    spawnY = targetPortal.Y;
-                    spawnPositionSet = true;
-                }
-            }
-
-            // Fallback: Get a random portal if any exists for spawnpoint
-            if (!spawnPositionSet)
-            {
-                var startPortals = _mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
-                if (startPortals.Any())
-                {
-                    Random random = new Random();
-                    PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
-                    this.mapShiftX = randomStartPortal.X;
-                    this.mapShiftY = randomStartPortal.Y;
-                    spawnX = randomStartPortal.X;
-                    spawnY = randomStartPortal.Y;
-                    spawnPositionSet = true;
-                }
-            }
-
-            // Fallback to map center if no portals
-            if (!spawnPositionSet)
-            {
-                spawnX = _vrFieldBoundary.Center.X;
-                spawnY = _vrFieldBoundary.Center.Y;
-            }
+            ResolveSpawnPosition(out float spawnX, out float spawnY);
 
             SetCameraMoveX(true, false, 0); // true true to center it, in case its out of the boundary
             SetCameraMoveX(false, true, 0);
@@ -1269,6 +1243,7 @@ namespace HaCreator.MapSimulator
             // Reset same-map teleport state
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
+            _pendingMapSpawnTarget = null;
             ClearPassiveTransferRequest();
 
             // Deactivate chat input (but preserve message history)
@@ -1579,35 +1554,7 @@ namespace HaCreator.MapSimulator
             ConvertListsToArrays();
 
             // Set camera position and spawn point
-            bool spawnPositionSet = false;
-            float spawnX = _vrFieldBoundary.Center.X;
-            float spawnY = _vrFieldBoundary.Center.Y;
-
-            if (!string.IsNullOrEmpty(_spawnPortalName))
-            {
-                var targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
-                if (targetPortal != null)
-                {
-                    this.mapShiftX = targetPortal.X;
-                    this.mapShiftY = targetPortal.Y;
-                    spawnX = targetPortal.X;
-                    spawnY = targetPortal.Y;
-                    spawnPositionSet = true;
-                }
-            }
-            if (!spawnPositionSet)
-            {
-                var startPortals = _mapBoard.BoardItems.Portals.Where(portal => portal.pt == PortalType.StartPoint).ToList();
-                if (startPortals.Any())
-                {
-                    Random random = new Random();
-                    PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
-                    this.mapShiftX = randomStartPortal.X;
-                    this.mapShiftY = randomStartPortal.Y;
-                    spawnX = randomStartPortal.X;
-                    spawnY = randomStartPortal.Y;
-                }
-            }
+            ResolveSpawnPosition(out float spawnX, out float spawnY);
 
             SetCameraMoveX(true, false, 0);
             SetCameraMoveX(false, true, 0);
@@ -4094,11 +4041,23 @@ namespace HaCreator.MapSimulator
             {
                 PlayPortalSE();
                 _playerManager?.ForceStand();
-                StartSameMapTeleport(
-                    temporaryPortalDestination.X,
-                    temporaryPortalDestination.Y,
-                    temporaryPortalDestination.DelayMs,
-                    currentTime);
+
+                if (temporaryPortalDestination.MapId == _mapBoard.MapInfo.id)
+                {
+                    StartSameMapTeleport(
+                        temporaryPortalDestination.X,
+                        temporaryPortalDestination.Y,
+                        temporaryPortalDestination.DelayMs,
+                        currentTime);
+                }
+                else
+                {
+                    SetPendingMapSpawnTarget(temporaryPortalDestination.X, temporaryPortalDestination.Y);
+                    _gameState.PendingMapChange = true;
+                    _gameState.PendingMapId = temporaryPortalDestination.MapId;
+                    _gameState.PendingPortalName = null;
+                }
+
                 return true;
             }
 
@@ -4193,6 +4152,71 @@ namespace HaCreator.MapSimulator
             _sameMapTeleportStartTime = currentTime;
             _sameMapTeleportDelay = Math.Max(0, delayMs);
             _sameMapTeleportTarget = new SameMapTeleportTarget(targetX, targetY - SAME_MAP_TELEPORT_Y_OFFSET);
+        }
+
+        private void SetPendingMapSpawnTarget(float x, float y)
+        {
+            _pendingMapSpawnTarget = new PendingMapSpawnTarget(x, y);
+        }
+
+        private bool TryConsumePendingMapSpawnTarget(out float spawnX, out float spawnY)
+        {
+            if (_pendingMapSpawnTarget == null)
+            {
+                spawnX = 0f;
+                spawnY = 0f;
+                return false;
+            }
+
+            spawnX = _pendingMapSpawnTarget.X;
+            spawnY = _pendingMapSpawnTarget.Y;
+            _pendingMapSpawnTarget = null;
+            return true;
+        }
+
+        private void ResolveSpawnPosition(out float spawnX, out float spawnY)
+        {
+            bool spawnPositionSet = false;
+            spawnX = _vrFieldBoundary.Center.X;
+            spawnY = _vrFieldBoundary.Center.Y;
+
+            if (TryConsumePendingMapSpawnTarget(out float pendingSpawnX, out float pendingSpawnY))
+            {
+                mapShiftX = (int)MathF.Round(pendingSpawnX);
+                mapShiftY = (int)MathF.Round(pendingSpawnY);
+                spawnX = pendingSpawnX;
+                spawnY = pendingSpawnY;
+                spawnPositionSet = true;
+            }
+
+            if (!spawnPositionSet && !string.IsNullOrEmpty(_spawnPortalName))
+            {
+                PortalInstance targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
+                if (targetPortal != null)
+                {
+                    mapShiftX = targetPortal.X;
+                    mapShiftY = targetPortal.Y;
+                    spawnX = targetPortal.X;
+                    spawnY = targetPortal.Y;
+                    spawnPositionSet = true;
+                }
+            }
+
+            if (!spawnPositionSet)
+            {
+                List<PortalInstance> startPortals = _mapBoard.BoardItems.Portals
+                    .Where(portal => portal.pt == PortalType.StartPoint)
+                    .ToList();
+                if (startPortals.Count > 0)
+                {
+                    Random random = new Random();
+                    PortalInstance randomStartPortal = startPortals[random.Next(startPortals.Count)];
+                    mapShiftX = randomStartPortal.X;
+                    mapShiftY = randomStartPortal.Y;
+                    spawnX = randomStartPortal.X;
+                    spawnY = randomStartPortal.Y;
+                }
+            }
         }
 
         private void UpdateDirectionModeState(int currentTime)
@@ -4995,7 +5019,55 @@ namespace HaCreator.MapSimulator
             if (currentMapId < 0)
                 return;
 
+            if (IsMysticDoorSkill(castInfo)
+                && TryResolveMysticDoorReturnTarget(out int returnMapId, out float returnX, out float returnY))
+            {
+                _temporaryPortalField?.TryCreateMysticDoor(castInfo, currentMapId, returnMapId, returnX, returnY);
+            }
+
             _temporaryPortalField?.TryCreateOpenGate(castInfo, currentMapId);
+        }
+
+        private bool TryResolveMysticDoorReturnTarget(out int returnMapId, out float returnX, out float returnY)
+        {
+            returnMapId = -1;
+            returnX = 0f;
+            returnY = 0f;
+
+            if (_mapBoard?.MapInfo == null || _loadMapCallback == null)
+                return false;
+
+            int configuredReturnMap = _mapBoard.MapInfo.returnMap;
+            if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+            {
+                configuredReturnMap = _mapBoard.MapInfo.forcedReturn;
+            }
+
+            if (configuredReturnMap <= 0 || configuredReturnMap == MapConstants.MaxMap)
+                return false;
+
+            Tuple<Board, string> result = _loadMapCallback(configuredReturnMap);
+            Board returnBoard = result?.Item1;
+            PortalInstance townPortal = returnBoard?.BoardItems?.Portals?
+                .FirstOrDefault(portal => portal.pt == PortalType.TownPortalPoint)
+                ?? returnBoard?.BoardItems?.Portals?
+                    .FirstOrDefault(portal => string.Equals(portal.pn, PortalType.TownPortalPoint.ToCode(), StringComparison.OrdinalIgnoreCase))
+                ?? returnBoard?.BoardItems?.Portals?
+                    .FirstOrDefault(portal => portal.pt == PortalType.StartPoint);
+
+            if (townPortal == null)
+                return false;
+
+            returnMapId = configuredReturnMap;
+            returnX = townPortal.X;
+            returnY = townPortal.Y;
+            return true;
+        }
+
+        private static bool IsMysticDoorSkill(SkillCastInfo castInfo)
+        {
+            return castInfo?.SkillData != null
+                   && string.Equals(castInfo.SkillData.Name, "Mystic Door", StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TrySetPlayerJob(int jobId)

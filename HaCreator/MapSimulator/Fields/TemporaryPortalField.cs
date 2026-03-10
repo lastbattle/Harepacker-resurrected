@@ -19,9 +19,11 @@ namespace HaCreator.MapSimulator.Fields
     internal sealed class TemporaryPortalField
     {
         private const int OpenGateSkillId = 35101005;
+        private const string MysticDoorSkillName = "Mystic Door";
         private const int OpenGateMaxPortalCount = 2;
         private const int OpenGateDefaultDurationMs = 30_000;
         private const int OpenGateTeleportDelayMs = 120;
+        private const int CrossMapPortalTeleportDelayMs = 0;
         private const float PortalInteractRangeX = 40f;
         private const float PortalInteractRangeY = 60f;
 
@@ -29,6 +31,8 @@ namespace HaCreator.MapSimulator.Fields
         private readonly GraphicsDevice _graphicsDevice;
         private readonly List<TemporaryPortal> _portals = new();
         private PortalVisualSet _openGateVisuals;
+        private PortalVisualSet _mysticDoorCurrentMapVisuals;
+        private PortalVisualSet _mysticDoorTownVisuals;
         private int _nextPortalId = 1;
 
         public TemporaryPortalField(TexturePool texturePool, GraphicsDevice graphicsDevice)
@@ -108,7 +112,7 @@ namespace HaCreator.MapSimulator.Fields
                     continue;
 
                 TemporaryPortal target = GetPortalById(portal.LinkedPortalId.Value);
-                if (target == null || target.MapId != mapId)
+                if (target == null)
                     continue;
 
                 float distance = dx + dy;
@@ -117,7 +121,7 @@ namespace HaCreator.MapSimulator.Fields
 
                 nearestDistance = distance;
                 nearestPortal = portal;
-                destination = new TemporaryPortalDestination(target.X, target.Y, portal.DelayMs);
+                destination = new TemporaryPortalDestination(target.MapId, target.X, target.Y, portal.DelayMs);
             }
 
             if (nearestPortal != null)
@@ -125,6 +129,50 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
             return false;
+        }
+
+        public bool TryCreateMysticDoor(
+            SkillCastInfo castInfo,
+            int currentMapId,
+            int returnMapId,
+            float returnPortalX,
+            float returnPortalY)
+        {
+            if (!IsMysticDoorSkill(castInfo) || currentMapId < 0 || returnMapId < 0)
+                return false;
+
+            if (!EnsureMysticDoorVisuals(out PortalVisualSet currentMapVisuals, out PortalVisualSet townVisuals))
+                return false;
+
+            int expireTime = castInfo.CastTime + GetPortalDurationMs(castInfo);
+            RemovePortalsByKind(TemporaryPortalKind.MysticDoor);
+
+            var fieldDoor = new TemporaryPortal(
+                _nextPortalId++,
+                TemporaryPortalKind.MysticDoor,
+                currentMapId,
+                castInfo.CasterX,
+                castInfo.CasterY,
+                expireTime,
+                CrossMapPortalTeleportDelayMs,
+                currentMapVisuals.CreateDrawable(castInfo.CasterX, castInfo.CasterY));
+
+            var townDoor = new TemporaryPortal(
+                _nextPortalId++,
+                TemporaryPortalKind.MysticDoor,
+                returnMapId,
+                returnPortalX,
+                returnPortalY,
+                expireTime,
+                CrossMapPortalTeleportDelayMs,
+                townVisuals.CreateDrawable(returnPortalX, returnPortalY));
+
+            fieldDoor.LinkedPortalId = townDoor.Id;
+            townDoor.LinkedPortalId = fieldDoor.Id;
+
+            _portals.Add(fieldDoor);
+            _portals.Add(townDoor);
+            return true;
         }
 
         public bool TryCreateOpenGate(SkillCastInfo castInfo, int currentMapId)
@@ -139,6 +187,7 @@ namespace HaCreator.MapSimulator.Fields
             int expireTime = castInfo.CastTime + GetPortalDurationMs(castInfo);
             var portal = new TemporaryPortal(
                 _nextPortalId++,
+                TemporaryPortalKind.OpenGate,
                 currentMapId,
                 castInfo.CasterX,
                 castInfo.CasterY,
@@ -162,6 +211,11 @@ namespace HaCreator.MapSimulator.Fields
             openGates.Add(portal);
             RelinkOpenGates(openGates);
             return true;
+        }
+
+        private void RemovePortalsByKind(TemporaryPortalKind kind)
+        {
+            _portals.RemoveAll(portal => portal.Kind == kind);
         }
 
         private void RelinkOpenGates(List<TemporaryPortal> openGates)
@@ -201,6 +255,26 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        private bool EnsureMysticDoorVisuals(out PortalVisualSet currentMapVisuals, out PortalVisualSet townVisuals)
+        {
+            currentMapVisuals = _mysticDoorCurrentMapVisuals;
+            townVisuals = _mysticDoorTownVisuals;
+            if (currentMapVisuals != null && townVisuals != null)
+                return true;
+
+            if (!TryLoadMysticDoorSkillProperty(out WzSubProperty skillProperty))
+                return false;
+
+            currentMapVisuals = LoadPortalVisualSet(skillProperty["cDoor"], TemporaryPortalKind.MysticDoor);
+            townVisuals = LoadPortalVisualSet(skillProperty["mDoor"], TemporaryPortalKind.MysticDoor);
+            if (currentMapVisuals == null || townVisuals == null)
+                return false;
+
+            _mysticDoorCurrentMapVisuals = currentMapVisuals;
+            _mysticDoorTownVisuals = townVisuals;
+            return true;
+        }
+
         private PortalVisualSet EnsureOpenGateVisuals()
         {
             if (_openGateVisuals != null)
@@ -210,16 +284,41 @@ namespace HaCreator.MapSimulator.Fields
             if (skillImage?["skill"]?["35101005"] is not WzSubProperty skillProperty)
                 return null;
 
-            if (skillProperty["mDoor"] is not WzImageProperty activeFrames)
+            _openGateVisuals = LoadPortalVisualSet(skillProperty["mDoor"], TemporaryPortalKind.OpenGate);
+            return _openGateVisuals;
+        }
+
+        private PortalVisualSet LoadPortalVisualSet(WzImageProperty framesProperty, TemporaryPortalKind kind)
+        {
+            if (framesProperty == null)
                 return null;
 
             var usedProps = new ConcurrentBag<WzObject>();
-            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, activeFrames, 0, 0, _graphicsDevice, usedProps);
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(_texturePool, framesProperty, 0, 0, _graphicsDevice, usedProps);
             if (frames.Count == 0)
                 return null;
 
-            _openGateVisuals = new PortalVisualSet(TemporaryPortalKind.OpenGate, frames);
-            return _openGateVisuals;
+            return new PortalVisualSet(kind, frames);
+        }
+
+        private static bool TryLoadMysticDoorSkillProperty(out WzSubProperty skillProperty)
+        {
+            skillProperty = null;
+
+            foreach ((string imageName, string skillId) in new[] { ("231.img", "2311002"), ("000.img", "0008001") })
+            {
+                WzImage skillImage = Program.FindImage("Skill", imageName);
+                if (skillImage?["skill"]?[skillId] is not WzSubProperty candidate)
+                    continue;
+
+                if (candidate["cDoor"] == null || candidate["mDoor"] == null)
+                    continue;
+
+                skillProperty = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         private static int GetPortalDurationMs(SkillCastInfo castInfo)
@@ -233,13 +332,15 @@ namespace HaCreator.MapSimulator.Fields
 
         internal readonly struct TemporaryPortalDestination
         {
-            public TemporaryPortalDestination(float x, float y, int delayMs)
+            public TemporaryPortalDestination(int mapId, float x, float y, int delayMs)
             {
+                MapId = mapId;
                 X = x;
                 Y = y;
                 DelayMs = delayMs;
             }
 
+            public int MapId { get; }
             public float X { get; }
             public float Y { get; }
             public int DelayMs { get; }
@@ -247,7 +348,8 @@ namespace HaCreator.MapSimulator.Fields
 
         internal enum TemporaryPortalKind
         {
-            OpenGate
+            OpenGate,
+            MysticDoor
         }
 
         private sealed class PortalVisualSet
@@ -274,16 +376,24 @@ namespace HaCreator.MapSimulator.Fields
 
         internal sealed class TemporaryPortal
         {
-            public TemporaryPortal(int id, int mapId, float x, float y, int expireTime, int delayMs, BaseDXDrawableItem drawable)
+            public TemporaryPortal(
+                int id,
+                TemporaryPortalKind kind,
+                int mapId,
+                float x,
+                float y,
+                int expireTime,
+                int delayMs,
+                BaseDXDrawableItem drawable)
             {
                 Id = id;
+                Kind = kind;
                 MapId = mapId;
                 X = x;
                 Y = y;
                 ExpireTime = expireTime;
                 DelayMs = delayMs;
                 Drawable = drawable;
-                Kind = TemporaryPortalKind.OpenGate;
             }
 
             public int Id { get; }
@@ -295,6 +405,12 @@ namespace HaCreator.MapSimulator.Fields
             public int DelayMs { get; }
             public BaseDXDrawableItem Drawable { get; }
             public int? LinkedPortalId { get; set; }
+        }
+
+        private static bool IsMysticDoorSkill(SkillCastInfo castInfo)
+        {
+            return castInfo?.SkillData != null
+                   && string.Equals(castInfo.SkillData.Name, MysticDoorSkillName, StringComparison.OrdinalIgnoreCase);
         }
     }
 }
